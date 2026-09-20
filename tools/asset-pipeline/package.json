@@ -5,6 +5,18 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
-		"test": "vitest run"
+		"test": "vitest run",
+		"palette": "tsx src/extract-palette.ts",
+		"recover": "tsx src/recover-sprites.ts",
+		"placeholders": "tsx src/gen-placeholders.ts",
+		"preview": "tsx src/preview-page.ts",
+		"generate": "pnpm run palette && pnpm run recover && pnpm run placeholders && pnpm run preview"
+	},
+	"dependencies": {
+		"sharp": "^0.35.4"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.2",
+		"tsx": "4.23.13"
 	}
 }

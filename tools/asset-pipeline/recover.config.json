@@ -1,0 +1,32 @@
+{
+	"cabin": {
+		"targetSize": 64,
+		"contentThreshold": 28,
+		"backgroundDistanceThreshold": 30,
+		"paddingPx": 12
+	},
+	"cabinet": {
+		"targetSize": 64,
+		"contentThreshold": 22,
+		"backgroundDistanceThreshold": 16,
+		"paddingPx": 12
+	},
+	"file": {
+		"targetSize": 32,
+		"contentThreshold": 22,
+		"backgroundDistanceThreshold": 26,
+		"paddingPx": 24
+	},
+	"key": {
+		"targetSize": 32,
+		"contentThreshold": 22,
+		"backgroundDistanceThreshold": 26,
+		"paddingPx": 24
+	},
+	"letter_opener": {
+		"targetSize": 32,
+		"contentThreshold": 18,
+		"backgroundDistanceThreshold": 22,
+		"paddingPx": 24
+	}
+}

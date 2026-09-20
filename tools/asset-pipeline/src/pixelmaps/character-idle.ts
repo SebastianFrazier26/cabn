@@ -1,0 +1,65 @@
+import type { PixelMap } from "../pixelmap.js";
+
+export const characterIdle: PixelMap = {
+	name: "character_idle",
+	width: 32,
+	height: 48,
+	legend: {
+		O: 0, // darkest brown — outline
+		h: 2, // dark red-brown — hair
+		f: 24, // light tan — skin
+		t: 9, // mid green — tunic
+		b: 5, // burnt orange-brown — belt
+		p: 3, // dark olive — pants
+	},
+	rows: [
+		"................................",
+		"................................",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhhhhhhhhhhhhh.........",
+		".........hhffffffffffhh.........",
+		".........hhffffffffffhh.........",
+		"...........ffffffffff...........",
+		"...........ffffffffff...........",
+		"...........ffOffffOff...........",
+		"...........ffffffffff...........",
+		"...........ffffffffff...........",
+		"...........ffffffffff...........",
+		"........OttttttttttttttO........",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.OttttttttttttttO.tO.....",
+		".....Ot.bbbbbbbbbbbbbbbb.tO.....",
+		"......f.OttttttttttttttO.f......",
+		"......f.OttttttttttttttO.f......",
+		"......f.OttttttttttttttO.f......",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OpppppOOpppppO.........",
+		".........OOOOOOOOOOOOOO.........",
+		".........OOOOOOOOOOOOOO.........",
+		".........OOOOOOOOOOOOOO.........",
+		"................................",
+	],
+};

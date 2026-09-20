@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cabn asset pipeline preview</title>
+<style>
+	:root { color-scheme: dark; }
+	body { background: #1b1b1b; color: #eee; font-family: system-ui, sans-serif; padding: 2rem; }
+	h1, h2, h3 { font-weight: 600; }
+	img { background: repeating-conic-gradient(#2a2a2a 0% 25%, #333 0% 50%) 0 0 / 16px 16px; }
+	img.pixel { image-rendering: pixelated; }
+	.swatch img { width: 100%; }
+	.stage { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
+	.stage figure { margin: 0; text-align: center; }
+	.stage figcaption { font-size: 0.75rem; color: #aaa; margin-top: 0.25rem; }
+	.icon-row { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #333; }
+	.placeholders { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+	.placeholders figure { margin: 0; text-align: center; }
+</style>
+</head>
+<body>
+	<h1>cabn asset pipeline — M2 preview</h1>
+
+	<h2>Palette</h2>
+	<div class="swatch"><img src="palette-swatch.png" alt="extracted palette swatch"></div>
+
+	<h2>Recovered sprites</h2>
+	
+		<section class="icon-row">
+			<h3>cabin</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/cabin.png" width="192" height="192" alt="cabin source art"><figcaption>source (1024, shown at 192)</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabin_64_quantized-only@8x.png" alt="cabin quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabin_64@8x.png" alt="cabin recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>cabinet</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/cabinet.png" width="192" height="192" alt="cabinet source art"><figcaption>source (1024, shown at 192)</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabinet_64_quantized-only@8x.png" alt="cabinet quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabinet_64@8x.png" alt="cabinet recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>file</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/file.png" width="192" height="192" alt="file source art"><figcaption>source (1024, shown at 192)</figcaption></figure>
+				<figure><img class="pixel" src="recovered/file_32_quantized-only@8x.png" alt="file quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/file_32@8x.png" alt="file recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>key</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/key.png" width="192" height="192" alt="key source art"><figcaption>source (1024, shown at 192)</figcaption></figure>
+				<figure><img class="pixel" src="recovered/key_32_quantized-only@8x.png" alt="key quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/key_32@8x.png" alt="key recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>letter_opener</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/letter_opener.png" width="192" height="192" alt="letter_opener source art"><figcaption>source (1024, shown at 192)</figcaption></figure>
+				<figure><img class="pixel" src="recovered/letter_opener_32_quantized-only@8x.png" alt="letter_opener quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/letter_opener_32@8x.png" alt="letter_opener recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+	<h2>Placeholder sprites</h2>
+	<div class="placeholders">
+		<figure><img class="pixel" src="placeholders/portal_arch@8x.png" alt="portal_arch placeholder sprite"><figcaption>portal_arch</figcaption></figure>
+		<figure><img class="pixel" src="placeholders/ghost@8x.png" alt="ghost placeholder sprite"><figcaption>ghost</figcaption></figure>
+		<figure><img class="pixel" src="placeholders/character_idle@8x.png" alt="character_idle placeholder sprite"><figcaption>character_idle</figcaption></figure>
+	</div>
+</body>
+</html>

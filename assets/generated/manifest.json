@@ -1,0 +1,11 @@
+{
+	"portal_arch": {
+		"locked": false
+	},
+	"ghost": {
+		"locked": false
+	},
+	"character_idle": {
+		"locked": false
+	}
+}
