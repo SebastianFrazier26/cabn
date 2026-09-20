@@ -8,9 +8,11 @@
 		"test": "vitest run",
 		"palette": "tsx src/extract-palette.ts",
 		"recover": "tsx src/recover-sprites.ts",
+		"matte": "tsx src/matte-originals.ts",
 		"placeholders": "tsx src/gen-placeholders.ts",
+		"soften": "tsx src/soften.ts",
 		"preview": "tsx src/preview-page.ts",
-		"generate": "pnpm run palette && pnpm run recover && pnpm run placeholders && pnpm run preview"
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run preview"
 	},
 	"dependencies": {
 		"sharp": "^0.35.4"

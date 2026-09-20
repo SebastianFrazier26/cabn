@@ -27,6 +27,18 @@ const DEDUPE_DISTANCE = 12;
 // doesn't need to see anyway.
 const HISTOGRAM_BUCKET = 4;
 
+// Hand-picked, not extracted: the 5 source icons are entirely warm
+// brown/green/cream, with no cool neutrals — the ghost placeholder (and
+// anything else wanting moonlit/spectral tones) needs colors the median-cut
+// histogram structurally can't produce. Appended after the sort so existing
+// indices 0..N-1 stay stable across regenerations.
+const CURATED_COLORS: { name: string; rgb: RGB }[] = [
+	{ name: "steel gray", rgb: { r: 138, g: 145, b: 152 } },
+	{ name: "bone / moonlight white", rgb: { r: 237, g: 238, b: 228 } },
+	{ name: "pale ghost blue", rgb: { r: 191, g: 214, b: 224 } },
+	{ name: "cool shadow blue-gray", rgb: { r: 92, g: 106, b: 122 } },
+];
+
 function bucket(value: number): number {
 	return Math.round(value / HISTOGRAM_BUCKET) * HISTOGRAM_BUCKET;
 }
@@ -104,18 +116,27 @@ async function main() {
 
 	await mkdir(generatedDir, { recursive: true });
 
+	const allColors = [
+		...deduped.map((rgb) => ({ hex: toHex(rgb), rgb, curated: false })),
+		...CURATED_COLORS.map(({ rgb }) => ({
+			hex: toHex(rgb),
+			rgb,
+			curated: true,
+		})),
+	];
+
 	const palette = {
-		colors: deduped.map((rgb) => ({ hex: toHex(rgb), rgb })),
+		colors: allColors,
 		generatedAt: new Date().toISOString(),
 		sources,
 	};
 	await writeFile(paletteJsonPath, `${JSON.stringify(palette, null, "\t")}\n`);
 
 	const swatchSize = 32;
-	const width = deduped.length * swatchSize;
+	const width = allColors.length * swatchSize;
 	const height = swatchSize;
 	const data = Buffer.alloc(width * height * 4);
-	deduped.forEach((color, index) => {
+	allColors.forEach(({ rgb: color }, index) => {
 		for (let y = 0; y < swatchSize; y++) {
 			for (let x = 0; x < swatchSize; x++) {
 				const px = (y * width + index * swatchSize + x) * 4;
@@ -129,7 +150,7 @@ async function main() {
 	await writeRawRgbaPng({ data, width, height }, paletteSwatchPath);
 
 	console.log(
-		`Extracted ${deduped.length} colors from ${sources.length} sources.`,
+		`Extracted ${deduped.length} colors from ${sources.length} sources, plus ${CURATED_COLORS.length} curated.`,
 	);
 	console.log(`Wrote ${paletteJsonPath}`);
 	console.log(`Wrote ${paletteSwatchPath}`);
