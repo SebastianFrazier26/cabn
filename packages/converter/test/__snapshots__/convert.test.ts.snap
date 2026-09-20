@@ -1,0 +1,222 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
+{
+  "cabnVersion": 1,
+  "clusters": [
+    {
+      "biome": "meadow",
+      "chunk": "chunks/root.json",
+      "id": "root",
+      "label": "root",
+      "path": ".",
+      "portalIds": [
+        ".env",
+        "README.md",
+        "main.py",
+      ],
+      "pos": {
+        "x": 0,
+        "y": 0,
+      },
+    },
+    {
+      "biome": "grove",
+      "chunk": "chunks/pkg.json",
+      "id": "pkg",
+      "label": "pkg",
+      "path": "pkg",
+      "portalIds": [
+        "pkg/__init__.py",
+      ],
+      "pos": {
+        "x": -816.3944668136537,
+        "y": -84.50159456580866,
+      },
+    },
+    {
+      "biome": "glade",
+      "chunk": "chunks/pkg--sub.json",
+      "id": "pkg--sub",
+      "label": "sub",
+      "path": "pkg/sub",
+      "portalIds": [
+        "pkg/sub/helper.py",
+      ],
+      "pos": {
+        "x": -78.26571816578496,
+        "y": 1869.487780071795,
+      },
+    },
+    {
+      "biome": "glade",
+      "chunk": "chunks/pkg--utils.json",
+      "id": "pkg--utils",
+      "label": "utils",
+      "path": "pkg/utils",
+      "portalIds": [
+        "pkg/utils/strings.py",
+      ],
+      "pos": {
+        "x": 89.46135303005543,
+        "y": -1909.8340075090528,
+      },
+    },
+  ],
+  "meta": {
+    "fileCount": 6,
+    "generatedAt": "2026-01-01T00:00:00.000Z",
+    "name": "mini-python",
+    "source": "mini-python",
+    "totalBytes": 516,
+  },
+  "monsters": [],
+  "paths": [
+    {
+      "from": "root",
+      "kind": "vine",
+      "to": "pkg",
+    },
+    {
+      "from": "pkg",
+      "kind": "vine",
+      "to": "pkg--sub",
+    },
+    {
+      "from": "pkg",
+      "kind": "vine",
+      "to": "pkg--utils",
+    },
+  ],
+  "portals": [
+    {
+      "clusterId": "root",
+      "file": {
+        "binary": false,
+        "bytes": 11,
+        "kind": "config",
+        "lines": 2,
+        "name": ".env",
+        "path": ".env",
+      },
+      "id": ".env",
+      "preview": {
+        "lines": [
+          "DEBUG=true",
+        ],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+    {
+      "clusterId": "root",
+      "file": {
+        "binary": false,
+        "bytes": 198,
+        "kind": "markdown",
+        "language": "markdown",
+        "lines": 7,
+        "name": "README.md",
+        "path": "README.md",
+      },
+      "id": "README.md",
+      "preview": {
+        "lines": [
+          "# mini-python",
+          "A tiny fixture package used by @cabn/converter's tests.",
+          "It has a couple of modules and a nested sub-package so cluster/annex and",
+          "directory-tree tests have something real to chew on.",
+        ],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+    {
+      "clusterId": "root",
+      "file": {
+        "binary": false,
+        "bytes": 191,
+        "kind": "code",
+        "language": "python",
+        "lines": 13,
+        "name": "main.py",
+        "path": "main.py",
+      },
+      "id": "main.py",
+      "preview": {
+        "lines": [
+          "#!/usr/bin/env python3",
+          """"Entry point for the mini-python fixture."""",
+          "from pkg.sub.helper import greet",
+          "def main() -> None:",
+          "    print(greet("cabn"))",
+          "if __name__ == "__main__":",
+          "    main()",
+        ],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+    {
+      "clusterId": "pkg",
+      "file": {
+        "binary": false,
+        "bytes": 0,
+        "kind": "code",
+        "language": "python",
+        "lines": 1,
+        "name": "__init__.py",
+        "path": "pkg/__init__.py",
+      },
+      "id": "pkg/__init__.py",
+      "preview": {
+        "lines": [],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+    {
+      "clusterId": "pkg--sub",
+      "file": {
+        "binary": false,
+        "bytes": 57,
+        "kind": "code",
+        "language": "python",
+        "lines": 3,
+        "name": "helper.py",
+        "path": "pkg/sub/helper.py",
+      },
+      "id": "pkg/sub/helper.py",
+      "preview": {
+        "lines": [
+          "def greet(name: str) -> str:",
+          "    return f"hello, {name}"",
+        ],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+    {
+      "clusterId": "pkg--utils",
+      "file": {
+        "binary": false,
+        "bytes": 59,
+        "kind": "code",
+        "language": "python",
+        "lines": 3,
+        "name": "strings.py",
+        "path": "pkg/utils/strings.py",
+      },
+      "id": "pkg/utils/strings.py",
+      "preview": {
+        "lines": [
+          "def shout(text: str) -> str:",
+          "    return text.upper() + "!"",
+        ],
+        "truncated": false,
+      },
+      "spawns": [],
+    },
+  ],
+}
+`;

@@ -1,0 +1,26 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`computeLayout > matches a recorded snapshot for a fixed tree 1`] = `
+{
+  "root": {
+    "x": 0,
+    "y": 0,
+  },
+  "root--docs": {
+    "x": 871.8847180348444,
+    "y": -215.0642066341253,
+  },
+  "root--src": {
+    "x": -906.788356360476,
+    "y": 270.6960629564137,
+  },
+  "root--src--api": {
+    "x": 442.31123611682017,
+    "y": -1836.3022090447744,
+  },
+  "root--src--utils": {
+    "x": -826.7428792155094,
+    "y": 1577.0609207643206,
+  },
+}
+`;
