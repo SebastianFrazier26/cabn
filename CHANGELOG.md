@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-21
+
+- M3: the first walkable game world — React↔Phaser bridge, world/preload/walkable scenes, and a demo app that converts and walks a real (fake) repo.
+  - `@cabn/engine` goes from a dep-free stub to a real Phaser 3.90 + zustand + mitt package. `bridge/store.ts` is a vanilla zustand store (`mode`, `activeClusterId`, `activePortalId`, `activePortalContent`, `loadedChunks`, `playerPos`, `searchOpen`) for state that must survive a re-render; `bridge/events.ts` is a typed mitt bus (`portal:enter`, `portal:approach`, `cluster:enter`, `chunk:loaded`) for one-shot signals — the two are never used for the same fact. `systems/{chunkCache,portalApproach,previewText}.ts` hold the pure logic (LRU eviction, approach-radius transitions, preview-line clamping) kept deliberately out of the Phaser-touching scene files so it stays unit-testable without a canvas.
+  - `scenes/{BootScene,PreloadScene,WorldScene}.ts`: fetch + validate `world.json` (`@cabn/world-schema`'s `validateManifest`), preload sprites/anims, then render biome-tinted ground, dashed cluster paths, cabin/cabinet cluster sprites with labels, fanned animated portal arches with a fading parchment preview panel on approach, and an 8-direction WASD/arrow player (arcade physics, camera follow, placeholder walk-bob since no real walk-cycle frames exist yet) with lazy per-cluster chunk loading (LRU capped at 8). Walking into a portal and pressing E/Enter sets `mode: "file"` with the file's content; `FileScene` proper (syntax highlighting, monster overlays) is M4.
+  - `react/CabnGame.tsx` owns the `Phaser.Game` lifecycle from a `{ worldUrl }` prop; `react/FileOverlay.tsx` is the M3 placeholder full-file viewer (Esc to leave), bridged to the vanilla store via a small `useSyncExternalStore` hook instead of pulling in zustand's React bindings package.
+  - `apps/demo`: a Vite + React app (`CabnGame` full-viewport under a cottagecore header). `sample-project/` is a fake 15-file Python/TS "harvest-log" garden tracker; `scripts/build-world.mjs` (wired to `predev`/`prebuild`, skip-if-built) converts it via `@cabn/cli`'s `runBuild` into `public/worlds/sample/` and syncs `assets/generated/{originals,placeholders}` into `public/assets/` (both gitignored, regenerated on demand).
+  - Engine tests: store transitions, LRU eviction, approach-radius math, preview-line clamping (23 tests, no Phaser import in any tested module). Demo tests: the `build-world.mjs` skip-vs-rebuild decision (4 tests); `sample-project/` is excluded from the demo's own vitest run since it's fixture data with a Node-test-runner file of its own, not a package to test.
+
 ## 2026-09-20
 
 - M1: world data contract, converter core, and CLI build/inspect.

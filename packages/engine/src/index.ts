@@ -1,4 +1,6 @@
-// Engine stub — rendering deps (phaser/react) are deferred past M0 by design.
-export function engineStatus(): string {
-	return "engine: not yet implemented";
-}
+export * from "./bridge/events.js";
+export * from "./bridge/store.js";
+export * from "./game.js";
+export { PALETTE, toCssColor } from "./palette.js";
+export { CabnGame } from "./react/CabnGame.js";
+export { FileOverlay } from "./react/FileOverlay.js";

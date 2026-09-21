@@ -1,0 +1,9 @@
+[project]
+name = "harvest-log-scripts"
+version = "0.1.0"
+description = "Offline maintenance scripts for the harvest-log garden tracker"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
