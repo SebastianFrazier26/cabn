@@ -4,3 +4,7 @@ out/
 .env
 *.tsbuildinfo
 .DS_Store
+
+# Test fixtures are checked-in data, not artifacts — without this, the .env and
+# node_modules fixtures vanish on CI checkout and fixture-dependent tests diverge.
+!**/test/fixtures/**
