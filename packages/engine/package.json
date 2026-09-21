@@ -16,7 +16,9 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
+		"@cabn/converter": "workspace:*",
 		"@cabn/world-schema": "workspace:*",
+		"minisearch": "7.2.0",
 		"mitt": "^3.0.1",
 		"phaser": "^3.90.0",
 		"zustand": "^5.0.15"

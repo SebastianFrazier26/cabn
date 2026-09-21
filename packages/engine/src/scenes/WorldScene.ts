@@ -103,6 +103,9 @@ export class WorldScene extends Phaser.Scene {
 	private previewMaskShape!: Phaser.GameObjects.Graphics;
 	private portalsInRange = new Set<string>();
 
+	/** Non-null while a tool-triggered auto-walk (spyglass/orb result click) is in flight — suppresses WASD so it doesn't fight the tween. */
+	private autoWalkTween: Phaser.Tweens.Tween | null = null;
+
 	constructor() {
 		super({ key: "world", active: false });
 	}
@@ -130,7 +133,71 @@ export class WorldScene extends Phaser.Scene {
 		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
+		this.publishPortalIndex();
+		this.setupToolBusListeners();
 	}
+
+	// The spyglass panel and the orb's world-search results both read this off
+	// the store rather than holding their own copy of the manifest — React
+	// only ever gets game state through {store, bus}, never a manifest prop.
+	private publishPortalIndex(): void {
+		this.store.getState().setActiveWorldBase(this.worldBase);
+		this.store.getState().setPortals(
+			this.manifest.portals.map((portal) => ({
+				id: portal.id,
+				clusterId: portal.clusterId,
+				name: portal.file.name,
+				path: portal.file.path,
+				kind: portal.file.kind,
+				bytes: portal.file.bytes,
+				previewLine: portal.preview.lines[0] ?? "",
+			})),
+		);
+	}
+
+	// mitt's on/off take no context argument (unlike Phaser's own EventEmitter,
+	// used for the SHUTDOWN hook right below) — both listeners are arrow class
+	// fields specifically so `this` is already bound and the same function
+	// reference can be handed to both on() and off().
+	private setupToolBusListeners(): void {
+		this.bus.on("tool:opener-use", this.enterNearestPortalInRange);
+		this.bus.on("tool:walk-to-portal", this.onWalkToPortal);
+		this.events.once(
+			Phaser.Scenes.Events.SHUTDOWN,
+			this.teardownToolBusListeners,
+			this,
+		);
+	}
+
+	private teardownToolBusListeners(): void {
+		this.bus.off("tool:opener-use", this.enterNearestPortalInRange);
+		this.bus.off("tool:walk-to-portal", this.onWalkToPortal);
+	}
+
+	private onWalkToPortal = ({ portalId }: { portalId: string }): void => {
+		const target = this.portalWorldPos.get(portalId);
+		if (!target) return;
+
+		this.autoWalkTween?.stop();
+		const from = { x: this.player.body.x, y: this.player.body.y };
+		const dist = Phaser.Math.Distance.Between(
+			from.x,
+			from.y,
+			target.x,
+			target.y,
+		);
+		const speed = 320; // px/s, faster than WASD walk speed — a summoned walk should read as brisk, not a full retrace
+		this.autoWalkTween = this.tweens.add({
+			targets: this.player.body,
+			x: target.x,
+			y: target.y,
+			duration: Math.max(dist / speed, 0.1) * 1000,
+			ease: "Sine.easeInOut",
+			onComplete: () => {
+				this.autoWalkTween = null;
+			},
+		});
+	};
 
 	private drawGround(): void {
 		const g = this.add.graphics().setDepth(0);
@@ -325,6 +392,13 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private handleMovement(delta: number): void {
+		if (this.autoWalkTween) {
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			this.store
+				.getState()
+				.setPlayerPos({ x: this.player.body.x, y: this.player.body.y });
+			return;
+		}
 		const { pos } = updatePlayerMovement(
 			this.player,
 			this.movementKeys,
@@ -479,7 +553,14 @@ export class WorldScene extends Phaser.Scene {
 			Phaser.Input.Keyboard.JustDown(this.keys.enter) ||
 			Phaser.Input.Keyboard.JustDown(this.keys.e);
 		if (!pressed) return;
+		this.enterNearestPortalInRange();
+	}
 
+	// Shared by the direct E/Enter key check above (frame-polled, for input
+	// latency) and the "tool:opener-use" bus listener (fired when the opener
+	// tool is dispatched some other way, e.g. a hotbar click) — one path, two
+	// triggers, see systems/tools.ts.
+	private enterNearestPortalInRange = (): void => {
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		let target: string | null = null;
 		for (const portalId of this.portalsInRange) {
@@ -502,7 +583,22 @@ export class WorldScene extends Phaser.Scene {
 
 		this.store.getState().enterPortal(target, content);
 		this.bus.emit("portal:enter", { portalId: target });
-	}
+
+		// Binary/unreadable files (content === null) keep the M3 fallback: mode
+		// flips to "file" but WorldScene keeps running underneath FileOverlay's
+		// React "no preview available" message. A real text file gets the real
+		// FileScene instead, via switch() (sleep this scene, start file fresh)
+		// so returning later is scene.wake(), not a full WorldScene re-init —
+		// camera position and the chunk cache survive the round trip.
+		if (content !== null) {
+			this.scene.switch("file", {
+				portalId: target,
+				file: portal.file,
+				content,
+				returnSceneKey: "world",
+			});
+		}
+	};
 
 	// The bonfire at world spawn doubles as the way back — Esc only returns to
 	// the shelf near it, not from anywhere in the world, so it reads as a

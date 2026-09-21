@@ -4,7 +4,11 @@ import {
 	type CabnGameTarget,
 	createCabnGame,
 } from "../game.js";
+import { BagTray } from "./BagTray.js";
 import { FileOverlay } from "./FileOverlay.js";
+import { OrbSearch } from "./OrbSearch.js";
+import { SpyglassPanel } from "./SpyglassPanel.js";
+import { ToolHotbar } from "./ToolHotbar.js";
 
 // Exactly one of the two: a plain worldUrl boots straight into that world (no
 // shelf to return to); shelfUrl boots into the shelf hub, which then boots
@@ -44,6 +48,10 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 		<div style={{ position: "relative", width: "100%", height: "100%" }}>
 			<div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 			{handle && <FileOverlay store={handle.store} />}
+			{handle && <ToolHotbar store={handle.store} bus={handle.bus} />}
+			{handle && <SpyglassPanel store={handle.store} bus={handle.bus} />}
+			{handle && <OrbSearch store={handle.store} bus={handle.bus} />}
+			{handle && <BagTray store={handle.store} />}
 		</div>
 	);
 }

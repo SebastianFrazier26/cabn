@@ -3,6 +3,7 @@ import { createCabnBus } from "./bridge/events.js";
 import { createCabnStore } from "./bridge/store.js";
 import type { BootSceneData } from "./scenes/BootScene.js";
 import { BootScene } from "./scenes/BootScene.js";
+import { FileScene } from "./scenes/FileScene.js";
 import { PreloadScene } from "./scenes/PreloadScene.js";
 import { ShelfScene } from "./scenes/ShelfScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
@@ -48,7 +49,7 @@ export function createCabnGame(
 		// Each scene declares `active: false` in its own constructor (see
 		// BootScene et al.) so none of them auto-start — "boot" is kicked off
 		// explicitly below, once the target is available to pass as init data.
-		scene: [BootScene, PreloadScene, WorldScene, ShelfScene],
+		scene: [BootScene, PreloadScene, WorldScene, ShelfScene, FileScene],
 	});
 
 	game.registry.set("store", store);
