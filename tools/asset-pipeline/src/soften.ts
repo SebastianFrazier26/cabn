@@ -249,7 +249,13 @@ async function main() {
 		ghost: { bloomThreshold: 225, bloomStrength: 0.25, bloomRadiusPx: 5 },
 	};
 
-	for (const name of ["portal_arch", "ghost", "character_idle"]) {
+	for (const name of [
+		"portal_arch",
+		"ghost",
+		"character_idle",
+		"character_idle_back",
+		"wizard_tower",
+	]) {
 		if (manifest[name]?.locked) continue;
 		jobs.push({
 			inputPath: path.join(placeholdersDir, `${name}.png`),

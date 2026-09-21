@@ -5,10 +5,18 @@ import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
 import { manifestJsonPath, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type PixelMap, renderPixelMap } from "./pixelmap.js";
 import { characterIdle } from "./pixelmaps/character-idle.js";
+import { characterIdleBack } from "./pixelmaps/character-idle-back.js";
 import { ghost } from "./pixelmaps/ghost.js";
 import { portalArch } from "./pixelmaps/portal-arch.js";
+import { wizardTower } from "./pixelmaps/wizard-tower.js";
 
-const ALL_PIXEL_MAPS: PixelMap[] = [portalArch, ghost, characterIdle];
+const ALL_PIXEL_MAPS: PixelMap[] = [
+	portalArch,
+	ghost,
+	characterIdle,
+	characterIdleBack,
+	wizardTower,
+];
 const UPSCALE_FACTOR = 8;
 
 interface ManifestEntry {
