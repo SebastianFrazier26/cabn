@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-import { helpText } from "./index.js";
+import { run } from "./cli.js";
 
-console.log(helpText());
+process.exitCode = await run(process.argv.slice(2));

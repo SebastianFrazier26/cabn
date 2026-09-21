@@ -4,20 +4,22 @@ cabn turns any directory or zipfile into an explorable cottagecore game world â€
 
 ## Status
 
-Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. Most packages are stubs while the milestones land.
+Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect) has landed; the engine/game layer and hosted apps are still stubs.
 
 ## Monorepo map
 
 | Path | Package | What it is / will be |
 | --- | --- | --- |
-| `packages/world-schema` | `@cabn/world-schema` | World data model shared by everything else |
-| `packages/converter` | `@cabn/converter` | Turns directories/zipfiles into world data |
+| `packages/world-schema` | `@cabn/world-schema` | Zod schemas + types for the world bundle (`world.json`, chunks, search index, assets), plus `validateManifest` |
+| `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index) |
 | `packages/engine` | `@cabn/engine` | Game engine / rendering layer (deps deferred) |
-| `packages/cli` | `@cabn/cli` | `cabn` command-line entry point |
+| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>` and `cabn inspect <bundleDir>` |
 | `apps/backend` | `@cabn/backend` | Upload/convert API service (Fastify planned) |
 | `apps/demo` | `@cabn/demo` | Hosted demo app |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
 | `assets/source` | â€” | Source art (icons, sprites) |
+
+World layout (`convert()`'s cluster positions) is byte-stable across runs on a single JS engine; cross-engine reproduction isn't guaranteed since it relies on `Math.cos`/`Math.sin`, whose last-ulp rounding isn't spec-mandated to match between engines.
 
 ## Quickstart
 

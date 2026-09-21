@@ -1,15 +1,7 @@
-export const CABN_VERSION = 1;
-
-// Type stubs only for M0 — runtime validation (zod) lands in M1.
-export type WorldNodeKind = "portal" | "cluster" | "monster";
-
-export interface WorldNode {
-	kind: WorldNodeKind;
-	name: string;
-	children?: WorldNode[];
-}
-
-export interface World {
-	version: number;
-	root: WorldNode;
-}
+export * from "./assets.js";
+export * from "./chunk.js";
+export * from "./manifest.js";
+export * from "./search-index.js";
+export * from "./shared.js";
+export * from "./validate.js";
+export * from "./version.js";

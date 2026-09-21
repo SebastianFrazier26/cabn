@@ -1,0 +1,16 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"engine": {
+			"type": "string",
+			"const": "minisearch"
+		},
+		"version": {
+			"type": "string"
+		},
+		"index": {}
+	},
+	"required": ["engine", "version", "index"],
+	"additionalProperties": false
+}
