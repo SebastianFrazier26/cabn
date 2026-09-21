@@ -7,5 +7,14 @@
 	},
 	"character_idle": {
 		"locked": false
+	},
+	"character_idle_back": {
+		"locked": false
+	},
+	"wizard_tower": {
+		"locked": false
+	},
+	"bonfire": {
+		"locked": false
 	}
 }

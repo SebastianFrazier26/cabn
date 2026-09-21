@@ -12,9 +12,10 @@
 		"placeholders": "tsx src/gen-placeholders.ts",
 		"soften": "tsx src/soften.ts",
 		"animate": "tsx src/portal-animation.ts",
+		"bonfire": "tsx src/bonfire-animation.ts",
 		"composite": "tsx src/portal-composite.ts",
 		"preview": "tsx src/preview-page.ts",
-		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run composite && pnpm run preview"
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run bonfire && pnpm run composite && pnpm run preview"
 	},
 	"dependencies": {
 		"gifenc": "^1.0.3",
