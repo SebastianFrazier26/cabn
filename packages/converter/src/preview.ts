@@ -10,6 +10,17 @@ export interface Preview {
 	truncated: boolean;
 }
 
+// A slice at exactly MAX_LINE_CHARS can land between a surrogate pair (an
+// astral character, e.g. most emoji, is two UTF-16 code units). Back the cut
+// off by one unit rather than splitting the pair into a lone lead surrogate,
+// which would corrupt the character on the next UTF-8 encode.
+function safeCutLength(raw: string, maxChars: number): number {
+	if (raw.length <= maxChars) return raw.length;
+	const codeAtBoundary = raw.charCodeAt(maxChars - 1);
+	const isLeadSurrogate = codeAtBoundary >= 0xd800 && codeAtBoundary <= 0xdbff;
+	return isLeadSurrogate ? maxChars - 1 : maxChars;
+}
+
 /**
  * First <=12 non-blank lines of `content`, each cut to 120 chars, capped at
  * 512 total bytes. `truncated` is true whenever anything was cut: a
@@ -28,8 +39,9 @@ export function buildPreview(content: string): Preview {
 			break;
 		}
 
-		const cut = raw.length > MAX_LINE_CHARS;
-		const line = cut ? raw.slice(0, MAX_LINE_CHARS) : raw;
+		const cutLength = safeCutLength(raw, MAX_LINE_CHARS);
+		const cut = raw.length > cutLength;
+		const line = cut ? raw.slice(0, cutLength) : raw;
 		const lineBytes = encoder.encode(line).length;
 
 		if (totalBytes + lineBytes > MAX_TOTAL_BYTES) {

@@ -2,6 +2,7 @@ import {
 	type AssetsFile,
 	AssetsFileSchema,
 	CABN_VERSION,
+	type ChunkFile,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
 	validateManifest,
@@ -26,6 +27,8 @@ export interface ConvertOptions {
 	maxFiles?: number;
 	maxFileBytes?: number;
 	maxFilesPerCluster?: number;
+	/** Read secret-pattern files (.env, *.pem, id_rsa*, ...) normally instead of metadata-only. Default false. */
+	includeSecrets?: boolean;
 	/** Injectable clock for deterministic meta.generatedAt in tests. */
 	now?: () => Date;
 }
@@ -42,6 +45,7 @@ export async function convert(
 		ignore: opts.ignore,
 		maxFiles: opts.maxFiles ?? DEFAULT_MAX_FILES,
 		maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+		includeSecrets: opts.includeSecrets,
 	});
 
 	const dirTree = buildDirTree(walked.files);
@@ -51,9 +55,14 @@ export async function convert(
 			opts.maxFilesPerCluster ?? DEFAULT_MAX_FILES_PER_CLUSTER,
 	});
 
-	const chunkFiles = new Map<string, WorldChunk>();
+	// Built as Map<string, ChunkFile> and converted via Object.fromEntries at
+	// the end, not a plain object assigned to via bracket notation — a file
+	// literally named "__proto__" would otherwise hit Object.prototype's
+	// __proto__ setter instead of creating an own property, silently
+	// vanishing from the chunk instead of erroring.
+	const chunkFileMaps = new Map<string, Map<string, ChunkFile>>();
 	for (const cluster of clusters) {
-		chunkFiles.set(cluster.id, { clusterId: cluster.id, files: {} });
+		chunkFileMaps.set(cluster.id, new Map());
 	}
 
 	const searchDocs: SearchDoc[] = [];
@@ -91,8 +100,9 @@ export async function convert(
 		});
 
 		if (text !== undefined && !info.binary) {
-			const chunk = chunkFiles.get(clusterId);
-			if (chunk) chunk.files[file.path] = { content: text, encoding: "utf8" };
+			chunkFileMaps
+				.get(clusterId)
+				?.set(file.path, { content: text, encoding: "utf8" });
 			searchDocs.push({ id: file.path, path: file.path, name, content: text });
 		}
 	}
@@ -105,6 +115,8 @@ export async function convert(
 			generatedAt: (opts.now?.() ?? new Date()).toISOString(),
 			fileCount: walked.files.length,
 			totalBytes: walked.totalBytes,
+			truncated: walked.truncated,
+			skippedFiles: walked.skippedFiles,
 		},
 		clusters,
 		paths,
@@ -121,12 +133,10 @@ export async function convert(
 
 	const bundle: WorldBundle = new Map();
 	bundle.set("world.json", JSON.stringify(manifest, null, 2));
-	for (const chunk of chunkFiles.values()) {
+	for (const [clusterId, fileMap] of chunkFileMaps) {
+		const chunk: WorldChunk = { clusterId, files: Object.fromEntries(fileMap) };
 		WorldChunkSchema.parse(chunk);
-		bundle.set(
-			`chunks/${chunk.clusterId}.json`,
-			JSON.stringify(chunk, null, 2),
-		);
+		bundle.set(`chunks/${clusterId}.json`, JSON.stringify(chunk, null, 2));
 	}
 	bundle.set("search-index.json", JSON.stringify(searchIndex, null, 2));
 	bundle.set("assets.json", JSON.stringify(assets, null, 2));

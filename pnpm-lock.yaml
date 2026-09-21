@@ -202,7 +202,7 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       minisearch:
-        specifier: ^7.2.0
+        specifier: 7.2.0
         version: 7.2.0
     devDependencies:
       '@types/node':

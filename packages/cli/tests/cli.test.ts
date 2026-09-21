@@ -11,6 +11,7 @@ beforeEach(async () => {
 	outDir = join(await mkdtemp(join(tmpdir(), "cabn-cli-dispatch-")), "world");
 	vi.spyOn(console, "log").mockImplementation(() => {});
 	vi.spyOn(console, "error").mockImplementation(() => {});
+	vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(async () => {
@@ -42,4 +43,24 @@ test("inspect without a path exits 1", async () => {
 test("build <fixture> -o <outDir> exits 0 and writes a bundle", async () => {
 	expect(await run(["build", FIXTURE, "-o", outDir])).toBe(0);
 	expect(await run(["inspect", outDir])).toBe(0);
+});
+
+test("build --include-secrets restores .env content", async () => {
+	expect(await run(["build", FIXTURE, "-o", outDir, "--include-secrets"])).toBe(
+		0,
+	);
+});
+
+test("an unknown build flag exits 1 with a friendly error instead of throwing", async () => {
+	await expect(run(["build", FIXTURE, "--bogus-flag"])).resolves.toBe(1);
+	expect(console.error).toHaveBeenCalledWith(
+		expect.stringContaining("cabn build failed"),
+	);
+});
+
+test("an unknown inspect flag exits 1 with a friendly error instead of throwing", async () => {
+	await expect(run(["inspect", outDir, "--bogus-flag"])).resolves.toBe(1);
+	expect(console.error).toHaveBeenCalledWith(
+		expect.stringContaining("cabn inspect failed"),
+	);
 });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SearchIndexFileSchema = z.object({
+export const SearchIndexFileSchema = z.strictObject({
 	engine: z.literal("minisearch"),
 	version: z.string(),
 	// MiniSearch.toJSON() output; shape is opaque here since it's a serialized

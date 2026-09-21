@@ -19,6 +19,8 @@ Under active reboot. The original Rust prototype is parked on the `rust-prototyp
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
 | `assets/source` | — | Source art (icons, sprites) |
 
+World layout (`convert()`'s cluster positions) is byte-stable across runs on a single JS engine; cross-engine reproduction isn't guaranteed since it relies on `Math.cos`/`Math.sin`, whose last-ulp rounding isn't spec-mandated to match between engines.
+
 ## Quickstart
 
 Requires Node 22 and pnpm (via corepack).

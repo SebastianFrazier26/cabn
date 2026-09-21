@@ -1,4 +1,5 @@
 import type { Biome, Cluster, WorldPath } from "@cabn/world-schema";
+import { shortHash } from "./hash.js";
 import { computeLayout, type LayoutTreeNode } from "./layout.js";
 import type { ClusterNode } from "./tree.js";
 import type { WalkedFile } from "./walk.js";
@@ -22,6 +23,26 @@ function labelOf(path: string): string {
 	return path.split("/").pop() ?? path;
 }
 
+// Two different real paths can slug to the same id ("a/b" and a literal
+// directory "a--b"), and an annex's `<id>__2` can collide with a real
+// directory literally named that. First writer (root-first, in-order DFS —
+// deterministic given walk.ts's sorted input) keeps the plain slug; the
+// loser gets a short content hash appended so ids stay stable and unique
+// across runs without needing a global rename pass afterward.
+function uniqueId(
+	candidate: string,
+	disambiguator: string,
+	usedIds: Set<string>,
+): string {
+	if (!usedIds.has(candidate)) {
+		usedIds.add(candidate);
+		return candidate;
+	}
+	const suffixed = `${candidate}~${shortHash(disambiguator)}`;
+	usedIds.add(suffixed);
+	return suffixed;
+}
+
 interface ShardInfo {
 	id: string;
 	path: string;
@@ -42,9 +63,10 @@ interface ShardGroup {
 function buildShardGroup(
 	node: ClusterNode,
 	maxFilesPerCluster: number,
+	usedIds: Set<string>,
 ): ShardGroup {
-	const id = slugId(node.path);
 	const label = labelOf(node.path);
+	const id = uniqueId(slugId(node.path), node.path, usedIds);
 
 	const chunks: WalkedFile[][] = [];
 	for (let i = 0; i < node.files.length; i += maxFilesPerCluster) {
@@ -58,20 +80,28 @@ function buildShardGroup(
 		depth: node.depth,
 		files: chunks[0] ?? [], // no files at all (e.g. a pass-through root)
 	};
-	const annexes: ShardInfo[] = chunks.slice(1).map((files, i) => ({
-		id: `${id}__${i + 2}`,
-		path: node.path,
-		label: `${label} (${i + 2})`,
-		depth: node.depth,
-		files,
-		annexOf: id,
-	}));
+	const annexes: ShardInfo[] = chunks.slice(1).map((files, i) => {
+		const annexNumber = i + 2;
+		const annexId = uniqueId(
+			`${id}__${annexNumber}`,
+			`${node.path}#annex${annexNumber}`,
+			usedIds,
+		);
+		return {
+			id: annexId,
+			path: node.path,
+			label: `${label} (${annexNumber})`,
+			depth: node.depth,
+			files,
+			annexOf: id,
+		};
+	});
 
 	return {
 		main,
 		annexes,
 		childGroups: node.children.map((child) =>
-			buildShardGroup(child, maxFilesPerCluster),
+			buildShardGroup(child, maxFilesPerCluster, usedIds),
 		),
 	};
 }
@@ -135,13 +165,21 @@ export function buildClusters(
 ): ClusterBuildResult {
 	const maxFilesPerCluster =
 		opts.maxFilesPerCluster ?? DEFAULT_MAX_FILES_PER_CLUSTER;
-	const rootGroup = buildShardGroup(root, maxFilesPerCluster);
+	const usedIds = new Set<string>();
+	const rootGroup = buildShardGroup(root, maxFilesPerCluster, usedIds);
 
 	const shards: ShardInfo[] = [];
 	const paths: WorldPath[] = [];
 	flattenShards(rootGroup, undefined, shards, paths);
 
-	const [layoutRoot] = toLayoutNode(rootGroup);
+	// The root itself is pinned to depth 0 (the origin) by computeLayout, which
+	// leaves no room for siblings there — so root's own annexes (if root has
+	// >maxFilesPerCluster direct files) are re-attached as layout children of
+	// the root instead of being dropped. They keep depth 0 for biome purposes
+	// (ShardInfo.depth, above) since they're still "the same directory" —
+	// only their ring position is borrowed from depth 1.
+	const [layoutRoot, ...rootAnnexLayoutNodes] = toLayoutNode(rootGroup);
+	layoutRoot.children = [...layoutRoot.children, ...rootAnnexLayoutNodes];
 	const positions = computeLayout(layoutRoot);
 
 	const fileClusterId = new Map<string, string>();

@@ -1,6 +1,8 @@
 import type { SearchIndexFile } from "@cabn/world-schema";
 import MiniSearch from "minisearch";
 
+// Pinned exactly (package.json has no "^") specifically so this constant
+// can't silently drift out of sync with the installed minisearch version.
 export const MINISEARCH_VERSION = "7.2.0";
 
 export interface SearchDoc {

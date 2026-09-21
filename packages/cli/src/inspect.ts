@@ -21,10 +21,17 @@ export function formatSummary(manifest: WorldManifest): string {
 		return `${"  ".repeat(depth)}- ${cluster.label} [${cluster.biome}] (${cluster.portalIds.length} portals)${annex}`;
 	});
 
+	const truncatedLine = manifest.meta.truncated
+		? [
+				`Warning: partial world — ${manifest.meta.skippedFiles} file(s) were dropped by the converter's caps.`,
+			]
+		: [];
+
 	return [
 		`${manifest.meta.name} (cabn v${manifest.cabnVersion})`,
 		`${manifest.clusters.length} clusters, ${manifest.portals.length} portals, ${manifest.meta.totalBytes} bytes`,
 		`Top file kinds: ${topKinds || "none"}`,
+		...truncatedLine,
 		"",
 		...clusterLines,
 	].join("\n");

@@ -37,6 +37,15 @@ describe("walk", () => {
 		expect(result.files.map((f) => f.path)).toEqual(["app.ts"]);
 	});
 
+	test("? in an ignore glob matches exactly one character, not a literal ?", async () => {
+		const source = fakeSource({
+			"log1.txt": utf8("drop"),
+			"log12.txt": utf8("keep"),
+		});
+		const result = await walk(source, { ignore: ["log?.txt"] });
+		expect(result.files.map((f) => f.path)).toEqual(["log12.txt"]);
+	});
+
 	test("caps total files and reports truncation", async () => {
 		const files: Record<string, Uint8Array> = {};
 		for (let i = 0; i < 10; i++) files[`f${i}.txt`] = utf8("x");
@@ -73,5 +82,58 @@ describe("walk", () => {
 			{ maxFileBytes: 5 },
 		);
 		expect(result.totalBytes).toBe(10);
+	});
+
+	test("secret-pattern files are listed but content-less by default", async () => {
+		const source = fakeSource({
+			".env": utf8("SECRET=1"),
+			".env.production": utf8("SECRET=2"),
+			id_rsa: utf8("-----BEGIN PRIVATE KEY-----"),
+			"deploy.pem": utf8("cert"),
+			"aws-credentials.json": utf8("{}"),
+			".npmrc": utf8("//registry"),
+			"README.md": utf8("keep me"),
+		});
+		const result = await walk(source);
+		const byPath = new Map(result.files.map((f) => [f.path, f]));
+
+		for (const secretPath of [
+			".env",
+			".env.production",
+			"id_rsa",
+			"deploy.pem",
+			"aws-credentials.json",
+			".npmrc",
+		]) {
+			const file = byPath.get(secretPath);
+			expect(file, `expected ${secretPath} to still be listed`).toBeDefined();
+			expect(
+				file?.content,
+				`expected ${secretPath} to be content-less`,
+			).toBeUndefined();
+		}
+		expect(byPath.get("README.md")?.content).toEqual(utf8("keep me"));
+	});
+
+	test("includeSecrets: true restores normal content reads for secret-pattern files", async () => {
+		const source = fakeSource({ ".env": utf8("SECRET=1") });
+		const result = await walk(source, { includeSecrets: true });
+		expect(result.files[0]?.content).toEqual(utf8("SECRET=1"));
+	});
+
+	test("uses a source's droppedEntryCount to report truncation", async () => {
+		const source: FileSource = {
+			async *entries(): AsyncIterable<SourceEntry> {
+				yield {
+					path: "a.txt",
+					bytes: 1,
+					read: () => Promise.resolve(utf8("a")),
+				};
+			},
+			droppedEntryCount: () => 3,
+		};
+		const result = await walk(source);
+		expect(result.truncated).toBe(true);
+		expect(result.skippedFiles).toBe(3);
 	});
 });

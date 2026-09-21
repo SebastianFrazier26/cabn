@@ -27,5 +27,5 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - TS strict ESM everywhere; package builds emit to `dist/`, tests live in `tests/` (outside tsc `include`)
 - Add runtime deps only in the milestone that uses them — stubs stay dep-free
 - Comments load-bearing only: explain why, never narrate what the code says
-- Branch per feature off `master`; never commit to `master` directly; never push without explicit user authorization
+- Branch per feature off `main`; never commit to `main` directly; never push without explicit user authorization
 - User-visible changes get a dated `CHANGELOG.md` entry

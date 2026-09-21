@@ -22,7 +22,7 @@
 	"dependencies": {
 		"@cabn/world-schema": "workspace:*",
 		"fflate": "^0.8.3",
-		"minisearch": "^7.2.0"
+		"minisearch": "7.2.0"
 	},
 	"devDependencies": {
 		"@types/node": "^22.20.4"

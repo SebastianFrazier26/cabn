@@ -1,3 +1,5 @@
+import { fnv1a } from "./hash.js";
+
 export interface LayoutTreeNode {
 	id: string;
 	/** This node's own weight (typically file count), excluding descendants. */
@@ -12,16 +14,6 @@ export interface LayoutPosition {
 
 const RING_RADIUS_PER_DEPTH = 900;
 const JITTER_RANGE = 120;
-
-// FNV-1a — cheap, deterministic, good enough distribution for jitter seeding.
-function fnv1a(str: string): number {
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < str.length; i++) {
-		hash ^= str.charCodeAt(i);
-		hash = Math.imul(hash, 0x01000193);
-	}
-	return hash >>> 0;
-}
 
 // mulberry32 — small seeded PRNG. Determinism (same tree -> same layout every
 // run) requires seeding from the cluster path, never from Date.now() or
@@ -64,6 +56,11 @@ function place(
 	} else {
 		const angle = (angleStart + angleEnd) / 2;
 		const radius = depth * RING_RADIUS_PER_DEPTH;
+		// Math.cos/Math.sin determinism is scoped to a single JS engine: V8
+		// gives byte-identical output run to run (what our snapshot/byte-
+		// stability tests rely on), but a different engine's last-ulp trig
+		// rounding could disagree. Not a concern until worlds are compared
+		// or hashed across engines.
 		const j = jitter(node.id);
 		out.set(node.id, {
 			x: Math.cos(angle) * radius + j.x,

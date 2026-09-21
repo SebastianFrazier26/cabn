@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateManifest, type WorldManifest } from "@cabn/world-schema";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { convert } from "../src/convert.js";
 import { DirSource } from "../src/sources/dir.js";
 import { ZipSource } from "../src/sources/zip.js";
@@ -65,6 +66,31 @@ describe("convert (DirSource)", () => {
 			files: Record<string, { content: string }>;
 		}>(bundle, "chunks/root.json");
 		expect(rootChunk.files["README.md"]?.content).toContain("mini-python");
+
+		// .env matches a default secret pattern: listed (name visible), but its
+		// content must never land in a chunk or the search index.
+		const envPortal = manifest.portals.find((p) => p.id === ".env");
+		expect(envPortal).toBeDefined();
+		expect(envPortal?.preview.lines).toEqual([]);
+		expect(rootChunk.files[".env"]).toBeUndefined();
+		const searchIndexRaw = bundle.get("search-index.json");
+		expect(typeof searchIndexRaw === "string" && searchIndexRaw).not.toContain(
+			"DEBUG=true",
+		);
+	});
+
+	test("includeSecrets: true restores .env content in the chunk and search index", async () => {
+		const source = new DirSource(join(FIXTURES, "mini-python"));
+		const bundle = await convert(source, {
+			name: "mini-python",
+			source: "mini-python",
+			now: FIXED_NOW,
+			includeSecrets: true,
+		});
+		const rootChunk = parseBundleEntry<{
+			files: Record<string, { content: string }>;
+		}>(bundle, "chunks/root.json");
+		expect(rootChunk.files[".env"]?.content).toBe("DEBUG=true\n");
 	});
 
 	test("skips default-ignored dirs and treats oversized/binary files as metadata-only", async () => {
@@ -162,5 +188,82 @@ describe("convert (ZipSource)", () => {
 		expect(zipRest).toEqual(dirRest);
 		expect(zipMeta.source).toBe("mini-python.zip");
 		expect(zipMeta.fileCount).toBe(dirMeta.fileCount);
+	});
+});
+
+describe("convert: review-fix regressions", () => {
+	let dir: string | undefined;
+
+	afterEach(async () => {
+		if (dir) await rm(dir, { recursive: true, force: true });
+		dir = undefined;
+	});
+
+	test("a file literally named __proto__ round-trips through its chunk, not lost to the prototype setter", async () => {
+		dir = await mkdtemp(join(tmpdir(), "cabn-proto-"));
+		await writeFile(join(dir, "__proto__"), "not actually a prototype\n");
+
+		const bundle = await convert(new DirSource(dir), {
+			name: "proto",
+			source: dir,
+			now: FIXED_NOW,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(manifest.portals.map((p) => p.id)).toContain("__proto__");
+
+		const rootChunk = parseBundleEntry<{
+			files: Record<string, { content: string }>;
+		}>(bundle, "chunks/root.json");
+		expect(Object.hasOwn(rootChunk.files, "__proto__")).toBe(true);
+		// biome-ignore lint/suspicious/noProto: the literal key under test, not the accessor
+		expect(rootChunk.files.__proto__?.content).toBe(
+			"not actually a prototype\n",
+		);
+	});
+
+	test("meta.truncated and skippedFiles report a partial world", async () => {
+		dir = await mkdtemp(join(tmpdir(), "cabn-truncate-"));
+		for (let i = 0; i < 5; i++) await writeFile(join(dir, `f${i}.txt`), "x");
+
+		const bundle = await convert(new DirSource(dir), {
+			name: "t",
+			source: dir,
+			now: FIXED_NOW,
+			maxFiles: 3,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(manifest.meta.truncated).toBe(true);
+		expect(manifest.meta.skippedFiles).toBe(2);
+		expect(manifest.meta.fileCount).toBe(3);
+	});
+
+	test("meta.truncated is false and skippedFiles is 0 for a complete world", async () => {
+		const bundle = await convert(new DirSource(join(FIXTURES, "mini-python")), {
+			name: "mini-python",
+			source: "mini-python",
+			now: FIXED_NOW,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(manifest.meta.truncated).toBe(false);
+		expect(manifest.meta.skippedFiles).toBe(0);
+	});
+
+	test("converting the same fixture twice with a fixed clock produces byte-identical bundles", async () => {
+		const opts = { name: "mini-python", source: "mini-python", now: FIXED_NOW };
+		const first = await convert(
+			new DirSource(join(FIXTURES, "mini-python")),
+			opts,
+		);
+		const second = await convert(
+			new DirSource(join(FIXTURES, "mini-python")),
+			opts,
+		);
+
+		expect([...first.keys()].sort()).toEqual([...second.keys()].sort());
+		for (const [name, content] of first) {
+			expect(content, `bundle entry ${name} differed between runs`).toEqual(
+				second.get(name),
+			);
+		}
 	});
 });

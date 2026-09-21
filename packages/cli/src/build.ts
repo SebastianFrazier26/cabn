@@ -8,10 +8,14 @@ export interface BuildSummary {
 	portals: number;
 	bytes: number;
 	elapsedMs: number;
+	truncated: boolean;
+	skippedFiles: number;
 }
 
 export interface BuildOptions {
 	outDir?: string;
+	/** Read secret-pattern files (.env, *.pem, id_rsa*, ...) normally instead of metadata-only. Default false. */
+	includeSecrets?: boolean;
 }
 
 export async function runBuild(
@@ -29,7 +33,11 @@ export async function runBuild(
 	const source = isZip
 		? new ZipSource(await readFile(resolvedInput))
 		: new DirSource(resolvedInput);
-	const bundle = await convert(source, { name, source: resolvedInput });
+	const bundle = await convert(source, {
+		name,
+		source: resolvedInput,
+		includeSecrets: opts.includeSecrets,
+	});
 
 	for (const [relPath, content] of bundle) {
 		const dest = join(outDir, relPath);
@@ -44,7 +52,7 @@ export async function runBuild(
 	const manifest = JSON.parse(manifestRaw) as {
 		clusters: unknown[];
 		portals: unknown[];
-		meta: { totalBytes: number };
+		meta: { totalBytes: number; truncated: boolean; skippedFiles: number };
 	};
 
 	return {
@@ -53,5 +61,7 @@ export async function runBuild(
 		portals: manifest.portals.length,
 		bytes: manifest.meta.totalBytes,
 		elapsedMs: Math.round(performance.now() - start),
+		truncated: manifest.meta.truncated,
+		skippedFiles: manifest.meta.skippedFiles,
 	};
 }

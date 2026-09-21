@@ -40,7 +40,7 @@ export type Biome = z.infer<typeof BiomeSchema>;
 export const PathKindSchema = z.enum(["trail", "vine"]);
 export type PathKind = z.infer<typeof PathKindSchema>;
 
-export const PositionSchema = z.object({
+export const PositionSchema = z.strictObject({
 	x: z.number(),
 	y: z.number(),
 });

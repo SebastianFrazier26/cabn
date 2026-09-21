@@ -88,4 +88,39 @@ describe("buildClusters", () => {
 		const annex = clusters.find((c) => c.id === "a--many__2");
 		expect(main?.biome).toBe(annex?.biome);
 	});
+
+	test("a slug collision (nested a/b vs a literal a--b dir) gets a unique, non-overwriting id", () => {
+		const files = [file("a--b/literal.ts"), file("a/b/nested.ts")];
+		const tree = buildClusterTree(buildDirTree(files));
+		const { clusters, fileClusterId } = buildClusters(tree);
+
+		const ids = clusters.map((c) => c.id);
+		expect(new Set(ids).size).toBe(ids.length); // no two clusters silently share an id
+
+		expect(ids).toContain("a--b");
+		const suffixed = ids.filter(
+			(id) => id !== "a--b" && id.startsWith("a--b~"),
+		);
+		expect(suffixed).toHaveLength(1);
+
+		// Both files still resolve to real, distinct clusters — neither was lost.
+		const literalCluster = fileClusterId.get("a--b/literal.ts");
+		const nestedCluster = fileClusterId.get("a/b/nested.ts");
+		expect(literalCluster).toBeDefined();
+		expect(nestedCluster).toBeDefined();
+		expect(literalCluster).not.toBe(nestedCluster);
+	});
+
+	test("root's own annex is re-attached to the layout, not stacked at the origin", () => {
+		const files = Array.from({ length: 45 }, (_, i) =>
+			file(`root-file-${i}.ts`),
+		);
+		const tree = buildClusterTree(buildDirTree(files));
+		const { clusters } = buildClusters(tree, { maxFilesPerCluster: 40 });
+
+		const root = clusters.find((c) => c.id === "root");
+		const annex = clusters.find((c) => c.id === "root__2");
+		expect(root?.pos).toEqual({ x: 0, y: 0 });
+		expect(annex?.pos).not.toEqual({ x: 0, y: 0 });
+	});
 });

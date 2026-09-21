@@ -44,4 +44,19 @@ describe("buildPreview", () => {
 	test("an empty file is not truncated", () => {
 		expect(buildPreview("")).toEqual({ lines: [], truncated: false });
 	});
+
+	test("backs off the cut rather than splitting an astral emoji's surrogate pair", () => {
+		const emoji = "\u{1F600}"; // 2 UTF-16 code units, positioned to straddle the 120-char boundary
+		const raw = `${"x".repeat(119)}${emoji}tail`;
+		const result = buildPreview(raw);
+
+		expect(result.lines).toHaveLength(1);
+		const [line] = result.lines;
+		if (!line) throw new Error("expected a preview line");
+		expect(line).toBe("x".repeat(119)); // whole pair dropped, not split
+		// A lone lead surrogate at the end would mean the pair got split.
+		const lastCode = line.charCodeAt(line.length - 1);
+		expect(lastCode >= 0xd800 && lastCode <= 0xdbff).toBe(false);
+		expect(result.truncated).toBe(true);
+	});
 });
