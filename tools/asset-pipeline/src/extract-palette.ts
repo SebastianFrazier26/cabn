@@ -37,6 +37,9 @@ const CURATED_COLORS: { name: string; rgb: RGB }[] = [
 	{ name: "bone / moonlight white", rgb: { r: 237, g: 238, b: 228 } },
 	{ name: "pale ghost blue", rgb: { r: 191, g: 214, b: 224 } },
 	{ name: "cool shadow blue-gray", rgb: { r: 92, g: 106, b: 122 } },
+	// Staff gem: no purple exists anywhere in the extracted set either.
+	{ name: "deep plum", rgb: { r: 88, g: 51, b: 107 } },
+	{ name: "bright amethyst", rgb: { r: 178, g: 124, b: 214 } },
 ];
 
 function bucket(value: number): number {

@@ -1,17 +1,18 @@
 import type { PixelMap } from "../pixelmap.js";
 
-// v2: weathered stone archway (was wood-and-glow). Multiple gray/steel tones
-// from the curated palette (28 steel, 23 warm gray, 22 khaki) give it a
-// textured, weathered look; a pale-ghost-blue rune line (30, bloom-friendly
-// luminance) runs along the inner edge of the stone as a glowing inlay, with
-// a cool-shadow-blue-gray (31) line underneath for contrast. Interior stays
-// fully transparent — animation motes and the file-preview composite both
-// draw into PORTAL_INTERIOR.
+// v3: recolored grey-blue (was grey-yellow — v2 used khaki/warm-gray, which
+// read too warm/sandy). Stone texture is now steel gray (28) against
+// cool-shadow blue-gray (31) — both curated, no warm neutrals — with moss
+// accents kept for cottagecore warmth. A pale-ghost-blue rune line (30,
+// bloom-friendly luminance) runs along the inner edge of the stone as a
+// glowing inlay, with cool-shadow-blue-gray (31) underneath for contrast.
+// Interior stays fully transparent — animation motes and the file-preview
+// composite both draw into PORTAL_INTERIOR.
 export const PORTAL_LEGEND: Record<string, number> = {
 	O: 0, // darkest brown — mortar / deep crevice
 	S: 28, // steel gray — stone base
-	s: 23, // warm gray — stone highlight
-	k: 22, // khaki — weathered stone patch
+	s: 31, // cool shadow blue-gray — stone highlight/shade
+	k: 31, // cool shadow blue-gray — weathered stone patch
 	v: 4, // dark green — moss shadow
 	V: 9, // mid green — moss highlight
 	r: 30, // pale ghost blue — glowing rune inlay
