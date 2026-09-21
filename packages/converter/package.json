@@ -6,6 +6,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./browser": {
+			"types": "./dist/browser.d.ts",
+			"default": "./dist/browser.js"
 		}
 	},
 	"files": [
@@ -16,6 +20,11 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@cabn/world-schema": "workspace:*"
+		"@cabn/world-schema": "workspace:*",
+		"fflate": "^0.8.3",
+		"minisearch": "7.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.4"
 	}
 }

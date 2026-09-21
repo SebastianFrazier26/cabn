@@ -180,17 +180,42 @@ importers:
 
   apps/demo: {}
 
-  packages/cli: {}
+  packages/cli:
+    dependencies:
+      '@cabn/converter':
+        specifier: workspace:*
+        version: link:../converter
+      '@cabn/world-schema':
+        specifier: workspace:*
+        version: link:../world-schema
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.4
+        version: 22.20.4
 
   packages/converter:
     dependencies:
       '@cabn/world-schema':
         specifier: workspace:*
         version: link:../world-schema
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.4
+        version: 22.20.4
 
   packages/engine: {}
 
-  packages/world-schema: {}
+  packages/world-schema:
+    dependencies:
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   tools/asset-pipeline:
     dependencies:
@@ -882,6 +907,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -966,6 +994,9 @@ packages:
 
   magic-string@1.4.1:
     resolution: {integrity: sha512-8lyCu36ErXR0J9uaGKlKQoiLZKmtI63YGLE8G2o9jyRPdr4X47LusSOwgOJOzcVtp81fTAAjxR7BwKz682Jhow==}
+
+  minisearch@7.2.0:
+    resolution: {integrity: sha512-dqT2XBYUOZOiC5t2HRnwADjhNS2cecp9u+TJRiJ1Qp/f5qjkeT5APcGPjHw+bz89Ms8Jp+cG4AlE+QZ/QnDglg==}
 
   nanoid@3.3.19:
     resolution: {integrity: sha512-Y2tUNy4ouw6tq5oDSKeQYGOyhkUBhNOcGV/02KC+6kd9eDGqdZd++mjMiIDilrBYvjEnCYvVtsuHCuP+okSfug==}
@@ -1135,6 +1166,9 @@ packages:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
     hasBin: true
+
+  zod@4.6.5:
+    resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
 snapshots:
 
@@ -1551,6 +1585,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fflate@0.8.3: {}
+
   fsevents@2.3.3:
     optional: true
 
@@ -1608,6 +1644,8 @@ snapshots:
   magic-string@1.4.1:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  minisearch@7.2.0: {}
 
   nanoid@3.3.19: {}
 
@@ -1768,3 +1806,5 @@ snapshots:
     dependencies:
       siginfo: 2.0.0
       stackback: 0.0.2
+
+  zod@4.6.5: {}
