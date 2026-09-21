@@ -11,6 +11,7 @@ export function helpText(): string {
 		"                                          Convert a source into a world bundle",
 		"                                          (--include-secrets reads .env/*.pem/etc content instead of leaving them metadata-only)",
 		"  cabn inspect <bundleDir>               Validate and summarize a world bundle",
+		"  cabn shelf <bundleDir...> [-o outDir]  Build a shelf.json listing multiple converted worlds",
 		"  cabn --version                         Print the CLI version",
 		"  cabn --help                            Show this help text",
 	].join("\n");

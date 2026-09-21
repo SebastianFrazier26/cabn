@@ -12,8 +12,12 @@ export interface LayoutPosition {
 	y: number;
 }
 
-const RING_RADIUS_PER_DEPTH = 900;
-const JITTER_RANGE = 120;
+// Halved from 900/120 (2026-09-21 world-hierarchy redesign): walking a
+// multi-depth world to reach an inner cluster took too long at the original
+// scale. Jitter is halved in lockstep with the ring radius so it stays the
+// same fraction of ring spacing instead of overlapping neighboring rings.
+const RING_RADIUS_PER_DEPTH = 450;
+const JITTER_RANGE = 60;
 
 // mulberry32 — small seeded PRNG. Determinism (same tree -> same layout every
 // run) requires seeding from the cluster path, never from Date.now() or

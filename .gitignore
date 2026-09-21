@@ -5,6 +5,10 @@ out/
 *.tsbuildinfo
 .DS_Store
 
+# Agent tooling state (worktrees, session scratch) — not source, and a nested
+# worktree's own biome.json otherwise collides with this repo's root config.
+.claude/
+
 # Test fixtures are checked-in data, not artifacts — without this, the .env and
 # node_modules fixtures vanish on CI checkout and fixture-dependent tests diverge.
 !**/test/fixtures/**

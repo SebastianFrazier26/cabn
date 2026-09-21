@@ -8,6 +8,7 @@ export * from "./convert.js";
 export * from "./layout.js";
 export * from "./preview.js";
 export * from "./search-index.js";
+export * from "./shelf.js";
 export * from "./sources/types.js";
 export * from "./sources/zip.js";
 export * from "./tree.js";

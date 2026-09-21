@@ -40,6 +40,24 @@ test("inspect without a path exits 1", async () => {
 	expect(await run(["inspect"])).toBe(1);
 });
 
+test("shelf without any bundle dirs exits 1", async () => {
+	expect(await run(["shelf"])).toBe(1);
+});
+
+test("shelf <bundleDir> -o <outDir> exits 0 and writes shelf.json", async () => {
+	expect(await run(["build", FIXTURE, "-o", outDir])).toBe(0);
+	const shelfOutDir = `${outDir}-shelf`;
+	expect(await run(["shelf", outDir, "-o", shelfOutDir])).toBe(0);
+	await rm(shelfOutDir, { recursive: true, force: true });
+});
+
+test("an unknown shelf flag exits 1 with a friendly error instead of throwing", async () => {
+	await expect(run(["shelf", outDir, "--bogus-flag"])).resolves.toBe(1);
+	expect(console.error).toHaveBeenCalledWith(
+		expect.stringContaining("cabn shelf failed"),
+	);
+});
+
 test("build <fixture> -o <outDir> exits 0 and writes a bundle", async () => {
 	expect(await run(["build", FIXTURE, "-o", outDir])).toBe(0);
 	expect(await run(["inspect", outDir])).toBe(0);

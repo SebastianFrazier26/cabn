@@ -4,18 +4,18 @@ cabn turns any directory or zipfile into an explorable cottagecore game world �
 
 ## Status
 
-Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect) and M3 (walkable engine + demo) have landed; `FileScene`, search, and monsters are still ahead (M4+).
+Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect), M3 (walkable engine + demo), and the world-hierarchy redesign (shelf hub, per-world theming, bonfire spawn, in-arch previews) have landed; `FileScene`, search, and monsters are still ahead (M4+).
 
 ## Monorepo map
 
 | Path | Package | What it is / will be |
 | --- | --- | --- |
 | `packages/world-schema` | `@cabn/world-schema` | Zod schemas + types for the world bundle (`world.json`, chunks, search index, assets), plus `validateManifest` |
-| `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index) |
-| `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world scenes, a zustand+mitt React bridge (`CabnGame`, `FileOverlay`), walkable world with lazy chunk loading and portal previews |
-| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>` and `cabn inspect <bundleDir>` |
+| `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index); `buildShelf()`: many worlds -> a shelf manifest |
+| `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf scenes, a zustand+mitt React bridge (`CabnGame`, `FileOverlay`), walkable world with lazy chunk loading, in-arch portal previews, and a shelf hub listing every converted world |
+| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, and `cabn shelf <bundleDir...>` |
 | `apps/backend` | `@cabn/backend` | Upload/convert API service (Fastify planned) |
-| `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and renders it as a walkable `CabnGame` world |
+| `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
 | `assets/source` | — | Source art (icons, sprites) |
 | `assets/generated` | — | Palette, soft-rendered originals, and placeholder sprites consumed by `@cabn/engine`/`@cabn/demo` |
@@ -39,7 +39,7 @@ pnpm lint
 pnpm -F @cabn/demo dev
 ```
 
-First run converts `apps/demo/sample-project/` into a world bundle (`apps/demo/public/worlds/sample/`) and copies sprites into `apps/demo/public/assets/` — both gitignored, regenerated on demand (`pnpm -F @cabn/demo build:world`, or add `-- --force` to rebuild the world even if one already exists). Then open the printed local URL and walk around with WASD/arrow keys; walk into a portal arch and press E/Enter to open the file, Esc to leave.
+First run converts `apps/demo/sample-project/` and `apps/demo/notes-vault/` into two world bundles (`apps/demo/public/worlds/{sample,notes}/`), writes a `shelf.json` listing both, and copies sprites into `apps/demo/public/assets/` — all gitignored, regenerated on demand (`pnpm -F @cabn/demo build:world`, or add `-- --force` to rebuild worlds that already exist). Then open the printed local URL: you land on the shelf (a wizard tower with one cabin per world); walk around with WASD/arrow keys, walk into a cabin and press E to enter that world. Inside a world, walk into a portal arch and press E/Enter to open the file (preview shows in the arch opening as you approach); Esc closes a file, or — standing near the bonfire at spawn — returns you to the shelf.
 
 ## License
 
