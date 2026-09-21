@@ -43,3 +43,26 @@ export async function upscaleNearest(
 		.toBuffer();
 	return { data, width, height };
 }
+
+// Lays same-height frames left to right — used for the portal animation
+// strip. Pure/sync: no reason to round-trip through sharp for a plain
+// row-copy composite.
+export function concatHorizontal(images: readonly RawImage[]): RawImage {
+	const height = images[0]?.height ?? 0;
+	const width = images.reduce((sum, img) => sum + img.width, 0);
+	const data = Buffer.alloc(width * height * 4);
+
+	let xOffset = 0;
+	for (const img of images) {
+		if (img.height !== height)
+			throw new Error("concatHorizontal: all frames must share a height");
+		for (let y = 0; y < height; y++) {
+			const srcStart = y * img.width * 4;
+			const destStart = (y * width + xOffset) * 4;
+			img.data.copy(data, destStart, srcStart, srcStart + img.width * 4);
+		}
+		xOffset += img.width;
+	}
+
+	return { data, width, height };
+}
