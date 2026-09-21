@@ -23,3 +23,28 @@ export const ASSET_PATHS = {
 // (1536x256 total) — see assets/generated/placeholders.
 export const PORTAL_ARCH_FRAME_SIZE = 256;
 export const PORTAL_ARCH_FRAME_COUNT = 6;
+
+export const BONFIRE_FRAME_COUNT = 4;
+
+function bonfireFrameKey(index: number): string {
+	return `bonfire-frame-${index}`;
+}
+
+// Art for these three keys is being drawn on a parallel branch (feat/art-
+// hierarchy-sprites) and may not exist in assets/generated yet. PreloadScene
+// tracks per-key load failures and the world/shelf scenes fall back to an
+// existing sprite (tinted cabinet for the tower, tinted portal frame0 for
+// the bonfire, front sprite for the back view) so this branch runs green
+// standalone and picks up the real art once both branches merge.
+export const OPTIONAL_ASSET_KEYS = {
+	wizardTower: "wizard-tower",
+	characterIdleBack: "character-idle-back",
+	bonfireFrame: bonfireFrameKey,
+} as const;
+
+export const OPTIONAL_ASSET_PATHS = {
+	[OPTIONAL_ASSET_KEYS.wizardTower]: `${ASSET_BASE}/placeholders/wizard_tower_soft.png`,
+	[OPTIONAL_ASSET_KEYS.characterIdleBack]: `${ASSET_BASE}/placeholders/character_idle_back_soft.png`,
+	bonfireFrame: (index: number) =>
+		`${ASSET_BASE}/placeholders/bonfire_frame${index}_soft.png`,
+} as const;

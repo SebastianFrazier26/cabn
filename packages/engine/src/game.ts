@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import { createCabnBus } from "./bridge/events.js";
 import { createCabnStore } from "./bridge/store.js";
+import type { BootSceneData } from "./scenes/BootScene.js";
 import { BootScene } from "./scenes/BootScene.js";
 import { PreloadScene } from "./scenes/PreloadScene.js";
+import { ShelfScene } from "./scenes/ShelfScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
 
 export interface CabnGameHandle {
@@ -10,6 +12,9 @@ export interface CabnGameHandle {
 	store: ReturnType<typeof createCabnStore>;
 	bus: ReturnType<typeof createCabnBus>;
 }
+
+/** Boot straight into a single world, or into the shelf hub listing many. */
+export type CabnGameTarget = BootSceneData;
 
 /**
  * Store/bus live in game.registry rather than being threaded through every
@@ -19,7 +24,7 @@ export interface CabnGameHandle {
  */
 export function createCabnGame(
 	parent: HTMLElement,
-	worldUrl: string,
+	target: CabnGameTarget,
 ): CabnGameHandle {
 	const store = createCabnStore();
 	const bus = createCabnBus();
@@ -42,13 +47,13 @@ export function createCabnGame(
 		},
 		// Each scene declares `active: false` in its own constructor (see
 		// BootScene et al.) so none of them auto-start — "boot" is kicked off
-		// explicitly below, once worldUrl is available to pass as init data.
-		scene: [BootScene, PreloadScene, WorldScene],
+		// explicitly below, once the target is available to pass as init data.
+		scene: [BootScene, PreloadScene, WorldScene, ShelfScene],
 	});
 
 	game.registry.set("store", store);
 	game.registry.set("bus", bus);
-	game.scene.start("boot", { worldUrl });
+	game.scene.start("boot", target);
 
 	return { game, store, bus };
 }

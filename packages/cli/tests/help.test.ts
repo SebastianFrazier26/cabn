@@ -6,4 +6,5 @@ test("help text carries the version and both commands", () => {
 	expect(text).toContain(CLI_VERSION);
 	expect(text).toContain("cabn build");
 	expect(text).toContain("cabn inspect");
+	expect(text).toContain("cabn shelf");
 });

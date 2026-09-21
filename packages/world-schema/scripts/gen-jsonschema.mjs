@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
 	AssetsFileSchema,
 	SearchIndexFileSchema,
+	ShelfManifestSchema,
 	WorldChunkSchema,
 	WorldManifestSchema,
 } from "../dist/index.js";
@@ -23,6 +24,7 @@ const schemas = {
 	"world-chunk": WorldChunkSchema,
 	"search-index": SearchIndexFileSchema,
 	assets: AssetsFileSchema,
+	shelf: ShelfManifestSchema,
 };
 
 await mkdir(outDir, { recursive: true });

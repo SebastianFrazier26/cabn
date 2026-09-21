@@ -12,6 +12,7 @@ import {
 } from "@cabn/world-schema";
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
+import { fnv1a } from "./hash.js";
 import { buildPreview } from "./preview.js";
 import { buildSearchIndex, type SearchDoc } from "./search-index.js";
 import type { FileSource } from "./sources/types.js";
@@ -117,6 +118,9 @@ export async function convert(
 			totalBytes: walked.totalBytes,
 			truncated: walked.truncated,
 			skippedFiles: walked.skippedFiles,
+			// Seeded from the source path/name, not the content, so re-converting
+			// the same project keeps the same cabin/interior tint across runs.
+			themeSeed: fnv1a(opts.source),
 		},
 		clusters,
 		paths,

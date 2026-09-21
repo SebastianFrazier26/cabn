@@ -16,6 +16,8 @@ export type CabnEvents = {
 	"portal:approach": { portalId: string };
 	"cluster:enter": { clusterId: string };
 	"chunk:loaded": { clusterId: string };
+	"shelf:enter-world": { worldId: string };
+	"world:return-to-shelf": { shelfUrl: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

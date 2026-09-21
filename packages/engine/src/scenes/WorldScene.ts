@@ -8,55 +8,62 @@ import type {
 import { WorldChunkSchema } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
-import { ASSET_KEYS } from "../assetPaths.js";
+import {
+	ASSET_KEYS,
+	OPTIONAL_ASSET_KEYS,
+	PORTAL_ARCH_FRAME_SIZE,
+} from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import { dashedLine } from "../render/dashedLine.js";
+import {
+	createMovementKeys,
+	createPlayer,
+	type MovementKeys,
+	type PlayerHandle,
+	type PlayerTextures,
+	updatePlayerMovement,
+} from "../render/playerController.js";
+import { BONFIRE_SCALE, CABINET_SCALE, PORTAL_SCALE } from "../render/scale.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
 import { clampPreviewLines } from "../systems/previewText.js";
-import { PORTAL_IDLE_ANIM } from "./PreloadScene.js";
+import { themeFromSeed } from "../systems/theme.js";
+import {
+	type AssetAvailability,
+	BONFIRE_IDLE_ANIM,
+	PORTAL_IDLE_ANIM,
+} from "./PreloadScene.js";
 
 export interface WorldSceneData {
 	manifest: WorldManifest;
 	worldBase: string;
+	availability: AssetAvailability;
+	/** Set when this world was entered from the shelf — lets Escape at spawn go back. */
+	returnTo?: { shelfUrl: string };
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
 const PORTAL_APPROACH_RADIUS = 80;
 const PORTAL_ENTER_RADIUS = 46;
+const RETURN_TO_SHELF_RADIUS = 140;
 const MAX_LOADED_CHUNKS = 8;
-const PLAYER_SPEED = 220;
 const WORLD_MARGIN = 500;
-const CHARACTER_SCALE = 0.125; // asset is @16x a 24x32 logical sprite -> display at 2x logical
-const CABIN_SCALE = 0.5;
-const CABINET_SCALE = 0.375;
-const PORTAL_SCALE = 0.375;
-const PREVIEW_LINE_CHARS = 34;
-const PREVIEW_MAX_LINES = 6;
+const PREVIEW_LINE_CHARS = 26;
+const PREVIEW_MAX_LINES = 7;
 
-function dashedLine(
-	graphics: Phaser.GameObjects.Graphics,
-	from: Position,
-	to: Position,
-	dash = 14,
-	gap = 10,
-): void {
-	const total = Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y);
-	const angle = Phaser.Math.Angle.Between(from.x, from.y, to.x, to.y);
-	const step = dash + gap;
-	for (let d = 0; d < total; d += step) {
-		const segEnd = Math.min(d + dash, total);
-		const x1 = from.x + Math.cos(angle) * d;
-		const y1 = from.y + Math.sin(angle) * d;
-		const x2 = from.x + Math.cos(angle) * segEnd;
-		const y2 = from.y + Math.sin(angle) * segEnd;
-		graphics.lineBetween(x1, y1, x2, y2);
-	}
-}
+// The arch opening isn't the sprite's full bounding box — these are eyeballed
+// fractions of the portal sprite's display size, not measured from the
+// source PNG's alpha channel, so treat them as "close enough for gameplay",
+// not exact stone geometry.
+const ARCH_OPENING_WIDTH_RATIO = 0.5;
+const ARCH_OPENING_HEIGHT_RATIO = 0.4;
+const ARCH_OPENING_Y_OFFSET_RATIO = -0.08;
+const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE;
 
 /** Ground radius scales with file count so busier clusters read as bigger clearings. */
 function groundRadius(cluster: Cluster): number {
@@ -66,6 +73,8 @@ function groundRadius(cluster: Cluster): number {
 export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
 	private worldBase = "";
+	private availability!: AssetAvailability;
+	private returnTo: { shelfUrl: string } | undefined;
 	private store!: StoreApi<CabnStore>;
 	private bus!: CabnBus;
 
@@ -79,22 +88,19 @@ export class WorldScene extends Phaser.Scene {
 	private chunkLoadOrder: string[] = [];
 	private chunkFetchesInFlight = new Set<string>();
 
-	private playerBody!: Phaser.GameObjects.Container;
-	private playerSprite!: Phaser.GameObjects.Sprite;
-	private walkTime = 0;
+	private player!: PlayerHandle;
+	private movementKeys!: MovementKeys;
+	private playerTextures!: PlayerTextures;
 
-	private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 	private keys!: {
-		w: Phaser.Input.Keyboard.Key;
-		a: Phaser.Input.Keyboard.Key;
-		s: Phaser.Input.Keyboard.Key;
-		d: Phaser.Input.Keyboard.Key;
 		enter: Phaser.Input.Keyboard.Key;
 		e: Phaser.Input.Keyboard.Key;
+		esc: Phaser.Input.Keyboard.Key;
 	};
 
 	private previewPanel!: Phaser.GameObjects.Container;
 	private previewText!: Phaser.GameObjects.Text;
+	private previewMaskShape!: Phaser.GameObjects.Graphics;
 	private portalsInRange = new Set<string>();
 
 	constructor() {
@@ -104,6 +110,8 @@ export class WorldScene extends Phaser.Scene {
 	init(data: WorldSceneData): void {
 		this.manifest = data.manifest;
 		this.worldBase = data.worldBase;
+		this.availability = data.availability;
+		this.returnTo = data.returnTo;
 		this.store = this.registry.get("store");
 		this.bus = this.registry.get("bus");
 	}
@@ -119,7 +127,7 @@ export class WorldScene extends Phaser.Scene {
 		this.drawClusters();
 		this.drawPortals();
 		this.createPlayer();
-		this.createPreviewPanel();
+		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
 	}
@@ -149,14 +157,18 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private drawClusters(): void {
+		// Same seed for every cabinet in this world — a world is one converted
+		// project, so it gets one theme, not one per cluster.
+		const theme = themeFromSeed(this.manifest.meta.themeSeed ?? 0);
+
 		for (const cluster of this.manifest.clusters) {
 			const isRoot = cluster.path === ".";
-			const sprite = this.add.image(
-				cluster.pos.x,
-				cluster.pos.y,
-				isRoot ? ASSET_KEYS.cabin : ASSET_KEYS.cabinet,
-			);
-			sprite.setScale(isRoot ? CABIN_SCALE : CABINET_SCALE).setDepth(2);
+			const sprite = isRoot
+				? this.drawBonfire(cluster.pos)
+				: this.add.image(cluster.pos.x, cluster.pos.y, ASSET_KEYS.cabinet);
+
+			if (!isRoot)
+				sprite.setScale(CABINET_SCALE).setTint(theme.tint).setDepth(2);
 
 			this.add
 				.text(
@@ -175,6 +187,26 @@ export class WorldScene extends Phaser.Scene {
 				.setOrigin(0.5, 0)
 				.setDepth(2);
 		}
+	}
+
+	// World spawn is a bonfire, not a cabin (M4 world-hierarchy redesign — a
+	// cabin now represents a whole *world* on the shelf, never a place inside
+	// one). Falls back to a tinted, static first frame of the portal arch
+	// spritesheet when the real bonfire art hasn't landed yet.
+	private drawBonfire(pos: Position): Phaser.GameObjects.Sprite {
+		if (this.availability.bonfire) {
+			const sprite = this.add.sprite(
+				pos.x,
+				pos.y,
+				OPTIONAL_ASSET_KEYS.bonfireFrame(0),
+			);
+			sprite.setScale(BONFIRE_SCALE).setDepth(2);
+			sprite.play(BONFIRE_IDLE_ANIM);
+			return sprite;
+		}
+		const sprite = this.add.sprite(pos.x, pos.y, ASSET_KEYS.portalArchStrip, 0);
+		sprite.setScale(BONFIRE_SCALE).setTint(PALETTE.gold).setDepth(2);
+		return sprite;
 	}
 
 	private drawPortals(): void {
@@ -204,50 +236,65 @@ export class WorldScene extends Phaser.Scene {
 
 	private createPlayer(): void {
 		const spawn = this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
-		this.playerBody = this.add.container(spawn.x, spawn.y).setDepth(5);
-		this.physics.add.existing(this.playerBody);
-		const body = this.playerBody.body as Phaser.Physics.Arcade.Body;
-		body.setSize(24, 16);
-		body.setOffset(-12, 8);
-		body.setCollideWorldBounds(true);
-
-		this.playerSprite = this.add.sprite(0, 0, ASSET_KEYS.characterIdle);
-		this.playerSprite.setScale(CHARACTER_SCALE);
-		this.playerBody.add(this.playerSprite);
-
+		this.playerTextures = {
+			front: ASSET_KEYS.characterIdle,
+			back: this.availability.characterBack
+				? OPTIONAL_ASSET_KEYS.characterIdleBack
+				: null,
+		};
+		this.player = createPlayer(this, spawn, this.playerTextures);
 		this.store.getState().setPlayerPos(spawn);
 	}
 
-	private createPreviewPanel(): void {
-		const bg = this.add.graphics();
-		bg.fillStyle(PALETTE.parchment, 0.95);
-		bg.fillRoundedRect(-110, -60, 220, 84, 8);
-		bg.lineStyle(2, PALETTE.ink, 0.9);
-		bg.strokeRoundedRect(-110, -60, 220, 84, 8);
+	// Renders the preview INSIDE the portal arch's opening (parchment backing,
+	// masked to the interior) instead of a floating panel above the sprite —
+	// only one instance is needed since only the closest in-range portal ever
+	// shows a preview at a time (see handlePortalApproach).
+	private createArchPreview(): void {
+		const width = PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO;
+		const height = PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO;
 
-		this.previewText = this.add.text(-100, -50, "", {
+		const bg = this.add.graphics();
+		bg.fillStyle(PALETTE.parchment, 0.92);
+		bg.fillRoundedRect(-width / 2, -height / 2, width, height, 4);
+
+		this.previewText = this.add.text(-width / 2 + 4, -height / 2 + 3, "", {
 			fontFamily: '"Courier New", monospace',
-			fontSize: "8px",
+			fontSize: "7px",
 			color: toCssColor(PALETTE.ink),
-			wordWrap: { width: 200 },
+			wordWrap: { width: width - 8 },
 		});
 
-		this.previewPanel = this.add.container(0, 0, [bg, this.previewText]);
-		this.previewPanel.setDepth(10).setVisible(false).setAlpha(0);
+		this.previewPanel = this.add
+			.container(0, 0, [bg, this.previewText])
+			.setDepth(4);
+
+		// A geometry mask's shape is positioned in world space independently of
+		// the object it masks — this graphics object is never added to the
+		// display list (this.make, not this.add), only used as mask geometry,
+		// and must be re-positioned in lockstep with previewPanel every frame.
+		this.previewMaskShape = this.make.graphics(undefined, false);
+		this.previewMaskShape.fillStyle(0xffffff);
+		this.previewMaskShape.fillRoundedRect(
+			-width / 2,
+			-height / 2,
+			width,
+			height,
+			4,
+		);
+		this.previewPanel.setMask(this.previewMaskShape.createGeometryMask());
+
+		this.previewPanel.setVisible(false).setAlpha(0);
 	}
 
 	private setupInput(): void {
-		this.cursors =
-			this.input.keyboard?.createCursorKeys() as Phaser.Types.Input.Keyboard.CursorKeys;
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("WorldScene requires keyboard input");
+		this.movementKeys = createMovementKeys(this);
 		this.keys = {
-			w: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-			a: kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-			s: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-			d: kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
 			enter: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
 			e: kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
+			esc: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
 		};
 	}
 
@@ -261,12 +308,12 @@ export class WorldScene extends Phaser.Scene {
 
 		this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
 		this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);
-		this.cameras.main.startFollow(this.playerBody, true, 0.1, 0.1);
+		this.cameras.main.startFollow(this.player.body, true, 0.1, 0.1);
 	}
 
 	update(_time: number, delta: number): void {
 		if (this.store.getState().mode === "file") {
-			(this.playerBody.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			return;
 		}
 
@@ -274,37 +321,21 @@ export class WorldScene extends Phaser.Scene {
 		this.handleChunkLoading();
 		this.handlePortalApproach();
 		this.handlePortalEnter();
+		this.handleReturnToShelf();
 	}
 
 	private handleMovement(delta: number): void {
-		const body = this.playerBody.body as Phaser.Physics.Arcade.Body;
-		let vx = 0;
-		let vy = 0;
-		if (this.cursors.left?.isDown || this.keys.a.isDown) vx -= 1;
-		if (this.cursors.right?.isDown || this.keys.d.isDown) vx += 1;
-		if (this.cursors.up?.isDown || this.keys.w.isDown) vy -= 1;
-		if (this.cursors.down?.isDown || this.keys.s.isDown) vy += 1;
-
-		const moving = vx !== 0 || vy !== 0;
-		if (moving) {
-			const len = Math.hypot(vx, vy);
-			body.setVelocity((vx / len) * PLAYER_SPEED, (vy / len) * PLAYER_SPEED);
-			this.walkTime += delta;
-			this.playerSprite.setFlipX(vx < 0);
-		} else {
-			body.setVelocity(0, 0);
-			this.walkTime = 0;
-		}
-
-		this.playerSprite.y = moving ? Math.sin(this.walkTime * 0.012) * 3 : 0;
-		this.playerSprite.angle = moving ? Math.sin(this.walkTime * 0.012) * 4 : 0;
-
-		const pos = { x: this.playerBody.x, y: this.playerBody.y };
+		const { pos } = updatePlayerMovement(
+			this.player,
+			this.movementKeys,
+			delta,
+			this.playerTextures,
+		);
 		this.store.getState().setPlayerPos(pos);
 	}
 
 	private nearestClusterInRange(): Cluster | null {
-		const pos = { x: this.playerBody.x, y: this.playerBody.y };
+		const pos = { x: this.player.body.x, y: this.player.body.y };
 		let best: { cluster: Cluster; dist: number } | null = null;
 		for (const cluster of this.manifest.clusters) {
 			const dist = Phaser.Math.Distance.Between(
@@ -377,7 +408,7 @@ export class WorldScene extends Phaser.Scene {
 		const points: PortalPoint[] = [...this.portalWorldPos.entries()].map(
 			([portalId, pos]) => ({ portalId, pos }),
 		);
-		const playerPos = { x: this.playerBody.x, y: this.playerBody.y };
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		const { inRange, entered } = newlyApproached(
 			points,
 			playerPos,
@@ -395,7 +426,7 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 
-		// Closest in-range portal wins the panel when more than one is close.
+		// Closest in-range portal wins the preview when more than one is close.
 		let closestId: string | null = null;
 		let closestDist = Number.POSITIVE_INFINITY;
 		for (const portalId of inRange) {
@@ -426,8 +457,21 @@ export class WorldScene extends Phaser.Scene {
 		this.previewText.setText(
 			clamped.lines.length > 0 ? clamped.lines.join("\n") : "(no preview)",
 		);
-		this.previewPanel.setPosition(pos.x, pos.y - 90);
-		this.previewPanel.setVisible(true).setAlpha(1);
+
+		const archX = pos.x;
+		const archY =
+			pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO;
+		this.previewPanel.setPosition(archX, archY);
+		this.previewMaskShape.setPosition(archX, archY);
+
+		// Fades in over the outer half of the approach radius rather than
+		// snapping on, so it reads as "coming into focus inside the arch".
+		const fade = Phaser.Math.Clamp(
+			1 - closestDist / PORTAL_APPROACH_RADIUS,
+			0,
+			1,
+		);
+		this.previewPanel.setVisible(true).setAlpha(fade);
 	}
 
 	private handlePortalEnter(): void {
@@ -436,7 +480,7 @@ export class WorldScene extends Phaser.Scene {
 			Phaser.Input.Keyboard.JustDown(this.keys.e);
 		if (!pressed) return;
 
-		const playerPos = { x: this.playerBody.x, y: this.playerBody.y };
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		let target: string | null = null;
 		for (const portalId of this.portalsInRange) {
 			const pos = this.portalWorldPos.get(portalId);
@@ -458,5 +502,28 @@ export class WorldScene extends Phaser.Scene {
 
 		this.store.getState().enterPortal(target, content);
 		this.bus.emit("portal:enter", { portalId: target });
+	}
+
+	// The bonfire at world spawn doubles as the way back — Esc only returns to
+	// the shelf near it, not from anywhere in the world, so it reads as a
+	// deliberate portal-back rather than a global hotkey that fights the file
+	// overlay's own Esc-to-close.
+	private handleReturnToShelf(): void {
+		if (!this.returnTo) return;
+		if (!Phaser.Input.Keyboard.JustDown(this.keys.esc)) return;
+
+		const spawn = this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		if (
+			Phaser.Math.Distance.Between(playerPos.x, playerPos.y, spawn.x, spawn.y) >
+			RETURN_TO_SHELF_RADIUS
+		) {
+			return;
+		}
+
+		this.bus.emit("world:return-to-shelf", {
+			shelfUrl: this.returnTo.shelfUrl,
+		});
+		this.scene.start("boot", { shelfUrl: this.returnTo.shelfUrl });
 	}
 }

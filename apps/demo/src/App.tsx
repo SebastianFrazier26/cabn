@@ -1,9 +1,9 @@
 import { CabnGame } from "@cabn/engine";
 
-// build:world (see scripts/build-world.mjs) writes the converted sample
-// project here, under public/, so it's served as a static file by both
-// `vite` (dev) and the production build.
-const WORLD_URL = "/worlds/sample/world.json";
+// build:world (see scripts/build-world.mjs) converts both demo projects and
+// writes a shelf.json listing them here, under public/, so it's served as a
+// static file by both `vite` (dev) and the production build.
+const SHELF_URL = "/worlds/shelf.json";
 
 export function App(): React.ReactElement {
 	return (
@@ -29,12 +29,12 @@ export function App(): React.ReactElement {
 			>
 				<h1 style={{ margin: 0, fontSize: 18 }}>cabn</h1>
 				<span style={{ opacity: 0.8, fontSize: 13 }}>
-					walk the sample-project world — WASD/arrows to move, E/Enter at a
-					portal arch to open a file, Esc to leave
+					walk the shelf of worlds — WASD/arrows to move, E to enter a cabin or
+					a portal arch, Esc to leave a world (at the bonfire) or a file
 				</span>
 			</header>
 			<div style={{ flex: 1, minHeight: 0 }}>
-				<CabnGame worldUrl={WORLD_URL} />
+				<CabnGame shelfUrl={SHELF_URL} />
 			</div>
 		</div>
 	);

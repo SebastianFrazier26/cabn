@@ -19,6 +19,13 @@ export const WorldMetaSchema = z.strictObject({
 	truncated: z.boolean(),
 	/** Files dropped entirely because of truncated (not counted for content-omitted files, which still get a portal). */
 	skippedFiles: z.number().int().nonnegative(),
+	/**
+	 * fnv1a(meta.source) — the converter fills this in, not hand-authored.
+	 * Optional so a hand-built or pre-shelf-hierarchy manifest still validates;
+	 * consumers that tint by theme (engine's systems/theme.ts) fall back to a
+	 * fixed seed when it's absent.
+	 */
+	themeSeed: z.number().int().optional(),
 });
 export type WorldMeta = z.infer<typeof WorldMetaSchema>;
 
