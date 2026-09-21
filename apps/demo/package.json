@@ -4,7 +4,24 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "tsc -p tsconfig.json",
+		"predev": "node scripts/build-world.mjs",
+		"dev": "vite",
+		"prebuild": "node scripts/build-world.mjs",
+		"build": "tsc --noEmit -p tsconfig.json && vite build",
+		"preview": "vite preview",
+		"build:world": "node scripts/build-world.mjs",
 		"test": "vitest run"
+	},
+	"dependencies": {
+		"@cabn/engine": "workspace:*",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0"
+	},
+	"devDependencies": {
+		"@cabn/cli": "workspace:*",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.1.1",
+		"vite": "^8.3.0"
 	}
 }
