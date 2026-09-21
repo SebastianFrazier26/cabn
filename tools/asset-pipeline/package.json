@@ -5,6 +5,23 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
-		"test": "vitest run"
+		"test": "vitest run",
+		"palette": "tsx src/extract-palette.ts",
+		"recover": "tsx src/recover-sprites.ts",
+		"matte": "tsx src/matte-originals.ts",
+		"placeholders": "tsx src/gen-placeholders.ts",
+		"soften": "tsx src/soften.ts",
+		"animate": "tsx src/portal-animation.ts",
+		"composite": "tsx src/portal-composite.ts",
+		"preview": "tsx src/preview-page.ts",
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run composite && pnpm run preview"
+	},
+	"dependencies": {
+		"gifenc": "^1.0.3",
+		"sharp": "^0.35.4"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.2",
+		"tsx": "4.23.13"
 	}
 }

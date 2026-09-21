@@ -18,7 +18,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `packages/cli` — `@cabn/cli`, `cabn` bin
 - `apps/backend` — private, Fastify planned but not yet installed
 - `apps/demo` — private, demo app stub
-- `tools/asset-pipeline` — private, asset tooling stub
+- `tools/asset-pipeline` — private, `@cabn/asset-pipeline`; palette extraction, sprite recovery, placeholder generation, preview page (see its scripts: `palette`, `recover`, `placeholders`, `preview`, `generate`)
 - `assets/source/icons` — source art PNGs
 - Rust prototype lives on the `rust-prototype` branch, not in this tree
 

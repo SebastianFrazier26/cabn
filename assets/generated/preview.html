@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cabn asset pipeline preview</title>
+<style>
+	:root { color-scheme: dark; }
+	body { background: #1b1b1b; color: #eee; font-family: system-ui, sans-serif; padding: 2rem; }
+	h1, h2, h3 { font-weight: 600; }
+	p.note { color: #aaa; max-width: 60em; }
+	img { background: repeating-conic-gradient(#2a2a2a 0% 25%, #333 0% 50%) 0 0 / 16px 16px; }
+	img.pixel { image-rendering: pixelated; }
+	.swatch img { width: 100%; }
+	.stage { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-end; }
+	.stage figure { margin: 0; text-align: center; }
+	.stage figcaption { font-size: 0.75rem; color: #aaa; margin-top: 0.25rem; }
+	.icon-row { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #333; }
+	.placeholders { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+	.placeholders figure { margin: 0; text-align: center; }
+	.calibration { display: flex; gap: 2rem; align-items: flex-end; }
+	.calibration figure { margin: 0; text-align: center; }
+	.calibration img { width: 320px; }
+	details summary { cursor: pointer; color: #aaa; }
+</style>
+</head>
+<body>
+	<h1>cabn asset pipeline preview</h1>
+	<p class="note">Art direction pivot: the soft-rendered 1024&sup2; originals (background removed via a matte, below) are the in-game art for these five objects. The crisp recovered/quantized sprites further down are kept as a reference for how the recovery step works, not as shipped art.</p>
+
+	<h2>Palette</h2>
+	<p class="note">28 colors extracted from the source icons (indices 0-27) plus 6 hand-picked curated colors appended at the end — the extracted set is entirely warm browns/greens/creams and has nothing cool or purple a spectral subject or a magic gem could use. 28-31: steel gray, bone/moonlight white, pale ghost blue, cool shadow blue-gray. 32-33: deep plum, bright amethyst (staff gem).</p>
+	<div class="swatch"><img src="palette-swatch.png" alt="extracted and curated palette swatch"></div>
+
+	<h2>Matted originals (in-game art)</h2>
+	
+		<section class="icon-row">
+			<h3>cabin</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/cabin.png" width="192" height="192" alt="cabin source art"><figcaption>source (1024)</figcaption></figure>
+				<figure><img class="soft" src="originals/cabin.png" width="192" height="192" alt="cabin matte, background removed, full res"><figcaption>matte (1024, bg removed)</figcaption></figure>
+				<figure><img class="soft" src="originals/cabin_256.png" width="192" height="192" alt="cabin matte at game resolution"><figcaption>matte (256, game res)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>cabinet</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/cabinet.png" width="192" height="192" alt="cabinet source art"><figcaption>source (1024)</figcaption></figure>
+				<figure><img class="soft" src="originals/cabinet.png" width="192" height="192" alt="cabinet matte, background removed, full res"><figcaption>matte (1024, bg removed)</figcaption></figure>
+				<figure><img class="soft" src="originals/cabinet_256.png" width="192" height="192" alt="cabinet matte at game resolution"><figcaption>matte (256, game res)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>file</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/file.png" width="192" height="192" alt="file source art"><figcaption>source (1024)</figcaption></figure>
+				<figure><img class="soft" src="originals/file.png" width="192" height="192" alt="file matte, background removed, full res"><figcaption>matte (1024, bg removed)</figcaption></figure>
+				<figure><img class="soft" src="originals/file_256.png" width="192" height="192" alt="file matte at game resolution"><figcaption>matte (256, game res)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>key</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/key.png" width="192" height="192" alt="key source art"><figcaption>source (1024)</figcaption></figure>
+				<figure><img class="soft" src="originals/key.png" width="192" height="192" alt="key matte, background removed, full res"><figcaption>matte (1024, bg removed)</figcaption></figure>
+				<figure><img class="soft" src="originals/key_256.png" width="192" height="192" alt="key matte at game resolution"><figcaption>matte (256, game res)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>letter_opener</h3>
+			<div class="stage">
+				<figure><img class="soft" src="../source/icons/letter_opener.png" width="192" height="192" alt="letter_opener source art"><figcaption>source (1024)</figcaption></figure>
+				<figure><img class="soft" src="originals/letter_opener.png" width="192" height="192" alt="letter_opener matte, background removed, full res"><figcaption>matte (1024, bg removed)</figcaption></figure>
+				<figure><img class="soft" src="originals/letter_opener_256.png" width="192" height="192" alt="letter_opener matte at game resolution"><figcaption>matte (256, game res)</figcaption></figure>
+			</div>
+		</section>
+
+	<h2>Soften calibration</h2>
+	<p class="note">soften() applied to the recovered cabin_64 sprite, next to the original cabin.png — the target was for these to read as the same soft-chunky style.</p>
+	<div class="calibration">
+		<figure><img class="soft" src="../source/icons/cabin.png" alt="original cabin art"><figcaption>original cabin.png</figcaption></figure>
+		<figure><img class="soft" src="soften-calibration/cabin_soft.png" alt="softened recovered cabin sprite"><figcaption>soften(cabin_64)</figcaption></figure>
+	</div>
+
+	<h2>Placeholder sprites</h2>
+	
+		<section class="icon-row">
+			<h3>portal_arch</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="placeholders/portal_arch@8x.png" alt="portal_arch crisp placeholder"><figcaption>crisp</figcaption></figure>
+				<figure><img class="soft" src="placeholders/portal_arch_soft.png" alt="portal_arch softened placeholder"><figcaption>softened</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>ghost</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="placeholders/ghost@8x.png" alt="ghost crisp placeholder"><figcaption>crisp</figcaption></figure>
+				<figure><img class="soft" src="placeholders/ghost_soft.png" alt="ghost softened placeholder"><figcaption>softened</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>character_idle</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="placeholders/character_idle@8x.png" alt="character_idle crisp placeholder"><figcaption>crisp</figcaption></figure>
+				<figure><img class="soft" src="placeholders/character_idle_soft.png" alt="character_idle softened placeholder"><figcaption>softened</figcaption></figure>
+			</div>
+		</section>
+
+	<h2>Portal animation</h2>
+	<p class="note">6 frames of pale-ghost-blue motes swirling inside the arch opening, generated by <code>portalArchFrame(frameIndex, totalFrames)</code> — a deterministic function of frame index, not hand-drawn per frame. Encoded to GIF with <a href="https://github.com/mattdesl/gifenc">gifenc</a> (tiny, zero-dep); the strips below show the same frames as static PNGs for frame-by-frame inspection.</p>
+	<div class="calibration">
+		<figure><img class="pixel" src="placeholders/portal_arch_anim.gif" alt="animated portal arch with swirling motes"><figcaption>animated GIF</figcaption></figure>
+	</div>
+	<figure style="margin: 1rem 0 0;"><img class="pixel" src="placeholders/portal_arch_strip.png" style="width: 100%;" alt="portal arch animation frames, crisp"><figcaption class="note">crisp strip, frames 0-5 left to right</figcaption></figure>
+	<figure style="margin: 1rem 0 0;"><img class="soft" src="placeholders/portal_arch_strip_soft.png" style="width: 100%;" alt="portal arch animation frames, softened"><figcaption class="note">softened strip, frames 0-5 left to right</figcaption></figure>
+
+	<h2>Portal with file preview (composite reference)</h2>
+	<p class="note">Reference for the engine: a file's contents rendered as a mock code-preview parchment inside the portal opening, with a glowing border where it meets the stone. Not a placeholder sprite itself — informs how the engine might composite file previews into portals later.</p>
+	<div class="calibration">
+		<figure><img class="pixel" src="portal-preview-composite.png" alt="portal arch with file preview composite, crisp"><figcaption>crisp</figcaption></figure>
+		<figure><img class="soft" src="portal-preview-composite_soft.png" alt="portal arch with file preview composite, softened"><figcaption>softened</figcaption></figure>
+	</div>
+
+	<details>
+		<summary><h2 style="display:inline">Recovered sprites (superseded, kept for reference)</h2></summary>
+		
+		<section class="icon-row">
+			<h3>cabin</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="recovered/cabin_64_quantized-only@8x.png" alt="cabin quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabin_64@8x.png" alt="cabin recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>cabinet</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="recovered/cabinet_64_quantized-only@8x.png" alt="cabinet quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/cabinet_64@8x.png" alt="cabinet recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>file</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="recovered/file_32_quantized-only@8x.png" alt="file quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/file_32@8x.png" alt="file recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>key</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="recovered/key_32_quantized-only@8x.png" alt="key quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/key_32@8x.png" alt="key recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+
+		<section class="icon-row">
+			<h3>letter_opener</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="recovered/letter_opener_32_quantized-only@8x.png" alt="letter_opener quantized only, background not removed"><figcaption>quantized only</figcaption></figure>
+				<figure><img class="pixel" src="recovered/letter_opener_32@8x.png" alt="letter_opener recovered sprite with background removed"><figcaption>recovered (bg removed)</figcaption></figure>
+			</div>
+		</section>
+	</details>
+</body>
+</html>
