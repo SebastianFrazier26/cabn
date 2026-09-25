@@ -88,4 +88,46 @@ describe("createCabnStore", () => {
 		expect(state.mode).toBe("file");
 		expect(state.activePortalId).toBe("src/index.ts");
 	});
+
+	it("startEncounter switches to encounter mode with the given monster active", () => {
+		store.getState().enterPortal("src/index.ts", "a\nb\nc");
+		store.getState().startEncounter("monster:abc");
+		const state = store.getState();
+		expect(state.mode).toBe("encounter");
+		expect(state.activeMonsterId).toBe("monster:abc");
+		expect(state.activePortalId).toBe("src/index.ts");
+	});
+
+	it("endEncounter returns to file mode and clears the active monster", () => {
+		store.getState().startEncounter("monster:abc");
+		store.getState().endEncounter();
+		const state = store.getState();
+		expect(state.mode).toBe("file");
+		expect(state.activeMonsterId).toBeNull();
+	});
+
+	it("setMonsters and setDefeatedMonsterIds update their own fields only", () => {
+		store.getState().setMonsters([
+			{
+				id: "monster:abc",
+				species: "ghost",
+				message: "boo",
+				tier: 1,
+				portalId: "a.ts",
+			},
+		]);
+		store.getState().setDefeatedMonsterIds(["monster:abc"]);
+		const state = store.getState();
+		expect(state.monsters).toEqual([
+			{
+				id: "monster:abc",
+				species: "ghost",
+				message: "boo",
+				tier: 1,
+				portalId: "a.ts",
+			},
+		]);
+		expect(state.defeatedMonsterIds).toEqual(["monster:abc"]);
+		expect(state.mode).toBe("world");
+	});
 });

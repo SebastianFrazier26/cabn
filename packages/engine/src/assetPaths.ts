@@ -26,6 +26,39 @@ export const PORTAL_ARCH_FRAME_COUNT = 6;
 
 export const BONFIRE_FRAME_COUNT = 4;
 
+// M6 monster sprites. Ghost (M2) is a single static image — no idle animation
+// — so it gets its own key rather than the frame-pair shape the other five
+// species use (each rendered as two idle frames by tools/asset-pipeline, see
+// its pixelmaps/{rot-sprite,warded-mimic,gremlin,ouroboros,will-o-wisp}.ts).
+const MONSTER_FILE_SLUG: Record<string, string> = {
+	"rot-sprite": "rot_sprite",
+	"warded-mimic": "warded_mimic",
+	gremlin: "gremlin",
+	ouroboros: "ouroboros",
+	"will-o-wisp": "will_o_wisp",
+};
+
+export const MONSTER_GHOST_KEY = "monster-ghost";
+export const MONSTER_GHOST_PATH = `${ASSET_BASE}/placeholders/ghost_soft.png`;
+
+export function monsterFrameKey(species: string, frame: 0 | 1): string {
+	return `monster-${species}-${frame}`;
+}
+
+export function monsterFramePath(species: string, frame: 0 | 1): string {
+	const slug = MONSTER_FILE_SLUG[species] ?? species;
+	return `${ASSET_BASE}/placeholders/${slug}_idle${frame}_soft.png`;
+}
+
+/** Species with a real two-frame idle animation — everything except ghost. */
+export const ANIMATED_MONSTER_SPECIES = [
+	"rot-sprite",
+	"warded-mimic",
+	"gremlin",
+	"ouroboros",
+	"will-o-wisp",
+] as const;
+
 function bonfireFrameKey(index: number): string {
 	return `bonfire-frame-${index}`;
 }

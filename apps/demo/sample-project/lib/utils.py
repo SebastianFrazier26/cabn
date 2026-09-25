@@ -10,5 +10,5 @@ def total_weight_kg(records: list[HarvestRecord]) -> float:
 def group_by_crop(records: list[HarvestRecord]) -> dict[str, list[HarvestRecord]]:
     grouped: dict[str, list[HarvestRecord]] = {}
     for record in records:
-        grouped.setdefault(record.crop, []).append(record)
+        grouped.setdefault(record.crop, []).append(record
     return grouped

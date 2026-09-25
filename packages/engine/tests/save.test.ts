@@ -7,6 +7,7 @@ import {
 	previewSourceLines,
 	SAVE_SCHEMA_VERSION,
 	withBagSlots,
+	withDefeatedMonster,
 	withFileOverride,
 	withoutFileOverride,
 	withPlayerPosition,
@@ -75,6 +76,35 @@ describe("parseSaveData", () => {
 		expect(parseSaveData(save)).toBeNull();
 		warn.mockRestore();
 	});
+
+	it("migrates a v1 save (no monsters yet) forward to v2 with an empty defeated-monster list", () => {
+		const v1Save = {
+			version: 1,
+			worldId: "abc123",
+			fileOverrides: {
+				"a.ts": { content: "edited", savedAt: "2026-09-20T00:00:00.000Z" },
+			},
+			playerPositions: { world: { x: 5, y: 10 } },
+			visitedClusters: ["root"],
+			bagSlots: [],
+		};
+		const result = parseSaveData(v1Save);
+		expect(result).toEqual({ ...v1Save, version: 2, defeatedMonsterIds: [] });
+	});
+
+	it("does not warn while migrating a valid v1 save (that's the happy path, not a corruption)", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		parseSaveData({
+			version: 1,
+			worldId: "abc123",
+			fileOverrides: {},
+			playerPositions: {},
+			visitedClusters: [],
+			bagSlots: [],
+		});
+		expect(warn).not.toHaveBeenCalled();
+		warn.mockRestore();
+	});
 });
 
 describe("emptySaveData", () => {
@@ -87,6 +117,7 @@ describe("emptySaveData", () => {
 			playerPositions: {},
 			visitedClusters: [],
 			bagSlots: [],
+			defeatedMonsterIds: [],
 		});
 	});
 });
@@ -153,6 +184,17 @@ describe("save reducer ops", () => {
 		save = withVisitedCluster(save, "root");
 		save = withVisitedCluster(save, "root--src");
 		expect(save.visitedClusters).toEqual(["root", "root--src"]);
+	});
+
+	it("withDefeatedMonster appends a new monster id once", () => {
+		let save = emptySaveData("w");
+		save = withDefeatedMonster(save, "monster:abc123");
+		save = withDefeatedMonster(save, "monster:abc123");
+		save = withDefeatedMonster(save, "monster:def456");
+		expect(save.defeatedMonsterIds).toEqual([
+			"monster:abc123",
+			"monster:def456",
+		]);
 	});
 
 	it("withBagSlots replaces the whole bag-slot snapshot", () => {

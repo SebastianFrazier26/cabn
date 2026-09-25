@@ -1,0 +1,6 @@
+{
+	"harvestLog": {
+		"timezone": "UTC",
+		"maxEntriesPerCrop": 500,
+	}
+}

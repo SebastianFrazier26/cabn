@@ -5,7 +5,12 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": true
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!packages/converter/test/fixtures/broken-world",
+			"!apps/demo/sample-project"
+		]
 	},
 	"linter": {
 		"enabled": true,

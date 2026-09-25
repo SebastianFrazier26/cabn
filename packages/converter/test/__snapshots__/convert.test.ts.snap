@@ -220,3 +220,92 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
   ],
 }
 `;
+
+exports[`convert (DirSource) > spawns a monster of every species for the broken-world fixture (M6 annotators end to end) 1`] = `
+[
+  {
+    "error": {
+      "code": "Corrupted",
+      "loc": {
+        "col": 1,
+        "line": 4,
+      },
+      "message": "Invalid JSON: Expected double-quoted property name in JSON at position 59 (line 5 column 2)",
+      "rule": "json-parse@4:1",
+    },
+    "portalId": "config.json",
+    "species": "rot-sprite",
+    "tier": 1,
+  },
+  {
+    "error": {
+      "code": "InvalidMode",
+      "loc": {
+        "col": 37,
+        "line": 0,
+      },
+      "message": "Found 1 invalid/undecodable character (U+FFFD) — likely not valid UTF-8.",
+      "rule": "encoding:replacement-char@0:37",
+    },
+    "portalId": "weird.txt",
+    "species": "warded-mimic",
+    "tier": 1,
+  },
+  {
+    "error": {
+      "code": "IoError",
+      "loc": {
+        "col": 46,
+        "line": 0,
+      },
+      "message": "Unclosed "{" — no matching closer before end of file.",
+      "rule": "bracket:unclosed:{@0:46",
+    },
+    "portalId": "src/d.ts",
+    "species": "gremlin",
+    "tier": 1,
+  },
+  {
+    "error": {
+      "code": "NullTypeError",
+      "loc": {
+        "col": 24,
+        "line": 0,
+      },
+      "message": "Import "./missing-helper.js" doesn't resolve to any file in this world.",
+      "rule": "broken-import:./missing-helper.js@0:24",
+    },
+    "portalId": "src/a.ts",
+    "species": "ghost",
+    "tier": 1,
+  },
+  {
+    "error": {
+      "code": "OuroborosError",
+      "loc": {
+        "col": 23,
+        "line": 0,
+      },
+      "message": "Circular import between 2 files: src/b.ts -> src/c.ts -> src/b.ts",
+      "rule": "circular-import:src/b.ts,src/c.ts",
+    },
+    "portalId": "src/b.ts",
+    "species": "ouroboros",
+    "tier": 1,
+  },
+  {
+    "error": {
+      "code": "WispNote",
+      "loc": {
+        "col": 3,
+        "line": 0,
+      },
+      "message": "TODO marker left in a comment.",
+      "rule": "todo:TODO@0:3",
+    },
+    "portalId": "src/e.ts",
+    "species": "will-o-wisp",
+    "tier": 0,
+  },
+]
+`;

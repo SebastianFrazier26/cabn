@@ -61,6 +61,39 @@ async function main() {
 		)
 		.join("\n");
 
+	const monsterSpecies: { slug: string; species: string }[] = [
+		{ slug: "ghost", species: "ghost (NullTypeError) — existing, unchanged" },
+		{ slug: "rot_sprite", species: "rot-sprite (Corrupted)" },
+		{ slug: "warded_mimic", species: "warded-mimic (InvalidMode)" },
+		{ slug: "gremlin", species: "gremlin (IoError)" },
+		{ slug: "ouroboros", species: "ouroboros (OuroborosError)" },
+		{ slug: "will_o_wisp", species: "will-o-wisp (WispNote)" },
+	];
+	const monsterRows = monsterSpecies
+		.map(({ slug, species }) => {
+			if (slug === "ghost") {
+				return `
+			<section class="icon-row">
+				<h3>${escapeHtml(species)}</h3>
+				<div class="stage">
+					<figure><img class="pixel" src="placeholders/ghost@8x.png" alt="ghost, crisp"><figcaption>crisp</figcaption></figure>
+					<figure><img class="soft" src="placeholders/ghost_soft.png" alt="ghost, softened"><figcaption>softened</figcaption></figure>
+				</div>
+			</section>`;
+			}
+			return `
+		<section class="icon-row">
+			<h3>${escapeHtml(species)}</h3>
+			<div class="stage">
+				<figure><img class="pixel" src="placeholders/${slug}_idle0@8x.png" alt="${escapeHtml(slug)} idle frame 0, crisp"><figcaption>idle0, crisp</figcaption></figure>
+				<figure><img class="soft" src="placeholders/${slug}_idle0_soft.png" alt="${escapeHtml(slug)} idle frame 0, softened"><figcaption>idle0, softened</figcaption></figure>
+				<figure><img class="pixel" src="placeholders/${slug}_idle1@8x.png" alt="${escapeHtml(slug)} idle frame 1, crisp"><figcaption>idle1, crisp</figcaption></figure>
+				<figure><img class="soft" src="placeholders/${slug}_idle1_soft.png" alt="${escapeHtml(slug)} idle frame 1, softened"><figcaption>idle1, softened</figcaption></figure>
+			</div>
+		</section>`;
+		})
+		.join("\n");
+
 	const bonfireFrameCount = 4;
 	const bonfireFrameRows = Array.from(
 		{ length: bonfireFrameCount },
@@ -153,6 +186,10 @@ async function main() {
 			<figure><img class="soft" src="placeholders/character_idle_back_soft.png" alt="character idle, back, softened"><figcaption>back, softened</figcaption></figure>
 		</div>
 	</section>
+
+	<h2>Monsters</h2>
+	<p class="note">M6: one species per error-code taxonomy entry (packages/converter/src/annotate/taxonomy.ts). Ghost already existed (M2); the other five are new here, each two idle frames (a small "breathe"/twitch bob, not a walk cycle) — see the M6 CHANGELOG entry for how each was generated.</p>
+	${monsterRows}
 
 	<h2>Portal with file preview (composite reference)</h2>
 	<p class="note">Reference for the engine: a file's contents rendered as a mock code-preview parchment inside the portal opening, with a glowing border where it meets the stone. Not a placeholder sprite itself — informs how the engine might composite file previews into portals later.</p>

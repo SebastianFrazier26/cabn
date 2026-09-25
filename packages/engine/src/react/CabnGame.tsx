@@ -6,7 +6,9 @@ import {
 } from "../game.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
+import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
+import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { SettingsCorner } from "./SettingsCorner.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
@@ -55,6 +57,8 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			{handle && <OrbSearch store={handle.store} bus={handle.bus} />}
 			{handle && <BagTray store={handle.store} bus={handle.bus} />}
 			{handle && <SettingsCorner store={handle.store} bus={handle.bus} />}
+			{handle && <MonsterCounter store={handle.store} />}
+			{handle && <EncounterBanner store={handle.store} />}
 			{handle && <EditorOverlay store={handle.store} bus={handle.bus} />}
 		</div>
 	);
