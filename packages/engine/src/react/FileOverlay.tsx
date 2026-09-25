@@ -7,26 +7,29 @@ export interface FileOverlayProps {
 	store: StoreApi<CabnStore>;
 }
 
-// Placeholder file viewer for M3 — full syntax highlighting, line numbers,
-// and monster/annotation overlays are FileScene's job in M4. This exists so
-// walking into a portal shows *something* real instead of a dead end.
+// M4: FileScene (a real walkable scroll world, see scenes/FileScene.ts) is
+// now the file viewer for anything with text content. This overlay's job
+// shrinks to what it can't do: a binary/sealed file (activePortalContent ===
+// null) has nothing for FileScene to render, so WorldScene never launches
+// it and mode just flips to "file" with no content — this is that fallback.
 export function FileOverlay({
 	store,
 }: FileOverlayProps): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
 	const portalId = useCabnStore(store, (s) => s.activePortalId);
 	const content = useCabnStore(store, (s) => s.activePortalContent);
+	const isBinaryFallback = mode === "file" && content === null;
 
 	useEffect(() => {
-		if (mode !== "file") return;
+		if (!isBinaryFallback) return;
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") store.getState().exitPortal();
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [mode, store]);
+	}, [isBinaryFallback, store]);
 
-	if (mode !== "file") return null;
+	if (!isBinaryFallback) return null;
 
 	return (
 		<div
@@ -74,7 +77,7 @@ export function FileOverlay({
 						wordBreak: "break-word",
 					}}
 				>
-					{content ?? "(binary or unreadable file — no preview available)"}
+					(binary or unreadable file — no preview available)
 				</pre>
 			</div>
 		</div>

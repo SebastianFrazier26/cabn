@@ -18,6 +18,14 @@ export type CabnEvents = {
 	"chunk:loaded": { clusterId: string };
 	"shelf:enter-world": { worldId: string };
 	"world:return-to-shelf": { shelfUrl: string };
+	/** React (spyglass/orb result click) -> WorldScene: auto-walk the player to this portal. */
+	"tool:walk-to-portal": { portalId: string };
+	/** React (orb result click, file-search mode) -> FileScene: scroll to and briefly highlight this line. */
+	"tool:jump-to-line": { line: number };
+	/** Hotbar B press -> FileScene: start a selection at the nearest line, or confirm one already in progress. */
+	"tool:bag-use": Record<string, never>;
+	/** Registry-mediated opener activation (e.g. a hotbar click) -> WorldScene: same effect as pressing E. */
+	"tool:opener-use": Record<string, never>;
 };
 
 export type CabnBus = Emitter<CabnEvents>;

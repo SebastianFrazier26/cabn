@@ -237,9 +237,15 @@ importers:
 
   packages/engine:
     dependencies:
+      '@cabn/converter':
+        specifier: workspace:*
+        version: link:../converter
       '@cabn/world-schema':
         specifier: workspace:*
         version: link:../world-schema
+      minisearch:
+        specifier: 7.2.0
+        version: 7.2.0
       mitt:
         specifier: ^3.0.1
         version: 3.0.1
