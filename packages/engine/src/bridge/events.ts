@@ -26,6 +26,18 @@ export type CabnEvents = {
 	"tool:bag-use": Record<string, never>;
 	/** Registry-mediated opener activation (e.g. a hotbar click) -> WorldScene: same effect as pressing E. */
 	"tool:opener-use": Record<string, never>;
+	/** Hotbar Q press -> FileScene: open the quill/editor overlay, cursor at the line nearest the player. */
+	"tool:quill-use": Record<string, never>;
+	/** EditorOverlay (Ctrl/Cmd-S) -> FileScene: the open file's full text changed; FileScene re-splits its lines and reports the edit to WorldScene for persistence + the arch marker. */
+	"editor:save": { portalId: string; content: string };
+	/** BagTray click while the editor is open -> EditorOverlay: paste this slot's text at the caret. */
+	"editor:paste-slot": { slotId: string };
+	/** SpyglassPanel's per-file "reset" button -> WorldScene: drop that portal's saved override. */
+	"tool:reset-file-edits": { portalId: string };
+	/** SettingsCorner's "reset world" button -> WorldScene: drop every saved override/position/visited-cluster/bag-slot for this world. */
+	"tool:reset-world": Record<string, never>;
+	/** WorldScene -> FileScene, answering tool:reset-file-edits when the reset portal is the one currently open: swap the live view back to pristine content. */
+	"file:content-reset": { portalId: string; content: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

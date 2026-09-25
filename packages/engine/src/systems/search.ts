@@ -10,7 +10,11 @@ import type { CabnMode } from "../bridge/store.js";
 export type SearchScope = "world" | "file";
 
 export function resolveSearchScope(mode: CabnMode): SearchScope {
-	return mode === "file" ? "file" : "world";
+	// "editor" only ever opens on top of an already-open file (see
+	// bridge/store.ts's openEditor), so it counts as file scope too — moot in
+	// practice since the hotbar blocks the orb entirely while editing, but
+	// this keeps the mapping correct if that ever changes.
+	return mode === "file" || mode === "editor" ? "file" : "world";
 }
 
 export interface WorldSearchHit {

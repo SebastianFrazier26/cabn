@@ -14,6 +14,10 @@ describe("resolveSearchScope", () => {
 	it("scopes to the open file once inside one", () => {
 		expect(resolveSearchScope("file")).toBe("file");
 	});
+
+	it("scopes to the open file while the quill editor is open too", () => {
+		expect(resolveSearchScope("editor")).toBe("file");
+	});
 });
 
 describe("navigationIntentForHit", () => {

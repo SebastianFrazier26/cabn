@@ -59,4 +59,33 @@ describe("createCabnStore", () => {
 		expect(state.playerPos).toEqual({ x: 12, y: -4 });
 		expect(state.searchOpen).toBe(true);
 	});
+
+	it("openEditor switches to editor mode with the given caret line/language", () => {
+		store.getState().enterPortal("src/index.ts", "a\nb\nc");
+		store.getState().openEditor({ initialLine: 2, language: "typescript" });
+		const state = store.getState();
+		expect(state.mode).toBe("editor");
+		expect(state.editorInitialLine).toBe(2);
+		expect(state.editorLanguage).toBe("typescript");
+		// The editor never replaces which file is open, only overlays it.
+		expect(state.activePortalId).toBe("src/index.ts");
+	});
+
+	it("closeEditor returns to file mode without touching the open portal", () => {
+		store.getState().enterPortal("src/index.ts", "a\nb\nc");
+		store.getState().openEditor({ initialLine: 0, language: undefined });
+		store.getState().closeEditor();
+		const state = store.getState();
+		expect(state.mode).toBe("file");
+		expect(state.activePortalId).toBe("src/index.ts");
+	});
+
+	it("setActivePortalContent replaces the open file's content in place", () => {
+		store.getState().enterPortal("src/index.ts", "old");
+		store.getState().setActivePortalContent("new");
+		const state = store.getState();
+		expect(state.activePortalContent).toBe("new");
+		expect(state.mode).toBe("file");
+		expect(state.activePortalId).toBe("src/index.ts");
+	});
 });

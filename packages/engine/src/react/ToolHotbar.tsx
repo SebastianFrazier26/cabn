@@ -31,12 +31,19 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function ToolHotbar({
 	store,
 	bus,
-}: ToolHotbarProps): React.ReactElement {
+}: ToolHotbarProps): React.ReactElement | null {
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
+	const mode = useCabnStore(store, (s) => s.mode);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
+			// The editor traps its own keys (including single letters that would
+			// otherwise dispatch a tool, e.g. typing "b" in code) — CodeMirror's
+			// content div isn't an <input>/<textarea> so isTypingTarget alone
+			// wouldn't catch it, hence the explicit mode check.
+			if (store.getState().mode === "editor") return;
+
 			const key = event.key.toLowerCase();
 
 			// Cmd/Ctrl+F always intercepts, even while the orb's own search input
@@ -52,10 +59,17 @@ export function ToolHotbar({
 			if (key === "f") registry.dispatch("orb", { store, bus });
 			else if (key === "l") registry.dispatch("spyglass", { store, bus });
 			else if (key === "b") registry.dispatch("bag", { store, bus });
+			else if (key === "q") registry.dispatch("quill", { store, bus });
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [registry, store, bus]);
+
+	// Hidden rather than just non-interactive while the editor is open — its
+	// tools (opener/spyglass/orb/bag-as-selection) all read as "world/file
+	// navigation", none of which apply mid-edit, and the space is better left
+	// to the editor panel.
+	if (mode === "editor") return null;
 
 	return (
 		<div
