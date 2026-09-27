@@ -77,7 +77,14 @@ export function SpyglassPanel({
 			) : (
 				<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
 					{rows.map((portal) => (
-						<li key={portal.id}>
+						<li
+							key={portal.id}
+							style={{
+								display: "flex",
+								alignItems: "center",
+								borderBottom: `1px solid ${toCssColor(PALETTE.trail)}`,
+							}}
+						>
 							<button
 								type="button"
 								onClick={() => {
@@ -85,11 +92,10 @@ export function SpyglassPanel({
 									store.getState().setSpyglassOpen(false);
 								}}
 								style={{
-									width: "100%",
+									flex: 1,
 									textAlign: "left",
 									background: "none",
 									border: "none",
-									borderBottom: `1px solid ${toCssColor(PALETTE.trail)}`,
 									padding: "6px 10px",
 									cursor: "pointer",
 									color: "inherit",
@@ -98,11 +104,43 @@ export function SpyglassPanel({
 									gap: 8,
 								}}
 							>
-								<span>{portal.name}</span>
+								<span>
+									{portal.edited && (
+										<span
+											title="edited"
+											style={{
+												color: toCssColor(PALETTE.gold),
+												marginRight: 4,
+											}}
+										>
+											✎
+										</span>
+									)}
+									{portal.name}
+								</span>
 								<span style={{ opacity: 0.7 }}>
 									{portal.kind} · {formatBytes(portal.bytes)}
 								</span>
 							</button>
+							{portal.edited && (
+								<button
+									type="button"
+									title="discard this file's saved edits"
+									onClick={() =>
+										bus.emit("tool:reset-file-edits", { portalId: portal.id })
+									}
+									style={{
+										background: "none",
+										border: "none",
+										cursor: "pointer",
+										color: "inherit",
+										opacity: 0.6,
+										padding: "6px 8px",
+									}}
+								>
+									reset
+								</button>
+							)}
 						</li>
 					))}
 				</ul>

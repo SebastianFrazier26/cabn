@@ -3,7 +3,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import { ASSET_KEYS } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
-import type { CabnStore } from "../bridge/store.js";
+import type { CabnMode, CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
 import {
@@ -122,6 +122,7 @@ export class FileScene extends Phaser.Scene {
 
 	private selection: LineSelection | null = null;
 	private highlightGraphic: Phaser.GameObjects.Graphics | null = null;
+	private unsubscribeMode: (() => void) | null = null;
 
 	private keys!: {
 		enter: Phaser.Input.Keyboard.Key;
@@ -154,16 +155,54 @@ export class FileScene extends Phaser.Scene {
 		this.createPlayer();
 		this.setupInput();
 		this.setupCamera();
-		// mitt's on/off take no context arg — onJumpToLine/onBagUse are arrow
-		// class fields (auto-bound, stable reference) specifically for this.
+		// mitt's on/off take no context arg — the on*/handler fields below are
+		// arrow class fields (auto-bound, stable reference) specifically for this.
 		this.bus.on("tool:jump-to-line", this.onJumpToLine);
 		this.bus.on("tool:bag-use", this.onBagUse);
+		this.bus.on("tool:quill-use", this.onQuillUse);
+		this.bus.on("editor:save", this.onEditorSave);
+		this.bus.on("file:content-reset", this.onFileContentReset);
+		// Not a bus event: closing the editor is a store.closeEditor() call from
+		// EditorOverlay, which only touches `mode` — a subscription is the one
+		// thing that reacts uniformly no matter which code path changed it.
+		this.unsubscribeMode = this.store.subscribe((state, prev) => {
+			if (state.mode !== prev.mode) this.syncKeyboardForMode(state.mode);
+		});
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.teardown, this);
 	}
 
 	private teardown(): void {
 		this.bus.off("tool:jump-to-line", this.onJumpToLine);
 		this.bus.off("tool:bag-use", this.onBagUse);
+		this.bus.off("tool:quill-use", this.onQuillUse);
+		this.bus.off("editor:save", this.onEditorSave);
+		this.bus.off("file:content-reset", this.onFileContentReset);
+		this.unsubscribeMode?.();
+		this.unsubscribeMode = null;
+		// Editor could still be "open" (mode === "editor") at shutdown if the
+		// player left mid-edit some other way than Esc — make sure the keyboard
+		// plugin doesn't stay disabled for whatever scene starts next.
+		this.syncKeyboardForMode("world");
+	}
+
+	/**
+	 * The classic Phaser-steals-focus-from-a-DOM-input bug, handled at its
+	 * root: while the editor overlay is open, this scene's keyboard plugin is
+	 * disabled outright (not just "movement ignores mode") so WASD/E/Esc/Shift
+	 * never reach FileScene while the player is typing in CodeMirror, and
+	 * CodeMirror's own keydown handling is never fought for the same keys.
+	 * `resetKeys()` on disable matters because Phaser's global keyboard queue
+	 * is drained once per step regardless of whether a disabled plugin
+	 * consumed it — without it, a WASD key already held when the editor opens
+	 * never sees its matching keyup and reads as stuck-down once re-enabled.
+	 */
+	private syncKeyboardForMode(mode: CabnMode): void {
+		const kb = this.input.keyboard;
+		if (!kb) return;
+		const shouldBeEnabled = mode !== "editor";
+		if (kb.enabled === shouldBeEnabled) return;
+		kb.enabled = shouldBeEnabled;
+		if (!shouldBeEnabled) kb.resetKeys();
 	}
 
 	private totalHeight(): number {
@@ -240,6 +279,10 @@ export class FileScene extends Phaser.Scene {
 	}
 
 	update(_time: number, delta: number): void {
+		if (this.store.getState().mode === "editor") {
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			return;
+		}
 		if (this.selection === null) {
 			updatePlayerMovement(
 				this.player,
@@ -303,6 +346,57 @@ export class FileScene extends Phaser.Scene {
 		});
 		this.selection = null;
 	};
+
+	/** Quill hotkey: open the editor overlay, caret starting at the player's current line. Ignored mid-selection so B and Q don't fight over the same moment. */
+	private onQuillUse = (): void => {
+		if (this.selection !== null) return;
+		this.store.getState().openEditor({
+			initialLine: this.nearestLineToPlayer(),
+			language: this.file.language,
+		});
+	};
+
+	/** EditorOverlay's Ctrl/Cmd-S — this scene's own lines/store copy is the source of truth for "what the file currently says", so both get updated here (WorldScene separately persists the override and redraws the arch marker in its own bus listener). */
+	private onEditorSave = ({
+		portalId,
+		content,
+	}: {
+		portalId: string;
+		content: string;
+	}): void => {
+		if (portalId !== this.portalId) return;
+		this.applyLiveContent(content);
+		this.store.getState().setActivePortalContent(content);
+	};
+
+	/** WorldScene answering a "reset this file's edits" request for the file we're currently showing — swap back to the pristine content it hands us. */
+	private onFileContentReset = ({
+		portalId,
+		content,
+	}: {
+		portalId: string;
+		content: string;
+	}): void => {
+		if (portalId !== this.portalId) return;
+		this.applyLiveContent(content);
+	};
+
+	/**
+	 * Re-splits `this.lines` and invalidates the virtualized line cache so
+	 * `renderVisibleWindow()` rebuilds every visible line from the new text
+	 * next frame. Deliberately does not resize the parchment backing, path,
+	 * or camera bounds (all sized off the *original* line count in create())
+	 * — an edit that changes the line count keeps the old scroll extent until
+	 * the file is re-entered. A live-resizing scroll world was out of scope
+	 * for this pass; the content itself (and everywhere else that reads it)
+	 * is always correct either way.
+	 */
+	private applyLiveContent(content: string): void {
+		this.lines = content.split("\n");
+		for (const container of this.activeLines.values()) container.destroy();
+		this.activeLines.clear();
+		this.currentWindow = { start: 0, end: 0 };
+	}
 
 	private static readonly HIGHLIGHT_MS = 1500;
 

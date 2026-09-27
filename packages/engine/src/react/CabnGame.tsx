@@ -5,8 +5,10 @@ import {
 	createCabnGame,
 } from "../game.js";
 import { BagTray } from "./BagTray.js";
+import { EditorOverlay } from "./EditorOverlay.js";
 import { FileOverlay } from "./FileOverlay.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { SettingsCorner } from "./SettingsCorner.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
 
@@ -51,7 +53,9 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			{handle && <ToolHotbar store={handle.store} bus={handle.bus} />}
 			{handle && <SpyglassPanel store={handle.store} bus={handle.bus} />}
 			{handle && <OrbSearch store={handle.store} bus={handle.bus} />}
-			{handle && <BagTray store={handle.store} />}
+			{handle && <BagTray store={handle.store} bus={handle.bus} />}
+			{handle && <SettingsCorner store={handle.store} bus={handle.bus} />}
+			{handle && <EditorOverlay store={handle.store} bus={handle.bus} />}
 		</div>
 	);
 }

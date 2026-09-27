@@ -71,9 +71,11 @@ export class ToolRegistry {
 
 // Icon paths point at the sprite pipeline's soft-rendered originals (see
 // assets/generated/originals) copied verbatim into every host app's
-// public/assets/ (apps/demo/scripts/build-world.mjs). orb and bag have no
-// dedicated art yet (crystal orb, bag) — placeholders noted below borrow the
-// closest existing icon rather than drawing a new one.
+// public/assets/ (apps/demo/scripts/build-world.mjs). orb, bag, and quill have
+// no dedicated art yet (crystal orb, bag, quill) — placeholders noted below
+// borrow the closest existing icon rather than drawing a new one; quill
+// reuses the same letter-opener icon as spyglass since both read as "a
+// writing implement" until real art lands.
 const ICON_BASE = "/assets/originals";
 
 export function createDefaultTools(): Tool[] {
@@ -111,6 +113,16 @@ export function createDefaultTools(): Tool[] {
 			icon: `${ICON_BASE}/file_256.webp`,
 			hotkey: "B",
 			onUse: (ctx) => ctx.bus.emit("tool:bag-use", {}),
+		},
+		{
+			id: "quill",
+			name: "Quill",
+			icon: `${ICON_BASE}/letter_opener_256.webp`,
+			hotkey: "Q",
+			// Same shape as bag: FileScene owns the actual open-the-overlay logic
+			// (it needs the player's current line for the caret), this just signals
+			// intent.
+			onUse: (ctx) => ctx.bus.emit("tool:quill-use", {}),
 		},
 	];
 }

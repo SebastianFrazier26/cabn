@@ -20,6 +20,14 @@ export const PALETTE = {
 	 * enchanted-markdown code-span boxes.
 	 */
 	parchmentDark: 0xc4b793,
+	/** Darker warm rust, extracted swatch distinct from `trail` — quill editor's function/property-name syntax color. */
+	rust: 0x622b17,
+	/** Steel gray, extracted swatch (also used for the wizard tower's masonry) — quill editor's punctuation/bracket syntax color. */
+	steelGray: 0x8a9198,
+	/** Deep plum, curated in M2 for the character's staff gem — quill editor's type-name syntax color. */
+	plum: 0x58336b,
+	/** Bright amethyst, curated alongside `plum` — quill editor's number/atom syntax color. */
+	amethyst: 0xb27cd6,
 	biome: {
 		meadow: 0x6f863a,
 		grove: 0x45592d,

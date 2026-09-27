@@ -124,20 +124,21 @@ describe("ToolRegistry", () => {
 
 	it("dispatchHotkey returns false for an unbound hotkey", () => {
 		const registry = new ToolRegistry();
-		expect(registry.dispatchHotkey("Q", makeCtx())).toBe(false);
+		expect(registry.dispatchHotkey("Z", makeCtx())).toBe(false);
 	});
 });
 
 describe("createDefaultTools / createDefaultToolRegistry", () => {
-	it("ships opener (E), spyglass (L), orb (F), and bag (B)", () => {
+	it("ships opener (E), spyglass (L), orb (F), bag (B), and quill (Q)", () => {
 		const tools = createDefaultTools();
 		expect(tools.map((t) => t.id)).toEqual([
 			"opener",
 			"spyglass",
 			"orb",
 			"bag",
+			"quill",
 		]);
-		expect(tools.map((t) => t.hotkey)).toEqual(["E", "L", "F", "B"]);
+		expect(tools.map((t) => t.hotkey)).toEqual(["E", "L", "F", "B", "Q"]);
 	});
 
 	it("builds a registry where every default tool is dispatchable", () => {
@@ -172,6 +173,15 @@ describe("createDefaultTools / createDefaultToolRegistry", () => {
 		const handler = vi.fn();
 		ctx.bus.on("tool:opener-use", handler);
 		registry.dispatch("opener", ctx);
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
+	it("quill emits a tool:quill-use bus event", () => {
+		const registry = createDefaultToolRegistry();
+		const ctx = makeCtx();
+		const handler = vi.fn();
+		ctx.bus.on("tool:quill-use", handler);
+		registry.dispatch("quill", ctx);
 		expect(handler).toHaveBeenCalledOnce();
 	});
 });

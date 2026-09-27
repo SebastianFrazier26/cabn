@@ -2,7 +2,7 @@ import type { FileKind, Position } from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 
-export type CabnMode = "world" | "file";
+export type CabnMode = "world" | "file" | "editor";
 
 /** Flat, per-portal summary WorldScene fills once at create() — backs both the spyglass panel and the orb's world-search result list, so neither needs its own copy of the manifest. */
 export interface PortalSummary {
@@ -13,6 +13,8 @@ export interface PortalSummary {
 	kind: FileKind;
 	bytes: number;
 	previewLine: string;
+	/** True once a quill edit has been saved for this portal — WorldScene recomputes this whenever its save data changes, so the spyglass can offer a per-file "reset" action. */
+	edited: boolean;
 }
 
 export interface CabnState {
@@ -36,6 +38,10 @@ export interface CabnState {
 	activeWorldBase: string | null;
 	portals: PortalSummary[];
 	bagSlots: BagSlot[];
+	/** Line to place the caret on when the editor overlay mounts — only meaningful while `mode === "editor"`. */
+	editorInitialLine: number;
+	/** PortalFile.language of the file being edited, if any — picks the editor's lazily-loaded CodeMirror language pack. */
+	editorLanguage: string | undefined;
 }
 
 export interface CabnActions {
@@ -50,6 +56,14 @@ export interface CabnActions {
 	setPortals(portals: PortalSummary[]): void;
 	addBagSlot(slot: BagSlot): void;
 	removeBagSlot(id: string): void;
+	/** Replaces the open file's content in place, e.g. after a quill save — does not change `mode` or `activePortalId`. */
+	setActivePortalContent(content: string): void;
+	openEditor(params: {
+		initialLine: number;
+		language: string | undefined;
+	}): void;
+	/** Back to `mode: "file"` — the editor only ever opens on top of an already-open file, never standalone. */
+	closeEditor(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -66,6 +80,8 @@ const initialState: CabnState = {
 	activeWorldBase: null,
 	portals: [],
 	bagSlots: [],
+	editorInitialLine: 0,
+	editorLanguage: undefined,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -88,5 +104,14 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setPortals: (portals) => set({ portals }),
 		addBagSlot: (slot) => set({ bagSlots: addBagSlot(get().bagSlots, slot) }),
 		removeBagSlot: (id) => set({ bagSlots: removeBagSlot(get().bagSlots, id) }),
+		setActivePortalContent: (activePortalContent) =>
+			set({ activePortalContent }),
+		openEditor: ({ initialLine, language }) =>
+			set({
+				mode: "editor",
+				editorInitialLine: initialLine,
+				editorLanguage: language,
+			}),
+		closeEditor: () => set({ mode: "file" }),
 	}));
 }

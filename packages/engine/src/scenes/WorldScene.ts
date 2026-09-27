@@ -32,6 +32,21 @@ import {
 	type PortalPoint,
 } from "../systems/portalApproach.js";
 import { clampPreviewLines } from "../systems/previewText.js";
+import {
+	applyOverridesToChunk,
+	clearSave,
+	computeWorldId,
+	emptySaveData,
+	loadSave,
+	persistSave,
+	previewSourceLines,
+	type SaveData,
+	withBagSlots,
+	withFileOverride,
+	withoutFileOverride,
+	withPlayerPosition,
+	withVisitedCluster,
+} from "../systems/save.js";
 import { themeFromSeed } from "../systems/theme.js";
 import {
 	type AssetAvailability,
@@ -82,11 +97,19 @@ export class WorldScene extends Phaser.Scene {
 	private portalsById = new Map<string, Portal>();
 	private portalWorldPos = new Map<string, Position>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	private portalPathById = new Map<string, string>();
 
-	/** clusterId -> path -> file content, populated lazily as clusters are approached. */
+	/** clusterId -> path -> file content, exactly as fetched — never mutated, so a "reset this file" always has the pristine original to fall back to. */
 	private chunkContents = new Map<string, Record<string, string>>();
+	/** Same shape, with `save.fileOverrides` spliced in — what portal entry/exit and the arch preview actually read from; recomputed via refreshEffectiveChunk() whenever a chunk (re)loads or an override changes. */
+	private effectiveChunkContents = new Map<string, Record<string, string>>();
 	private chunkLoadOrder: string[] = [];
 	private chunkFetchesInFlight = new Set<string>();
+
+	private worldId = "";
+	private save: SaveData = emptySaveData("");
+	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
+	private unsubscribeBagSlots: (() => void) | null = null;
 
 	private player!: PlayerHandle;
 	private movementKeys!: MovementKeys;
@@ -122,19 +145,26 @@ export class WorldScene extends Phaser.Scene {
 	create(): void {
 		for (const cluster of this.manifest.clusters)
 			this.clustersById.set(cluster.id, cluster);
-		for (const portal of this.manifest.portals)
+		for (const portal of this.manifest.portals) {
 			this.portalsById.set(portal.id, portal);
+			this.portalPathById.set(portal.id, portal.file.path);
+		}
+
+		this.worldId = computeWorldId(this.manifest.meta);
+		this.save = loadSave(this.worldId);
 
 		this.drawGround();
 		this.drawPaths();
 		this.drawClusters();
 		this.drawPortals();
+		this.drawEditedMarkers();
 		this.createPlayer();
 		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
 		this.publishPortalIndex();
 		this.setupToolBusListeners();
+		this.setupSaveListeners();
 	}
 
 	// The spyglass panel and the orb's world-search results both read this off
@@ -150,7 +180,13 @@ export class WorldScene extends Phaser.Scene {
 				path: portal.file.path,
 				kind: portal.file.kind,
 				bytes: portal.file.bytes,
-				previewLine: portal.preview.lines[0] ?? "",
+				previewLine:
+					previewSourceLines(
+						portal.id,
+						portal.preview.lines,
+						this.save.fileOverrides,
+					)[0] ?? "",
+				edited: portal.id in this.save.fileOverrides,
 			})),
 		);
 	}
@@ -301,8 +337,39 @@ export class WorldScene extends Phaser.Scene {
 		}
 	}
 
+	private drawEditedMarkers(): void {
+		for (const portalId of Object.keys(this.save.fileOverrides)) {
+			this.drawEditedMarker(portalId);
+		}
+	}
+
+	// A drawn glyph rather than new art (no quill/sparkle sprite exists yet,
+	// same placeholder-first approach as the tool icons) — a small pencil
+	// character at the arch's upper-right reads fine at this scale.
+	private drawEditedMarker(portalId: string): void {
+		if (this.editedMarkers.has(portalId)) return;
+		const pos = this.portalWorldPos.get(portalId);
+		if (!pos) return;
+		const offset = PORTAL_ARCH_DISPLAY_SIZE * 0.22;
+		const marker = this.add
+			.text(pos.x + offset, pos.y - offset, "✎", {
+				fontFamily: '"Courier New", monospace',
+				fontSize: "16px",
+				color: toCssColor(PALETTE.gold),
+			})
+			.setOrigin(0.5)
+			.setDepth(5);
+		this.editedMarkers.set(portalId, marker);
+	}
+
+	private removeEditedMarker(portalId: string): void {
+		this.editedMarkers.get(portalId)?.destroy();
+		this.editedMarkers.delete(portalId);
+	}
+
 	private createPlayer(): void {
-		const spawn = this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
+		const spawn = this.save.playerPositions.world ??
+			this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
 		this.playerTextures = {
 			front: ASSET_KEYS.characterIdle,
 			back: this.availability.characterBack
@@ -379,7 +446,11 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	update(_time: number, delta: number): void {
-		if (this.store.getState().mode === "file") {
+		// Covers "file" and the new "editor" mode alike — both mean FileScene (or
+		// its overlay) owns input right now, not just the one this scene used to
+		// know about (in practice this scene is asleep whenever either is true,
+		// via scene.switch, so this is defense-in-depth, not the load-bearing gate).
+		if (this.store.getState().mode !== "world") {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			return;
 		}
@@ -451,11 +522,12 @@ export class WorldScene extends Phaser.Scene {
 			.then((res) => res.json())
 			.then((raw) => {
 				const chunk: WorldChunk = WorldChunkSchema.parse(raw);
-				this.chunkContents.set(cluster.id, {});
+				const files: Record<string, string> = {};
 				for (const [path, file] of Object.entries(chunk.files)) {
-					// biome-ignore lint/style/noNonNullAssertion: just set above, same tick
-					this.chunkContents.get(cluster.id)![path] = file.content;
+					files[path] = file.content;
 				}
+				this.chunkContents.set(cluster.id, files);
+				this.refreshEffectiveChunk(cluster.id);
 
 				const { order, evicted } = touchChunk(
 					this.chunkLoadOrder,
@@ -463,7 +535,10 @@ export class WorldScene extends Phaser.Scene {
 					MAX_LOADED_CHUNKS,
 				);
 				this.chunkLoadOrder = order;
-				for (const evictedId of evicted) this.chunkContents.delete(evictedId);
+				for (const evictedId of evicted) {
+					this.chunkContents.delete(evictedId);
+					this.effectiveChunkContents.delete(evictedId);
+				}
 				this.store.getState().setLoadedChunks(order);
 				this.bus.emit("chunk:loaded", { clusterId: cluster.id });
 			})
@@ -476,6 +551,20 @@ export class WorldScene extends Phaser.Scene {
 			.finally(() => {
 				this.chunkFetchesInFlight.delete(cluster.id);
 			});
+	}
+
+	/** Recomputes `effectiveChunkContents` for one cluster from its pristine chunk plus the current save's overrides — called after a (re)load and whenever an override is saved/reset. No-op if the chunk isn't loaded yet (the next loadChunk() will pick up the then-current save). */
+	private refreshEffectiveChunk(clusterId: string): void {
+		const files = this.chunkContents.get(clusterId);
+		if (!files) return;
+		this.effectiveChunkContents.set(
+			clusterId,
+			applyOverridesToChunk(
+				files,
+				this.portalPathById,
+				this.save.fileOverrides,
+			),
+		);
 	}
 
 	private handlePortalApproach(): void {
@@ -524,7 +613,11 @@ export class WorldScene extends Phaser.Scene {
 		if (!portal || !pos) return;
 
 		const clamped = clampPreviewLines(
-			portal.preview.lines,
+			previewSourceLines(
+				portal.id,
+				portal.preview.lines,
+				this.save.fileOverrides,
+			),
 			PREVIEW_LINE_CHARS,
 			PREVIEW_MAX_LINES,
 		);
@@ -578,8 +671,12 @@ export class WorldScene extends Phaser.Scene {
 
 		const portal = this.portalsById.get(target);
 		if (!portal) return;
+		// effectiveChunkContents (pristine + any saved override), not
+		// chunkContents directly — a portal with a quill edit always opens to
+		// the edited text, here and everywhere else that reads file content.
 		const content =
-			this.chunkContents.get(portal.clusterId)?.[portal.file.path] ?? null;
+			this.effectiveChunkContents.get(portal.clusterId)?.[portal.file.path] ??
+			null;
 
 		this.store.getState().enterPortal(target, content);
 		this.bus.emit("portal:enter", { portalId: target });
@@ -591,6 +688,7 @@ export class WorldScene extends Phaser.Scene {
 		// so returning later is scene.wake(), not a full WorldScene re-init —
 		// camera position and the chunk cache survive the round trip.
 		if (content !== null) {
+			this.persistPlayerPos();
 			this.scene.switch("file", {
 				portalId: target,
 				file: portal.file,
@@ -599,6 +697,14 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 	};
+
+	private persistPlayerPos(): void {
+		this.save = withPlayerPosition(this.save, "world", {
+			x: this.player.body.x,
+			y: this.player.body.y,
+		});
+		persistSave(this.save);
+	}
 
 	// The bonfire at world spawn doubles as the way back — Esc only returns to
 	// the shelf near it, not from anywhere in the world, so it reads as a
@@ -617,9 +723,118 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 
+		this.persistPlayerPos();
 		this.bus.emit("world:return-to-shelf", {
 			shelfUrl: this.returnTo.shelfUrl,
 		});
 		this.scene.start("boot", { shelfUrl: this.returnTo.shelfUrl });
 	}
+
+	// --- Save persistence ---------------------------------------------
+	// WorldScene owns `this.save` for the whole session (it outlives FileScene
+	// switches — see the M4 scene.switch/wake comment above) so it's the
+	// single place fileOverrides/visitedClusters/bagSlots get written, even
+	// though the events that trigger a write (an editor save, a bag grab)
+	// happen while this scene is asleep underneath FileScene. mitt listeners
+	// and zustand subscriptions aren't Phaser scene lifecycle, so they still
+	// fire while asleep.
+
+	private setupSaveListeners(): void {
+		this.bus.on("cluster:enter", this.onClusterEnterForSave);
+		this.bus.on("editor:save", this.onEditorSave);
+		this.bus.on("tool:reset-file-edits", this.onResetFileEdits);
+		this.bus.on("tool:reset-world", this.onResetWorld);
+		this.unsubscribeBagSlots = this.store.subscribe((state, prev) => {
+			if (state.bagSlots === prev.bagSlots) return;
+			this.save = withBagSlots(this.save, state.bagSlots);
+			persistSave(this.save);
+		});
+		this.events.once(
+			Phaser.Scenes.Events.SHUTDOWN,
+			this.teardownSaveListeners,
+			this,
+		);
+	}
+
+	private teardownSaveListeners(): void {
+		this.bus.off("cluster:enter", this.onClusterEnterForSave);
+		this.bus.off("editor:save", this.onEditorSave);
+		this.bus.off("tool:reset-file-edits", this.onResetFileEdits);
+		this.bus.off("tool:reset-world", this.onResetWorld);
+		this.unsubscribeBagSlots?.();
+		this.unsubscribeBagSlots = null;
+	}
+
+	private onClusterEnterForSave = ({
+		clusterId,
+	}: {
+		clusterId: string;
+	}): void => {
+		if (this.save.visitedClusters.includes(clusterId)) return;
+		this.save = withVisitedCluster(this.save, clusterId);
+		persistSave(this.save);
+	};
+
+	private onEditorSave = ({
+		portalId,
+		content,
+	}: {
+		portalId: string;
+		content: string;
+	}): void => {
+		this.save = withFileOverride(
+			this.save,
+			portalId,
+			content,
+			new Date().toISOString(),
+		);
+		persistSave(this.save);
+		const portal = this.portalsById.get(portalId);
+		if (portal) this.refreshEffectiveChunk(portal.clusterId);
+		this.drawEditedMarker(portalId);
+		this.publishPortalIndex();
+	};
+
+	private onResetFileEdits = ({ portalId }: { portalId: string }): void => {
+		this.save = withoutFileOverride(this.save, portalId);
+		persistSave(this.save);
+		this.removeEditedMarker(portalId);
+		this.publishPortalIndex();
+
+		const portal = this.portalsById.get(portalId);
+		if (!portal) return;
+		this.refreshEffectiveChunk(portal.clusterId);
+		if (this.store.getState().activePortalId !== portalId) return;
+
+		// That file is the one currently open (in FileScene or its editor) —
+		// swap the live view back to the pristine chunk content too, not just
+		// the saved state.
+		const pristine =
+			this.chunkContents.get(portal.clusterId)?.[portal.file.path] ?? "";
+		this.store.getState().setActivePortalContent(pristine);
+		this.bus.emit("file:content-reset", { portalId, content: pristine });
+	};
+
+	private onResetWorld = (): void => {
+		const resetPortalIds = Object.keys(this.save.fileOverrides);
+		this.save = emptySaveData(this.worldId);
+		clearSave(this.worldId);
+		for (const clusterId of this.chunkContents.keys())
+			this.refreshEffectiveChunk(clusterId);
+		for (const portalId of resetPortalIds) this.removeEditedMarker(portalId);
+		this.publishPortalIndex();
+
+		const activePortalId = this.store.getState().activePortalId;
+		const portal = activePortalId
+			? this.portalsById.get(activePortalId)
+			: undefined;
+		if (!activePortalId || !portal) return;
+		const pristine =
+			this.chunkContents.get(portal.clusterId)?.[portal.file.path] ?? "";
+		this.store.getState().setActivePortalContent(pristine);
+		this.bus.emit("file:content-reset", {
+			portalId: activePortalId,
+			content: pristine,
+		});
+	};
 }
