@@ -153,6 +153,52 @@ describe("convert (DirSource)", () => {
 		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
 		expect(manifest).toMatchSnapshot();
 	});
+
+	test("spawns a monster of every species for the broken-world fixture (M6 annotators end to end)", async () => {
+		const source = new DirSource(join(FIXTURES, "broken-world"));
+		const bundle = await convert(source, {
+			name: "broken-world",
+			source: "broken-world",
+			now: FIXED_NOW,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(() => validateManifest(manifest)).not.toThrow();
+
+		const speciesFound = new Set(manifest.monsters.map((m) => m.species));
+		expect(speciesFound).toEqual(
+			new Set([
+				"ghost",
+				"rot-sprite",
+				"warded-mimic",
+				"gremlin",
+				"ouroboros",
+				"will-o-wisp",
+			]),
+		);
+
+		// Every portal-attached monster id shows up in its own portal's spawns;
+		// the ouroboros here is a two-file cycle inside one cluster (both b.ts
+		// and c.ts are direct children of the fixture root), so it attaches to
+		// the first file (lexicographic) rather than a cross-cluster path.
+		for (const monster of manifest.monsters) {
+			if (!monster.portalId) continue;
+			const portal = manifest.portals.find((p) => p.id === monster.portalId);
+			expect(portal?.spawns).toContain(monster.id);
+		}
+
+		const ouroboros = manifest.monsters.find((m) => m.species === "ouroboros");
+		expect(ouroboros?.portalId).toBe("src/b.ts");
+		expect(ouroboros?.pathId).toBeUndefined();
+
+		// Snapshotting monsters/portal.spawns only (not the whole manifest) —
+		// clusters/paths/preview text are already covered by the mini-python
+		// snapshot above and would just add noise here.
+		expect(
+			manifest.monsters
+				.map(({ id: _id, ...rest }) => rest)
+				.sort((a, b) => a.error.code.localeCompare(b.error.code)),
+		).toMatchSnapshot();
+	});
 });
 
 describe("convert (ZipSource)", () => {

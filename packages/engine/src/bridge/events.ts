@@ -38,6 +38,10 @@ export type CabnEvents = {
 	"tool:reset-world": Record<string, never>;
 	/** WorldScene -> FileScene, answering tool:reset-file-edits when the reset portal is the one currently open: swap the live view back to pristine content. */
 	"file:content-reset": { portalId: string; content: string };
+	/** A battle's edit resolved the annotation that spawned this monster (FileScene, after re-running its originating annotator on save) -> WorldScene: persist it in the save and drop the monster from every rendered scene (this file's, and its portal's arch-hover sprite). */
+	"monster:defeated": { monsterId: string };
+	/** FileScene, after a save during an encounter that didn't fix the encountered monster -> EditorOverlay: a small transient toast (the editor stays open, the shrug animation plays behind it). */
+	"battle:hint": { message: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

@@ -49,6 +49,7 @@ export function EditorOverlay({
 	const dirtyRef = useRef(dirty);
 	dirtyRef.current = dirty;
 	const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+	const [battleHint, setBattleHint] = useState<string | null>(null);
 
 	const isOpen = mode === "editor";
 
@@ -149,6 +150,25 @@ export function EditorOverlay({
 		return () => bus.off("editor:paste-slot", onPasteSlot);
 	}, [isOpen, bus, pasteSlotById]);
 
+	// FileScene emits this after a save during an encounter that didn't fix the
+	// encountered monster (the shrug/shake animation plays behind this overlay
+	// — the editor stays open so the player can keep trying) — a transient
+	// toast, not tied to `dirty`/save state at all.
+	useEffect(() => {
+		if (!isOpen) return;
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		const onHint = ({ message }: { message: string }) => {
+			clearTimeout(timeout);
+			setBattleHint(message);
+			timeout = setTimeout(() => setBattleHint(null), 2600);
+		};
+		bus.on("battle:hint", onHint);
+		return () => {
+			clearTimeout(timeout);
+			bus.off("battle:hint", onHint);
+		};
+	}, [isOpen, bus]);
+
 	useEffect(() => {
 		if (!isOpen) return;
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -222,6 +242,27 @@ export function EditorOverlay({
 				</span>
 			</div>
 			<div ref={hostRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }} />
+			{battleHint && (
+				<div
+					style={{
+						position: "absolute",
+						bottom: 14,
+						left: "50%",
+						transform: "translateX(-50%)",
+						background: toCssColor(PALETTE.ink),
+						color: toCssColor(PALETTE.parchment),
+						padding: "8px 16px",
+						borderRadius: 8,
+						fontFamily: "Georgia, 'Iowan Old Style', serif",
+						fontSize: 13,
+						maxWidth: "70%",
+						textAlign: "center",
+						boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+					}}
+				>
+					{battleHint}
+				</div>
+			)}
 			{confirmingDiscard && (
 				<div
 					style={{

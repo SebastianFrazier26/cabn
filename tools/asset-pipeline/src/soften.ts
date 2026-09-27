@@ -247,6 +247,18 @@ async function main() {
 	// the glow reads as "faint", not "overexposed".
 	const perNameOptions: Record<string, Partial<SoftenOptions>> = {
 		ghost: { bloomThreshold: 225, bloomStrength: 0.25, bloomRadiusPx: 5 },
+		// Same near-white overexposure risk as ghost — the wisp's hot core is
+		// bone/moonlight white by design (it's meant to glow).
+		will_o_wisp_idle0: {
+			bloomThreshold: 225,
+			bloomStrength: 0.3,
+			bloomRadiusPx: 4,
+		},
+		will_o_wisp_idle1: {
+			bloomThreshold: 225,
+			bloomStrength: 0.3,
+			bloomRadiusPx: 4,
+		},
 	};
 
 	for (const name of [
@@ -255,6 +267,16 @@ async function main() {
 		"character_idle",
 		"character_idle_back",
 		"wizard_tower",
+		"rot_sprite_idle0",
+		"rot_sprite_idle1",
+		"warded_mimic_idle0",
+		"warded_mimic_idle1",
+		"gremlin_idle0",
+		"gremlin_idle1",
+		"ouroboros_idle0",
+		"ouroboros_idle1",
+		"will_o_wisp_idle0",
+		"will_o_wisp_idle1",
 	]) {
 		if (manifest[name]?.locked) continue;
 		jobs.push({

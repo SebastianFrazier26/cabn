@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { gardenerCount } from "./gardeners.js";
 
 interface HarvestEntry {
 	id: string;
@@ -10,11 +11,15 @@ interface HarvestEntry {
 // In-memory only — this is a demo fixture, not a real datastore.
 const harvests: HarvestEntry[] = [];
 
+export function harvestCount(): number {
+	return harvests.length;
+}
+
 export function harvestRoutes(): Router {
 	const router = Router();
 
 	router.get("/", (_req, res) => {
-		res.json(harvests);
+		res.json({ harvests, gardenerCount: gardenerCount() });
 	});
 
 	router.post("/", (req, res) => {

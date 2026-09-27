@@ -35,7 +35,7 @@ export function computeWorldId(meta: {
 		.padStart(8, "0");
 }
 
-export const SAVE_SCHEMA_VERSION = 1;
+export const SAVE_SCHEMA_VERSION = 2;
 
 const FileOverrideSchema = z.strictObject({
 	content: z.string(),
@@ -62,8 +62,26 @@ const SaveDataShapeSchema = z.strictObject({
 	playerPositions: z.record(z.string(), PositionSchema),
 	visitedClusters: z.array(z.string()),
 	bagSlots: z.array(BagSlotSchema),
+	/** Monster ids the player has defeated (M6) — keyed by id, not portal, since a portal can spawn more than one. */
+	defeatedMonsterIds: z.array(z.string()),
 });
 export type SaveData = z.infer<typeof SaveDataShapeSchema>;
+
+// v1 (M5) shipped without monsters at all — a real v1 save exists in the
+// wild the moment this ships, so a version bump needs an actual migration,
+// not just the literal-mismatch "ignore it" path v1 itself got away with.
+const SaveDataV1Schema = z.strictObject({
+	version: z.literal(1),
+	worldId: z.string(),
+	fileOverrides: z.record(z.string(), FileOverrideSchema),
+	playerPositions: z.record(z.string(), PositionSchema),
+	visitedClusters: z.array(z.string()),
+	bagSlots: z.array(BagSlotSchema),
+});
+
+function migrateV1ToV2(v1: z.infer<typeof SaveDataV1Schema>): SaveData {
+	return { ...v1, version: 2, defeatedMonsterIds: [] };
+}
 
 export function emptySaveData(worldId: string): SaveData {
 	return {
@@ -73,26 +91,29 @@ export function emptySaveData(worldId: string): SaveData {
 		playerPositions: {},
 		visitedClusters: [],
 		bagSlots: [],
+		defeatedMonsterIds: [],
 	};
 }
 
 /**
- * `version: z.literal(SAVE_SCHEMA_VERSION)` doubles as the version gate — a
- * save written by an older or newer schema version fails this parse (wrong
- * literal) exactly the same way a structurally corrupt save does, so both
- * collapse into the same "ignore it" path rather than needing a separate
- * migration branch that doesn't exist yet.
+ * Tries the current schema first (the common case); a save written by v1
+ * migrates forward. Anything else (a future version, or genuine corruption)
+ * falls through to the same "ignore it, `console.warn`, hand back an empty
+ * save" path — no migration chain to maintain for versions that were never
+ * real.
  */
 export function parseSaveData(json: unknown): SaveData | null {
-	const result = SaveDataShapeSchema.safeParse(json);
-	if (!result.success) {
-		console.warn(
-			"cabn: ignoring unreadable save data",
-			z.prettifyError(result.error),
-		);
-		return null;
-	}
-	return result.data;
+	const current = SaveDataShapeSchema.safeParse(json);
+	if (current.success) return current.data;
+
+	const v1 = SaveDataV1Schema.safeParse(json);
+	if (v1.success) return migrateV1ToV2(v1.data);
+
+	console.warn(
+		"cabn: ignoring unreadable save data",
+		z.prettifyError(current.error),
+	);
+	return null;
 }
 
 // --- Pure reducer ops -------------------------------------------------
@@ -141,6 +162,17 @@ export function withVisitedCluster(
 ): SaveData {
 	if (save.visitedClusters.includes(clusterId)) return save;
 	return { ...save, visitedClusters: [...save.visitedClusters, clusterId] };
+}
+
+export function withDefeatedMonster(
+	save: SaveData,
+	monsterId: string,
+): SaveData {
+	if (save.defeatedMonsterIds.includes(monsterId)) return save;
+	return {
+		...save,
+		defeatedMonsterIds: [...save.defeatedMonsterIds, monsterId],
+	};
 }
 
 export function withBagSlots(

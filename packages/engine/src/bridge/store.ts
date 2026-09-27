@@ -1,8 +1,18 @@
-import type { FileKind, Position } from "@cabn/world-schema";
+import type { FileKind, Position, Species } from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 
-export type CabnMode = "world" | "file" | "editor";
+export type CabnMode = "world" | "file" | "editor" | "encounter";
+
+/** Flat, per-monster summary WorldScene fills once at create() — same shape/reasoning as PortalSummary below (the HUD counter and FileScene's encounter banner read this instead of holding their own copy of the manifest). */
+export interface MonsterSummary {
+	id: string;
+	species: Species;
+	message: string;
+	tier: number;
+	portalId?: string;
+	pathId?: string;
+}
 
 /** Flat, per-portal summary WorldScene fills once at create() — backs both the spyglass panel and the orb's world-search result list, so neither needs its own copy of the manifest. */
 export interface PortalSummary {
@@ -42,6 +52,11 @@ export interface CabnState {
 	editorInitialLine: number;
 	/** PortalFile.language of the file being edited, if any — picks the editor's lazily-loaded CodeMirror language pack. */
 	editorLanguage: string | undefined;
+	monsters: MonsterSummary[];
+	/** Monster ids the player has defeated this save — WorldScene recomputes this whenever its save data changes, same pattern as PortalSummary.edited. */
+	defeatedMonsterIds: string[];
+	/** Which monster the current encounter banner/quill session is about — only meaningful while `mode === "encounter"` or an editor session that started from one. */
+	activeMonsterId: string | null;
 }
 
 export interface CabnActions {
@@ -64,6 +79,12 @@ export interface CabnActions {
 	}): void;
 	/** Back to `mode: "file"` — the editor only ever opens on top of an already-open file, never standalone. */
 	closeEditor(): void;
+	setMonsters(monsters: MonsterSummary[]): void;
+	setDefeatedMonsterIds(ids: string[]): void;
+	/** Walking into a monster + E — shows the encounter banner (mode: "encounter"); FileScene opens the quill on top of it after a beat, same as any other openEditor() call. */
+	startEncounter(monsterId: string): void;
+	/** Back to `mode: "file"` with no active monster — either the player cancelled the banner (Esc) or a battle just resolved (win or shrug) and its animation finished. */
+	endEncounter(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -82,6 +103,9 @@ const initialState: CabnState = {
 	bagSlots: [],
 	editorInitialLine: 0,
 	editorLanguage: undefined,
+	monsters: [],
+	defeatedMonsterIds: [],
+	activeMonsterId: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -113,5 +137,10 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				editorLanguage: language,
 			}),
 		closeEditor: () => set({ mode: "file" }),
+		setMonsters: (monsters) => set({ monsters }),
+		setDefeatedMonsterIds: (defeatedMonsterIds) => set({ defeatedMonsterIds }),
+		startEncounter: (monsterId) =>
+			set({ mode: "encounter", activeMonsterId: monsterId }),
+		endEncounter: () => set({ mode: "file", activeMonsterId: null }),
 	}));
 }

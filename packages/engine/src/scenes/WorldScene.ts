@@ -1,5 +1,6 @@
 import type {
 	Cluster,
+	Monster,
 	Portal,
 	Position,
 	WorldChunk,
@@ -17,6 +18,7 @@ import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -25,7 +27,12 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
-import { BONFIRE_SCALE, CABINET_SCALE, PORTAL_SCALE } from "../render/scale.js";
+import {
+	BONFIRE_SCALE,
+	CABINET_SCALE,
+	MONSTER_HOVER_SIZE,
+	PORTAL_SCALE,
+} from "../render/scale.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	newlyApproached,
@@ -42,6 +49,7 @@ import {
 	previewSourceLines,
 	type SaveData,
 	withBagSlots,
+	withDefeatedMonster,
 	withFileOverride,
 	withoutFileOverride,
 	withPlayerPosition,
@@ -98,6 +106,12 @@ export class WorldScene extends Phaser.Scene {
 	private portalWorldPos = new Map<string, Position>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private portalPathById = new Map<string, string>();
+	private worldFiles = new Set<string>();
+
+	private monstersById = new Map<string, Monster>();
+	private portalMonsterIds = new Map<string, string[]>();
+	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
 
 	/** clusterId -> path -> file content, exactly as fetched — never mutated, so a "reset this file" always has the pristine original to fall back to. */
 	private chunkContents = new Map<string, Record<string, string>>();
@@ -148,6 +162,15 @@ export class WorldScene extends Phaser.Scene {
 		for (const portal of this.manifest.portals) {
 			this.portalsById.set(portal.id, portal);
 			this.portalPathById.set(portal.id, portal.file.path);
+			this.worldFiles.add(portal.file.path);
+		}
+		for (const monster of this.manifest.monsters) {
+			this.monstersById.set(monster.id, monster);
+			if (monster.portalId) {
+				const list = this.portalMonsterIds.get(monster.portalId) ?? [];
+				list.push(monster.id);
+				this.portalMonsterIds.set(monster.portalId, list);
+			}
 		}
 
 		this.worldId = computeWorldId(this.manifest.meta);
@@ -158,11 +181,13 @@ export class WorldScene extends Phaser.Scene {
 		this.drawClusters();
 		this.drawPortals();
 		this.drawEditedMarkers();
+		this.drawMonsters();
 		this.createPlayer();
 		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
 		this.publishPortalIndex();
+		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
 	}
@@ -365,6 +390,94 @@ export class WorldScene extends Phaser.Scene {
 	private removeEditedMarker(portalId: string): void {
 		this.editedMarkers.get(portalId)?.destroy();
 		this.editedMarkers.delete(portalId);
+	}
+
+	// A monster hovers near its portal's arch (fanned apart if a file has more
+	// than one) or, for a cross-cluster ouroboros, sits at the midpoint of the
+	// WorldPath it's attached to — see run.ts's attachCycle for how that
+	// pathId (`${from}::${to}`, parsed back out below) gets assigned. Neither
+	// kind is walk-into-and-E encounterable here; only FileScene's
+	// portal-attached monsters are (see FileScene's onMonsterEncounterKey doc
+	// comment for why a world-space path monster doesn't fit that flow).
+	private drawMonsters(): void {
+		for (const monster of this.manifest.monsters) {
+			if (this.save.defeatedMonsterIds.includes(monster.id)) continue;
+			if (monster.portalId) this.drawPortalMonster(monster);
+			else if (monster.pathId) this.drawPathMonster(monster);
+		}
+	}
+
+	private drawPortalMonster(monster: Monster): void {
+		const portalId = monster.portalId;
+		if (!portalId) return;
+		const pos = this.portalWorldPos.get(portalId);
+		if (!pos) return;
+
+		const siblings = this.portalMonsterIds.get(portalId) ?? [];
+		const index = Math.max(siblings.indexOf(monster.id), 0);
+		const angle = -Math.PI / 2 + index * 0.7;
+		const radius = PORTAL_ARCH_DISPLAY_SIZE * 0.55;
+		const x = pos.x + Math.cos(angle) * radius;
+		const y =
+			pos.y + Math.sin(angle) * radius - PORTAL_ARCH_DISPLAY_SIZE * 0.25;
+
+		const sprite = createMonsterSprite(
+			this,
+			x,
+			y,
+			monster.species,
+			MONSTER_HOVER_SIZE[monster.species] ?? 32,
+		);
+		sprite.setDepth(4);
+		if (monster.species === "will-o-wisp") sprite.setAlpha(0.7); // wisps are cosmetic and meant to read as faint, not a real threat
+		this.monsterSprites.set(monster.id, sprite);
+		this.monsterBobTweens.set(monster.id, addHoverBob(this, sprite));
+	}
+
+	private drawPathMonster(monster: Monster): void {
+		const pathId = monster.pathId;
+		if (!pathId) return;
+		const [fromId, toId] = pathId.split("::");
+		const from = fromId ? this.clustersById.get(fromId) : undefined;
+		const to = toId ? this.clustersById.get(toId) : undefined;
+		if (!from || !to) return;
+
+		const x = (from.pos.x + to.pos.x) / 2;
+		const y = (from.pos.y + to.pos.y) / 2;
+		const sprite = createMonsterSprite(
+			this,
+			x,
+			y,
+			monster.species,
+			MONSTER_HOVER_SIZE[monster.species] ?? 48,
+		);
+		sprite.setDepth(4);
+		this.monsterSprites.set(monster.id, sprite);
+		this.monsterBobTweens.set(monster.id, addHoverBob(this, sprite, 6));
+	}
+
+	private removeMonsterSprite(monsterId: string): void {
+		this.monsterBobTweens.get(monsterId)?.stop();
+		this.monsterBobTweens.delete(monsterId);
+		this.monsterSprites.get(monsterId)?.destroy();
+		this.monsterSprites.delete(monsterId);
+	}
+
+	// The HUD counter and FileScene's encounter banner both read monsters off
+	// the store rather than holding their own copy of the manifest, same
+	// reasoning as publishPortalIndex above.
+	private publishMonsterIndex(): void {
+		this.store.getState().setMonsters(
+			this.manifest.monsters.map((m) => ({
+				id: m.id,
+				species: m.species,
+				message: m.error.message,
+				tier: m.tier,
+				...(m.portalId !== undefined ? { portalId: m.portalId } : {}),
+				...(m.pathId !== undefined ? { pathId: m.pathId } : {}),
+			})),
+		);
+		this.store.getState().setDefeatedMonsterIds(this.save.defeatedMonsterIds);
 	}
 
 	private createPlayer(): void {
@@ -689,11 +802,19 @@ export class WorldScene extends Phaser.Scene {
 		// camera position and the chunk cache survive the round trip.
 		if (content !== null) {
 			this.persistPlayerPos();
+			const monsters = (this.portalMonsterIds.get(target) ?? [])
+				.map((id) => this.monstersById.get(id))
+				.filter(
+					(m): m is Monster =>
+						m !== undefined && !this.save.defeatedMonsterIds.includes(m.id),
+				);
 			this.scene.switch("file", {
 				portalId: target,
 				file: portal.file,
 				content,
 				returnSceneKey: "world",
+				monsters,
+				worldFiles: [...this.worldFiles],
 			});
 		}
 	};
@@ -744,6 +865,7 @@ export class WorldScene extends Phaser.Scene {
 		this.bus.on("editor:save", this.onEditorSave);
 		this.bus.on("tool:reset-file-edits", this.onResetFileEdits);
 		this.bus.on("tool:reset-world", this.onResetWorld);
+		this.bus.on("monster:defeated", this.onMonsterDefeated);
 		this.unsubscribeBagSlots = this.store.subscribe((state, prev) => {
 			if (state.bagSlots === prev.bagSlots) return;
 			this.save = withBagSlots(this.save, state.bagSlots);
@@ -761,6 +883,7 @@ export class WorldScene extends Phaser.Scene {
 		this.bus.off("editor:save", this.onEditorSave);
 		this.bus.off("tool:reset-file-edits", this.onResetFileEdits);
 		this.bus.off("tool:reset-world", this.onResetWorld);
+		this.bus.off("monster:defeated", this.onMonsterDefeated);
 		this.unsubscribeBagSlots?.();
 		this.unsubscribeBagSlots = null;
 	}
@@ -815,14 +938,31 @@ export class WorldScene extends Phaser.Scene {
 		this.bus.emit("file:content-reset", { portalId, content: pristine });
 	};
 
+	/** FileScene resolved a battle in this monster's favor (its originating annotator no longer flags anything with the same rule) — drop it from the save and every scene that renders it. */
+	private onMonsterDefeated = ({ monsterId }: { monsterId: string }): void => {
+		if (this.save.defeatedMonsterIds.includes(monsterId)) return;
+		this.save = withDefeatedMonster(this.save, monsterId);
+		persistSave(this.save);
+		this.removeMonsterSprite(monsterId);
+		this.publishMonsterIndex();
+	};
+
 	private onResetWorld = (): void => {
 		const resetPortalIds = Object.keys(this.save.fileOverrides);
+		const revivedMonsterIds = [...this.save.defeatedMonsterIds];
 		this.save = emptySaveData(this.worldId);
 		clearSave(this.worldId);
 		for (const clusterId of this.chunkContents.keys())
 			this.refreshEffectiveChunk(clusterId);
 		for (const portalId of resetPortalIds) this.removeEditedMarker(portalId);
+		for (const monsterId of revivedMonsterIds) {
+			const monster = this.monstersById.get(monsterId);
+			if (!monster) continue;
+			if (monster.portalId) this.drawPortalMonster(monster);
+			else if (monster.pathId) this.drawPathMonster(monster);
+		}
 		this.publishPortalIndex();
+		this.publishMonsterIndex();
 
 		const activePortalId = this.store.getState().activePortalId;
 		const portal = activePortalId

@@ -7,7 +7,15 @@ import { type PixelMap, renderPixelMap } from "./pixelmap.js";
 import { characterIdle } from "./pixelmaps/character-idle.js";
 import { characterIdleBack } from "./pixelmaps/character-idle-back.js";
 import { ghost } from "./pixelmaps/ghost.js";
+import { gremlinIdle0, gremlinIdle1 } from "./pixelmaps/gremlin.js";
+import { ouroborosIdle0, ouroborosIdle1 } from "./pixelmaps/ouroboros.js";
 import { portalArch } from "./pixelmaps/portal-arch.js";
+import { rotSpriteIdle0, rotSpriteIdle1 } from "./pixelmaps/rot-sprite.js";
+import {
+	wardedMimicIdle0,
+	wardedMimicIdle1,
+} from "./pixelmaps/warded-mimic.js";
+import { willOWispIdle0, willOWispIdle1 } from "./pixelmaps/will-o-wisp.js";
 import { wizardTower } from "./pixelmaps/wizard-tower.js";
 
 const ALL_PIXEL_MAPS: PixelMap[] = [
@@ -16,6 +24,17 @@ const ALL_PIXEL_MAPS: PixelMap[] = [
 	characterIdle,
 	characterIdleBack,
 	wizardTower,
+	// M6 monster species (ghost already existed above) — two idle frames each.
+	rotSpriteIdle0,
+	rotSpriteIdle1,
+	wardedMimicIdle0,
+	wardedMimicIdle1,
+	gremlinIdle0,
+	gremlinIdle1,
+	ouroborosIdle0,
+	ouroborosIdle1,
+	willOWispIdle0,
+	willOWispIdle1,
 ];
 const UPSCALE_FACTOR = 8;
 
