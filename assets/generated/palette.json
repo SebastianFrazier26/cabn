@@ -305,9 +305,27 @@
 				"b": 214
 			},
 			"curated": true
+		},
+		{
+			"hex": "#c8281e",
+			"rgb": {
+				"r": 200,
+				"g": 40,
+				"b": 30
+			},
+			"curated": true
+		},
+		{
+			"hex": "#bee6cd",
+			"rgb": {
+				"r": 190,
+				"g": 230,
+				"b": 205
+			},
+			"curated": true
 		}
 	],
-	"generatedAt": "2026-09-21T00:28:59.495Z",
+	"generatedAt": "2026-09-25T03:53:44.597Z",
 	"sources": [
 		"cabin.png",
 		"cabinet.png",

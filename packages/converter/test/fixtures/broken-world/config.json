@@ -1,0 +1,6 @@
+{
+	"name": "broken-world",
+	"limits": {
+		"maxItems": 10,
+	}
+}

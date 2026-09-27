@@ -1,4 +1,4 @@
-import type { PortalFile } from "@cabn/world-schema";
+import type { Monster, PortalFile } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import { ASSET_KEYS } from "../assetPaths.js";
@@ -6,6 +6,7 @@ import type { CabnBus } from "../bridge/events.js";
 import type { CabnMode, CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -14,7 +15,8 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
-import { PORTAL_SCALE } from "../render/scale.js";
+import { MONSTER_FILE_SIZE, PORTAL_SCALE } from "../render/scale.js";
+import { checkMonsterFixed } from "../systems/battle.js";
 import {
 	enchantMdLine,
 	type MdSegment,
@@ -40,6 +42,10 @@ export interface FileSceneData {
 	content: string;
 	/** Which scene key to wake/resume once this file closes (always "world" for now, named explicitly so a future shelf-level file view isn't a hardcoded string away). */
 	returnSceneKey: string;
+	/** This portal's non-defeated monsters, handed down by WorldScene (which owns the save's defeatedMonsterIds) — never all of manifest.monsters, only this file's. */
+	monsters: Monster[];
+	/** Every file path in the world — brokenImport's re-check needs it, same as convert()-time (see annotate/types.ts's AnnotateContext). */
+	worldFiles: string[];
 }
 
 // A vertical parchment scroll, not a floating text panel: the player walks
@@ -59,6 +65,14 @@ const EXIT_MARGIN = 160;
 const EXIT_ENTER_RADIUS = 70;
 const BASE_FONT_SIZE = 13;
 const CODE_BOX_PAD_X = 3;
+
+// A monster stands just left of the text, between the gutter and the path —
+// close enough to the path that walking down it reads as "walking past" each
+// one in turn.
+const MONSTER_X = PATH_X + 50;
+const MONSTER_APPROACH_RADIUS = 90;
+const MONSTER_ENTER_RADIUS = 42;
+const ENCOUNTER_BANNER_MS = 1400;
 
 function headingFontSize(level: number): number {
 	if (level <= 1) return 20;
@@ -124,6 +138,16 @@ export class FileScene extends Phaser.Scene {
 	private highlightGraphic: Phaser.GameObjects.Graphics | null = null;
 	private unsubscribeMode: (() => void) | null = null;
 
+	private monsters: Monster[] = [];
+	private worldFiles = new Set<string>();
+	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
+	private monstersInRange = new Set<string>();
+	/** The monster the currently-open encounter banner/quill session is about, if any — set by walking into a monster and pressing E, cleared once the encounter resolves (fixed or cancelled). */
+	private encounterMonsterId: string | null = null;
+	private monsterTooltip!: Phaser.GameObjects.Container;
+	private monsterTooltipText!: Phaser.GameObjects.Text;
+
 	private keys!: {
 		enter: Phaser.Input.Keyboard.Key;
 		e: Phaser.Input.Keyboard.Key;
@@ -146,12 +170,20 @@ export class FileScene extends Phaser.Scene {
 		this.currentWindow = { start: 0, end: 0 };
 		this.selection = null;
 		this.highlightGraphic = null;
+		this.monsters = [...data.monsters];
+		this.worldFiles = new Set(data.worldFiles);
+		this.monsterSprites = new Map();
+		this.monsterBobTweens = new Map();
+		this.monstersInRange = new Set();
+		this.encounterMonsterId = null;
 	}
 
 	create(): void {
 		this.drawParchmentBacking();
 		this.drawPath();
 		this.drawExitPortal();
+		this.buildMonsterSprites();
+		this.createMonsterTooltip();
 		this.createPlayer();
 		this.setupInput();
 		this.setupCamera();
@@ -167,6 +199,12 @@ export class FileScene extends Phaser.Scene {
 		// thing that reacts uniformly no matter which code path changed it.
 		this.unsubscribeMode = this.store.subscribe((state, prev) => {
 			if (state.mode !== prev.mode) this.syncKeyboardForMode(state.mode);
+			// The player can leave "editor"/"encounter" without a fix (Esc,
+			// discard) — either way, once we're back in plain "file" mode no
+			// encounter session is in progress anymore.
+			if (state.mode === "file" && prev.mode !== "file") {
+				this.encounterMonsterId = null;
+			}
 		});
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.teardown, this);
 	}
@@ -248,6 +286,242 @@ export class FileScene extends Phaser.Scene {
 		this.player = createPlayer(this, { x: PATH_X, y: 0 }, this.playerTextures);
 	}
 
+	// --- Monsters / battle loop -----------------------------------------
+
+	private monsterPos(monster: Monster): { x: number; y: number } {
+		return { x: MONSTER_X, y: (monster.error.loc?.line ?? 0) * LINE_HEIGHT };
+	}
+
+	private buildMonsterSprites(): void {
+		for (const monster of this.monsters) {
+			const pos = this.monsterPos(monster);
+			const sprite = createMonsterSprite(
+				this,
+				pos.x,
+				pos.y,
+				monster.species,
+				MONSTER_FILE_SIZE[monster.species] ?? 20,
+			);
+			sprite.setDepth(4);
+			// Wisps are cosmetic (see onEditorSave/onBagUse-adjacent doc below) —
+			// faint like their WorldScene counterpart, never part of an encounter.
+			if (monster.species === "will-o-wisp") sprite.setAlpha(0.7);
+			this.monsterSprites.set(monster.id, sprite);
+			this.monsterBobTweens.set(
+				monster.id,
+				addHoverBob(this, sprite, monster.species === "will-o-wisp" ? 6 : 3),
+			);
+		}
+	}
+
+	private createMonsterTooltip(): void {
+		const width = 220;
+		const height = 46;
+		const bg = this.add.graphics();
+		bg.fillStyle(PALETTE.parchment, 0.96);
+		bg.lineStyle(1.5, PALETTE.ink, 0.8);
+		bg.fillRoundedRect(0, 0, width, height, 6);
+		bg.strokeRoundedRect(0, 0, width, height, 6);
+		this.monsterTooltipText = this.add.text(8, 6, "", {
+			fontFamily: '"Courier New", monospace',
+			fontSize: "10px",
+			color: toCssColor(PALETTE.ink),
+			wordWrap: { width: width - 16 },
+		});
+		this.monsterTooltip = this.add
+			.container(0, 0, [bg, this.monsterTooltipText])
+			.setDepth(6)
+			.setVisible(false);
+	}
+
+	/** A speech-bubble tooltip near the closest in-range monster, same "closest one wins" rule as WorldScene's arch preview. Not an encounter — walking away just hides it again. */
+	private handleMonsterApproach(): void {
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		let closest: { monster: Monster; dist: number } | null = null;
+		this.monstersInRange = new Set();
+
+		for (const monster of this.monsters) {
+			const pos = this.monsterPos(monster);
+			const dist = Phaser.Math.Distance.Between(
+				playerPos.x,
+				playerPos.y,
+				pos.x,
+				pos.y,
+			);
+			if (dist > MONSTER_APPROACH_RADIUS) continue;
+			this.monstersInRange.add(monster.id);
+			if (!closest || dist < closest.dist) closest = { monster, dist };
+		}
+
+		if (!closest) {
+			this.monsterTooltip.setVisible(false);
+			return;
+		}
+		const pos = this.monsterPos(closest.monster);
+		this.monsterTooltipText.setText(closest.monster.error.message);
+		this.monsterTooltip.setPosition(pos.x + 14, pos.y - 30);
+		this.monsterTooltip.setVisible(true);
+	}
+
+	/** E near a monster (not while selecting bag text) starts an encounter: a short banner, then the quill opens at the monster's loc. Wisps are excluded outright — they're cosmetic, never encounterable (see class doc above the field). */
+	private handleMonsterEncounterKey(activationPressed: boolean): void {
+		if (!activationPressed) return;
+		if (this.selection !== null) return;
+
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		let nearest: { monster: Monster; dist: number } | null = null;
+		for (const monster of this.monsters) {
+			if (monster.species === "will-o-wisp") continue; // cosmetic, never encounterable
+			const pos = this.monsterPos(monster);
+			const dist = Phaser.Math.Distance.Between(
+				playerPos.x,
+				playerPos.y,
+				pos.x,
+				pos.y,
+			);
+			if (dist <= MONSTER_ENTER_RADIUS && (!nearest || dist < nearest.dist)) {
+				nearest = { monster, dist };
+			}
+		}
+		if (nearest) this.startEncounterFor(nearest.monster);
+	}
+
+	private startEncounterFor(monster: Monster): void {
+		this.encounterMonsterId = monster.id;
+		this.store.getState().startEncounter(monster.id);
+		this.time.delayedCall(ENCOUNTER_BANNER_MS, () => {
+			const state = this.store.getState();
+			if (state.mode !== "encounter" || state.activeMonsterId !== monster.id) {
+				return; // the player already cancelled (Esc) — see update()'s encounter-mode branch
+			}
+			state.openEditor({
+				initialLine: monster.error.loc?.line ?? this.nearestLineToPlayer(),
+				language: this.file.language,
+			});
+		});
+	}
+
+	/**
+	 * Every monster currently shown in this file gets re-checked against the
+	 * saved content, not just the one being fought — "the engine re-runs [the
+	 * annotators] after edits" (see the M6 CHANGELOG) applies to the whole
+	 * file, which is also how a wisp quietly vanishes on save even though it
+	 * was never encountered (see todoMarker.ts/annotate's WispNote — always
+	 * tier 0, cosmetic).
+	 */
+	private resolveMonstersAfterSave(content: string): void {
+		const stillPresent: Monster[] = [];
+		let encounterFixed = false;
+
+		for (const monster of this.monsters) {
+			const fixed = checkMonsterFixed(
+				{ code: monster.error.code, rule: monster.error.rule },
+				this.file,
+				content,
+				this.worldFiles,
+			);
+			if (fixed) {
+				this.defeatMonster(monster);
+				if (monster.id === this.encounterMonsterId) encounterFixed = true;
+			} else {
+				stillPresent.push(monster);
+			}
+		}
+		this.monsters = stillPresent;
+
+		if (!this.encounterMonsterId) return;
+		if (encounterFixed) {
+			this.store.getState().endEncounter();
+			this.encounterMonsterId = null;
+			return;
+		}
+		const stillEncountered = stillPresent.find(
+			(m) => m.id === this.encounterMonsterId,
+		);
+		if (stillEncountered) {
+			this.shrugMonster(stillEncountered);
+			this.bus.emit("battle:hint", {
+				message: "Still something wrong here — check the error and try again.",
+			});
+		}
+	}
+
+	private defeatMonster(monster: Monster): void {
+		const sprite = this.monsterSprites.get(monster.id);
+		this.monsterBobTweens.get(monster.id)?.stop();
+		this.monsterBobTweens.delete(monster.id);
+		this.monstersInRange.delete(monster.id);
+		this.monsterSprites.delete(monster.id);
+
+		if (sprite) {
+			const isActiveEncounter = monster.id === this.encounterMonsterId;
+			this.spawnVictorySparkles(sprite.x, sprite.y);
+			if (isActiveEncounter) this.showVictoryText(sprite.x, sprite.y);
+			this.tweens.add({
+				targets: sprite,
+				alpha: 0,
+				scaleX: sprite.scaleX * 1.5,
+				scaleY: sprite.scaleY * 1.5,
+				duration: 500,
+				ease: "Cubic.easeOut",
+				onComplete: () => sprite.destroy(),
+			});
+		}
+		this.bus.emit("monster:defeated", { monsterId: monster.id });
+	}
+
+	private spawnVictorySparkles(x: number, y: number): void {
+		for (let i = 0; i < 6; i++) {
+			const angle = (Phaser.Math.PI2 * i) / 6;
+			const spark = this.add.circle(x, y, 2, PALETTE.gold).setDepth(7);
+			this.tweens.add({
+				targets: spark,
+				x: x + Math.cos(angle) * 22,
+				y: y + Math.sin(angle) * 22,
+				alpha: 0,
+				duration: 450,
+				ease: "Cubic.easeOut",
+				onComplete: () => spark.destroy(),
+			});
+		}
+	}
+
+	private showVictoryText(x: number, y: number): void {
+		const text = this.add
+			.text(x, y, "Fixed!", {
+				fontFamily: '"Courier New", monospace',
+				fontSize: "14px",
+				fontStyle: "bold",
+				color: toCssColor(PALETTE.gold),
+				stroke: toCssColor(PALETTE.ink),
+				strokeThickness: 3,
+			})
+			.setOrigin(0.5)
+			.setDepth(7);
+		this.tweens.add({
+			targets: text,
+			y: y - 30,
+			alpha: 0,
+			duration: 1100,
+			ease: "Cubic.easeOut",
+			onComplete: () => text.destroy(),
+		});
+	}
+
+	private shrugMonster(monster: Monster): void {
+		const sprite = this.monsterSprites.get(monster.id);
+		if (!sprite) return;
+		const baseX = sprite.x;
+		this.tweens.add({
+			targets: sprite,
+			x: baseX + 6,
+			duration: 55,
+			yoyo: true,
+			repeat: 5,
+			onComplete: () => sprite.setX(baseX),
+		});
+	}
+
 	private setupInput(): void {
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("FileScene requires keyboard input");
@@ -279,8 +553,19 @@ export class FileScene extends Phaser.Scene {
 	}
 
 	update(_time: number, delta: number): void {
-		if (this.store.getState().mode === "editor") {
+		const mode = this.store.getState().mode;
+		if (mode === "editor") {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			return;
+		}
+		if (mode === "encounter") {
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			// The only input the banner listens for — everything else (WASD,
+			// bag/quill hotkeys) stays inert until it resolves into either the
+			// editor or back to plain "file" mode.
+			if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
+				this.store.getState().endEncounter();
+			}
 			return;
 		}
 		if (this.selection === null) {
@@ -294,7 +579,12 @@ export class FileScene extends Phaser.Scene {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			this.handleSelectionExtend();
 		}
-		this.handleExit();
+		const activationPressed =
+			Phaser.Input.Keyboard.JustDown(this.keys.enter) ||
+			Phaser.Input.Keyboard.JustDown(this.keys.e);
+		this.handleExit(activationPressed);
+		this.handleMonsterApproach();
+		this.handleMonsterEncounterKey(activationPressed);
 		this.renderVisibleWindow();
 	}
 
@@ -367,6 +657,7 @@ export class FileScene extends Phaser.Scene {
 		if (portalId !== this.portalId) return;
 		this.applyLiveContent(content);
 		this.store.getState().setActivePortalContent(content);
+		this.resolveMonstersAfterSave(content);
 	};
 
 	/** WorldScene answering a "reset this file's edits" request for the file we're currently showing — swap back to the pristine content it hands us. */
@@ -424,7 +715,14 @@ export class FileScene extends Phaser.Scene {
 		});
 	};
 
-	private handleExit(): void {
+	/**
+	 * `activationPressed` (Enter/E) is read once in update() and threaded
+	 * through here and handleMonsterEncounterKey() rather than each calling
+	 * `Phaser.Input.Keyboard.JustDown` again — JustDown() clears the key's
+	 * internal "just pressed" flag on the first read each frame, so a second
+	 * independent read later in the same frame would always see it as false.
+	 */
+	private handleExit(activationPressed: boolean): void {
 		if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
 			if (this.selection !== null) {
 				this.selection = null;
@@ -434,10 +732,7 @@ export class FileScene extends Phaser.Scene {
 			return;
 		}
 
-		const pressed =
-			Phaser.Input.Keyboard.JustDown(this.keys.enter) ||
-			Phaser.Input.Keyboard.JustDown(this.keys.e);
-		if (!pressed) return;
+		if (!activationPressed) return;
 		const pos = { x: this.player.body.x, y: this.player.body.y };
 		if (isWithinRadius(pos, this.exitPortalPos, EXIT_ENTER_RADIUS))
 			this.exitToWorld();

@@ -16,5 +16,35 @@
 	},
 	"bonfire": {
 		"locked": false
+	},
+	"rot_sprite_idle0": {
+		"locked": false
+	},
+	"rot_sprite_idle1": {
+		"locked": false
+	},
+	"warded_mimic_idle0": {
+		"locked": false
+	},
+	"warded_mimic_idle1": {
+		"locked": false
+	},
+	"gremlin_idle0": {
+		"locked": false
+	},
+	"gremlin_idle1": {
+		"locked": false
+	},
+	"ouroboros_idle0": {
+		"locked": false
+	},
+	"ouroboros_idle1": {
+		"locked": false
+	},
+	"will_o_wisp_idle0": {
+		"locked": false
+	},
+	"will_o_wisp_idle1": {
+		"locked": false
 	}
 }

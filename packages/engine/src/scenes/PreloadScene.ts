@@ -1,9 +1,14 @@
 import type { ShelfManifest, WorldManifest } from "@cabn/world-schema";
 import Phaser from "phaser";
 import {
+	ANIMATED_MONSTER_SPECIES,
 	ASSET_KEYS,
 	ASSET_PATHS,
 	BONFIRE_FRAME_COUNT,
+	MONSTER_GHOST_KEY,
+	MONSTER_GHOST_PATH,
+	monsterFrameKey,
+	monsterFramePath,
 	OPTIONAL_ASSET_KEYS,
 	OPTIONAL_ASSET_PATHS,
 	PORTAL_ARCH_FRAME_COUNT,
@@ -20,6 +25,10 @@ export type PreloadSceneData =
 
 export const PORTAL_IDLE_ANIM = "portal-idle";
 export const BONFIRE_IDLE_ANIM = "bonfire-idle";
+
+export function monsterIdleAnim(species: string): string {
+	return `monster-idle-${species}`;
+}
 
 /** Which of the not-yet-shipped art assets actually loaded this run — see assetPaths.ts. */
 export interface AssetAvailability {
@@ -78,6 +87,18 @@ export class PreloadScene extends Phaser.Scene {
 				OPTIONAL_ASSET_PATHS.bonfireFrame(i),
 			);
 		}
+
+		this.load.image(MONSTER_GHOST_KEY, MONSTER_GHOST_PATH);
+		for (const species of ANIMATED_MONSTER_SPECIES) {
+			this.load.image(
+				monsterFrameKey(species, 0),
+				monsterFramePath(species, 0),
+			);
+			this.load.image(
+				monsterFrameKey(species, 1),
+				monsterFramePath(species, 1),
+			);
+		}
 	}
 
 	create(): void {
@@ -104,6 +125,18 @@ export class PreloadScene extends Phaser.Scene {
 					key: OPTIONAL_ASSET_KEYS.bonfireFrame(i),
 				})),
 				frameRate: 6,
+				repeat: -1,
+			});
+		}
+
+		for (const species of ANIMATED_MONSTER_SPECIES) {
+			this.anims.create({
+				key: monsterIdleAnim(species),
+				frames: [
+					{ key: monsterFrameKey(species, 0) },
+					{ key: monsterFrameKey(species, 1) },
+				],
+				frameRate: 3,
 				repeat: -1,
 			});
 		}

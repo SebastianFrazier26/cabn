@@ -10,6 +10,7 @@ import {
 	WorldChunkSchema,
 	type WorldManifest,
 } from "@cabn/world-schema";
+import { type AnnotateFileInput, annotateWorld } from "./annotate/run.js";
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { fnv1a } from "./hash.js";
@@ -68,6 +69,7 @@ export async function convert(
 
 	const searchDocs: SearchDoc[] = [];
 	const portals: WorldManifest["portals"] = [];
+	const annotateInputs: AnnotateFileInput[] = [];
 
 	for (const file of walked.files) {
 		const clusterId = fileClusterId.get(file.path);
@@ -84,20 +86,25 @@ export async function convert(
 				? buildPreview(text)
 				: { lines: [], truncated: file.bytes > 0 };
 
+		const portalFile = {
+			path: file.path,
+			name,
+			kind: info.kind,
+			language: info.language,
+			bytes: file.bytes,
+			lines,
+			binary: info.binary,
+		};
 		portals.push({
 			id: file.path,
 			clusterId,
-			file: {
-				path: file.path,
-				name,
-				kind: info.kind,
-				language: info.language,
-				bytes: file.bytes,
-				lines,
-				binary: info.binary,
-			},
+			file: portalFile,
 			preview,
 			spawns: [],
+		});
+		annotateInputs.push({
+			file: portalFile,
+			content: text !== undefined && !info.binary ? text : undefined,
 		});
 
 		if (text !== undefined && !info.binary) {
@@ -106,6 +113,16 @@ export async function convert(
 				?.set(file.path, { content: text, encoding: "utf8" });
 			searchDocs.push({ id: file.path, path: file.path, name, content: text });
 		}
+	}
+
+	const { monsters, spawnsByPortalId } = annotateWorld(
+		annotateInputs,
+		fileClusterId,
+		paths,
+	);
+	for (const portal of portals) {
+		const spawns = spawnsByPortalId.get(portal.id);
+		if (spawns) portal.spawns = spawns;
 	}
 
 	const manifest: WorldManifest = {
@@ -125,7 +142,7 @@ export async function convert(
 		clusters,
 		paths,
 		portals,
-		monsters: [],
+		monsters,
 	};
 	validateManifest(manifest);
 

@@ -5,6 +5,7 @@ Welcome back. Quick links:
 - [[daily/2026-09-19]] — today
 - [[projects/cabn-notes]] — the shelf-hierarchy redesign notes
 - [[recipes/sourdough]] — starter's due for a feed
+- [[recipes/soup-notes]] — never got around to writing this one
 
 ## Open threads
 

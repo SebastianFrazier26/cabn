@@ -40,6 +40,12 @@ const CURATED_COLORS: { name: string; rgb: RGB }[] = [
 	// Staff gem: no purple exists anywhere in the extracted set either.
 	{ name: "deep plum", rgb: { r: 88, g: 51, b: 107 } },
 	{ name: "bright amethyst", rgb: { r: 178, g: 124, b: 214 } },
+	// M6 monster sprites: gremlin/ouroboros eyes want a hot red the warm
+	// browns/oranges can't give (they're all too desaturated), and
+	// will-o-wisp wants a pale blue-green the existing pale-ghost-blue reads
+	// too purely blue for on its own.
+	{ name: "ember red", rgb: { r: 200, g: 40, b: 30 } },
+	{ name: "wisp pale green", rgb: { r: 190, g: 230, b: 205 } },
 ];
 
 function bucket(value: number): number {
