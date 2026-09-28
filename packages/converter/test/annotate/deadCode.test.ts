@@ -188,6 +188,39 @@ describe("deadCode (skeleton) — Python", () => {
 	});
 });
 
+describe("deadCode (skeleton) — word-count use test", () => {
+	test("a module path that spells the bound name doesn't count as a use", () => {
+		expect(rules("m.py", "from datetime import datetime\n")).toEqual([
+			"unused-import:datetime",
+		]);
+		expect(
+			rules("a.js", 'import fs from "fs";\nexport const x = 1;\n'),
+		).toEqual(["unused-import:fs"]);
+	});
+
+	test("any other mention (comment, string, property) counts, so it can only miss", () => {
+		expect(
+			rules("a.js", 'import { fs } from "./x";\n// fs is great\n'),
+		).toEqual([]);
+		expect(
+			rules("a.js", 'import { k } from "./x";\nexport const o = { k: 1 };\n'),
+		).toEqual([]);
+	});
+
+	test("TS files with grammar-gap error nodes still get a sound answer", () => {
+		const content = [
+			'import { used, unused } from "./x";',
+			"export function f(): void {",
+			"  try { used(); } catch (e: any) {}",
+			"  let later!: number;",
+			"  const { a = 1 } = {} as { a?: number };",
+			"  return void (later + a);",
+			"}",
+		].join("\n");
+		expect(rules("a.ts", content)).toEqual(["unused-import:unused"]);
+	});
+});
+
 describe("deadCode (skeleton) — scope", () => {
 	test("CSS/HTML and unsupported languages get nothing", () => {
 		expect(run("a.css", "a { color: red }\n")).toEqual([]);

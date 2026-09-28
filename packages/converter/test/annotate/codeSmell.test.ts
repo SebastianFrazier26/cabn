@@ -148,6 +148,12 @@ describe("codeSmell (bramble) — debug leftovers", () => {
 				"const args = process.argv.slice(2);\nconsole.log(args);\n",
 			),
 		).toEqual([]);
+		expect(
+			run(
+				"src/index.ts",
+				"app.listen(4000, () => {\n  console.log('listening');\n});\n",
+			),
+		).toEqual([]);
 		expect(run("scripts/seed.js", "debugger;\n")).toHaveLength(1);
 
 		expect(

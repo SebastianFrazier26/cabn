@@ -10,8 +10,7 @@ const run = (path: string, content: string) =>
 describe("syntaxError (imp)", () => {
 	test.each([
 		["a.js", "const a = ;\nconst b = 2;\n", 0],
-		["a.ts", "const x: number = 1 +;\nlet y = 2\n", 0],
-		["a.tsx", "export const C = () => <div>{1 +}</div>;\n", 0],
+		["a.jsx", "export const C = () => <div>{1 +}</div>;\n", 0],
 		["a.py", "import os\n\ndef f()\n    return os.sep\n", 2],
 		["a.py", "x = = 2\n", 0],
 		["a.css", "a { color red; }\n", 0],
@@ -28,13 +27,39 @@ describe("syntaxError (imp)", () => {
 		expect(results[0]?.rule).toMatch(/^syntax:[a-z]+:[0-9a-f]{8}$/);
 	});
 
+	test("TypeScript is out of scope: the grammar can't tell its gaps from real errors", () => {
+		expect(run("a.ts", "const x: number = 1 +;\n")).toEqual([]);
+		expect(run("a.tsx", "export const C = () => <div>{1 +}</div>;\n")).toEqual(
+			[],
+		);
+		for (const valid of [
+			"try {} catch (e: any) {}\n",
+			"let entries!: [string, number][];\n",
+			"const ok = xs.filter((c): c is Node => c !== undefined);\n",
+			'export { configure, type Config } from "./m.js";\n',
+			'type PdfJs = typeof import("pdfjs-dist");\n',
+		]) {
+			expect(run("gap.ts", valid)).toEqual([]);
+		}
+	});
+
 	test.each([
+		// Known Lezer grammar gaps (syntaxTree.ts's GAP_* lists): valid code the
+		// pinned grammar still marks with error nodes.
 		[
-			"ok.ts",
-			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
-			"interface A { x: number }\nconst f = <T,>(x: T): T => x;\nenum E { A, B }\ntype U = keyof A | `a${string}`;\nlet v = f as unknown as A;\nconst s = v satisfies A;\nabstract class C<T> implements A { x = 1; private y?: string }\n",
+			"gap.js",
+			"const { a, b = 1 } = o;\nfunction f({ c = 2 }) { return c; }\nfunction g({ path, prefixing = false, isFastify = false }) {}\n",
 		],
-		["ok.ts", "const f = <T>(x: T) => x;\nlet y = <number>z;\n"],
+		["gap.js", "import data from './d.json' with { type: 'json' };\n"],
+		[
+			"gap.jsx",
+			"const a = (\n\t<div>\n\t\t{/* a comment\n\t\t   over lines */}\n\t\t<span />\n\t\t{}\n\t</div>\n);\n",
+		],
+		[
+			"gap.py",
+			"@buttons[0].clicked.connect\ndef f(): pass\n\ng = lambda a, /, b: a\nx = a[*b]\n",
+		],
+		["gap.css", "@import url('x.css') layer(base) supports(display: grid);\n"],
 		[
 			"ok.jsx",
 			"const el = <Foo.Bar x={y}><Baz /></Foo.Bar>;\nconst r = /ab+c/g;\nclass A { #p = 1; static {} get x() { return this.#p } }\n",

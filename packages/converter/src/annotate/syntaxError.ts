@@ -5,6 +5,7 @@ import {
 	lineAnchor,
 	type ParsedFile,
 	parseFile,
+	syntaxErrorNodes,
 	uniquifyRules,
 } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
@@ -16,9 +17,8 @@ const MAX_SYNTAX_ERRORS_PER_FILE = 3;
 // root cause.
 const CASCADE_LINES = 3;
 
-const LANGUAGE_LABEL: Record<ParsedFile["language"], string> = {
+const LANGUAGE_LABEL: Record<Exclude<ParsedFile["language"], "ts">, string> = {
 	js: "JavaScript",
-	ts: "TypeScript",
 	python: "Python",
 	css: "CSS",
 	html: "HTML",
@@ -39,25 +39,32 @@ function anchorIndex(content: string, from: number): number {
 
 /**
  * SyntaxError/imp: real parse errors from the Lezer grammars CodeMirror
- * already uses in the engine (JS/JSX, TS/TSX, Python, CSS, HTML). JSON stays
- * with parseFailure's rot-sprite (JSON.parse is the exact authority there)
- * and Markdown has no invalid syntax to report.
+ * already uses in the engine: JS/JSX, Python, CSS, HTML. JSON stays with
+ * parseFailure's rot-sprite (JSON.parse is the exact authority there) and
+ * Markdown has no invalid syntax to report.
  *
- * Gremlin/imp split: in a language bracketBalance also covers (JS/TS/Python),
+ * TypeScript is deliberately not covered. Lezer's TS grammar is built for
+ * highlighting, and marks plenty of valid TS as errors (catch-clause type
+ * annotations, `let x!: T`, type predicates in function types, `type`
+ * export specifiers, optional tuple members, `x! += 1`, ...): 21 false imps
+ * across zod's source alone. TS still gets gremlins for brackets and strings,
+ * and skeletons/brambles from the same tree.
+ *
+ * Gremlin/imp split: in a language bracketBalance also covers (JS/Python),
  * a file with any bracket or unterminated-string issue gets no imps at all.
  * Lezer reports the same unbalanced bracket as a cascade of errors, often
  * far from the opener, and the gremlin's message ("Unclosed '(' at 4:10")
  * is the more useful one. Once the brackets balance, whatever the parser
  * still rejects shows up as an imp. So one mistake never spawns both.
  *
- * Skipped outright: HTML with template syntax (`{{`/`{%`, which the plain
- * HTML grammar can't know) and Flow-annotated JS.
+ * Also skipped: known grammar gaps (syntaxTree.ts's syntaxErrorNodes), HTML
+ * with template syntax (`{{`/`{%`), and Flow-annotated JS.
  */
 export const syntaxError: Annotator = (ctx) => {
 	const { file, content } = ctx;
 	if (content === undefined) return [];
 	const parsed = parseFile(file, content);
-	if (!parsed) return [];
+	if (!parsed || parsed.language === "ts") return [];
 	if (parsed.language === "html" && /\{\{|\{%/.test(content)) return [];
 	if (parsed.language === "js" && /^\s*(\/\/|\/\*)\s*@flow\b/.test(content))
 		return [];
@@ -68,22 +75,20 @@ export const syntaxError: Annotator = (ctx) => {
 
 	const results: ErrorAnnotation[] = [];
 	let lastLine = -Infinity;
-	const cursor = parsed.tree.cursor();
-	do {
-		if (!cursor.type.isError) continue;
-		const index = anchorIndex(content, cursor.from);
+	for (const error of syntaxErrorNodes(parsed)) {
+		const index = anchorIndex(content, error.from);
 		const loc = locAt(content, index);
 		if (loc.line - lastLine <= CASCADE_LINES) continue;
 		lastLine = loc.line;
 		results.push({
 			code: "SyntaxError",
 			rule: `syntax:${parsed.language}:${lineAnchor(content, index)}`,
-			message: `${LANGUAGE_LABEL[parsed.language]} syntax error: ${describeAt(content, cursor.from, cursor.to)}.`,
+			message: `${LANGUAGE_LABEL[parsed.language]} syntax error: ${describeAt(content, error.from, error.to)}.`,
 			loc,
 			species: "imp",
 			tier: 2,
 		});
 		if (results.length >= MAX_SYNTAX_ERRORS_PER_FILE) break;
-	} while (cursor.next());
+	}
 	return uniquifyRules(results);
 };

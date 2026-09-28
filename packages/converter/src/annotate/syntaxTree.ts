@@ -87,6 +87,78 @@ export function parseFile(
 	return parsed;
 }
 
+// The Lezer grammars are written for editor highlighting, and are
+// incomplete as validators: valid code using one of these constructs still
+// gets error nodes. Each entry was found by running the annotators over this
+// repo's own source (test/annotate/selfCorpus.test.ts) and over zod, fastify,
+// minisearch and phaser, then reproduced against the pinned grammar version.
+// TypeScript has no list: its gaps (catch-clause and definite-assignment
+// annotations, type predicates in function types, `type` export specifiers,
+// optional tuple members, `x! +=`, ...) were too many to enumerate, so TS is
+// out of the imp's scope entirely (see syntaxError.ts).
+const GAP_LINE_PATTERNS: Readonly<Record<TreeLanguage, readonly RegExp[]>> = {
+	js: [
+		/^\s*(import|export)\b.*\b(with|assert)\s*\{/, // import attributes
+		// @lezer/javascript 1.5.5 (2026-09-20) rejects a default on a shorthand
+		// destructuring property (`{ a = 1 }`); in a parameter list the error
+		// can land outside the pattern node, so it's matched by line as well.
+		/[{,]\s*[A-Za-z_$][\w$]*\s*=(?![=>])/,
+	],
+	ts: [],
+	python: [
+		/^\s*@/, // PEP 614 arbitrary decorator expressions
+		/\blambda\b[^:]*\//, // positional-only lambda parameters
+		/\[\s*\*/, // PEP 646 star expression in a subscript
+	],
+	css: [/^\s*@import\b/], // layer()/supports() import conditions
+	html: [],
+};
+const GAP_ANCESTORS = new Set(["PatternProperty", "ObjectPattern"]);
+// JSX comment children (`{/* note */}`) and empty expressions (`{}`).
+const JSX_EMPTY_EXPRESSION = /\{\s*(?:\/\*[\s\S]*?\*\/\s*)*\}/g;
+
+function inGapAncestor(node: SyntaxNode): boolean {
+	for (let p = node.parent; p; p = p.parent) {
+		if (GAP_ANCESTORS.has(p.name)) return true;
+	}
+	return false;
+}
+
+/**
+ * Error nodes that are really syntax errors: every error node in the tree
+ * minus the known grammar gaps above. A file whose tree has none of these
+ * parsed cleanly as far as cabn can tell.
+ */
+export function syntaxErrorNodes(
+	parsed: ParsedFile,
+): { from: number; to: number }[] {
+	const { content, language } = parsed;
+	const jsxSpans: { start: number; end: number }[] = [];
+	if (language === "js" || language === "ts") {
+		for (const m of content.matchAll(JSX_EMPTY_EXPRESSION)) {
+			jsxSpans.push({ start: m.index, end: m.index + m[0].length });
+		}
+	}
+	const patterns = GAP_LINE_PATTERNS[language];
+	const out: { from: number; to: number }[] = [];
+	const cursor = parsed.tree.cursor();
+	do {
+		if (!cursor.type.isError) continue;
+		const { from, to } = cursor;
+		if (jsxSpans.some((s) => from >= s.start && from <= s.end)) continue;
+		const lineStart = content.lastIndexOf("\n", Math.max(0, from - 1)) + 1;
+		const lineEndAt = content.indexOf("\n", from);
+		const line = content.slice(
+			lineStart,
+			lineEndAt === -1 ? content.length : lineEndAt,
+		);
+		if (patterns.some((p) => p.test(line))) continue;
+		if (inGapAncestor(cursor.node)) continue;
+		out.push({ from, to });
+	} while (cursor.next());
+	return out;
+}
+
 export function nodeText(parsed: ParsedFile, node: SyntaxNode): string {
 	return parsed.content.slice(node.from, node.to);
 }

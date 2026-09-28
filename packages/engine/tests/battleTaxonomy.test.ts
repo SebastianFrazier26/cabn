@@ -22,18 +22,19 @@ function file(path: string, language: string): PortalFile {
 }
 
 const ts = file("src/a.ts", "typescript");
+const js = file("src/b.js", "javascript");
 const py = file("lib/m.py", "python");
-const world = new Set([ts.path, py.path]);
+const world = new Set([ts.path, js.path, py.path]);
 
 describe("checkMonsterFixed — M10 classes", () => {
 	it("SyntaxError: fixed by repairing the line, not by shifting it down", () => {
 		const broken = "export const x = 1 + ;\n";
-		const [imp] = syntaxError({ file: ts, content: broken, worldFiles: world });
+		const [imp] = syntaxError({ file: js, content: broken, worldFiles: world });
 		if (!imp) throw new Error("expected an imp");
-		expect(checkMonsterFixed(imp, ts, `// moved\n${broken}`, world)).toBe(
+		expect(checkMonsterFixed(imp, js, `// moved\n${broken}`, world)).toBe(
 			false,
 		);
-		expect(checkMonsterFixed(imp, ts, "export const x = 1 + 2;\n", world)).toBe(
+		expect(checkMonsterFixed(imp, js, "export const x = 1 + 2;\n", world)).toBe(
 			true,
 		);
 	});

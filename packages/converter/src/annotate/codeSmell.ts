@@ -60,8 +60,10 @@ const PY_ALWAYS_DEBUG_CALLS = new Set([
 	"pdb.set_trace",
 	"ipdb.set_trace",
 ]);
-// A CLI's whole job is writing to stdout.
-const JS_CLI_HINT = /process\.argv|process\.exit\(|\bcommander\b|\byargs\b/;
+// A CLI's whole job is writing to stdout, and a server entry point's
+// "listening on :port" line is its one expected log.
+const JS_CLI_HINT =
+	/process\.argv|process\.exit\(|\bcommander\b|\byargs\b|\.listen\(/;
 const PY_CLI_HINT =
 	/\bsys\.argv\b|\bargparse\b|\bimport click\b|\bimport typer\b/;
 
@@ -250,15 +252,20 @@ function treeSmells(
  * Within one file only: a whole-world pass would catch cross-file copies too,
  * but couldn't be re-checked from the single buffer the engine has after an
  * edit. Compares whitespace-normalized "significant" lines (anything with a
- * letter or digit), so re-indenting a copy doesn't hide it.
+ * letter that isn't a bare string-literal data row, like pixel-art rows or
+ * word lists), so re-indenting a copy doesn't hide it.
  */
+const DATA_ROW = /^(["'`]).*\1,?$/;
+
 function duplicateBlocks(content: string): Finding[] {
 	const raw = content.split("\n");
 	const sig: { text: string; line: number; index: number }[] = [];
 	let offset = 0;
 	for (const [line, text] of raw.entries()) {
 		const norm = normalizeLine(text);
-		if (/[A-Za-z0-9]/.test(norm)) sig.push({ text: norm, line, index: offset });
+		if (/[A-Za-z]/.test(norm) && !DATA_ROW.test(norm)) {
+			sig.push({ text: norm, line, index: offset });
+		}
 		offset += text.length + 1;
 	}
 

@@ -98,7 +98,7 @@ describe("M10 monster taxonomy end to end", () => {
 				m.portalId ?? "",
 			]);
 		}
-		expect(bySpecies.get("imp")).toEqual(["src/total.ts"]);
+		expect(bySpecies.get("imp")).toEqual(["src/total.js"]);
 		expect(bySpecies.get("magpie")).toEqual(["src/client.ts"]);
 		expect(bySpecies.get("skeleton")?.sort()).toEqual([
 			"lib/tidy.py",
