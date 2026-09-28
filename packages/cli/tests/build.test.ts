@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -41,5 +41,47 @@ test("defaults outDir to ./<name>-world when not given", async () => {
 		expect(summary.outDir.endsWith("tiny-project-world")).toBe(true);
 	} finally {
 		await rm(summary.outDir, { recursive: true, force: true });
+	}
+});
+
+test("--offline makes no request and records every url preview as assumed framable", async () => {
+	const src = await mkdtemp(join(tmpdir(), "cabn-cli-embed-"));
+	const realFetch = globalThis.fetch;
+	let calls = 0;
+	globalThis.fetch = (async () => {
+		calls++;
+		throw new Error("no network in unit tests");
+	}) as typeof fetch;
+	try {
+		await writeFile(join(src, "site.md"), "# site\n");
+		await writeFile(
+			join(src, "cabn.json"),
+			JSON.stringify({
+				cabnConfigVersion: 1,
+				previews: { "site.md": { kind: "url", url: "https://x.example/" } },
+				allowedEmbedOrigins: ["https://x.example"],
+			}),
+		);
+		const offline = await runBuild(src, { outDir, offline: true });
+		expect(calls).toBe(0);
+		expect(offline.embedCheck).toBe("offline");
+		const index = JSON.parse(
+			await readFile(join(outDir, "embeds.json"), "utf8"),
+		);
+		expect(index.entries["site.md"]).toEqual({
+			url: "https://x.example/",
+			framable: true,
+			basis: "offline",
+		});
+
+		// Without --offline the CLI goes through fetch (stubbed here to fail),
+		// which degrades to "unreachable", never to a failed build.
+		const online = await runBuild(src, { outDir });
+		expect(calls).toBeGreaterThan(0);
+		expect(online.embedCheck).toBe("network");
+		expect(online.embedBlocked).toEqual([]);
+	} finally {
+		globalThis.fetch = realFetch;
+		await rm(src, { recursive: true, force: true });
 	}
 });

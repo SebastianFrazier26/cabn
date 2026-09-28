@@ -12,6 +12,14 @@ vi.mock("../src/build.js", () => ({
 		elapsedMs: 1,
 		truncated: true,
 		skippedFiles: 7,
+		embedBlocked: [
+			{
+				portalId: "docs/code-host.md",
+				url: "https://blocked.example/",
+				detail: "X-Frame-Options: deny",
+			},
+		],
+		embedCheck: "network",
 	}),
 }));
 
@@ -32,4 +40,14 @@ test("a truncated build prints a clear partial-world warning", async () => {
 		expect.stringMatching(/partial world/i),
 	);
 	expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("7"));
+});
+
+test("a url preview whose site refuses framing gets a note naming it", async () => {
+	const { run } = await import("../src/cli.js");
+	expect(await run(["build", "irrelevant-because-mocked"])).toBe(0);
+	expect(console.log).toHaveBeenCalledWith(
+		expect.stringMatching(
+			/docs\/code-host\.md -> https:\/\/blocked\.example\/ refuses to be framed \(X-Frame-Options: deny\)/,
+		),
+	);
 });

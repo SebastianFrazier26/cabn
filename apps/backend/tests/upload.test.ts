@@ -146,6 +146,47 @@ describe("POST /v1/worlds: upload handling", () => {
 		expect(entries[shipped[0] as string]?.length).toBe(1024);
 	});
 
+	test("never makes an outbound request for an upload's url previews (embed check stays offline)", async () => {
+		const realFetch = globalThis.fetch;
+		let calls = 0;
+		globalThis.fetch = (async () => {
+			calls++;
+			throw new Error("backend must not fetch");
+		}) as typeof fetch;
+		try {
+			const zip = zipSync({
+				"cabn.json": new TextEncoder().encode(
+					JSON.stringify({
+						cabnConfigVersion: 1,
+						previews: {
+							"a.md": { kind: "url", url: "https://internal.example/" },
+						},
+						allowedEmbedOrigins: ["https://internal.example"],
+					}),
+				),
+				"a.md": new TextEncoder().encode("# a\n"),
+			});
+			const { body, contentType } = buildMultipartBody([
+				{ fieldName: "file", filename: "upload.zip", content: zip },
+			]);
+			const res = await post(body, contentType);
+			expect(res.statusCode).toBe(200);
+			expect(calls).toBe(0);
+			const embeds = JSON.parse(
+				Buffer.from(
+					unzipSync(res.rawPayload)["embeds.json"] as Uint8Array,
+				).toString("utf8"),
+			);
+			expect(embeds.mode).toBe("offline");
+			expect(embeds.entries["a.md"]).toMatchObject({
+				framable: true,
+				basis: "offline",
+			});
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	});
+
 	test("400: no file field at all", async () => {
 		const { body, contentType } = buildMultipartBody([]);
 		const res = await post(body, contentType);

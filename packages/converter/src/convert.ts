@@ -3,6 +3,11 @@ import {
 	AssetsFileSchema,
 	CABN_VERSION,
 	type ChunkFile,
+	EMBED_INDEX_FILENAME,
+	EMBED_INDEX_VERSION,
+	type EmbedCheckEntry,
+	type EmbedIndexFile,
+	EmbedIndexFileSchema,
 	MEDIA_INDEX_FILENAME,
 	MEDIA_INDEX_VERSION,
 	type MediaIndexFile,
@@ -24,6 +29,7 @@ import {
 } from "./cabnConfig.js";
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
+import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
 import { fnv1a } from "./hash.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
@@ -134,6 +140,15 @@ export interface ConvertOptions {
 	mediaMaxFileBytes?: number;
 	/** Host ceiling on all shipped media bytes, same precedence as mediaMaxFileBytes. */
 	mediaMaxTotalBytes?: number;
+	/**
+	 * Enables the build-time framability check for url previews (see
+	 * embedCheck.ts): one request per distinct url through this injected
+	 * fetch. Absent means offline — convert() itself never touches the
+	 * network, so a host that converts untrusted uploads (apps/backend) can't
+	 * be turned into a request proxy by a cabn.json. cabn.json's
+	 * `embedCheck: false` forces offline even when this is set.
+	 */
+	embedNetwork?: EmbedCheckNetwork;
 }
 
 export type WorldBundle = Map<string, Uint8Array | string>;
@@ -325,6 +340,18 @@ export async function convert(
 	bundle.set("search-index.json", JSON.stringify(searchIndex, null, 2));
 	bundle.set("assets.json", JSON.stringify(assets, null, 2));
 
+	bundle.set(
+		EMBED_INDEX_FILENAME,
+		JSON.stringify(
+			await buildEmbedIndex(
+				portals,
+				cabnConfig?.embedCheck === false ? undefined : opts.embedNetwork,
+			),
+			null,
+			2,
+		),
+	);
+
 	// Always written, even empty, so an engine that reads media.json can
 	// fetch it unconditionally for any bundle this converter produced.
 	const mediaIndex: MediaIndexFile = {
@@ -339,4 +366,34 @@ export async function convert(
 	}
 
 	return bundle;
+}
+
+/** Always written (like media.json) so its presence says "this converter knew about embed checks"; offline entries carry basis "offline" so a reader can tell "assumed" from "checked". */
+async function buildEmbedIndex(
+	portals: WorldManifest["portals"],
+	net: EmbedCheckNetwork | undefined,
+): Promise<EmbedIndexFile> {
+	const urlByPortal = new Map<string, string>();
+	for (const portal of portals) {
+		if (portal.richPreview?.kind === "url")
+			urlByPortal.set(portal.id, portal.richPreview.url);
+	}
+	const verdicts = net
+		? await checkEmbedUrls(urlByPortal.values(), net)
+		: new Map<string, EmbedCheckEntry>();
+	// Map + fromEntries, not bracket assignment — same "__proto__" filename
+	// hazard as the chunk maps above.
+	const entries = new Map<string, EmbedCheckEntry>();
+	for (const [portalId, url] of urlByPortal) {
+		entries.set(
+			portalId,
+			verdicts.get(url) ?? { url, framable: true, basis: "offline" },
+		);
+	}
+	const index: EmbedIndexFile = {
+		embedsVersion: EMBED_INDEX_VERSION,
+		mode: net ? "network" : "offline",
+		entries: Object.fromEntries(entries),
+	};
+	return EmbedIndexFileSchema.parse(index);
 }

@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { basename, extname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convert, DirSource, type WorldBundle } from "@cabn/converter";
+import { cliEmbedNetwork } from "../build.js";
 import {
 	DEFAULT_OUTPUT_CAP_BYTES,
 	DEFAULT_TIMEOUT_MS,
@@ -20,6 +21,7 @@ import { bundleHostApp, hostPageHtml } from "./hostPage.js";
 import { runtimeForPath } from "./runtime.js";
 import {
 	constantTimeEqual,
+	frameSrcPolicy,
 	isAllowedOrigin,
 	isLoopbackHost,
 	PathConfinementError,
@@ -33,6 +35,8 @@ export interface ServeOptions {
 	allowExec?: boolean;
 	timeoutMs?: number;
 	outputCapBytes?: number;
+	/** Skip the build-time framability check for url previews. */
+	offline?: boolean;
 }
 
 export interface ServeHandle {
@@ -109,6 +113,7 @@ interface ServeContext {
 	bundle: WorldBundle;
 	hostAppJs: string;
 	html: string;
+	csp: string;
 	timeoutMs: number | undefined;
 	outputCapBytes: number | undefined;
 }
@@ -308,6 +313,7 @@ async function handleRequest(
 		res.writeHead(200, {
 			"content-type": "text/html; charset=utf-8",
 			"cache-control": "no-store",
+			"content-security-policy": ctx.csp,
 		});
 		res.end(ctx.html);
 		return;
@@ -346,6 +352,14 @@ async function handleRequest(
 	res.end("not found");
 }
 
+function worldEmbedOrigins(bundle: WorldBundle): unknown[] {
+	const raw = bundle.get("world.json");
+	if (typeof raw !== "string") return [];
+	const origins = (JSON.parse(raw) as { allowedEmbedOrigins?: unknown })
+		.allowedEmbedOrigins;
+	return Array.isArray(origins) ? origins : [];
+}
+
 /**
  * Converts `dir` in memory and starts serving it — binds to 127.0.0.1 only
  * (never configurable to 0.0.0.0 from the CLI surface; `opts.host` exists
@@ -373,6 +387,7 @@ export async function startServe(
 	const bundle = await convert(new DirSource(resolvedDir), {
 		name: basename(resolvedDir),
 		source: resolvedDir,
+		embedNetwork: cliEmbedNetwork(opts.offline),
 	});
 	const hostAppJs = await bundleHostApp({ token, allowExec });
 	const html = hostPageHtml(token);
@@ -386,6 +401,7 @@ export async function startServe(
 		bundle,
 		hostAppJs,
 		html,
+		csp: frameSrcPolicy(worldEmbedOrigins(bundle)),
 		timeoutMs: opts.timeoutMs,
 		outputCapBytes: opts.outputCapBytes,
 	};

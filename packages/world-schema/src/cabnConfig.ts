@@ -97,6 +97,8 @@ const CabnConfigShapeSchema = z.strictObject({
 	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
 	/** Caps on image/audio/PDF bytes shipped in the bundle. A host's own ceilings (ConvertOptions.mediaMaxFileBytes/mediaMaxTotalBytes) still win. */
 	media: MediaCapsConfigSchema.optional(),
+	/** false skips the converter's build-time framability check (no network request to any url preview); every url preview is then assumed framable. Optional and additive, same compat note as `media`. */
+	embedCheck: z.boolean().optional(),
 	// Room for future per-world options (e.g. a default biome override, a
 	// world-level title/description) without another version bump — add them
 	// as optional fields here, not by loosening this strictObject.

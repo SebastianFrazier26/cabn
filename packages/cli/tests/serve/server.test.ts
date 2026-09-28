@@ -118,6 +118,16 @@ describe("startServe — no --allow-exec", () => {
 		expect(manifest.cabnVersion).toBe(1);
 	});
 
+	it("sends a frame-src CSP on the host page ('none' for a world without embeds)", async () => {
+		const res = await fetch(`http://127.0.0.1:${handle?.port}/`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-security-policy")).toBe("frame-src 'none'");
+		const embeds = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/embeds.json`,
+		);
+		expect((await embeds.json()).entries).toEqual({});
+	});
+
 	it("serves media.json and pdf.js's worker from its own origin", async () => {
 		const media = await fetch(
 			`http://127.0.0.1:${handle?.port}/world/media.json`,

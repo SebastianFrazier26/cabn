@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	constantTimeEqual,
+	frameSrcPolicy,
 	isAllowedOrigin,
 	isLoopbackHost,
 	PathConfinementError,
@@ -128,5 +129,32 @@ describe("resolveConfinedPath", () => {
 		} finally {
 			await rm(outside, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("frameSrcPolicy", () => {
+	it("names exactly the allowlisted origins", () => {
+		expect(
+			frameSrcPolicy(["https://threejs.org", "https://example.com:8443"]),
+		).toBe("frame-src https://threejs.org https://example.com:8443");
+	});
+
+	it("is 'none' for an empty list", () => {
+		expect(frameSrcPolicy([])).toBe("frame-src 'none'");
+	});
+
+	it("drops anything that isn't a bare https origin, so nothing can inject a directive", () => {
+		expect(
+			frameSrcPolicy([
+				"*",
+				"http://plain.example",
+				"https://ok.example",
+				"https://a.example; script-src *",
+				"https://a.example/path",
+				"'self'",
+				42,
+				"https://ok.example",
+			]),
+		).toBe("frame-src https://ok.example");
 	});
 });

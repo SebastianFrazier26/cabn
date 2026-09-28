@@ -12,6 +12,7 @@ async function build(rest: string[]): Promise<number> {
 			options: {
 				out: { type: "string", short: "o" },
 				"include-secrets": { type: "boolean" },
+				offline: { type: "boolean" },
 			},
 			allowPositionals: true,
 		});
@@ -24,11 +25,22 @@ async function build(rest: string[]): Promise<number> {
 		const summary = await runBuild(input, {
 			outDir: values.out,
 			includeSecrets: values["include-secrets"],
+			offline: values.offline,
 		});
 		console.log(`Built world at ${summary.outDir}`);
 		console.log(
 			`${summary.clusters} clusters, ${summary.portals} portals, ${summary.bytes} bytes in ${summary.elapsedMs}ms`,
 		);
+		for (const b of summary.embedBlocked) {
+			console.log(
+				`Note: ${b.portalId} -> ${b.url} refuses to be framed${b.detail ? ` (${b.detail})` : ""}; the world shows its title card and an "Open in browser" button instead.`,
+			);
+		}
+		if (values.offline) {
+			console.log(
+				"Embed check skipped (--offline): url previews are assumed framable.",
+			);
+		}
 		if (summary.truncated) {
 			console.warn(
 				`Warning: partial world — ${summary.skippedFiles} file(s) were dropped by the converter's caps (maxFiles/archive limits).`,
@@ -88,6 +100,7 @@ async function serve(rest: string[]): Promise<number> {
 				port: { type: "string" },
 				"allow-exec": { type: "boolean" },
 				timeout: { type: "string" },
+				offline: { type: "boolean" },
 			},
 			allowPositionals: true,
 		});
@@ -101,6 +114,7 @@ async function serve(rest: string[]): Promise<number> {
 			port: values.port ? Number(values.port) : DEFAULT_SERVE_PORT,
 			allowExec: values["allow-exec"] ?? false,
 			timeoutMs: values.timeout ? Number(values.timeout) : undefined,
+			offline: values.offline ?? false,
 		});
 		// Never resolves on its own — `cabn serve` is a long-running command,
 		// stopped by the user (Ctrl-C) rather than exiting once "done".
