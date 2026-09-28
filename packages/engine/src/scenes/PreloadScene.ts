@@ -1,4 +1,8 @@
-import type { ShelfManifest, WorldManifest } from "@cabn/world-schema";
+import type {
+	MediaPreview,
+	ShelfManifest,
+	WorldManifest,
+} from "@cabn/world-schema";
 import Phaser from "phaser";
 import {
 	ANIMATED_MONSTER_SPECIES,
@@ -48,6 +52,7 @@ export type PreloadSceneData =
 			manifest: WorldManifest;
 			worldBase: string;
 			returnTo?: { shelfUrl: string };
+			media?: ReadonlyMap<string, MediaPreview>;
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 

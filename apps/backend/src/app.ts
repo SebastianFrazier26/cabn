@@ -210,6 +210,12 @@ export function buildApp(
 						source: "upload.zip",
 						maxFiles: DEFAULT_MAX_FILES,
 						maxFileBytes: DEFAULT_MAX_FILE_BYTES,
+						// Host ceilings an uploaded cabn.json can lower but never raise:
+						// no media file bigger than the zip extraction cap above (it
+						// couldn't be read in full anyway), and no more media in the
+						// response than the upload itself was allowed to carry.
+						mediaMaxFileBytes: DEFAULT_MAX_FILE_BYTES,
+						mediaMaxTotalBytes: config.maxUploadBytes,
 					});
 
 					const files: Record<string, Uint8Array> = {};

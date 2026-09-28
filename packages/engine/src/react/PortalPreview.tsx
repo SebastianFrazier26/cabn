@@ -1,17 +1,21 @@
-import type {
-	MarkdownPreviewNode,
-	RichPortalPreview,
-} from "@cabn/world-schema";
+import type { MarkdownPreviewNode } from "@cabn/world-schema";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "react";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
+import type { DisplayPreview } from "../systems/archPreview.js";
 import { loadLanguageExtension } from "./editorLanguages.js";
 import { pixelEditorExtensions } from "./editorTheme.js";
+import {
+	AudioPlayer,
+	CsvTable,
+	PdfViewer,
+	SealedCard,
+} from "./MediaViewers.js";
 
 export interface PortalPreviewProps {
 	/** undefined covers both "no richPreview on this manifest" (a pre-M10 bundle) and "portal has no override/content to show". */
-	preview: RichPortalPreview | undefined;
+	preview: DisplayPreview | undefined;
 	fileName: string;
 	/** Base to resolve asset-relative paths (an image preview's `asset`) against — same convention as chunk/world URLs (see engine's resolveRelativeUrl). */
 	worldBaseUrl: string;
@@ -22,6 +26,8 @@ export interface PortalPreviewProps {
 	 * PortalPreviewDock shows for the portal the player is standing at.
 	 */
 	variant: "overlay" | "expanded";
+	/** Just the body, no panel chrome/title — for hosts that already draw their own frame (the file view). */
+	bare?: boolean;
 }
 
 const OVERLAY_MAX_HEIGHT = 220;
@@ -146,6 +152,7 @@ export function PortalPreview({
 	fileName,
 	worldBaseUrl,
 	variant,
+	bare = false,
 }: PortalPreviewProps): React.ReactElement {
 	const maxHeight = variant === "overlay" ? OVERLAY_MAX_HEIGHT : undefined;
 
@@ -233,10 +240,26 @@ export function PortalPreview({
 				);
 				break;
 			case "sealed":
-				body = <SealedNotice />;
+				body =
+					preview.name !== undefined ? (
+						<SealedCard preview={preview} />
+					) : (
+						<SealedNotice />
+					);
+				break;
+			case "audio":
+				body = <AudioPlayer preview={preview} worldBaseUrl={worldBaseUrl} />;
+				break;
+			case "pdf":
+				body = <PdfViewer preview={preview} worldBaseUrl={worldBaseUrl} />;
+				break;
+			case "table":
+				body = <CsvTable rows={preview.rows} truncated={preview.truncated} />;
 				break;
 		}
 	}
+
+	if (bare) return <div style={{ width: "100%", height: "100%" }}>{body}</div>;
 
 	return (
 		<div

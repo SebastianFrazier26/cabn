@@ -3,6 +3,11 @@ import {
 	AssetsFileSchema,
 	CABN_VERSION,
 	type ChunkFile,
+	MEDIA_INDEX_FILENAME,
+	MEDIA_INDEX_VERSION,
+	type MediaIndexFile,
+	MediaIndexFileSchema,
+	type MediaPreview,
 	type RichPortalPreview,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
@@ -21,12 +26,90 @@ import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { fnv1a } from "./hash.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
+import {
+	isImageFormat,
+	isUnsupportedMediaPath,
+	MediaBudget,
+	mediaFormatForPath,
+	resolveMediaCaps,
+} from "./media.js";
 import { buildPreview } from "./preview.js";
 import { buildCodePreview, buildImagePreview } from "./richPreview.js";
 import { buildSearchIndex, type SearchDoc } from "./search-index.js";
-import type { FileSource } from "./sources/types.js";
+import type { FileSource, SourceEntry } from "./sources/types.js";
 import { buildClusterTree, buildDirTree } from "./tree.js";
-import { DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILES, walk } from "./walk.js";
+import {
+	DEFAULT_MAX_FILE_BYTES,
+	DEFAULT_MAX_FILES,
+	isSecretPath,
+	type WalkedFile,
+	walk,
+} from "./walk.js";
+
+interface MediaOutcome {
+	/** What world.json carries — understood by every engine, including ones that predate media.json. */
+	richPreview: RichPortalPreview;
+	/** What media.json carries for engines that read it; absent for images, which world.json already describes fully. */
+	media?: MediaPreview;
+}
+
+/**
+ * The media path for one walked file whose extension claims an image/audio/
+ * PDF type. Bytes come from walk() when it read them, otherwise straight from
+ * the source entry — media caps (5 MB default) sit well above walk()'s text
+ * cap (512 KB), and an over-cap file is rejected on its declared size before
+ * anything is read.
+ */
+async function resolveMediaFile(
+	file: WalkedFile,
+	entries: Map<string, SourceEntry>,
+	budget: MediaBudget,
+	includeSecrets: boolean | undefined,
+): Promise<MediaOutcome> {
+	const sealed = (
+		reason: Extract<MediaPreview, { kind: "sealed" }>["reason"],
+	) => ({
+		richPreview: { kind: "sealed" } as const,
+		media: { kind: "sealed", reason } as const,
+	});
+	if (isUnsupportedMediaPath(file.path)) return sealed("unsupported");
+	const claimed = mediaFormatForPath(file.path);
+	if (!claimed) return sealed("unsupported");
+	if (isSecretPath(file.path, includeSecrets)) return sealed("unread");
+	if (!budget.fitsFileCap(file.bytes)) return sealed("too-large");
+
+	let bytes = file.content;
+	if (!bytes) {
+		const entry = entries.get(file.path);
+		bytes = entry ? await entry.read() : undefined;
+	}
+	// A source can list an entry it then won't hand over in full (ZipSource
+	// returns empty bytes past its own per-entry cap) — never ship a partial.
+	if (!bytes || bytes.length !== file.bytes) return sealed("unread");
+
+	const admission = budget.admit(claimed, bytes);
+	if (!admission.ok) return sealed(admission.reason);
+	const asset = admission.assetPath;
+	if (isImageFormat(admission.format)) {
+		return { richPreview: buildImagePreview(asset, bytes) };
+	}
+	const fallback = { kind: "sealed" } as const;
+	if (admission.format === "pdf") {
+		return {
+			richPreview: fallback,
+			media: { kind: "pdf", asset, bytes: bytes.length },
+		};
+	}
+	return {
+		richPreview: fallback,
+		media: {
+			kind: "audio",
+			asset,
+			bytes: bytes.length,
+			format: admission.format,
+		},
+	};
+}
 
 // cabn.json is world config, not browsable content — it never gets a portal
 // of its own. A filename collision deeper in the tree is ignored too, same
@@ -47,6 +130,10 @@ export interface ConvertOptions {
 	includeSecrets?: boolean;
 	/** Injectable clock for deterministic meta.generatedAt in tests. */
 	now?: () => Date;
+	/** Host ceiling on a single shipped media file — cabn.json's `media.maxFileBytes` can lower it, never raise past it. Unset: only the cabn.json/default cap applies. */
+	mediaMaxFileBytes?: number;
+	/** Host ceiling on all shipped media bytes, same precedence as mediaMaxFileBytes. */
+	mediaMaxTotalBytes?: number;
 }
 
 export type WorldBundle = Map<string, Uint8Array | string>;
@@ -100,9 +187,16 @@ export async function convert(
 	const searchDocs: SearchDoc[] = [];
 	const portals: WorldManifest["portals"] = [];
 	const annotateInputs: AnnotateFileInput[] = [];
-	// assets/previews/<hash> entries from resolved image previews (default and
-	// cabn.json overrides alike) — merged into the bundle map at the end.
-	const previewAssets = new Map<string, Uint8Array>();
+	// Every shipped image/audio/PDF byte (default previews and cabn.json
+	// overrides alike) goes through this one budget; its admitted assets are
+	// merged into the bundle map at the end as media/<hash>.<ext>.
+	const mediaBudget = new MediaBudget(
+		resolveMediaCaps(cabnConfig, {
+			maxFileBytes: opts.mediaMaxFileBytes,
+			maxTotalBytes: opts.mediaMaxTotalBytes,
+		}),
+	);
+	const mediaPreviews = new Map<string, MediaPreview>();
 
 	for (const file of walked.files) {
 		const clusterId = fileClusterId.get(file.path);
@@ -137,20 +231,21 @@ export async function convert(
 				override,
 				sourceEntries,
 				maxFileBytes,
+				mediaBudget,
 			);
 			richPreview = resolved.preview;
-			for (const [assetPath, bytes] of resolved.assets) {
-				previewAssets.set(assetPath, bytes);
-			}
-		} else if (info.kind === "image") {
-			if (file.content) {
-				const built = buildImagePreview(file.path, file.content);
-				richPreview = built.preview;
-				previewAssets.set(built.assetPath, file.content);
-			} else {
-				// Oversized or secret-patterned — walk() never gave us content to copy.
-				richPreview = { kind: "sealed" };
-			}
+		} else if (
+			info.binary &&
+			(mediaFormatForPath(file.path) || isUnsupportedMediaPath(file.path))
+		) {
+			const outcome = await resolveMediaFile(
+				file,
+				sourceEntries,
+				mediaBudget,
+				opts.includeSecrets,
+			);
+			richPreview = outcome.richPreview;
+			if (outcome.media) mediaPreviews.set(file.path, outcome.media);
 		} else if (info.binary) {
 			richPreview = { kind: "sealed" };
 		} else if (text === undefined) {
@@ -229,7 +324,17 @@ export async function convert(
 	}
 	bundle.set("search-index.json", JSON.stringify(searchIndex, null, 2));
 	bundle.set("assets.json", JSON.stringify(assets, null, 2));
-	for (const [assetPath, bytes] of previewAssets) {
+
+	// Always written, even empty, so an engine that reads media.json can
+	// fetch it unconditionally for any bundle this converter produced.
+	const mediaIndex: MediaIndexFile = {
+		mediaVersion: MEDIA_INDEX_VERSION,
+		previews: Object.fromEntries(mediaPreviews),
+		totalBytes: mediaBudget.totalBytes,
+	};
+	MediaIndexFileSchema.parse(mediaIndex);
+	bundle.set(MEDIA_INDEX_FILENAME, JSON.stringify(mediaIndex, null, 2));
+	for (const [assetPath, bytes] of mediaBudget.assets()) {
 		bundle.set(assetPath, bytes);
 	}
 

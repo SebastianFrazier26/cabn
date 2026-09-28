@@ -118,6 +118,21 @@ describe("startServe — no --allow-exec", () => {
 		expect(manifest.cabnVersion).toBe(1);
 	});
 
+	it("serves media.json and pdf.js's worker from its own origin", async () => {
+		const media = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/media.json`,
+		);
+		expect(media.status).toBe(200);
+		expect((await media.json()).mediaVersion).toBe(1);
+
+		const worker = await fetch(
+			`http://127.0.0.1:${handle?.port}/pdfjs/pdf.worker.min.mjs`,
+		);
+		expect(worker.status).toBe(200);
+		expect(worker.headers.get("content-type")).toContain("javascript");
+		expect((await worker.text()).length).toBeGreaterThan(100_000);
+	});
+
 	it("serves the host page with the token embedded", async () => {
 		const res = await fetch(`http://127.0.0.1:${handle?.port}/`);
 		const html = await res.text();

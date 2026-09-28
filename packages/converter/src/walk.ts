@@ -86,6 +86,11 @@ function isSecretFile(path: string, patterns: readonly string[]): boolean {
 	return matchesAnySegment(name, patterns);
 }
 
+/** Whether walk() withheld this file's content as secret-patterned — anything that later reads source bytes directly (media shipping) must honor the same rule. */
+export function isSecretPath(path: string, includeSecrets = false): boolean {
+	return !includeSecrets && isSecretFile(path, DEFAULT_SECRET_PATTERNS);
+}
+
 export async function walk(
 	source: FileSource,
 	opts: WalkOptions = {},

@@ -5,9 +5,11 @@ import {
 	DEFAULT_ARCH_METRICS,
 	effectiveRichPreview,
 	fitContain,
+	formatBytes,
 	isInView,
 	layoutArchPreview,
 	selectDetailPortals,
+	tableColumnChars,
 	tokenizeCodeLine,
 	truncateToChars,
 	wrapText,
@@ -58,9 +60,58 @@ describe("effectiveRichPreview (fallback selection)", () => {
 		});
 	});
 
-	test("an old bundle's binary file with no lines becomes the sealed chest", () => {
+	test("an old bundle's binary file with no lines becomes the sealed chest, labelled with name and size", () => {
 		expect(effectiveRichPreview(portal({ lines: [], binary: true }))).toEqual({
 			kind: "sealed",
+			name: "a.ts",
+			bytes: 10,
+		});
+	});
+
+	test("a media.json entry wins over world.json's sealed fallback", () => {
+		const audio = {
+			kind: "audio",
+			asset: "media/0123456789abcdef.wav",
+			bytes: 10,
+			format: "wav",
+		} as const;
+		const rich = { richPreview: { kind: "sealed" } as const, binary: true };
+		expect(effectiveRichPreview(portal(rich), undefined, audio)).toBe(audio);
+		expect(
+			effectiveRichPreview(portal(rich), undefined, {
+				kind: "sealed",
+				reason: "too-large",
+			}),
+		).toEqual({ kind: "sealed", name: "a.ts", bytes: 10, reason: "too-large" });
+	});
+
+	test("a CSV's code preview becomes a table; a quill edit re-parses the table", () => {
+		const csv: Pick<Portal, "file" | "preview" | "richPreview"> = {
+			...portal(),
+			file: {
+				...portal().file,
+				path: "data/x.csv",
+				name: "x.csv",
+				kind: "data",
+			},
+			richPreview: {
+				kind: "code",
+				lines: ["a,b", '1,"two, three"'],
+				truncated: true,
+			},
+		};
+		expect(effectiveRichPreview(csv)).toEqual({
+			kind: "table",
+			rows: [
+				["a", "b"],
+				["1", "two, three"],
+			],
+			truncated: true,
+		});
+		expect(effectiveRichPreview(csv, "x\ty")).toEqual({
+			kind: "table",
+			rows: [["x\ty"]],
+			truncated: false,
 		});
 	});
 
@@ -289,6 +340,110 @@ describe("layoutArchPreview", () => {
 			ops.filter((o) => o.op === "fill" && o.color === "chestGold").length,
 		).toBe(4);
 		expect(textOps(ops).map((t) => t.text)).toEqual(["sealed"]);
+	});
+
+	test("sealed with info: name, size and reason fit inside the opening", () => {
+		const ops = layoutArchPreview(
+			{
+				kind: "sealed",
+				name: "an-extremely-long-recording-name-that-overflows.wav",
+				bytes: 7 * 1024 * 1024,
+				reason: "too-large",
+			},
+			W,
+			H,
+		);
+		const texts = textOps(ops).map((t) => t.text);
+		expect(texts[0]).toBe("sealed");
+		expect(texts[1]?.endsWith("…")).toBe(true);
+		expect(texts.slice(2)).toEqual(["7.0 MB", "too large"]);
+		inside(ops);
+	});
+
+	test("audio: format/size caption plus a waveform op filling the rest", () => {
+		const ops = layoutArchPreview(
+			{
+				kind: "audio",
+				asset: "media/0123456789abcdef.mp3",
+				bytes: 2048,
+				format: "mp3",
+			},
+			W,
+			H,
+		);
+		expect(textOps(ops)[0]?.text).toBe("♪ MP3 · 2.0 KB");
+		const wave = ops.find((o) => o.op === "waveform");
+		expect(wave).toMatchObject({ asset: "media/0123456789abcdef.mp3" });
+		if (wave?.op === "waveform") {
+			expect(wave.box.y + wave.box.h).toBeLessThanOrEqual(H);
+			expect(wave.box.h).toBeGreaterThan(H / 2);
+		}
+		inside(ops);
+	});
+
+	test("pdf: page-1 op above a caption, both inside", () => {
+		const ops = layoutArchPreview(
+			{ kind: "pdf", asset: "media/0123456789abcdef.pdf", bytes: 512 },
+			W,
+			H,
+		);
+		const page = ops.find((o) => o.op === "pdfPage");
+		const caption = textOps(ops)[0];
+		expect(caption?.text).toBe("PDF · 512 B");
+		if (page?.op === "pdfPage" && caption)
+			expect(page.box.y + page.box.h).toBeLessThanOrEqual(caption.y);
+		inside(ops);
+	});
+
+	test("table: header row emphasized, rows capped to fit, columns never overflow", () => {
+		const rows = [
+			["name", "species", "rows_harvested_this_season"],
+			...Array.from({ length: 60 }, (_, i) => [`g${i}`, "tomato", `${i * 10}`]),
+		];
+		const ops = layoutArchPreview(
+			{ kind: "table", rows, truncated: true },
+			W,
+			H,
+		);
+		const texts = textOps(ops);
+		expect(texts[0]).toMatchObject({ bold: true, color: "heading" });
+		expect(texts[0]?.text.startsWith("na")).toBe(true);
+		const rowYs = new Set(texts.map((t) => t.y));
+		expect(rowYs.size).toBeLessThan(rows.length);
+		expect(
+			ops.some((o) => o.op === "fill" && o.color === "tableHeaderBg"),
+		).toBe(true);
+		inside(ops);
+	});
+});
+
+describe("tableColumnChars", () => {
+	test("natural widths when they fit, proportional shrink (min 3) when not", () => {
+		expect(
+			tableColumnChars(
+				[
+					["ab", "c"],
+					["abcd", ""],
+				],
+				20,
+			),
+		).toEqual([4, 1]);
+		const widths = tableColumnChars(
+			[["aaaaaaaaaaaa", "bbbbbbbbbbbb", "cccccccccccc"]],
+			14,
+		);
+		expect(
+			widths.reduce((a, b) => a + b, 0) + widths.length - 1,
+		).toBeLessThanOrEqual(14);
+		expect(widths.every((w) => w >= 3)).toBe(true);
+	});
+});
+
+describe("formatBytes", () => {
+	test("B / KB / MB", () => {
+		expect(formatBytes(512)).toBe("512 B");
+		expect(formatBytes(1536)).toBe("1.5 KB");
+		expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
 	});
 });
 

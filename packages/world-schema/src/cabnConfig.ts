@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+	MEDIA_MAX_FILE_BYTES_LIMIT,
+	MEDIA_MAX_TOTAL_BYTES_LIMIT,
+} from "./media.js";
+import {
 	HttpsOriginSchema,
 	HttpsUrlSchema,
 	isAllowedEmbedOrigin,
@@ -66,6 +70,23 @@ export const PreviewOverrideSchema = z.discriminatedUnion("kind", [
 ]);
 export type PreviewOverride = z.infer<typeof PreviewOverrideSchema>;
 
+// Optional and additive, so cabnConfigVersion stays 1. A converter from
+// before this field rejects a cabn.json that sets it (strictObject) — the
+// right failure, since it would otherwise silently ignore the author's caps.
+export const MediaCapsConfigSchema = z
+	.strictObject({
+		/** Per-file media cap in bytes (default DEFAULT_MEDIA_MAX_FILE_BYTES). */
+		maxFileBytes: z.number().int().positive().max(MEDIA_MAX_FILE_BYTES_LIMIT),
+		/** Whole-world media budget in bytes (default DEFAULT_MEDIA_MAX_TOTAL_BYTES); 0 ships no media at all. */
+		maxTotalBytes: z
+			.number()
+			.int()
+			.nonnegative()
+			.max(MEDIA_MAX_TOTAL_BYTES_LIMIT),
+	})
+	.partial();
+export type MediaCapsConfig = z.infer<typeof MediaCapsConfigSchema>;
+
 const CabnConfigShapeSchema = z.strictObject({
 	cabnConfigVersion: z.literal(CABN_CONFIG_VERSION),
 	/** Relative path (from the source root) -> preview override. Leave absent for the converter's default preview. */
@@ -74,6 +95,8 @@ const CabnConfigShapeSchema = z.strictObject({
 		.default({}),
 	/** Exact https origins a url-preview's `url` is allowed to come from — see shared.ts's isAllowedEmbedOrigin for the matching rule (no wildcards). */
 	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
+	/** Caps on image/audio/PDF bytes shipped in the bundle. A host's own ceilings (ConvertOptions.mediaMaxFileBytes/mediaMaxTotalBytes) still win. */
+	media: MediaCapsConfigSchema.optional(),
 	// Room for future per-world options (e.g. a default biome override, a
 	// world-level title/description) without another version bump — add them
 	// as optional fields here, not by loosening this strictObject.

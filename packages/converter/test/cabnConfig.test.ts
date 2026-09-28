@@ -181,6 +181,42 @@ describe("convert(): cabn.json integration", () => {
 		expect(manifest.portals.find((p) => p.id === "art/logo.png")).toBeDefined();
 	});
 
+	test("rejects an image override whose src bytes aren't a raster image", async () => {
+		const root = await makeWorld({
+			"cabn.json": JSON.stringify({
+				cabnConfigVersion: 1,
+				previews: { "README.md": { kind: "image", src: "art/logo.png" } },
+			}),
+			"README.md": "# hi",
+			"art/logo.png": "<svg xmlns='http://www.w3.org/2000/svg'></svg>",
+		});
+		await expect(
+			convert(new DirSource(root), { name: "w", source: root }),
+		).rejects.toThrow(/art\/logo\.png.*not a PNG/);
+	});
+
+	test("an image override past the world media budget degrades to sealed", async () => {
+		const root = await makeWorld({
+			"cabn.json": JSON.stringify({
+				cabnConfigVersion: 1,
+				previews: { "README.md": { kind: "image", src: "art/logo.png" } },
+				media: { maxTotalBytes: 0 },
+			}),
+			"README.md": "# hi",
+			"art/logo.png": fakePng(8, 8),
+		});
+		const bundle = await convert(new DirSource(root), {
+			name: "w",
+			source: root,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(
+			manifest.portals.find((p) => p.id === "README.md")?.richPreview,
+		).toEqual({
+			kind: "sealed",
+		});
+	});
+
 	test("a markdown override reads a different file than the one it previews", async () => {
 		const root = await makeWorld({
 			"cabn.json": JSON.stringify({

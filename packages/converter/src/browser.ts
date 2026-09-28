@@ -9,6 +9,7 @@ export * from "./convert.js";
 export * from "./imageDimensions.js";
 export * from "./layout.js";
 export * from "./markdownPreview.js";
+export * from "./media.js";
 export * from "./preview.js";
 export * from "./richPreview.js";
 export * from "./search-index.js";

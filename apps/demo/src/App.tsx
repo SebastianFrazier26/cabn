@@ -1,4 +1,7 @@
 import { CabnGame, type CabnGameHandle } from "@cabn/engine";
+// Emitted by Vite as a hashed file in this build's own assets — pdf.js's
+// worker is served from the demo's origin, never a CDN.
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 // build:world (see scripts/build-world.mjs) converts both demo projects and
 // writes a shelf.json listing them here, under public/, so it's served as a
@@ -13,8 +16,9 @@ const SHELF_URL = "/worlds/shelf.json";
 // what the smoke test exercises.
 function exposeTestHookIfRequested(handle: CabnGameHandle | null): void {
 	if (new URLSearchParams(window.location.search).get("e2e") !== "1") return;
-	(window as unknown as { __cabnStore: unknown }).__cabnStore =
-		handle?.store ?? undefined;
+	const w = window as unknown as { __cabnStore: unknown; __cabnBus: unknown };
+	w.__cabnStore = handle?.store ?? undefined;
+	w.__cabnBus = handle?.bus ?? undefined;
 }
 
 export function App(): React.ReactElement {
@@ -49,6 +53,7 @@ export function App(): React.ReactElement {
 				<CabnGame
 					shelfUrl={SHELF_URL}
 					onGameReady={exposeTestHookIfRequested}
+					pdfWorkerUrl={pdfWorkerUrl}
 				/>
 			</div>
 		</div>
