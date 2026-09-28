@@ -254,10 +254,11 @@ async function main() {
 		</div>
 	</section>
 	<section class="icon-row">
-		<h3>Props (13, plus the shelf's one-off castle keep)</h3>
-		<p class="note">Batch 2 cottagecore set — "stone-lantern" upgraded to "lamp-post" and "log-pile" replaced with "stone-wall" (both flagged weak in batch-1 review); cottage, flower-bed, bench, and the castle keep are new. Trees gained a third, higher canopy tier for a taller/more layered silhouette.</p>
+		<h3>Props (13, plus the shelf's one-off castle keep and the in-world cabinet marker)</h3>
+		<p class="note">Batch 2 cottagecore set — "stone-lantern" upgraded to "lamp-post" and "log-pile" replaced with "stone-wall" (both flagged weak in batch-1 review); cottage, flower-bed, bench, and the castle keep are new. Trees gained a third, higher canopy tier for a taller/more layered silhouette. Batch 3: the castle keep is redrawn (real coursed-masonry shading, a recessed crenellated parapet, a proper pennant, lit windows, ivy) and — having shipped unscaled in batch 2 — is now deliberately scaled to read *smaller* than the wizard tower next to it, not bigger. <code>world-cabinet</code> (last figure below) replaces the photographic cabinet_256.webp for in-world cluster markers, which batch-3 review called "dark red and green noise" at gameplay scale.</p>
 		<div class="stage">
 			${worldArtPropRows}
+			<figure><img class="soft" src="placeholders/prop_world_cabinet_soft.png" alt="world-cabinet prop"><figcaption>world-cabinet</figcaption></figure>
 		</div>
 	</section>
 	<section class="icon-row">
@@ -268,16 +269,28 @@ async function main() {
 		</div>
 	</section>
 
-	<h2>Continuous ground field, day/night, and effects — batch 2 (M10b)</h2>
-	<p class="note">Batch 1's per-cluster ellipses left everything else as an empty background — review: "the shelf is an empty dark void", "cluster ground is blocky squares... floating in the void". <code>render/groundField.ts</code> now bakes one uninterrupted grass field across the whole camera bounds (chunked into fixed-size RenderTextures), with clusters/the shelf tower marked as clearings on top of it (a subtle biome patch, a flower ring, scattered props) rather than being the only ground that exists. Day/night (<code>systems/timeOfDay.ts</code>, store's timeOfDay/timeOfDayOverride fields) drives a warm-by-day/cool-blue-violet-by-night color grading in the glow post-fx pipeline (<code>fx/glowShader.ts</code>'s new tint/brightness uniforms) — night also lowers the bloom threshold so lantern/window/bonfire highlights (already bright, curated warm tones) bloom into a glow that day's higher threshold mostly suppresses, which is what stands in for a bespoke per-light glow-pool system. Ambient particles (<code>render/effects.ts</code>, one shared soft-dot sprite tinted/scaled per effect): fireflies at night, drifting motes by day, bonfire embers, chimney smoke from cottages, and a lantern/cottage-window alpha flicker — all skipped or made static under <code>prefers-reduced-motion</code>.</p>
+	<h2>Continuous ground field, layout, day/night, and effects — batch 2+3 (M10b)</h2>
+	<p class="note">Batch 1's per-cluster ellipses left everything else as an empty background — review: "the shelf is an empty dark void", "cluster ground is blocky squares... floating in the void". <code>render/groundField.ts</code> bakes one uninterrupted grass field across the whole camera bounds (chunked into fixed-size RenderTextures), with clusters/the shelf tower marked as clearings on top of it. Batch 3: those clearing edges were still a hard, sand-colored square outline (batch 1's opaque dirt fill, now sitting on top of a field that's grass everywhere) — <code>world-art/biome-tiles.ts</code>'s edge tiles are transparent outside the grass silhouette instead, with a few fixed "tuft" pixels breaking up the curve, so the field just shows through. Layout: portal-arch spacing (<code>WorldScene#portalRingRadius</code>) now derives the ring radius from the arches' own display size instead of a flat per-count increment that put a busy cluster's arches on top of each other; clearings size themselves to actually contain that ring; props are confined to a clearing's outer annulus (<code>systems/scatter.ts</code>'s <code>minRadiusFrac</code>) so they frame the edge instead of scattering anywhere non-excluded; and <code>packages/converter/src/layout.ts</code> gained a post-placement relaxation pass so whole *clusters* (not just props within one) keep a minimum gap scaled to how many files each one has. Day/night (<code>systems/timeOfDay.ts</code>) drives a warm-by-day/cool-blue-violet-by-night color grading in the glow post-fx pipeline (<code>fx/glowShader.ts</code>'s tint/brightness uniforms). Batch 3 added real local light: <code>render/lightPools.ts</code> draws an additive warm glow at every lamp post, cottage window, the wizard tower's window, and a bigger flickering one at the bonfire, night-only — batch 2 had relied on the post-fx bloom alone, which review found "barely glowing". Ambient particles (<code>render/effects.ts</code>, one shared soft-dot sprite tinted/scaled per effect): fireflies at night, drifting motes by day, bonfire embers, chimney smoke from cottages, and a lantern/cottage-window alpha flicker — all skipped or made static under <code>prefers-reduced-motion</code>.</p>
 	<section class="icon-row">
 		<h3>In-engine (headless Playwright screenshots)</h3>
 		<p class="note">The actual demo, not a mockup — captured via <code>apps/demo/e2e</code>'s Playwright setup against a production build, with <code>store.setTimeOfDayOverride()</code> forcing day/night deterministically. See the CHANGELOG for how these were captured.</p>
 		<div class="stage">
 			<figure><img class="soft" src="review/shelf-day.png" alt="shelf scene by day: continuous grass field, tower, castle keep, cottage, cobblestone paths" style="width: 420px;"><figcaption>shelf — day</figcaption></figure>
-			<figure><img class="soft" src="review/shelf-night.png" alt="shelf scene by night: cool blue-violet color grading" style="width: 420px;"><figcaption>shelf — night</figcaption></figure>
-			<figure><img class="soft" src="review/world-day.png" alt="inside a world by day: continuous field, cottagecore props, cobblestone paths" style="width: 420px;"><figcaption>inside a world — day</figcaption></figure>
-			<figure><img class="soft" src="review/world-night.png" alt="inside a world by night: cool color grading, bonfire and window highlights still warm" style="width: 420px;"><figcaption>inside a world — night</figcaption></figure>
+			<figure><img class="soft" src="review/shelf-night.png" alt="shelf scene by night: cool blue-violet color grading, warm light pools at the tower window and lamp posts" style="width: 420px;"><figcaption>shelf — night</figcaption></figure>
+			<figure><img class="soft" src="review/world-day.png" alt="inside a world by day: continuous field, cottagecore props framing clearing edges, cobblestone paths" style="width: 420px;"><figcaption>inside a world — day</figcaption></figure>
+			<figure><img class="soft" src="review/world-night.png" alt="inside a world by night: cool color grading, warm light pools at the bonfire and lamp posts" style="width: 420px;"><figcaption>inside a world — night</figcaption></figure>
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>Motion check — 6-frame night sequence</h3>
+		<p class="note">Captured 250ms apart via repeated screenshots of the same running page (not a GIF — see assets/generated/review/sequences/). Fireflies drift a few pixels frame to frame; a pixel-diff between frame 0 and frame 5 (checked directly, not just eyeballed) shows movement concentrated around each portal arch and the bonfire, not a false-static render.</p>
+		<div class="stage">
+			<figure><img class="soft" src="review/sequences/night-0.png" alt="night motion sequence frame 0" style="width: 200px;"><figcaption>frame 0</figcaption></figure>
+			<figure><img class="soft" src="review/sequences/night-1.png" alt="night motion sequence frame 1" style="width: 200px;"><figcaption>frame 1</figcaption></figure>
+			<figure><img class="soft" src="review/sequences/night-2.png" alt="night motion sequence frame 2" style="width: 200px;"><figcaption>frame 2</figcaption></figure>
+			<figure><img class="soft" src="review/sequences/night-3.png" alt="night motion sequence frame 3" style="width: 200px;"><figcaption>frame 3</figcaption></figure>
+			<figure><img class="soft" src="review/sequences/night-4.png" alt="night motion sequence frame 4" style="width: 200px;"><figcaption>frame 4</figcaption></figure>
+			<figure><img class="soft" src="review/sequences/night-5.png" alt="night motion sequence frame 5" style="width: 200px;"><figcaption>frame 5</figcaption></figure>
 		</div>
 	</section>
 

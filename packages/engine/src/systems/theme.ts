@@ -65,3 +65,24 @@ export function themeFromSeed(seed: number): Theme {
 		lightness,
 	};
 }
+
+/**
+ * Blends `color` toward white by `strength` (0 = untouched, 1 = pure white)
+ * before it's handed to Phaser's `setTint` — used for the in-world cabinet
+ * marker, where the M10b batch-3 review wants the per-world theme to "stay
+ * subtle". `setTint` is multiplicative per-channel, so applying a saturated
+ * theme color at full strength to a light wood sprite is what actually
+ * produced the "dark red and green noise" look, not the wood art itself;
+ * lightening the tint color first (rather than, say, overlaying a separate
+ * low-alpha rect) keeps this a one-line change at every existing setTint
+ * call site.
+ */
+export function subtleTint(color: number, strength: number): number {
+	const clamped = Math.min(1, Math.max(0, strength));
+	const r = (color >> 16) & 0xff;
+	const g = (color >> 8) & 0xff;
+	const b = color & 0xff;
+	const mix = (channel: number) =>
+		Math.round(channel + (255 - channel) * (1 - clamped));
+	return (mix(r) << 16) | (mix(g) << 8) | mix(b);
+}

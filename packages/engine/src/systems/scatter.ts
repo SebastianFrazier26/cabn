@@ -28,13 +28,26 @@ export interface ScatterOptions {
 	exclusions: readonly ScatterExclusion[];
 	/** Rejection-sample attempts per point before giving up on that one and moving to the next — bounds worst-case cost on a densely excluded cluster. */
 	maxAttemptsPerPoint?: number;
+	/**
+	 * Restricts sampling to the outer annulus [minRadiusFrac, 1] of the
+	 * ellipse instead of the whole disk — 0 (the default) is the old
+	 * whole-disk behavior. M10b batch-3 review: "props should frame clearings
+	 * (edges, corners)", not scatter anywhere non-excluded — a plain
+	 * exclusion circle around the center stops a prop from sitting *on* the
+	 * plaza, but says nothing about where in the remaining disk it lands, so
+	 * props could still cluster awkwardly close to the middle rather than
+	 * reading as framing the edge.
+	 */
+	minRadiusFrac?: number;
 }
 
 /**
- * Deterministically scatters decal points inside a cluster's ground ellipse,
- * never inside an exclusion circle (portals/spawn/paths) and never closer to
- * each other than `minSpacing`. Uniform-in-ellipse sampling (polar with a
- * sqrt-scaled radius, the standard trick for uniform-disk sampling) rather
+ * Deterministically scatters decal points inside a cluster's ground ellipse
+ * (or an outer annulus of it — see minRadiusFrac), never inside an exclusion
+ * circle (portals/spawn/paths) and never closer to each other than
+ * `minSpacing`. Uniform-in-area sampling (polar with a sqrt-scaled radius,
+ * the standard trick for uniform-disk sampling, generalized to an annulus by
+ * offsetting that radius by minRadiusFrac's own squared contribution) rather
  * than a jittered grid — a grid would visibly align decals into rows at any
  * tile-sized spacing, which reads as planted, not naturally scattered.
  */
@@ -42,11 +55,12 @@ export function placeScatter(opts: ScatterOptions): ScatterPoint[] {
 	const rand = mulberry32(hashStringSeed(opts.clusterId));
 	const maxAttempts = opts.maxAttemptsPerPoint ?? 20;
 	const points: ScatterPoint[] = [];
+	const innerFracSq = (opts.minRadiusFrac ?? 0) ** 2;
 
 	for (let i = 0; i < opts.count; i++) {
 		for (let attempt = 0; attempt < maxAttempts; attempt++) {
 			const angle = rand() * Math.PI * 2;
-			const r = Math.sqrt(rand());
+			const r = Math.sqrt(innerFracSq + rand() * (1 - innerFracSq));
 			const x = opts.centerX + Math.cos(angle) * r * opts.radiusX;
 			const y = opts.centerY + Math.sin(angle) * r * opts.radiusY;
 

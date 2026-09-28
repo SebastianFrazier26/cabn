@@ -150,6 +150,13 @@ export function propPath(name: PropName): string {
 export const CASTLE_KEEP_KEY = "castle-keep";
 export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_soft.png`;
 
+// M10b batch 3: replaces ASSET_KEYS.cabinet (the photographic cabinet_256.webp)
+// for WorldScene's in-world cluster markers only — see props.ts's
+// worldCabinet doc comment. Optional/graceful-fallback like every other
+// batch-2/3 asset: WorldScene keeps using ASSET_KEYS.cabinet if this fails to load.
+export const WORLD_CABINET_KEY = "world-cabinet";
+export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet_soft.png`;
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything

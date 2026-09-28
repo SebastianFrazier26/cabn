@@ -31,6 +31,18 @@ export const WIZARD_TOWER_RAW_WIDTH_PX = 768;
 export const WIZARD_TOWER_RAW_HEIGHT_PX = 1280;
 export const WIZARD_TOWER_SCALE = 0.14;
 
+// castle-keep's pixel map is 32x44 (tools/asset-pipeline/src/world-art/
+// props.ts), cellSize 6 like every other prop -> raw 192x264. Every other
+// prop in this batch is deliberately unscaled (propPlacement.ts never calls
+// setScale — a scattered prop's apparent size comes entirely from its grid
+// dimensions), but the castle keep is a one-off landmark accent sitting
+// right next to the wizard tower, not a scattered prop, and batch 2 shipped
+// it unscaled anyway — bigger than the (correctly scaled) tower beside it,
+// the exact "centerpiece" the tower is supposed to be (M10b batch-3 review).
+// Targets 150px tall via fitSpriteToSize() below — a bit under the tower's
+// own 179px so it reads as a secondary structure.
+export const CASTLE_KEEP_TARGET_HEIGHT_PX = 150;
+
 // Each monster species' pixel map is a different native size (ouroboros is
 // deliberately 48x48 vs. everything else's ~18-32px, see tools/asset-pipeline's
 // pixelmaps/), so a single shared scale constant would make species that

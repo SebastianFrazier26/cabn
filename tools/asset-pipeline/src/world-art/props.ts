@@ -133,7 +133,19 @@ function bench(wood: number, woodDark: number): Grid {
  * A one-off decorative keep near the shelf's tower — deliberately squarer and
  * more crenellated than the wizard tower (a round, tapering silhouette) so
  * the two don't read as the same building at different sizes. Not part of
- * PROP_NAMES' random scatter pool; placed once, by name, near the tower.
+ * PROP_NAMES' random scatter pool; placed once, by name, near the tower, and
+ * (unlike every other prop) drawn at an explicit scale in ShelfScene rather
+ * than unscaled — see render/scale.ts's CASTLE_KEEP_SCALE for why: batch 2
+ * shipped this flat and unscaled, which happened to be *bigger* than the
+ * (correctly scaled) tower next to it, the exact "centerpiece" the tower is
+ * supposed to be.
+ *
+ * Redrawn for batch 3: real coursed-masonry shading bands (matching the
+ * wizard tower's own style), a recessed parapet walkway with raised merlons
+ * instead of thin blocks stuck to a flat top, a proper triangular pennant
+ * (not 3 loose pixels), two lit windows (bright enough to catch the night
+ * glow threshold, same mechanism as lampPost/cottage), and fixed-position
+ * ivy climbing one wall.
  */
 function castleKeep(
 	stone: number,
@@ -141,19 +153,79 @@ function castleKeep(
 	stoneHighlight: number,
 	roofColor: number,
 	flagColor: number,
+	windowGlow: number,
+	ivyColor: number,
 ): Grid {
 	const g = createGrid(32, 44);
-	fillRect(g, 2, 10, 8, 32, stone);
-	fillTriangle(g, 0, 10, 10, 10, 5, 2, roofColor);
-	setPixel(g, 5, 1, flagColor);
-	setPixel(g, 6, 1, flagColor);
-	setPixel(g, 5, 0, flagColor);
-	fillRect(g, 4, 16, 24, 26, stone);
-	fillRect(g, 4, 16, 24, 3, stoneHighlight);
-	fillRect(g, 4, 39, 24, 3, stoneShadow);
-	for (let x = 4; x < 28; x += 4) fillRect(g, x, 12, 2, 4, stone);
-	fillRect(g, 14, 34, 6, 8, stoneShadow);
-	fillRect(g, 16, 22, 2, 5, stoneShadow);
+	const bodyTop = 14;
+	const bodyBottom = 41;
+	const bodyLeft = 5;
+	const bodyRight = 27;
+	const bodyW = bodyRight - bodyLeft;
+
+	fillRect(g, bodyLeft, bodyTop, bodyW, bodyBottom - bodyTop, stone);
+	fillRect(g, bodyLeft, bodyTop, bodyW, 3, stoneHighlight);
+	fillRect(g, bodyLeft, bodyTop + 10, bodyW, 2, stoneShadow);
+	fillRect(g, bodyLeft, bodyBottom - 3, bodyW, 3, stoneShadow);
+
+	// Recessed parapet walkway, with merlons poking up through it — the gaps
+	// between merlons showing the dark walkway is what reads as a real
+	// crenellated top rather than a row of blocks glued to a flat roofline.
+	const parapetY = bodyTop - 4;
+	fillRect(g, bodyLeft - 1, parapetY, bodyW + 2, 4, stoneShadow);
+	for (let x = bodyLeft - 1; x < bodyRight + 1; x += 4) {
+		fillRect(g, x, parapetY - 3, 2, 3, stone);
+		setPixel(g, x, parapetY - 3, stoneHighlight);
+	}
+
+	// Corner turret, taller than the main body, with a peaked roof and a
+	// pennant flying from its apex.
+	const turretLeft = 1;
+	const turretWidth = 7;
+	const turretTop = 6;
+	fillRect(
+		g,
+		turretLeft,
+		turretTop,
+		turretWidth,
+		bodyBottom - turretTop,
+		stone,
+	);
+	fillRect(g, turretLeft, turretTop, turretWidth, 2, stoneHighlight);
+	fillTriangle(
+		g,
+		turretLeft - 1,
+		turretTop,
+		turretLeft + turretWidth,
+		turretTop,
+		turretLeft + turretWidth / 2,
+		0,
+		roofColor,
+	);
+	const poleX = turretLeft + Math.round(turretWidth / 2);
+	fillTriangle(g, poleX, 0, poleX + 6, 1.5, poleX, 3, flagColor);
+
+	fillRect(g, bodyLeft + 4, bodyTop + 13, 2, 5, windowGlow);
+	fillRect(g, bodyRight - 6, bodyTop + 13, 2, 5, windowGlow);
+	fillRect(
+		g,
+		bodyLeft + Math.round(bodyW / 2) - 3,
+		bodyBottom - 9,
+		6,
+		9,
+		stoneShadow,
+	);
+
+	const ivySpots: [number, number][] = [
+		[bodyRight - 2, bodyTop + 16],
+		[bodyRight - 3, bodyTop + 19],
+		[bodyRight - 1, bodyTop + 22],
+		[bodyRight - 2, bodyTop + 25],
+		[bodyRight - 3, bodyTop + 28],
+		[bodyRight - 1, bodyBottom - 6],
+	];
+	for (const [x, y] of ivySpots) setPixel(g, x, y, ivyColor);
+
 	return g;
 }
 
@@ -345,6 +417,11 @@ export interface PropPaletteIndices {
 	bedBorder: number;
 	bedSoil: number;
 	flagColor: number;
+	ivyColor: number;
+	cabinetWood: number;
+	cabinetWoodDark: number;
+	cabinetWoodLight: number;
+	cabinetHandle: number;
 }
 
 /** The random-scatter prop pool — see gen-world-art.ts's castleKeep call for the one-off shelf accent that's deliberately *not* in this list. */
@@ -450,6 +527,53 @@ export function buildCastleKeep(idx: PropPaletteIndices): Prop {
 			idx.stoneHighlight,
 			idx.roofColor,
 			idx.flagColor,
+			idx.windowGlow,
+			idx.ivyColor,
+		),
+		cellSize: 6,
+	};
+}
+
+/**
+ * The in-world cabinet marker (WorldScene's non-root clusters) — batch-3
+ * review: "still dark red and green noise", referring to the original
+ * photographic cabinet_256.webp (assets/source/icons/cabinet.png, matted and
+ * resized, not part of this procedural pipeline at all) read as muddy at
+ * gameplay scale. This is a from-scratch procedural replacement in the same
+ * house style as every other batch-2/3 prop: readable wood-plank paneling, a
+ * visible seam down the middle (two cabinet doors), and two small brass
+ * handles. WorldScene applies the per-world theme tint at low strength on
+ * top of this (see applySubtleTint in scenes/WorldScene.ts) rather than
+ * Phaser's full-strength multiplicative tint, which is the other half of
+ * "stays subtle" — no amount of restraint in the art itself survives being
+ * multiplied by a saturated theme color at full strength.
+ */
+function worldCabinet(
+	wood: number,
+	woodDark: number,
+	woodLight: number,
+	handle: number,
+): Grid {
+	const g = createGrid(18, 22);
+	fillRect(g, 0, 2, 18, 20, woodDark);
+	fillRect(g, 1, 2, 16, 18, wood);
+	fillRect(g, 1, 2, 16, 2, woodLight);
+	fillRect(g, 8, 2, 1, 18, woodDark);
+	for (let y = 6; y < 20; y += 5) fillRect(g, 1, y, 16, 1, woodDark);
+	setPixel(g, 6, 10, handle);
+	setPixel(g, 11, 10, handle);
+	fillRect(g, 0, 20, 18, 2, woodDark);
+	return g;
+}
+
+export function buildWorldCabinet(idx: PropPaletteIndices): Prop {
+	return {
+		name: "world-cabinet",
+		grid: worldCabinet(
+			idx.cabinetWood,
+			idx.cabinetWoodDark,
+			idx.cabinetWoodLight,
+			idx.cabinetHandle,
 		),
 		cellSize: 6,
 	};

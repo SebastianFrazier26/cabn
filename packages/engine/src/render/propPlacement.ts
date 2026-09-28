@@ -15,6 +15,8 @@ export interface PlacePropsParams {
 	depth: number;
 	/** Restricts the random pick to a subset of PROP_NAMES — e.g. the shelf only ever wants a couple of cottagecore accents near the tower, not the full pool including things sized for a cluster clearing. */
 	allowedNames?: readonly PropName[];
+	/** Forwarded to placeScatter — confines props to the outer annulus of the clearing so they frame its edge instead of scattering anywhere non-excluded. */
+	minRadiusFrac?: number;
 }
 
 export interface PlacedProp {
@@ -35,6 +37,31 @@ export function propSmokeWorldPos(
 	prop: PlacedProp,
 ): { x: number; y: number } | null {
 	const offset = PROP_SMOKE_OFFSET[prop.name];
+	if (!offset) return null;
+	return {
+		x: prop.x + offset.xFrac * prop.sprite.displayWidth,
+		y: prop.y + offset.yFrac * prop.sprite.displayHeight,
+	};
+}
+
+/**
+ * Same fractional-offset trick as PROP_SMOKE_OFFSET, for the bright glow spot
+ * each lit prop's art already has (lampPost's glow slit, cottage's window —
+ * see world-art/props.ts). M10b batch 3: night now draws a real additive
+ * light pool at each of these (render/effects.ts#createLightPool) instead of
+ * relying on the post-fx bloom alone to make them read as "lit".
+ */
+const PROP_LIGHT_OFFSET: Partial<
+	Record<PropName, { xFrac: number; yFrac: number }>
+> = {
+	"lamp-post": { xFrac: 0, yFrac: -0.3 },
+	cottage: { xFrac: -0.2, yFrac: 0.17 },
+};
+
+export function propLightWorldPos(
+	prop: PlacedProp,
+): { x: number; y: number } | null {
+	const offset = PROP_LIGHT_OFFSET[prop.name];
 	if (!offset) return null;
 	return {
 		x: prop.x + offset.xFrac * prop.sprite.displayWidth,
@@ -64,6 +91,7 @@ export function placeProps(params: PlacePropsParams): PlacedProp[] {
 		minSpacing: params.minSpacing ?? 60,
 		variantCount: pool.length,
 		exclusions: params.exclusions,
+		minRadiusFrac: params.minRadiusFrac,
 	});
 
 	return points.map((point) => {
