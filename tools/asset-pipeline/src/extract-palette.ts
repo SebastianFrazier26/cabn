@@ -88,6 +88,12 @@ const CURATED_COLORS: { name: string; rgb: RGB }[] = [
 	{ name: "wood light bright", rgb: { r: 190, g: 140, b: 90 } },
 	{ name: "terracotta bright", rgb: { r: 210, g: 120, b: 70 } },
 	{ name: "lantern glow bright", rgb: { r: 255, g: 240, b: 180 } },
+	// Portal-type arches (2026-09-28): Python/TypeScript want a true mid and
+	// deep blue (sky blue bright alone reads as "url"/sky), and Go its cyan —
+	// none of the existing blues are dark or green-shifted enough.
+	{ name: "sapphire", rgb: { r: 48, g: 98, b: 170 } },
+	{ name: "deep navy", rgb: { r: 32, g: 52, b: 98 } },
+	{ name: "gopher cyan", rgb: { r: 64, g: 174, b: 206 } },
 ];
 
 function bucket(value: number): number {

@@ -24,6 +24,13 @@ export const ASSET_PATHS = {
 export const PORTAL_ARCH_FRAME_SIZE = 256;
 export const PORTAL_ARCH_FRAME_COUNT = 6;
 
+// Portal-type overlays (2026-09-28): one static 256px frame per
+// systems/archVariant.ts ARCH_VARIANTS entry, 5 per row, stacked over the
+// animated base strip — tools/asset-pipeline's portal-variants.ts. Optional:
+// without it every arch stays the plain generic one.
+export const PORTAL_VARIANT_SHEET_KEY = "portal-arch-variants";
+export const PORTAL_VARIANT_SHEET_PATH = `${ASSET_BASE}/placeholders/portal_arch_variants_soft.png`;
+
 export const BONFIRE_FRAME_COUNT = 4;
 
 // M6 monster sprites. Ghost (M2) is a single static image — no idle animation

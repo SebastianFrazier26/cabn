@@ -29,6 +29,8 @@ import {
 	PATH_STAMP_COUNT,
 	PORTAL_ARCH_FRAME_COUNT,
 	PORTAL_ARCH_FRAME_SIZE,
+	PORTAL_VARIANT_SHEET_KEY,
+	PORTAL_VARIANT_SHEET_PATH,
 	PROP_NAMES,
 	pathStampKey,
 	pathStampPath,
@@ -74,6 +76,8 @@ export interface AssetAvailability {
 	shelfCabin: boolean;
 	/** All of the M10 atmosphere keys (assetPaths.ts#atmosphereAssetEntries) — edge scenery, skyline, sky ornaments, path-ribbon pieces. */
 	atmosphereArt: boolean;
+	/** The portal-type overlay sheet — without it every world arch is the generic one. */
+	portalVariants: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -111,6 +115,10 @@ export class PreloadScene extends Phaser.Scene {
 				frameHeight: PORTAL_ARCH_FRAME_SIZE,
 			},
 		);
+		this.load.spritesheet(PORTAL_VARIANT_SHEET_KEY, PORTAL_VARIANT_SHEET_PATH, {
+			frameWidth: PORTAL_ARCH_FRAME_SIZE,
+			frameHeight: PORTAL_ARCH_FRAME_SIZE,
+		});
 
 		this.load.image(
 			OPTIONAL_ASSET_KEYS.wizardTower,
@@ -256,6 +264,7 @@ export class PreloadScene extends Phaser.Scene {
 			atmosphereArt:
 				worldArtAvailable &&
 				atmosphereAssetEntries().every(([key]) => this.loaded(key)),
+			portalVariants: this.loaded(PORTAL_VARIANT_SHEET_KEY),
 		};
 
 		if ("shelfManifest" in this.target) {

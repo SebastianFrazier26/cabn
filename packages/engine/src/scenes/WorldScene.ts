@@ -15,6 +15,7 @@ import {
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
+	PORTAL_VARIANT_SHEET_KEY,
 	WORLD_FOUNTAIN_GEM_KEY,
 	WORLD_FOUNTAIN_IDLE_ANIM,
 	WORLD_FOUNTAIN_KEY,
@@ -79,6 +80,12 @@ import {
 	type DisplayPreview,
 	effectiveRichPreview,
 } from "../systems/archPreview.js";
+import {
+	ARCH_VARIANT_GLOW,
+	type ArchVariant,
+	archVariantFor,
+	archVariantFrame,
+} from "../systems/archVariant.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	type ClickTarget,
@@ -165,6 +172,10 @@ const ARCH_OPENING_WIDTH_RATIO = 0.47;
 const ARCH_OPENING_HEIGHT_RATIO = 0.65;
 const ARCH_OPENING_Y_OFFSET_RATIO = 0.17;
 const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * WORLD_PORTAL_SCALE;
+/** Keystone plaque centre (portal-variants.ts PLAQUE: grid rows 5-11 of 48, centred on the frame's middle row). */
+const ARCH_PLAQUE_Y_OFFSET_RATIO = (8.5 - 24) / 48;
+/** Portal-type trim overlay, between the arch (3) and its preview. */
+const ARCH_VARIANT_DEPTH = 3.01;
 /** Just above the arch sprite (3) so the preview covers the opening's idle sparkles, below monsters (4) and the player (5). */
 const ARCH_PREVIEW_DEPTH = 3.05;
 /** Motes/glow/sheen over the preview, still below monsters (4) and the player (5). */
@@ -252,6 +263,8 @@ export class WorldScene extends Phaser.Scene {
 	private portalWorldPos = new Map<string, Position>();
 	private portalRingRadii = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	private portalVariantOverlays = new Map<string, Phaser.GameObjects.Image>();
+	private portalVariants = new Map<string, ArchVariant>();
 	private portalPathById = new Map<string, string>();
 	private worldFiles = new Set<string>();
 
@@ -449,6 +462,19 @@ export class WorldScene extends Phaser.Scene {
 				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.32,
 				color: PALETTE.paleGhostBlue,
 				alpha: 0.08,
+			});
+		}
+		// The keystone plaque is what tells arch types apart, and the grade
+		// otherwise swallows it — a small light in the variant's rune colour.
+		for (const [portalId, variant] of this.portalVariants) {
+			const pos = this.portalWorldPos.get(portalId);
+			if (!pos || variant === "generic") continue;
+			lights.push({
+				x: pos.x,
+				y: pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_PLAQUE_Y_OFFSET_RATIO,
+				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.12,
+				color: ARCH_VARIANT_GLOW[variant],
+				alpha: 0.35,
 			});
 		}
 		this.atmosphere = attachAtmosphere(this, this.store, {
@@ -911,14 +937,42 @@ export class WorldScene extends Phaser.Scene {
 				sprite.play(PORTAL_IDLE_ANIM);
 				this.portalSprites.set(portalId, sprite);
 				const portal = this.portalsById.get(portalId);
-				if (portal)
-					this.archPreviews?.add({
-						id: portalId,
-						pos,
-						preview: this.previewFor(portal),
-					});
+				if (portal) {
+					const preview = this.previewFor(portal);
+					this.archPreviews?.add({ id: portalId, pos, preview });
+					this.setArchVariant(portalId, portal, preview);
+				}
 			});
 		}
+	}
+
+	/** Portal-type trim (render order: base arch 3 < overlay < preview 3.05) — the overlay never touches the opening, so previews, click targets and orbits see the same arch either way. */
+	private setArchVariant(
+		portalId: string,
+		portal: Portal,
+		preview: DisplayPreview,
+	): void {
+		if (!this.availability.portalVariants) return;
+		const variant = archVariantFor(portal.file, preview.kind);
+		this.portalVariants.set(portalId, variant);
+		const frame = archVariantFrame(variant);
+		const existing = this.portalVariantOverlays.get(portalId);
+		if (frame === null) {
+			existing?.destroy();
+			this.portalVariantOverlays.delete(portalId);
+			return;
+		}
+		if (existing) {
+			existing.setFrame(frame);
+			return;
+		}
+		const pos = this.portalWorldPos.get(portalId);
+		if (!pos) return;
+		const overlay = this.add
+			.image(pos.x, pos.y, PORTAL_VARIANT_SHEET_KEY, frame)
+			.setScale(WORLD_PORTAL_SCALE)
+			.setDepth(ARCH_VARIANT_DEPTH);
+		this.portalVariantOverlays.set(portalId, overlay);
 	}
 
 	private previewFor(portal: Portal): DisplayPreview {
@@ -933,7 +987,9 @@ export class WorldScene extends Phaser.Scene {
 	private refreshPortalPreview(portalId: string): void {
 		const portal = this.portalsById.get(portalId);
 		if (!portal) return;
-		this.archPreviews?.setPreview(portalId, this.previewFor(portal));
+		const preview = this.previewFor(portal);
+		this.archPreviews?.setPreview(portalId, preview);
+		this.setArchVariant(portalId, portal, preview);
 		if (this.focusedPortalId === portalId) {
 			this.focusedPortalId = null;
 			this.setFocusedPortal(portalId);
