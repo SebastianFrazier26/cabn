@@ -35,6 +35,7 @@ import {
 	type PortalPoint,
 } from "../systems/portalApproach.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
+import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
 import { themeFromSeed } from "../systems/theme.js";
 import type { AssetAvailability } from "./PreloadScene.js";
 
@@ -78,6 +79,8 @@ export class ShelfScene extends Phaser.Scene {
 
 	private cabins: CabinPlacement[] = [];
 	private cabinsInRange = new Set<string>();
+	/** Set the instant a cabin entry is confirmed, guarding the transition-hold window (see handleCabinEnter) against a second E press re-triggering scene.start before the first one fires. */
+	private enteringWorld = false;
 	private placedProps: PlacedProp[] = [];
 	private castleKeepPos = { x: 0, y: 0 };
 	private ambientEffects: { destroy(): void } | null = null;
@@ -403,6 +406,7 @@ export class ShelfScene extends Phaser.Scene {
 	}
 
 	private handleCabinEnter(pos: { x: number; y: number }): void {
+		if (this.enteringWorld) return;
 		if (!Phaser.Input.Keyboard.JustDown(this.enterKey)) return;
 
 		let closest: CabinPlacement | null = null;
@@ -422,11 +426,22 @@ export class ShelfScene extends Phaser.Scene {
 		}
 		if (!closest) return;
 
+		this.enteringWorld = true;
 		const worldUrl = resolveRelativeUrl(this.shelfBase, closest.world.worldUrl);
 		this.bus.emit("shelf:enter-world", { worldId: closest.world.id });
-		this.scene.start("boot", {
-			worldUrl,
-			returnTo: { shelfUrl: this.shelfUrl },
-		});
+		// Delayed rather than immediate: SceneTransitionOverlay (React) starts a
+		// Stardew-style fade-to-black the instant it hears shelf:enter-world —
+		// this hold gives that fade time to finish covering the screen before
+		// the hard scene.start cut happens, so the cut itself is never visible.
+		// See systems/sceneTransition.ts for why the two share one constant.
+		this.time.delayedCall(
+			cabinTransitionDelayMs(prefersReducedMotion()),
+			() => {
+				this.scene.start("boot", {
+					worldUrl,
+					returnTo: { shelfUrl: this.shelfUrl },
+				});
+			},
+		);
 	}
 }

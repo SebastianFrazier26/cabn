@@ -70,6 +70,7 @@ import {
 	withVisitedCluster,
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
+import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
 import { type Theme, themeFromSeed } from "../systems/theme.js";
 import {
 	type AssetAvailability,
@@ -137,6 +138,8 @@ export class WorldScene extends Phaser.Scene {
 	private worldBase = "";
 	private availability!: AssetAvailability;
 	private returnTo: { shelfUrl: string } | undefined;
+	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
+	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
 	private bus!: CabnBus;
 
@@ -1144,7 +1147,7 @@ export class WorldScene extends Phaser.Scene {
 	// deliberate portal-back rather than a global hotkey that fights the file
 	// overlay's own Esc-to-close.
 	private handleReturnToShelf(): void {
-		if (!this.returnTo) return;
+		if (!this.returnTo || this.returningToShelf) return;
 		if (!Phaser.Input.Keyboard.JustDown(this.keys.esc)) return;
 
 		const spawn = this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
@@ -1156,11 +1159,18 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 
+		this.returningToShelf = true;
 		this.persistPlayerPos();
-		this.bus.emit("world:return-to-shelf", {
-			shelfUrl: this.returnTo.shelfUrl,
-		});
-		this.scene.start("boot", { shelfUrl: this.returnTo.shelfUrl });
+		const shelfUrl = this.returnTo.shelfUrl;
+		this.bus.emit("world:return-to-shelf", { shelfUrl });
+		// Same fade-covers-the-cut reasoning as ShelfScene.handleCabinEnter — see
+		// systems/sceneTransition.ts.
+		this.time.delayedCall(
+			cabinTransitionDelayMs(prefersReducedMotion()),
+			() => {
+				this.scene.start("boot", { shelfUrl });
+			},
+		);
 	}
 
 	// --- Save persistence ---------------------------------------------
