@@ -17,11 +17,9 @@ export interface PortalPreviewProps {
 	worldBaseUrl: string;
 	/**
 	 * "overlay": compact, for a small in-world panel anchored near a portal —
-	 * absolute positioning is the caller's job (a future WorldScene
-	 * integration projects world coordinates to screen space; this component
-	 * has no notion of world position). "expanded": a larger, full-detail
-	 * view meant to fill most of the viewport, same shape as EditorOverlay's
-	 * inset panel.
+	 * absolute positioning is the caller's job (this component has no notion
+	 * of world position). "expanded": a larger, full-detail view — what
+	 * PortalPreviewDock shows for the portal the player is standing at.
 	 */
 	variant: "overlay" | "expanded";
 }
@@ -183,13 +181,26 @@ export function PortalPreview({
 					<img
 						src={resolveRelativeUrl(worldBaseUrl, preview.asset)}
 						alt={fileName}
-						style={{
-							maxWidth: "100%",
-							maxHeight: maxHeight ?? "100%",
-							objectFit: "contain",
-							display: "block",
-							margin: "0 auto",
-						}}
+						style={
+							variant === "expanded"
+								? {
+										// Scaled up to fill the panel, not shown at natural size — a
+										// small pixel-art asset (the demo's 48px logo) otherwise sits
+										// as a postage stamp in a 440px panel.
+										width: "100%",
+										height: "100%",
+										objectFit: "contain",
+										imageRendering: "pixelated",
+										display: "block",
+									}
+								: {
+										maxWidth: "100%",
+										maxHeight: maxHeight ?? "100%",
+										objectFit: "contain",
+										display: "block",
+										margin: "0 auto",
+									}
+						}
 					/>
 				);
 				break;

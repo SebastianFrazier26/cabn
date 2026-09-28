@@ -113,6 +113,9 @@ const PIXEL_THEME_CSS = `
 .cabn-panel::before { left: 10px; }
 .cabn-panel::after { right: 10px; }
 .cabn-panel-title { font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--cabn-border-outer); }
+/* Panels sized to fill a fixed-size container (the portal preview dock) need
+   border-box, or width:100% plus the 14px padding and 4px border overflows it. */
+.cabn-preview-dock .cabn-panel { box-sizing: border-box; }
 .cabn-panel-divider { height: 3px; background: var(--cabn-border-outer); opacity: 0.15; margin: 6px 0; border-radius: 2px; }
 
 .cabn-btn {

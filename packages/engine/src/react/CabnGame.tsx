@@ -10,6 +10,7 @@ import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
 import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
@@ -70,6 +71,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			{handle && (
 				<PixelTheme store={handle.store}>
 					<FileOverlay store={handle.store} />
+					<PortalPreviewDock store={handle.store} />
 					<ToolHotbar store={handle.store} bus={handle.bus} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />
