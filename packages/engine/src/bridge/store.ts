@@ -62,6 +62,23 @@ export interface FocusedPortalPreview {
 	allowedEmbedOrigins: readonly string[];
 }
 
+/**
+ * The one url-preview arch close enough (PORTAL_APPROACH_RADIUS) to carry a
+ * live mini-page over its opening (react/PortalLivePage.tsx). Wider than
+ * focusedPortalPreview's radius, so the page is already live by the time the
+ * dock opens — which is why the dock shows a title card for url previews
+ * instead of a second iframe of the same page. Its per-frame screen rect
+ * rides the bus ("portal:web-rect"), not the store: it changes every frame
+ * the camera moves and nothing needs to query it later.
+ */
+export interface NearWebPortal {
+	portalId: string;
+	url: string;
+	title?: string;
+	fallbackImage?: string;
+	allowedEmbedOrigins: readonly string[];
+}
+
 export interface CabnState {
 	mode: CabnMode;
 	activeClusterId: string | null;
@@ -108,6 +125,7 @@ export interface CabnState {
 	/** Resolved from timeOfDayOverride (+ the clock, if "auto") — what every glow-bearing scene actually reads to pick its GlowParams preset and, at night, switch on fireflies. Recomputed whenever the override changes or (for "auto") periodically, by game.ts. */
 	timeOfDay: TimeOfDay;
 	focusedPortalPreview: FocusedPortalPreview | null;
+	nearWebPortal: NearWebPortal | null;
 }
 
 export interface CabnActions {
@@ -148,6 +166,7 @@ export interface CabnActions {
 	/** Re-resolves timeOfDay from the *current* override — a no-op for "day"/"night" (already pinned), but "auto" needs this called periodically so a session left open across a day/night boundary actually crosses it (game.ts polls this on an interval). */
 	refreshTimeOfDay(): void;
 	setFocusedPortalPreview(preview: FocusedPortalPreview | null): void;
+	setNearWebPortal(portal: NearWebPortal | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -174,6 +193,7 @@ const initialState: CabnState = {
 	timeOfDayOverride: "auto",
 	timeOfDay: "day",
 	focusedPortalPreview: null,
+	nearWebPortal: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -225,5 +245,6 @@ export function createCabnStore(): StoreApi<CabnStore> {
 			})),
 		setFocusedPortalPreview: (focusedPortalPreview) =>
 			set({ focusedPortalPreview }),
+		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
 	}));
 }

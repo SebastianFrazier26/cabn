@@ -3,10 +3,10 @@
 	"previews": {
 		"README.md": { "kind": "image", "src": "assets/logo.png" },
 		"lib/models.py": { "kind": "markdown", "src": "docs/models.md" },
-		"pyproject.toml": {
+		"docs/website.md": {
 			"kind": "url",
 			"url": "https://example.com/",
-			"title": "example.com (verified to allow framing — see README)"
+			"title": "Project website (example.com, a live web portal)"
 		}
 	},
 	"allowedEmbedOrigins": ["https://example.com"]

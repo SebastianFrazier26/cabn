@@ -87,6 +87,8 @@ Every portal carries a richer default preview than the small in-arch panel: synt
 
 A `url` override renders as a live sandboxed iframe (`PortalEmbed`) — see `packages/world-schema/README.md` for the override format and `packages/engine/README.md` for the component API and, importantly, the `Content-Security-Policy: frame-src` a hosting page must set for the embed to actually load (the sandbox attribute alone isn't enough; CSP is the browser's, not this app's, to relax).
 
+In the world, walking up to a url arch lays that live page over the arch's opening (one at a time, unmounted when you walk away); clicking the page in the arch, or the side panel's "Open in browser" button, opens it in a new tab. Only origins in `allowedEmbedOrigins` are framed or opened. The demo's `docs/website.md` is such a web portal, pointed at `https://example.com/`.
+
 ### Running a file
 
 Press `R` (the wand) inside a file to start a run. The parchment shows the current line, that line's source text, and a running log; controls work both on-screen and by keyboard:

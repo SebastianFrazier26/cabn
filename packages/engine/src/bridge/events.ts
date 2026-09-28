@@ -14,6 +14,12 @@ import mitt, { type Emitter } from "mitt";
 export type CabnEvents = {
 	"portal:enter": { portalId: string };
 	"portal:approach": { portalId: string };
+	/** WorldScene -> PortalLivePage, every frame the camera moves the near url arch: its opening in CSS px inside CabnGame's root, and whether the player is standing over it (the page dims so the player isn't hidden behind a DOM layer). */
+	"portal:web-rect": {
+		portalId: string;
+		rect: { x: number; y: number; w: number; h: number };
+		occluded: boolean;
+	};
 	"cluster:enter": { clusterId: string };
 	"chunk:loaded": { clusterId: string };
 	"shelf:enter-world": { worldId: string };
