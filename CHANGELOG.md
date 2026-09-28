@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-28
+
+- Fix WCAG contrast failures in the quill editor's cottagecore theme (`packages/engine/src/react/editorTheme.ts`): an independent contrast audit (WCAG relative-luminance formula) found six fg/bg text pairs below the 4.5:1 AA minimum for text, not just the reported "steel gray" one — `steelGray` punctuation on `parchment` (2.43:1), `trail` gutter/line-number text on `parchmentDark` (3.50:1), `gold` keywords (1.74:1), `biome.meadow` strings (3.11:1), `amethyst` numbers/atoms (2.37:1), and `biome.glade` attribute names (4.47:1, just under). Punctuation now uses `ink` (11.63:1) and gutter text now uses `rust` (5.62:1 on `parchmentDark`), both existing palette colors. Keywords/strings/numbers/attributes needed new colors — `goldDark`/`biome.meadowDark`/`amethystDark`/`biome.gladeDark` (`packages/engine/src/palette.ts`), each the original hue/saturation hand-darkened just enough to clear 4.5:1 (all land at 4.60–4.61:1), following the same hand-computed-variant precedent `parchmentDark` already set in that file. `goldDark` also shifts hue a few degrees toward yellow — a plain darken-in-place landed within 23 RGB units of `trail`'s comment color, too close to read as a different syntax role beside it. New `packages/engine/tests/editorThemeContrast.test.ts` asserts every one of the theme's text pairs against its background, reading live `PALETTE` values so a future color change that regresses contrast fails the suite instead of a screenshot review.
+
 ## 2026-09-27
 
 - Browser smoke test: the walk to the first cabin now holds the key until the store reports the player has arrived, instead of for a fixed 2.2s. GitHub's runners render far fewer frames per second than a dev machine, so the timed walk covered only about half the distance there and the first CI run failed.

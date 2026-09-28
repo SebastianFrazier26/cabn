@@ -36,7 +36,8 @@ export const cottagecoreEditorTheme: Extension = EditorView.theme(
 		},
 		".cm-gutters": {
 			backgroundColor: toCssColor(PALETTE.parchmentDark),
-			color: toCssColor(PALETTE.trail),
+			// rust, not trail: trail-on-parchmentDark is only 3.5:1, below WCAG AA for text (2026-09-28).
+			color: toCssColor(PALETTE.rust),
 			border: "none",
 			borderRight: `1px solid ${toCssColor(PALETTE.trail)}55`,
 		},
@@ -50,20 +51,23 @@ export const cottagecoreEditorTheme: Extension = EditorView.theme(
 	{ dark: false },
 );
 
+// All colors below render as text on `parchment` and must clear WCAG AA (4.5:1) for text;
+// see packages/engine/tests/editorThemeContrast.test.ts. gold/amethyst/meadow/glade's plain
+// swatches don't clear it at this lightness, hence the *Dark variants (see palette.ts).
 export const cottagecoreHighlightStyle = HighlightStyle.define([
 	{ tag: t.comment, color: toCssColor(PALETTE.trail), fontStyle: "italic" },
 	{
 		tag: [t.keyword, t.controlKeyword, t.operatorKeyword],
-		color: toCssColor(PALETTE.gold),
+		color: toCssColor(PALETTE.goldDark),
 		fontWeight: "bold",
 	},
 	{
 		tag: [t.string, t.special(t.string)],
-		color: toCssColor(PALETTE.biome.meadow),
+		color: toCssColor(PALETTE.biome.meadowDark),
 	},
 	{
 		tag: [t.number, t.bool, t.null, t.atom],
-		color: toCssColor(PALETTE.amethyst),
+		color: toCssColor(PALETTE.amethystDark),
 	},
 	{
 		tag: [t.function(t.variableName), t.propertyName],
@@ -75,10 +79,11 @@ export const cottagecoreHighlightStyle = HighlightStyle.define([
 		color: toCssColor(PALETTE.biome.grove),
 		fontWeight: "bold",
 	},
-	{ tag: [t.attributeName], color: toCssColor(PALETTE.biome.glade) },
+	{ tag: [t.attributeName], color: toCssColor(PALETTE.biome.gladeDark) },
 	{
 		tag: [t.punctuation, t.bracket, t.operator],
-		color: toCssColor(PALETTE.steelGray),
+		// ink, not steelGray: steelGray-on-parchment is only 2.43:1, below WCAG AA for text (2026-09-28).
+		color: toCssColor(PALETTE.ink),
 	},
 ]);
 
