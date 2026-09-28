@@ -11,7 +11,16 @@ import { expect, type Page, test } from "@playwright/test";
 // assets/generated/review/signs/.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SHOTS_DIR = join(here, "..", "..", "..", "assets", "generated", "review", "signs");
+const SHOTS_DIR = join(
+	here,
+	"..",
+	"..",
+	"..",
+	"assets",
+	"generated",
+	"review",
+	"signs",
+);
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 
 interface Pos {
@@ -103,7 +112,9 @@ async function walkToward(page: Page, target: Pos, within: number) {
 }
 
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
-	await page.getByRole("button", { name: tod === "day" ? "Day" : "Night" }).click();
+	await page
+		.getByRole("button", { name: tod === "day" ? "Day" : "Night" })
+		.click();
 	await page.waitForTimeout(800);
 }
 
@@ -157,7 +168,9 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.signs.length ?? 0, { timeout: 15_000 })
+		.poll(async () => (await state(page))?.signs.length ?? 0, {
+			timeout: 15_000,
+		})
 		.toBe(3);
 	await page.waitForTimeout(1200);
 
@@ -168,7 +181,11 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	expect(await page.getByTestId("sign-placing").count()).toBe(0);
 
 	const spots = await signSpots(page);
-	expect(Object.keys(spots).sort()).toEqual(["docs/about.seyn", "src/tour.seyn", "welcome.seyn"]);
+	expect(Object.keys(spots).sort()).toEqual([
+		"docs/about.seyn",
+		"src/tour.seyn",
+		"welcome.seyn",
+	]);
 	const welcome = spots["welcome.seyn"] as Pos;
 
 	await setTimeOfDay(page, "day");
@@ -190,7 +207,9 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	const reader = page.getByTestId("sign-reader");
 	await expect(reader).toBeVisible();
 	await expect(popup).toBeHidden();
-	await expect(reader.getByTestId("sign-title")).toHaveText("Welcome to harvest-log");
+	await expect(reader.getByTestId("sign-title")).toHaveText(
+		"Welcome to harvest-log",
+	);
 	// Owner-only controls don't exist here either.
 	await expect(reader.getByTestId("sign-edit")).toHaveCount(0);
 	await expect(reader.getByTestId("sign-delete")).toHaveCount(0);
@@ -204,7 +223,10 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	const web = reader.locator('a[data-link-kind="url"]');
 	await expect(web).toHaveAttribute("target", "_blank");
 	await expect(web).toHaveAttribute("rel", "noopener noreferrer");
-	await expect(web).toHaveAttribute("href", "https://github.com/SebastianFrazier26/cabn");
+	await expect(web).toHaveAttribute(
+		"href",
+		"https://github.com/SebastianFrazier26/cabn",
+	);
 	const [tab] = await Promise.all([context.waitForEvent("page"), web.click()]);
 	await tab.waitForLoadState();
 	expect(tab.url()).toBe("https://github.com/SebastianFrazier26/cabn");
@@ -226,7 +248,9 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 		.poll(
 			async () => {
 				const p = (await state(page))?.playerPos;
-				return p ? Math.hypot(p.x - docs.pos.x, p.y - (docs.pos.y + 86)) : Infinity;
+				return p
+					? Math.hypot(p.x - docs.pos.x, p.y - (docs.pos.y + 86))
+					: Infinity;
 			},
 			{ timeout: 20_000 },
 		)
