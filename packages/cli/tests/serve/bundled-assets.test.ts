@@ -16,6 +16,8 @@ import {
 	monsterFramePath,
 	monsterHitPath,
 	OPTIONAL_ASSET_PATHS,
+	SIGNPOST_PATH,
+	uiIconPath,
 } from "../../../engine/src/assetPaths.js";
 import { ORIGINALS, PLACEHOLDERS } from "../../scripts/copy-assets.mjs";
 
@@ -50,6 +52,8 @@ function allRuntimeAssetPaths(): string[] {
 			(v): v is string => typeof v === "string",
 		),
 		MONSTER_GHOST_PATH,
+		SIGNPOST_PATH,
+		uiIconPath("sign"),
 	];
 	for (const species of ANIMATED_MONSTER_SPECIES) {
 		paths.push(monsterFramePath(species, 0), monsterFramePath(species, 1));
