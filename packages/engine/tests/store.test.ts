@@ -186,4 +186,24 @@ describe("createCabnStore", () => {
 		expect(store.getState().glowEnabled).toBe(false);
 		expect(store.getState().mode).toBe("world");
 	});
+
+	it("starts with an auto time-of-day override", () => {
+		expect(store.getState().timeOfDayOverride).toBe("auto");
+	});
+
+	it("setTimeOfDayOverride pins timeOfDay when overridden to day/night", () => {
+		store.getState().setTimeOfDayOverride("night");
+		expect(store.getState().timeOfDayOverride).toBe("night");
+		expect(store.getState().timeOfDay).toBe("night");
+
+		store.getState().setTimeOfDayOverride("day");
+		expect(store.getState().timeOfDay).toBe("day");
+	});
+
+	it("refreshTimeOfDay re-resolves from the current override without changing it", () => {
+		store.getState().setTimeOfDayOverride("night");
+		store.getState().refreshTimeOfDay();
+		expect(store.getState().timeOfDayOverride).toBe("night");
+		expect(store.getState().timeOfDay).toBe("night");
+	});
 });

@@ -23,3 +23,5 @@ Real code execution (`LocalRunProvider`) is not part of the main entry point —
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+The `DotGothic16` pixel font is bundled (as a self-hosted, Latin-subset, base64-embedded woff2 — see `src/react/fonts/dotGothic16.ts`) under the SIL Open Font License 1.1: [third-party-licenses/DotGothic16-OFL.txt](third-party-licenses/DotGothic16-OFL.txt).

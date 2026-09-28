@@ -40,4 +40,14 @@ describe("clampGlowParams", () => {
 	it("treats NaN as the field's minimum rather than propagating NaN", () => {
 		expect(clampGlowParams({ threshold: Number.NaN }).threshold).toBe(0);
 	});
+
+	it("clamps each tint channel to [0, 2] independently", () => {
+		const result = clampGlowParams({ tint: { r: 5, g: -1, b: 1.2 } });
+		expect(result.tint).toEqual({ r: 2, g: 0, b: 1.2 });
+	});
+
+	it("clamps brightness to [0.2, 1.5]", () => {
+		expect(clampGlowParams({ brightness: 0 }).brightness).toBe(0.2);
+		expect(clampGlowParams({ brightness: 10 }).brightness).toBe(1.5);
+	});
 });

@@ -12,6 +12,10 @@ import {
 	loadGlowEnabled,
 	prefersReducedMotion,
 } from "./systems/glowSettings.js";
+import { loadTimeOfDayOverride } from "./systems/timeOfDaySettings.js";
+
+/** How often "auto" re-checks the clock — frequent enough that a session left open actually crosses the day/night boundary live, cheap enough (one Date + a couple of comparisons) that it's not worth gating behind anything fancier. */
+const TIME_OF_DAY_REFRESH_MS = 60_000;
 
 export interface CabnGameHandle {
 	game: Phaser.Game;
@@ -42,6 +46,23 @@ export function createCabnGame(
 		.setGlowEnabled(
 			loadGlowEnabled() ?? defaultGlowEnabled(prefersReducedMotion()),
 		);
+	store.getState().setTimeOfDayOverride(loadTimeOfDayOverride() ?? "auto");
+	const timeOfDayInterval = setInterval(
+		() => store.getState().refreshTimeOfDay(),
+		TIME_OF_DAY_REFRESH_MS,
+	);
+	// A backgrounded tab's timers are throttled/paused by the browser, so the
+	// 60s interval above can't be trusted to have fired the instant a session
+	// left open overnight regains focus — re-resolving on visibilitychange
+	// (not "focus", which also fires for e.g. window-manager alt-tab cycling
+	// that never actually hid the tab) makes the theme flip land the moment
+	// the tab becomes visible again instead of up to 60s later.
+	const onVisibilityChange = () => {
+		if (document.visibilityState === "visible") {
+			store.getState().refreshTimeOfDay();
+		}
+	};
+	document.addEventListener("visibilitychange", onVisibilityChange);
 
 	const game = new Phaser.Game({
 		type: Phaser.AUTO,
@@ -67,6 +88,10 @@ export function createCabnGame(
 
 	game.registry.set("store", store);
 	game.registry.set("bus", bus);
+	game.events.once(Phaser.Core.Events.DESTROY, () => {
+		clearInterval(timeOfDayInterval);
+		document.removeEventListener("visibilitychange", onVisibilityChange);
+	});
 	game.scene.start("boot", target);
 
 	return { game, store, bus };

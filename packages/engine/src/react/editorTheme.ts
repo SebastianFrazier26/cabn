@@ -1,88 +1,107 @@
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { EditorView, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
-import { PALETTE, toCssColor } from "../palette.js";
 
 /**
- * Cottagecore CM theme: parchment surface, ink text, warm-palette syntax
- * colors, pale-ghost-blue selection (the one deliberately cool color, so a
- * selection still reads as distinct against an otherwise warm page). All
- * colors come from palette.ts (see its own comment on why — a hand-copy of
- * the generated palette, not invented hexes).
+ * Quill/editor CM theme, repainted (2026-09-28) from the original cottagecore
+ * parchment look to the pixel-theme's own token set (pixelTheme.tsx) — every
+ * value below is a `var(--cabn-*)` CSS custom property, not a literal hex, so
+ * this single theme object renders correctly under both `data-theme="day"`
+ * and `data-theme="night"` (CodeMirror's generated stylesheet just references
+ * whatever the ancestor `.cabn-pixel-root` currently resolves that property
+ * to — no need to pick a day/night variant at EditorView-creation time, and a
+ * live day/night flip while the editor is already open repaints it for free).
+ * `--cabn-syntax-*`/`--cabn-editor-gutter-text` are per-theme-darkened
+ * variants of the shared accent tokens, computed the same way
+ * palette.ts's `goldDark`/`amethystDark`/etc. were — see
+ * packages/engine/tests/editorThemeContrast.test.ts, which pins every
+ * fg/bg pair at >=4.5:1 (WCAG AA for text) for both themes so a future accent
+ * change can't silently regress it.
  */
-export const cottagecoreEditorTheme: Extension = EditorView.theme(
+export const pixelEditorTheme: Extension = EditorView.theme(
 	{
 		"&": {
-			backgroundColor: toCssColor(PALETTE.parchment),
-			color: toCssColor(PALETTE.ink),
+			backgroundColor: "var(--cabn-panel-body)",
+			color: "var(--cabn-text)",
 			height: "100%",
-			fontSize: "13px",
+			// Bumped from 13px (2026-09-28 polish pass — the previous size read
+			// as too small/dense against the rest of the pixel-theme's chrome).
+			fontSize: "15px",
 		},
 		".cm-content": {
-			fontFamily: '"Courier New", monospace',
-			caretColor: toCssColor(PALETTE.ink),
+			fontFamily: "var(--cabn-font-mono)",
+			caretColor: "var(--cabn-text)",
 			padding: "8px 0",
 		},
 		".cm-cursor, .cm-dropCursor": {
-			borderLeftColor: toCssColor(PALETTE.ink),
+			borderLeftColor: "var(--cabn-text)",
 			borderLeftWidth: "2px",
 		},
 		"&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-			backgroundColor: `${toCssColor(PALETTE.paleGhostBlue)}99`,
+			backgroundColor: "var(--cabn-editor-selection-bg)",
 		},
 		".cm-activeLine": {
-			backgroundColor: `${toCssColor(PALETTE.gold)}22`,
+			backgroundColor: "var(--cabn-editor-active-line-bg)",
 		},
 		".cm-gutters": {
-			backgroundColor: toCssColor(PALETTE.parchmentDark),
-			color: toCssColor(PALETTE.trail),
+			backgroundColor: "var(--cabn-panel-body-alt)",
+			color: "var(--cabn-editor-gutter-text)",
 			border: "none",
-			borderRight: `1px solid ${toCssColor(PALETTE.trail)}55`,
+			borderRight: "1px solid var(--cabn-editor-gutter-border)",
 		},
 		".cm-activeLineGutter": {
-			backgroundColor: `${toCssColor(PALETTE.gold)}33`,
+			backgroundColor: "var(--cabn-editor-active-gutter-bg)",
 		},
 		".cm-scroller": {
-			fontFamily: '"Courier New", monospace',
+			fontFamily: "var(--cabn-font-mono)",
 		},
 	},
 	{ dark: false },
 );
 
-export const cottagecoreHighlightStyle = HighlightStyle.define([
-	{ tag: t.comment, color: toCssColor(PALETTE.trail), fontStyle: "italic" },
+export const pixelHighlightStyle = HighlightStyle.define([
+	{
+		tag: t.comment,
+		color: "var(--cabn-text-secondary)",
+		fontStyle: "italic",
+	},
 	{
 		tag: [t.keyword, t.controlKeyword, t.operatorKeyword],
-		color: toCssColor(PALETTE.gold),
+		color: "var(--cabn-syntax-keyword)",
 		fontWeight: "bold",
 	},
 	{
 		tag: [t.string, t.special(t.string)],
-		color: toCssColor(PALETTE.biome.meadow),
+		color: "var(--cabn-syntax-string)",
 	},
 	{
 		tag: [t.number, t.bool, t.null, t.atom],
-		color: toCssColor(PALETTE.amethyst),
+		color: "var(--cabn-syntax-number)",
 	},
 	{
 		tag: [t.function(t.variableName), t.propertyName],
-		color: toCssColor(PALETTE.rust),
+		color: "var(--cabn-syntax-function)",
 	},
-	{ tag: [t.typeName, t.className], color: toCssColor(PALETTE.plum) },
+	{ tag: [t.typeName, t.className], color: "var(--cabn-syntax-type)" },
 	{
 		tag: [t.tagName],
-		color: toCssColor(PALETTE.biome.grove),
+		// Reuses --cabn-syntax-string rather than a dedicated token — tag names
+		// and strings don't co-occur in the same file type here (markup vs.
+		// code), same "reuse across roles that never render together" shape
+		// the original theme's `rust` (gutter + function/property) already used.
+		color: "var(--cabn-syntax-string)",
 		fontWeight: "bold",
 	},
-	{ tag: [t.attributeName], color: toCssColor(PALETTE.biome.glade) },
+	{ tag: [t.attributeName], color: "var(--cabn-syntax-attribute)" },
 	{
 		tag: [t.punctuation, t.bracket, t.operator],
-		color: toCssColor(PALETTE.steelGray),
+		color: "var(--cabn-text)",
 	},
 ]);
 
-export const cottagecoreEditorExtensions: Extension = [
-	cottagecoreEditorTheme,
-	syntaxHighlighting(cottagecoreHighlightStyle),
+export const pixelEditorExtensions: Extension = [
+	pixelEditorTheme,
+	syntaxHighlighting(pixelHighlightStyle),
+	lineNumbers(),
 ];

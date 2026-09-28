@@ -2,6 +2,11 @@ import type { FileKind, Position, Species } from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
+import {
+	resolveTimeOfDay,
+	type TimeOfDay,
+	type TimeOfDayOverride,
+} from "../systems/timeOfDay.js";
 
 export type CabnMode = "world" | "file" | "editor" | "encounter" | "run";
 
@@ -75,6 +80,10 @@ export interface CabnState {
 	glowEnabled: boolean;
 	/** Non-null only while `mode === "run"` — the parchment overlay's entire view of an in-progress run. */
 	run: RunOverlayState | null;
+	/** The player's choice (SettingsCorner) — "auto" derives from the local clock (see systems/timeOfDay.ts), "day"/"night" pin it. game.ts seeds this from timeOfDaySettings.ts (persisted choice, else "auto") before any scene reads it. */
+	timeOfDayOverride: TimeOfDayOverride;
+	/** Resolved from timeOfDayOverride (+ the clock, if "auto") — what every glow-bearing scene actually reads to pick its GlowParams preset and, at night, switch on fireflies. Recomputed whenever the override changes or (for "auto") periodically, by game.ts. */
+	timeOfDay: TimeOfDay;
 }
 
 export interface CabnActions {
@@ -110,6 +119,10 @@ export interface CabnActions {
 	setRun(run: RunOverlayState): void;
 	/** Esc, or a run reaching "done" and the player closing the parchment — back to `mode: "file"`. */
 	stopRun(): void;
+	/** Sets the override and immediately re-resolves timeOfDay from it — the one action SettingsCorner's day/night control calls. */
+	setTimeOfDayOverride(override: TimeOfDayOverride): void;
+	/** Re-resolves timeOfDay from the *current* override — a no-op for "day"/"night" (already pinned), but "auto" needs this called periodically so a session left open across a day/night boundary actually crosses it (game.ts polls this on an interval). */
+	refreshTimeOfDay(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -133,6 +146,8 @@ const initialState: CabnState = {
 	activeMonsterId: null,
 	glowEnabled: true,
 	run: null,
+	timeOfDayOverride: "auto",
+	timeOfDay: "day",
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -173,5 +188,14 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		startRun: (run) => set({ mode: "run", run }),
 		setRun: (run) => set({ run }),
 		stopRun: () => set({ mode: "file", run: null }),
+		setTimeOfDayOverride: (timeOfDayOverride) =>
+			set({
+				timeOfDayOverride,
+				timeOfDay: resolveTimeOfDay(timeOfDayOverride),
+			}),
+		refreshTimeOfDay: () =>
+			set((state) => ({
+				timeOfDay: resolveTimeOfDay(state.timeOfDayOverride),
+			})),
 	}));
 }

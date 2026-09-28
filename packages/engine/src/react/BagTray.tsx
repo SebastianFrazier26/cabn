@@ -1,7 +1,6 @@
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface BagTrayProps {
@@ -37,6 +36,10 @@ export function BagTray({
 				// Above the editor's own panel (zIndex 8) so the tray stays usable
 				// as a paste source while the editor covers the rest of the screen.
 				zIndex: 9,
+				// PixelTheme's wrapper is pointerEvents: "none" so it never blocks the
+				// canvas underneath — this tray has real click targets, so it opts
+				// back in explicitly.
+				pointerEvents: "auto",
 			}}
 			title={
 				pasteEnabled
@@ -59,21 +62,9 @@ export function BagTray({
 					whiteSpace: "nowrap",
 				};
 				return (
-					<div
-						key={slot.id}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							background: toCssColor(PALETTE.parchment),
-							color: toCssColor(PALETTE.ink),
-							border: `1px solid ${toCssColor(PALETTE.ink)}`,
-							borderRadius: 4,
-							padding: "3px 8px",
-							fontFamily: '"Courier New", monospace',
-							fontSize: 11,
-							maxWidth: 220,
-						}}
-					>
+					// No "filled" variant here — mockup.html's .bag-slot.filled was just
+					// a two-example illustration, not a real BagSlot field to key off.
+					<div key={slot.id} className="cabn-bag-slot">
 						{pasteEnabled ? (
 							<button
 								type="button"
@@ -96,6 +87,7 @@ export function BagTray({
 						)}
 						<button
 							type="button"
+							className="cabn-x"
 							onClick={() => store.getState().removeBagSlot(slot.id)}
 							style={{
 								marginLeft: 6,
@@ -103,7 +95,6 @@ export function BagTray({
 								border: "none",
 								cursor: "pointer",
 								color: "inherit",
-								opacity: 0.6,
 							}}
 						>
 							x

@@ -1,6 +1,6 @@
+import { useEffect, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import { speciesDisplayName } from "../systems/monsterDisplay.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -22,12 +22,22 @@ export function EncounterBanner({
 	const activeMonsterId = useCabnStore(store, (s) => s.activeMonsterId);
 	const monsters = useCabnStore(store, (s) => s.monsters);
 
+	// Remounting the shake+flash (key={playToken}) on every new encounter is
+	// what retriggers its CSS animation, same "remount == retrigger" pattern
+	// RunOverlay's own unfurl animation already relies on.
+	const [playToken, setPlayToken] = useState(0);
+	useEffect(() => {
+		if (mode === "encounter") setPlayToken((token) => token + 1);
+	}, [mode]);
+
 	if (mode !== "encounter" || !activeMonsterId) return null;
 	const monster = monsters.find((m) => m.id === activeMonsterId);
 	if (!monster) return null;
 
 	return (
 		<div
+			key={playToken}
+			className="cabn-panel cabn-encounter-card play"
 			style={{
 				position: "absolute",
 				top: "18%",
@@ -37,19 +47,14 @@ export function EncounterBanner({
 				minWidth: 280,
 				maxWidth: 420,
 				textAlign: "center",
-				background: toCssColor(PALETTE.parchment),
-				border: `3px solid ${toCssColor(PALETTE.ink)}`,
-				borderRadius: 10,
-				padding: "14px 20px",
-				fontFamily: "Georgia, 'Iowan Old Style', serif",
-				color: toCssColor(PALETTE.ink),
-				boxShadow: "0 6px 18px rgba(50, 34, 20, 0.4)",
 			}}
 		>
-			<div style={{ fontWeight: "bold", fontSize: 16, marginBottom: 6 }}>
-				A {speciesDisplayName(monster.species)} appeared!
+			<div className="cabn-encounter-flash" />
+			<div className="cabn-ribbon">
+				<div className="cabn-ribbon-shape" />
+				<span>A {speciesDisplayName(monster.species)} appeared!</span>
 			</div>
-			<div style={{ fontSize: 13, opacity: 0.85 }}>{monster.message}</div>
+			<p style={{ margin: "6px 0 0", fontSize: 13 }}>{monster.message}</p>
 		</div>
 	);
 }

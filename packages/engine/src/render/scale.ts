@@ -4,8 +4,44 @@
 export const CABIN_SCALE = 0.5;
 export const CABINET_SCALE = 0.375;
 export const PORTAL_SCALE = 0.375;
-export const BONFIRE_SCALE = 0.375;
-export const WIZARD_TOWER_SCALE = 0.75;
+
+// bonfire's pixel map is 32x32 (tools/asset-pipeline/src/pixelmaps/bonfire.ts),
+// rendered at soften()'s default cellSize (16) into a 512x512 raw sprite —
+// the same "pixelmap asset sharing a flat-photo scale constant" bug as the
+// wizard tower's (see WIZARD_TOWER_SCALE below): the old 0.375 displayed it
+// at 192x192, nearly 3x the player's own height, with the player then
+// spawning at its exact center (M10b batch-2 review: "the bonfire is huge
+// and the player stands in it"). Targets 80px tall — a modest campfire
+// slightly smaller than a cabinet (96px), not a landmark.
+export const BONFIRE_RAW_SIZE_PX = 512;
+export const BONFIRE_SCALE = 0.156;
+
+// wizard_tower's pixel map is 48x80 (tools/asset-pipeline/src/pixelmaps/
+// wizard-tower.ts), rendered through soften()'s default cellSize (16) into a
+// 768x1280 raw sprite — a *much* denser source grid than cabin_256.webp's
+// flat 256x256, so the old WIZARD_TOWER_SCALE (0.75, picked as if it were
+// another cabin-scale asset) displayed the tower at 576x960: nearly the
+// whole screen, the M10b batch-1 bug report ("far too large... not half the
+// screen"). The player's own on-screen height is 64px (character-idle's
+// 24x32 pixel map * cellSize 16 * CHARACTER_SCALE 0.125, see
+// playerController.ts) — a landmark reads as a landmark at roughly 2.5-3x
+// that, so this targets a 179px-tall tower (2.8x) instead of deriving from
+// an unrelated asset's scale constant.
+export const WIZARD_TOWER_RAW_WIDTH_PX = 768;
+export const WIZARD_TOWER_RAW_HEIGHT_PX = 1280;
+export const WIZARD_TOWER_SCALE = 0.14;
+
+// castle-keep's pixel map is 32x44 (tools/asset-pipeline/src/world-art/
+// props.ts), cellSize 6 like every other prop -> raw 192x264. Every other
+// prop in this batch is deliberately unscaled (propPlacement.ts never calls
+// setScale — a scattered prop's apparent size comes entirely from its grid
+// dimensions), but the castle keep is a one-off landmark accent sitting
+// right next to the wizard tower, not a scattered prop, and batch 2 shipped
+// it unscaled anyway — bigger than the (correctly scaled) tower beside it,
+// the exact "centerpiece" the tower is supposed to be (M10b batch-3 review).
+// Targets 150px tall via fitSpriteToSize() below — a bit under the tower's
+// own 179px so it reads as a secondary structure.
+export const CASTLE_KEEP_TARGET_HEIGHT_PX = 150;
 
 // Each monster species' pixel map is a different native size (ouroboros is
 // deliberately 48x48 vs. everything else's ~18-32px, see tools/asset-pipeline's

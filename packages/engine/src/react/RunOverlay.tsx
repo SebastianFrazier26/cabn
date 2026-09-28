@@ -1,7 +1,6 @@
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import type { RunSpeed } from "../systems/runPlayback.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -9,14 +8,6 @@ export interface RunOverlayProps {
 	store: StoreApi<CabnStore>;
 	bus: CabnBus;
 }
-
-const ROLLER_HEIGHT = 14;
-// A radial-gradient roller reads as a cylinder without an actual sprite —
-// same "placeholder-first" approach the rest of this package takes with art
-// that doesn't exist yet (see systems/tools.ts's icon comment).
-const ROLLER_GRADIENT = `radial-gradient(ellipse at center, ${toCssColor(
-	PALETTE.parchmentDark,
-)} 0%, ${toCssColor(PALETTE.trail)} 100%)`;
 
 function speedButton(
 	speed: RunSpeed,
@@ -28,16 +19,7 @@ function speedButton(
 		<button
 			type="button"
 			onClick={onClick}
-			style={{
-				cursor: "pointer",
-				border: `1px solid ${toCssColor(PALETTE.ink)}`,
-				borderRadius: 4,
-				background: active ? toCssColor(PALETTE.gold) : "none",
-				color: toCssColor(PALETTE.ink),
-				padding: "2px 8px",
-				fontFamily: '"Courier New", monospace',
-				fontSize: 11,
-			}}
+			className={`cabn-speed-btn${active ? " active" : ""}`}
 		>
 			{speed}x
 		</button>
@@ -45,14 +27,16 @@ function speedButton(
 }
 
 /**
- * A parchment scroll unfurling over the bottom/right third of the screen —
- * `@keyframes cabn-unfurl` (see the injected <style> below) scales it in from
- * a flat strip on mount; React remounting this element each time `mode`
- * becomes "run" (rather than toggling visibility on a persistent node) is
- * what re-triggers the animation every run. FileScene owns the actual
- * runPlayback state machine; this only reads the republished snapshot
- * (`store.run`) and dispatches control intents onto the bus, same "React
- * never mutates game state directly" shape as every other overlay.
+ * A "spell circle" (three rune rings + four rune dots, replacing the old
+ * scroll-roller gradients entirely per IMPLEMENTATION-PLAN.md commit 8 — no
+ * roller art either old or new) around the run panel; `@keyframes
+ * cabn-unfurl` (pixelTheme.tsx) scales it in from a flat strip on mount —
+ * React remounting this element each time `mode` becomes "run" (rather than
+ * toggling visibility on a persistent node) is what re-triggers the
+ * animation every run. FileScene owns the actual runPlayback state machine;
+ * this only reads the republished snapshot (`store.run`) and dispatches
+ * control intents onto the bus, same "React never mutates game state
+ * directly" shape as every other overlay.
  */
 export function RunOverlay({
 	store,
@@ -69,19 +53,20 @@ export function RunOverlay({
 
 	return (
 		<div
+			className="cabn-panel cabn-rune-scroll"
 			style={{
 				position: "absolute",
-				right: 0,
-				bottom: 0,
+				right: 16,
+				bottom: 16,
 				width: "38%",
 				minWidth: 320,
 				height: "34%",
 				minHeight: 220,
 				zIndex: 8,
-				display: "flex",
-				flexDirection: "column",
+				overflow: "hidden",
 				transformOrigin: "bottom center",
 				animation: "cabn-unfurl 320ms ease-out",
+				pointerEvents: "auto",
 			}}
 		>
 			<style>{`
@@ -90,53 +75,38 @@ export function RunOverlay({
 					to { transform: scaleY(1); opacity: 1; }
 				}
 			`}</style>
-			<div style={{ height: ROLLER_HEIGHT, background: ROLLER_GRADIENT }} />
+			<div className="cabn-rune-ring three" />
+			<div className="cabn-rune-ring" />
+			<div className="cabn-rune-ring two" />
+			<div className="cabn-rune-dot" style={{ top: "6%", left: "50%" }} />
+			<div className="cabn-rune-dot" style={{ top: "50%", left: "94%" }} />
+			<div className="cabn-rune-dot" style={{ top: "94%", left: "50%" }} />
+			<div className="cabn-rune-dot" style={{ top: "50%", left: "6%" }} />
 			<div
 				style={{
-					flex: 1,
-					background: toCssColor(PALETTE.parchment),
-					color: toCssColor(PALETTE.ink),
-					borderLeft: `2px solid ${toCssColor(PALETTE.ink)}`,
-					borderRight: `2px solid ${toCssColor(PALETTE.ink)}`,
-					padding: "10px 14px",
+					position: "relative",
+					zIndex: 1,
 					display: "flex",
 					flexDirection: "column",
 					gap: 8,
-					fontFamily: '"Courier New", monospace',
-					fontSize: 12,
+					height: "100%",
 					overflow: "hidden",
 				}}
 			>
-				<div style={{ fontWeight: "bold" }}>
+				<div style={{ fontWeight: "bold", fontSize: 13 }}>
 					Line {run.currentLine}
 					{run.approximateLines ? " (approximate)" : ""} — step {run.index + 1}{" "}
 					/ {run.totalSteps}
 				</div>
-				<div
-					style={{
-						background: toCssColor(PALETTE.parchmentDark),
-						borderRadius: 4,
-						padding: "4px 8px",
-						whiteSpace: "pre",
-						overflowX: "auto",
-					}}
-				>
-					{sourceLine || " "}
-				</div>
+				<div className="cabn-run-line-current">{sourceLine || " "}</div>
 				{run.status === "blocked" && run.blockedMessage && (
-					<div style={{ color: toCssColor(PALETTE.gold), fontWeight: "bold" }}>
+					<div
+						style={{ color: "var(--cabn-accent-orange)", fontWeight: "bold" }}
+					>
 						{run.blockedMessage}
 					</div>
 				)}
-				<div
-					style={{
-						flex: 1,
-						overflowY: "auto",
-						background: "rgba(0,0,0,0.05)",
-						borderRadius: 4,
-						padding: "4px 8px",
-					}}
-				>
+				<div className="cabn-run-log" style={{ flex: 1, overflowY: "auto" }}>
 					{run.log.map((entry, i) => (
 						// The log is append-only for the lifetime of one run — index is a
 						// stable enough key here, there's no reordering/removal to trip on.
@@ -147,31 +117,18 @@ export function RunOverlay({
 				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 					<button
 						type="button"
+						className="cabn-btn neutral"
 						onClick={() =>
 							bus.emit(run.status === "playing" ? "run:pause" : "run:play", {})
 						}
-						style={{
-							cursor: "pointer",
-							border: `1px solid ${toCssColor(PALETTE.ink)}`,
-							borderRadius: 4,
-							background: toCssColor(PALETTE.parchmentDark),
-							color: toCssColor(PALETTE.ink),
-							padding: "3px 10px",
-						}}
+						style={{ padding: "6px 10px" }}
 					>
 						{run.status === "playing" ? "Pause" : "Play"}
 					</button>
 					<button
 						type="button"
+						className="cabn-speed-btn"
 						onClick={() => bus.emit("run:step", {})}
-						style={{
-							cursor: "pointer",
-							border: `1px solid ${toCssColor(PALETTE.ink)}`,
-							borderRadius: 4,
-							background: "none",
-							color: toCssColor(PALETTE.ink),
-							padding: "3px 10px",
-						}}
 					>
 						Step
 					</button>
@@ -186,22 +143,14 @@ export function RunOverlay({
 					)}
 					<button
 						type="button"
+						className="cabn-speed-btn"
 						onClick={() => bus.emit("run:stop", {})}
-						style={{
-							cursor: "pointer",
-							marginLeft: "auto",
-							border: `1px solid ${toCssColor(PALETTE.ink)}`,
-							borderRadius: 4,
-							background: "none",
-							color: toCssColor(PALETTE.ink),
-							padding: "3px 10px",
-						}}
+						style={{ marginLeft: "auto" }}
 					>
 						Stop (Esc)
 					</button>
 				</div>
 			</div>
-			<div style={{ height: ROLLER_HEIGHT, background: ROLLER_GRADIENT }} />
 		</div>
 	);
 }

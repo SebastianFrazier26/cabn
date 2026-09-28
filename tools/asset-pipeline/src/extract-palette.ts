@@ -46,6 +46,48 @@ const CURATED_COLORS: { name: string; rgb: RGB }[] = [
 	// too purely blue for on its own.
 	{ name: "ember red", rgb: { r: 200, g: 40, b: 30 } },
 	{ name: "wisp pale green", rgb: { r: 190, g: 230, b: 205 } },
+	// M10b batch 1 (world art), first pass: cottagecore flower/berry accents —
+	// the extracted set is still all warm brown/green, nothing that reads as
+	// a bloom or a berry against grass. Superseded by the saturated set
+	// directly below after user feedback (see that comment) but left in
+	// place rather than renumbered — anything already rendered against these
+	// indices (none, as of that feedback) would otherwise silently shift.
+	{ name: "blossom pink", rgb: { r: 227, g: 165, b: 186 } },
+	{ name: "cornflower blue", rgb: { r: 121, g: 148, b: 210 } },
+	{ name: "butter yellow", rgb: { r: 240, g: 208, b: 92 } },
+	{ name: "berry red", rgb: { r: 176, g: 66, b: 66 } },
+	// M10b batch 1, second pass: the first-pass tones above plus the
+	// extracted warm-brown/green set both read as muted/antique — rejected
+	// as bland. This set targets a saturated Stardew Valley / Pokémon
+	// Black-White cheerful look instead: brighter grass greens, a sunny sand
+	// path (not mud-brown), and bold berry/sky/sun accent colors. Palette is
+	// a guide, not a cage — curated freely per the standing direction.
+	{ name: "meadow shadow bright", rgb: { r: 70, g: 150, b: 60 } },
+	{ name: "meadow base bright", rgb: { r: 120, g: 200, b: 90 } },
+	{ name: "meadow highlight bright", rgb: { r: 180, g: 230, b: 120 } },
+	{ name: "grove shadow bright", rgb: { r: 35, g: 110, b: 60 } },
+	{ name: "grove base bright", rgb: { r: 60, g: 150, b: 80 } },
+	{ name: "grove highlight bright", rgb: { r: 110, g: 190, b: 110 } },
+	{ name: "glade shadow bright", rgb: { r: 60, g: 140, b: 120 } },
+	{ name: "glade base bright", rgb: { r: 100, g: 190, b: 150 } },
+	{ name: "glade highlight bright", rgb: { r: 170, g: 225, b: 180 } },
+	{ name: "path shadow sand", rgb: { r: 196, g: 150, b: 88 } },
+	{ name: "path base sand", rgb: { r: 230, g: 190, b: 120 } },
+	{ name: "path highlight sand", rgb: { r: 245, g: 220, b: 165 } },
+	{ name: "berry pink bright", rgb: { r: 235, g: 90, b: 150 } },
+	{ name: "sky blue bright", rgb: { r: 90, g: 160, b: 235 } },
+	{ name: "sun yellow bright", rgb: { r: 255, g: 220, b: 70 } },
+	{ name: "mushroom red bright", rgb: { r: 230, g: 60, b: 50 } },
+	{ name: "autumn orange bright", rgb: { r: 235, g: 140, b: 60 } },
+	{ name: "autumn orange dark", rgb: { r: 180, g: 90, b: 40 } },
+	{ name: "stone light bright", rgb: { r: 190, g: 195, b: 205 } },
+	{ name: "stone mid bright", rgb: { r: 150, g: 158, b: 170 } },
+	{ name: "stone dark bright", rgb: { r: 100, g: 108, b: 120 } },
+	{ name: "wood warm bright", rgb: { r: 150, g: 100, b: 60 } },
+	{ name: "wood dark bright", rgb: { r: 110, g: 70, b: 40 } },
+	{ name: "wood light bright", rgb: { r: 190, g: 140, b: 90 } },
+	{ name: "terracotta bright", rgb: { r: 210, g: 120, b: 70 } },
+	{ name: "lantern glow bright", rgb: { r: 255, g: 240, b: 180 } },
 ];
 
 function bucket(value: number): number {

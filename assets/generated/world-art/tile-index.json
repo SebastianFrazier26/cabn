@@ -1,0 +1,166 @@
+{
+	"tileSize": 32,
+	"variantCount": 4,
+	"scheme": "16-tile blob-lite (4-directional N/E/S/W neighbor mask)",
+	"note": "frame variantCount+15 (mask=all-neighbors-inside) exists in every sheet for uniform indexing but is never selected at runtime — a fully interior tile uses a base variant instead (see packages/engine/src/render/groundTiles.ts#tileFrameFor).",
+	"biomes": {
+		"meadow": {
+			"sheet": "placeholders/meadow_tiles_soft.png",
+			"frameSize": 32,
+			"cols": 5,
+			"rows": 4,
+			"baseVariantFrames": [0, 1, 2, 3],
+			"edgeMaskFrameOffset": 4
+		},
+		"grove": {
+			"sheet": "placeholders/grove_tiles_soft.png",
+			"frameSize": 32,
+			"cols": 5,
+			"rows": 4,
+			"baseVariantFrames": [0, 1, 2, 3],
+			"edgeMaskFrameOffset": 4
+		},
+		"glade": {
+			"sheet": "placeholders/glade_tiles_soft.png",
+			"frameSize": 32,
+			"cols": 5,
+			"rows": 4,
+			"baseVariantFrames": [0, 1, 2, 3],
+			"edgeMaskFrameOffset": 4
+		}
+	},
+	"decals": {
+		"sheet": "placeholders/decals_soft.png",
+		"frameSize": 24,
+		"cols": 3,
+		"rows": 2,
+		"frames": [
+			{
+				"index": 0,
+				"name": "flower-pink"
+			},
+			{
+				"index": 1,
+				"name": "flower-blue"
+			},
+			{
+				"index": 2,
+				"name": "clover"
+			},
+			{
+				"index": 3,
+				"name": "pebbles"
+			},
+			{
+				"index": 4,
+				"name": "mushrooms"
+			},
+			{
+				"index": 5,
+				"name": "fallen-leaf"
+			}
+		]
+	},
+	"pathStamps": {
+		"frames": [
+			{
+				"index": 0,
+				"name": "cobble-a",
+				"key": "path-stamp-0",
+				"file": "placeholders/path_stamp_0_soft.png"
+			},
+			{
+				"index": 1,
+				"name": "cobble-b",
+				"key": "path-stamp-1",
+				"file": "placeholders/path_stamp_1_soft.png"
+			},
+			{
+				"index": 2,
+				"name": "cobble-c",
+				"key": "path-stamp-2",
+				"file": "placeholders/path_stamp_2_soft.png"
+			}
+		]
+	},
+	"props": {
+		"props": [
+			{
+				"name": "fence",
+				"key": "prop-fence",
+				"file": "placeholders/prop_fence_soft.png"
+			},
+			{
+				"name": "hedge",
+				"key": "prop-hedge",
+				"file": "placeholders/prop_hedge_soft.png"
+			},
+			{
+				"name": "lamp-post",
+				"key": "prop-lamp-post",
+				"file": "placeholders/prop_lamp_post_soft.png"
+			},
+			{
+				"name": "tree-small",
+				"key": "prop-tree-small",
+				"file": "placeholders/prop_tree_small_soft.png"
+			},
+			{
+				"name": "tree-large",
+				"key": "prop-tree-large",
+				"file": "placeholders/prop_tree_large_soft.png"
+			},
+			{
+				"name": "bush",
+				"key": "prop-bush",
+				"file": "placeholders/prop_bush_soft.png"
+			},
+			{
+				"name": "well",
+				"key": "prop-well",
+				"file": "placeholders/prop_well_soft.png"
+			},
+			{
+				"name": "signpost",
+				"key": "prop-signpost",
+				"file": "placeholders/prop_signpost_soft.png"
+			},
+			{
+				"name": "flower-pot",
+				"key": "prop-flower-pot",
+				"file": "placeholders/prop_flower_pot_soft.png"
+			},
+			{
+				"name": "stone-wall",
+				"key": "prop-stone-wall",
+				"file": "placeholders/prop_stone_wall_soft.png"
+			},
+			{
+				"name": "cottage",
+				"key": "prop-cottage",
+				"file": "placeholders/prop_cottage_soft.png"
+			},
+			{
+				"name": "flower-bed",
+				"key": "prop-flower-bed",
+				"file": "placeholders/prop_flower_bed_soft.png"
+			},
+			{
+				"name": "bench",
+				"key": "prop-bench",
+				"file": "placeholders/prop_bench_soft.png"
+			}
+		]
+	},
+	"castleKeep": {
+		"name": "castle-keep",
+		"key": "castle-keep",
+		"file": "placeholders/prop_castle_keep_soft.png"
+	},
+	"worldCabinet": {
+		"name": "world-cabinet",
+		"key": "world-cabinet",
+		"file": "placeholders/prop_world_cabinet_soft.png"
+	},
+	"mockScene": "mock-scene.png"
+}

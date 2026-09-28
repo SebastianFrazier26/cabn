@@ -44,6 +44,76 @@ export async function upscaleNearest(
 	return { data, width, height };
 }
 
+/** Alpha-over blit of `src` onto `dest` at (x, y), clipped to dest's bounds — used to build the preview page's composed mock-scene PNG without needing a browser/Phaser in the loop. */
+export function compositeInto(
+	dest: RawImage,
+	src: RawImage,
+	x: number,
+	y: number,
+): void {
+	for (let sy = 0; sy < src.height; sy++) {
+		const dy = y + sy;
+		if (dy < 0 || dy >= dest.height) continue;
+		for (let sx = 0; sx < src.width; sx++) {
+			const dx = x + sx;
+			if (dx < 0 || dx >= dest.width) continue;
+			const sp = (sy * src.width + sx) * 4;
+			const srcA = (src.data[sp + 3] ?? 0) / 255;
+			if (srcA <= 0) continue;
+			const dp = (dy * dest.width + dx) * 4;
+			const destA = (dest.data[dp + 3] ?? 0) / 255;
+			const outA = srcA + destA * (1 - srcA);
+			for (let c = 0; c < 3; c++) {
+				const srcC = src.data[sp + c] ?? 0;
+				const destC = dest.data[dp + c] ?? 0;
+				dest.data[dp + c] =
+					outA > 0
+						? Math.round((srcC * srcA + destC * destA * (1 - srcA)) / outA)
+						: 0;
+			}
+			dest.data[dp + 3] = Math.round(outA * 255);
+		}
+	}
+}
+
+/**
+ * Lays uniform-size frames into a `cols`-wide grid, row-major (Phaser's own
+ * spritesheet frame numbering) — used for the biome tile/decal/path-stamp
+ * sheets, where a single JSON index needs frame N to be at a fixed (row, col).
+ * Frames must all share one size (batch 1's generators render every frame at
+ * its sheet's fixed tile/decal size, so this is a caller invariant, not a
+ * runtime feature).
+ */
+export function composeSheet(
+	frames: readonly RawImage[],
+	cols: number,
+): RawImage {
+	const first = frames[0];
+	if (!first) return { data: Buffer.alloc(0), width: 0, height: 0 };
+	const { width: frameW, height: frameH } = first;
+	const rows = Math.ceil(frames.length / cols);
+	const width = frameW * cols;
+	const height = frameH * rows;
+	const data = Buffer.alloc(width * height * 4);
+
+	frames.forEach((frame, i) => {
+		if (frame.width !== frameW || frame.height !== frameH) {
+			throw new Error("composeSheet: every frame must share one size");
+		}
+		const col = i % cols;
+		const row = Math.floor(i / cols);
+		const destX = col * frameW;
+		const destY = row * frameH;
+		for (let y = 0; y < frameH; y++) {
+			const srcStart = y * frameW * 4;
+			const destStart = ((destY + y) * width + destX) * 4;
+			frame.data.copy(data, destStart, srcStart, srcStart + frameW * 4);
+		}
+	});
+
+	return { data, width, height };
+}
+
 // Lays same-height frames left to right — used for the portal animation
 // strip. Pure/sync: no reason to round-trip through sharp for a plain
 // row-copy composite.

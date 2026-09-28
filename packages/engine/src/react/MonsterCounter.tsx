@@ -1,6 +1,5 @@
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface MonsterCounterProps {
@@ -24,17 +23,12 @@ export function MonsterCounter({
 
 	return (
 		<div
+			className="cabn-panel cabn-hud-pill"
 			style={{
 				position: "absolute",
 				bottom: 16,
 				left: 16,
 				zIndex: 5,
-				background: toCssColor(PALETTE.parchment),
-				color: toCssColor(PALETTE.ink),
-				border: `2px solid ${toCssColor(PALETTE.ink)}`,
-				borderRadius: 6,
-				padding: "6px 12px",
-				fontFamily: '"Courier New", monospace',
 				fontSize: 12,
 			}}
 		>
