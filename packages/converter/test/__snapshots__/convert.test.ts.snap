@@ -31,8 +31,8 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         "pkg/__init__.py",
       ],
       "pos": {
-        "x": -437.66180995931063,
-        "y": -45.300553011417286,
+        "x": -598.2885883932464,
+        "y": -45.28537289695733,
       },
     },
     {
@@ -45,8 +45,8 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         "pkg/sub/helper.py",
       ],
       "pos": {
-        "x": -39.13285908289248,
-        "y": 934.7438900358975,
+        "x": -39.132859082892466,
+        "y": 1234.7438900358975,
       },
     },
     {
@@ -59,8 +59,8 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         "pkg/utils/strings.py",
       ],
       "pos": {
-        "x": 44.73067651502772,
-        "y": -954.9170037545264,
+        "x": 44.73067651502766,
+        "y": -1254.9170037545264,
       },
     },
   ],

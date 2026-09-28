@@ -13,6 +13,8 @@ export type { PortalEmbedProps } from "./react/PortalEmbed.js";
 export { PortalEmbed } from "./react/PortalEmbed.js";
 export type { PortalPreviewProps } from "./react/PortalPreview.js";
 export { PortalPreview } from "./react/PortalPreview.js";
+export type { PortalPreviewDockProps } from "./react/PortalPreviewDock.js";
+export { PortalPreviewDock } from "./react/PortalPreviewDock.js";
 export { RunOverlay } from "./react/RunOverlay.js";
 export { SettingsCorner } from "./react/SettingsCorner.js";
 export { SpyglassPanel } from "./react/SpyglassPanel.js";

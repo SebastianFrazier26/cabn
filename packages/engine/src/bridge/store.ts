@@ -1,4 +1,9 @@
-import type { FileKind, Position, Species } from "@cabn/world-schema";
+import type {
+	FileKind,
+	Position,
+	RichPortalPreview,
+	Species,
+} from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
@@ -44,6 +49,17 @@ export interface PortalSummary {
 	previewLine: string;
 	/** True once a quill edit has been saved for this portal — WorldScene recomputes this whenever its save data changes, so the spyglass can offer a per-file "reset" action. */
 	edited: boolean;
+}
+
+/** The portal the player is standing at in the world, as the expanded preview dock (react/PortalPreviewDock.tsx) needs it — WorldScene sets this on approach and clears it on leaving, so the dock (and any live url embed inside it) mounts and unmounts with it. */
+export interface FocusedPortalPreview {
+	portalId: string;
+	fileName: string;
+	path: string;
+	/** Already resolved via systems/archPreview.ts's effectiveRichPreview — the same preview the arch itself paints, legacy fallback and quill edits included. */
+	preview: RichPortalPreview;
+	/** The manifest's own list, re-checked by embedGuard at render time. */
+	allowedEmbedOrigins: readonly string[];
 }
 
 export interface CabnState {
@@ -93,6 +109,7 @@ export interface CabnState {
 	timeOfDayOverride: TimeOfDayOverride;
 	/** Resolved from timeOfDayOverride (+ the clock, if "auto") — what every glow-bearing scene actually reads to pick its GlowParams preset and, at night, switch on fireflies. Recomputed whenever the override changes or (for "auto") periodically, by game.ts. */
 	timeOfDay: TimeOfDay;
+	focusedPortalPreview: FocusedPortalPreview | null;
 }
 
 export interface CabnActions {
@@ -133,6 +150,7 @@ export interface CabnActions {
 	setTimeOfDayOverride(override: TimeOfDayOverride): void;
 	/** Re-resolves timeOfDay from the *current* override — a no-op for "day"/"night" (already pinned), but "auto" needs this called periodically so a session left open across a day/night boundary actually crosses it (game.ts polls this on an interval). */
 	refreshTimeOfDay(): void;
+	setFocusedPortalPreview(preview: FocusedPortalPreview | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -159,6 +177,7 @@ const initialState: CabnState = {
 	run: null,
 	timeOfDayOverride: "auto",
 	timeOfDay: "day",
+	focusedPortalPreview: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -209,5 +228,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 			set((state) => ({
 				timeOfDay: resolveTimeOfDay(state.timeOfDayOverride),
 			})),
+		setFocusedPortalPreview: (focusedPortalPreview) =>
+			set({ focusedPortalPreview }),
 	}));
 }
