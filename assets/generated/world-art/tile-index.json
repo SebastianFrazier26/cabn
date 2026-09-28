@@ -157,10 +157,14 @@
 		"key": "castle-keep",
 		"file": "placeholders/prop_castle_keep_soft.png"
 	},
-	"worldCabinet": {
-		"name": "world-cabinet",
-		"key": "world-cabinet",
-		"file": "placeholders/prop_world_cabinet_soft.png"
+	"worldFountain": {
+		"name": "world-fountain",
+		"key": "world-fountain",
+		"file": "placeholders/prop_world_fountain_strip_soft.png",
+		"frameWidth": 112,
+		"frameHeight": 116,
+		"frames": 6,
+		"gem": "placeholders/prop_world_fountain_gem_soft.png"
 	},
 	"shelfCabin": {
 		"name": "shelf-cabin",

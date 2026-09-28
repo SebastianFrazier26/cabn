@@ -150,17 +150,25 @@ export function propPath(name: PropName): string {
 export const CASTLE_KEEP_KEY = "castle-keep";
 export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_soft.png`;
 
-// M10b batch 3: replaces ASSET_KEYS.cabinet (the photographic cabinet_256.webp)
-// for WorldScene's in-world cluster markers only — see props.ts's
-// worldCabinet doc comment. Optional/graceful-fallback like every other
-// batch-2/3 asset: WorldScene keeps using ASSET_KEYS.cabinet if this fails to load.
-export const WORLD_CABINET_KEY = "world-cabinet";
-export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet_soft.png`;
+// WorldScene's in-world directory marker (2026-09-28 playtest round 2
+// replaced the procedural curio cabinet with an animated stone fountain —
+// tools/asset-pipeline's world-art/world-fountain.ts). A horizontal strip of
+// frames drawn unscaled (props' 2 screen px per cell), plus a gem overlay the
+// scene tints with the world theme. Part of the worldArt bundle: without it
+// WorldScene falls back to the photographic ASSET_KEYS.cabinet.
+export const WORLD_FOUNTAIN_KEY = "world-fountain";
+export const WORLD_FOUNTAIN_PATH = `${ASSET_BASE}/placeholders/prop_world_fountain_strip_soft.png`;
+export const WORLD_FOUNTAIN_FRAME_WIDTH = 112;
+export const WORLD_FOUNTAIN_FRAME_HEIGHT = 116;
+export const WORLD_FOUNTAIN_FRAME_COUNT = 6;
+export const WORLD_FOUNTAIN_IDLE_ANIM = "world-fountain-idle";
+export const WORLD_FOUNTAIN_GEM_KEY = "world-fountain-gem";
+export const WORLD_FOUNTAIN_GEM_PATH = `${ASSET_BASE}/placeholders/prop_world_fountain_gem_soft.png`;
 
 // M10 art-consistency pass: replaces ASSET_KEYS.cabin (the photographic
 // cabin_256.webp) for ShelfScene's per-world cabins — see
 // tools/asset-pipeline's world-art/shelf-cabin.ts. Optional, same fallback
-// shape as WORLD_CABINET_KEY: ShelfScene keeps the old cabin if this fails.
+// shape as WORLD_FOUNTAIN_KEY: ShelfScene keeps the old cabin if this fails.
 export const SHELF_CABIN_KEY = "shelf-cabin";
 export const SHELF_CABIN_PATH = `${ASSET_BASE}/placeholders/prop_shelf_cabin_soft.png`;
 

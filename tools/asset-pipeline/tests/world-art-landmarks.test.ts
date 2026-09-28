@@ -12,11 +12,13 @@ import {
 	type ShelfCabinPalette,
 } from "../src/world-art/shelf-cabin.js";
 import {
-	buildWorldCabinetGrid,
-	WORLD_CABINET_HEIGHT,
-	WORLD_CABINET_WIDTH,
-	type WorldCabinetPalette,
-} from "../src/world-art/world-cabinet.js";
+	buildWorldFountainFrame,
+	buildWorldFountainGem,
+	WORLD_FOUNTAIN_FRAME_COUNT,
+	WORLD_FOUNTAIN_HEIGHT,
+	WORLD_FOUNTAIN_WIDTH,
+	type WorldFountainPalette,
+} from "../src/world-art/world-fountain.js";
 
 const INK = 0;
 const ivy = { shadow: 20, base: 21, highlight: 22 };
@@ -44,17 +46,21 @@ const CABIN: ShelfCabinPalette = {
 	ivy,
 };
 
-const CABINET: WorldCabinetPalette = {
+const FOUNTAIN: WorldFountainPalette = {
 	ink: INK,
-	wood: 1,
-	woodDark: 2,
-	woodLight: 3,
-	handle: 4,
-	handleBright: 5,
-	glassBack: 6,
-	glint: 7,
-	curios: [8, 9, 10],
-	ivy,
+	stoneLight: 1,
+	stone: 2,
+	stoneShadow: 3,
+	mossShadow: 4,
+	mossLight: 5,
+	rune: 6,
+	water: 7,
+	waterDeep: 8,
+	waterLight: 9,
+	sparkle: 10,
+	gemLight: 11,
+	gemMid: 12,
+	gemDark: 13,
 };
 
 /** Every opaque cell touching transparency (or the grid edge) must be ink — the tower/icon outline convention. */
@@ -105,12 +111,6 @@ describe.each([
 		SHELF_CABIN_WIDTH,
 		SHELF_CABIN_HEIGHT,
 	],
-	[
-		"world cabinet",
-		() => buildWorldCabinetGrid(CABINET),
-		WORLD_CABINET_WIDTH,
-		WORLD_CABINET_HEIGHT,
-	],
 ] as const)("%s", (_name, build, width, height) => {
 	test("has the declared dimensions", () => {
 		const g = build();
@@ -137,4 +137,95 @@ test("shelf cabin windows use the glow color (night bloom / light pools key off 
 	expect(colorsUsed(buildShelfCabinGrid(CABIN)).has(CABIN.windowGlow)).toBe(
 		true,
 	);
+});
+
+describe("world fountain", () => {
+	const frames = () =>
+		Array.from({ length: WORLD_FOUNTAIN_FRAME_COUNT }, (_, i) =>
+			buildWorldFountainFrame(FOUNTAIN, i),
+		);
+
+	test("every frame has the declared dimensions and an inked silhouette", () => {
+		for (const g of frames()) {
+			expect(g).toHaveLength(WORLD_FOUNTAIN_HEIGHT);
+			for (const row of g) expect(row).toHaveLength(WORLD_FOUNTAIN_WIDTH);
+			// The orb's jet is deliberately un-inked (see paintJet), so check the
+			// silhouette with loose water droplets lifted out.
+			const isEmpty = (x: number, y: number) => g[y]?.[x] == null;
+			const stoneOnly = g.map((row, y) =>
+				row.map((v, x) =>
+					(v === FOUNTAIN.water || v === FOUNTAIN.waterLight) &&
+					(isEmpty(x - 1, y) ||
+						isEmpty(x + 1, y) ||
+						isEmpty(x, y - 1) ||
+						isEmpty(x, y + 1))
+						? null
+						: v,
+				),
+			);
+			expect(silhouetteIsInked(stoneOnly)).toBe(true);
+		}
+	});
+
+	test("speaks the portal arch's stone language: three stone tones, moss, rune inlay", () => {
+		const used = colorsUsed(buildWorldFountainFrame(FOUNTAIN, 0));
+		for (const idx of [
+			FOUNTAIN.stoneLight,
+			FOUNTAIN.stone,
+			FOUNTAIN.stoneShadow,
+			FOUNTAIN.mossLight,
+			FOUNTAIN.mossShadow,
+			FOUNTAIN.rune,
+			FOUNTAIN.water,
+			FOUNTAIN.waterLight,
+		])
+			expect(used.has(idx)).toBe(true);
+	});
+
+	test("animates: consecutive frames differ, and only in water cells", () => {
+		const all = frames();
+		const water = new Set([
+			FOUNTAIN.water,
+			FOUNTAIN.waterDeep,
+			FOUNTAIN.waterLight,
+			FOUNTAIN.sparkle,
+		]);
+		for (let i = 0; i < all.length; i++) {
+			const a = all[i] as Grid;
+			const b = all[(i + 1) % all.length] as Grid;
+			let changed = 0;
+			for (let y = 0; y < a.length; y++) {
+				for (let x = 0; x < (a[y]?.length ?? 0); x++) {
+					const va = a[y]?.[x] ?? null;
+					const vb = b[y]?.[x] ?? null;
+					if (va === vb) continue;
+					changed++;
+					// A stream can reach past the stone silhouette, so its cells
+					// may toggle between water and empty/outline — never stone.
+					for (const v of [va, vb])
+						if (v !== null && v !== INK) expect(water.has(v)).toBe(true);
+				}
+			}
+			expect(changed).toBeGreaterThan(0);
+		}
+	});
+
+	test("the gem overlay sits on the column's rune socket and uses only the neutral gem tones", () => {
+		const gem = buildWorldFountainGem(FOUNTAIN);
+		const base = buildWorldFountainFrame(FOUNTAIN, 0);
+		const used = colorsUsed(gem);
+		expect([...used].sort()).toEqual(
+			[FOUNTAIN.gemLight, FOUNTAIN.gemMid, FOUNTAIN.gemDark].sort(),
+		);
+		for (let y = 0; y < gem.length; y++)
+			for (let x = 0; x < (gem[y]?.length ?? 0); x++)
+				if (gem[y]?.[x] != null) expect(base[y]?.[x]).toBe(FOUNTAIN.rune);
+	});
+
+	test("is deterministic", () => {
+		expect(frames()).toEqual(frames());
+		expect(buildWorldFountainGem(FOUNTAIN)).toEqual(
+			buildWorldFountainGem(FOUNTAIN),
+		);
+	});
 });

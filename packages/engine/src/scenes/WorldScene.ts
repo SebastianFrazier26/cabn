@@ -15,7 +15,9 @@ import {
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
-	WORLD_CABINET_KEY,
+	WORLD_FOUNTAIN_GEM_KEY,
+	WORLD_FOUNTAIN_IDLE_ANIM,
+	WORLD_FOUNTAIN_KEY,
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -64,7 +66,6 @@ import {
 	BONFIRE_SCALE,
 	CABINET_SCALE,
 	MONSTER_HOVER_SIZE,
-	WORLD_CABINET_SCALE,
 	WORLD_PORTAL_SCALE,
 } from "../render/scale.js";
 import {
@@ -85,6 +86,10 @@ import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
+import {
+	layoutPortalRing,
+	type PortalRingSizes,
+} from "../systems/portalRing.js";
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	applyOverridesToChunk,
@@ -104,7 +109,7 @@ import {
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
-import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
+import { type Theme, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
 import {
 	type AssetAvailability,
@@ -154,34 +159,25 @@ const ARCH_PREVIEW_DEPTH = 3.05;
 // under PORTAL_ARCH_DISPLAY_SIZE (96px) itself, so a busy cluster's arches
 // visibly overlapped ("packs file arches tightly around the bonfire",
 // batch-3 review). This derives the ring radius from the actual spacing
-// needed instead: circumference / count must be at least ARCH_RING_SPACING.
-// Mirrored (deliberately duplicated, not shared) in
-// packages/converter/src/layout.ts's estimatedClearingRadius(), which needs
-// the same shape to keep whole *clusters* from crowding each other — see
-// that file's own comment on why it's a duplication, not an import.
+// needed instead: circumference / count must be at least one arch slot.
+// Since 2026-09-28 round 2 each path leaving the hub also claims a gate in
+// the ring (systems/portalRing.ts), mirrored in packages/converter/src/
+// layout.ts's estimatedClearingRadius() so whole clusters are sized for it.
 //
 // 2026-09-28 (2x arches): spacing is now 1.0x the frame, not 1.2x — the frame
 // has ~11% transparent margin each side (visible stone is ~200/256 of it), so
 // 1.0x still leaves a ~40px gap between neighbouring arches without doubling
 // every busy clearing's radius. The minimum radius grew so a 192px-tall arch
 // at the top/bottom of a small ring clears the cabinet/bonfire at the centre.
-const ARCH_RING_SPACING = PORTAL_ARCH_DISPLAY_SIZE;
-const PORTAL_RING_MIN_RADIUS = 180;
+const PORTAL_RING_SIZES: PortalRingSizes = {
+	archSlotPx: PORTAL_ARCH_DISPLAY_SIZE,
+	// Half a slot: with the arch's own transparent margin that leaves ~30-50px
+	// of grass between a path ribbon's edge and the nearest arch.
+	pathGatePx: PORTAL_ARCH_DISPLAY_SIZE / 2,
+	minRadiusPx: 180,
+};
 /** Room beyond the outermost portal ring for the prop-framing annulus + the flower-ring edge marking — this is what actually grows a clearing to fit its own content, rather than a flat per-file increment. */
 const CLEARING_OUTER_MARGIN = 90;
-
-function portalRingRadius(portalCount: number): number {
-	if (portalCount <= 1) return PORTAL_RING_MIN_RADIUS;
-	return Math.max(
-		PORTAL_RING_MIN_RADIUS,
-		(portalCount * ARCH_RING_SPACING) / (Math.PI * 2),
-	);
-}
-
-/** Ground radius scales with the portal ring it has to contain, so busier clusters get a clearing that actually fits their arches instead of just reading as "bigger" arbitrarily. */
-function groundRadius(cluster: Cluster): number {
-	return portalRingRadius(cluster.portalIds.length) + CLEARING_OUTER_MARGIN;
-}
 
 // Matches the old fillEllipse(radius*2, radius*1.3) aspect ratio (Phaser's
 // fillEllipse takes full width/height, so radiusY was always 0.65 * radiusX)
@@ -191,18 +187,22 @@ const DECALS_PER_CLUSTER = 14;
 const PROPS_PER_CLUSTER = 4;
 /** How far into the clearing's outer annulus props are confined (see systems/scatter.ts's minRadiusFrac) — "frame the edges/corners", not scatter anywhere between the plaza and the boundary. */
 const PROP_ANNULUS_INNER_FRAC = 0.68;
-/** How much of the per-world theme tint reaches the world-cabinet sprite (see systems/theme.ts's subtleTint) — low enough that the wood still reads as wood, not full-strength-tint noise. */
-const CABINET_TINT_STRENGTH = 0.35;
-// Half the arch's display size + a 10px margin — batch 1 excluded only 44px
-// around a portal, less than the arch's own half-width, so a prop could
-// still land partway inside the sprite (the "arches and props overlap" bug
-// flagged in review).
-const PORTAL_EXCLUSION_RADIUS = PORTAL_ARCH_DISPLAY_SIZE / 2 + 10;
+/** Where the fountain's lower basin water sits relative to the sprite centre (world-fountain.ts's WATER.cy, 41 of 58 cells) — the night light pool reflects off the water, not the column. */
+const FOUNTAIN_WATER_OFFSET_Y = 24;
+// Half the arch's display size + room for a prop's own half-extent — batch 1
+// excluded only 44px around a portal, so a prop could land partway inside the
+// sprite. Exclusions test the prop's *centre*, so since the 2026-09-28 art
+// density pass (cottages/trees ~120px tall) a +10px margin still let a tree
+// canopy overlap an arch (playtest round 2).
+const PORTAL_EXCLUSION_RADIUS = PORTAL_ARCH_DISPLAY_SIZE / 2 + 50;
 const SPAWN_EXCLUSION_RADIUS = 56;
 // Batch 1 never excluded the cluster center itself — cabinet/bonfire always
 // sit exactly there, so a prop or decal could land directly on top of one.
-const CLUSTER_CENTER_EXCLUSION_RADIUS = 60;
-const PATH_CORRIDOR_EXCLUSION_RADIUS = 26;
+const CLUSTER_CENTER_EXCLUSION_RADIUS = 90;
+// Path half-width (~17px) + a prop's half-extent, for the same centre-only
+// reason as PORTAL_EXCLUSION_RADIUS: at 26px cottages and wells sat on the
+// path ribbon itself (playtest round 2).
+const PATH_CORRIDOR_EXCLUSION_RADIUS = 70;
 const PATH_CORRIDOR_SAMPLE_SPACING = 40;
 /** Fixed, not per-world — the field's own texture variety already comes from tile position, not from needing a different seed per world. */
 const FIELD_SEED = 20260928;
@@ -228,6 +228,7 @@ export class WorldScene extends Phaser.Scene {
 	private clustersById = new Map<string, Cluster>();
 	private portalsById = new Map<string, Portal>();
 	private portalWorldPos = new Map<string, Position>();
+	private portalRingRadii = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private portalPathById = new Map<string, string>();
 	private worldFiles = new Set<string>();
@@ -393,6 +394,18 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
+		if (this.availability.worldArt) {
+			for (const cluster of this.manifest.clusters) {
+				if (cluster === root) continue;
+				lights.push({
+					x: cluster.pos.x,
+					y: cluster.pos.y + FOUNTAIN_WATER_OFFSET_Y,
+					radiusPx: 52,
+					color: PALETTE.gold,
+					alpha: 0.26,
+				});
+			}
+		}
 		// Each arch's preview is its own faint light source — without this the
 		// night grade darkens the in-arch text to illegible. Cool and dim so the
 		// additive glow doesn't wash the preview out; the grade hole (see
@@ -497,7 +510,7 @@ export class WorldScene extends Phaser.Scene {
 	/** manifest.paths touching this cluster, sampled near this cluster's own ground so decals/props never land on the dirt track leading out of it — reuses stampPointsAlongSegment purely as a "points along a line" sampler, nothing drawn here. */
 	private pathExclusionsForCluster(cluster: Cluster): ScatterExclusion[] {
 		const exclusions: ScatterExclusion[] = [];
-		const radius = groundRadius(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
+		const radius = this.groundRadius(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
 		for (const path of this.manifest.paths) {
 			if (path.from !== cluster.id && path.to !== cluster.id) continue;
 			const otherId = path.from === cluster.id ? path.to : path.from;
@@ -553,7 +566,7 @@ export class WorldScene extends Phaser.Scene {
 				cluster.pos.x,
 				cluster.pos.y,
 			) <=
-			groundRadius(cluster) + SPAWN_EXCLUSION_RADIUS
+			this.groundRadius(cluster) + SPAWN_EXCLUSION_RADIUS
 		) {
 			exclusions.push({
 				x: spawn.x,
@@ -583,8 +596,8 @@ export class WorldScene extends Phaser.Scene {
 				g.fillEllipse(
 					cluster.pos.x,
 					cluster.pos.y,
-					groundRadius(cluster) * 2,
-					groundRadius(cluster) * 1.3,
+					this.groundRadius(cluster) * 2,
+					this.groundRadius(cluster) * 1.3,
 				);
 			}
 			return;
@@ -601,7 +614,7 @@ export class WorldScene extends Phaser.Scene {
 
 		const tintOverlay = this.add.graphics().setDepth(0.6);
 		for (const cluster of this.manifest.clusters) {
-			const radiusX = groundRadius(cluster);
+			const radiusX = this.groundRadius(cluster);
 			const radiusY = radiusX * GROUND_RADIUS_Y_RATIO;
 			const exclusions = this.clusterExclusions(cluster, spawn);
 
@@ -691,7 +704,7 @@ export class WorldScene extends Phaser.Scene {
 		const circles: CircleKeepout[] = this.manifest.clusters.map((cluster) => ({
 			x: cluster.pos.x,
 			y: cluster.pos.y,
-			radius: groundRadius(cluster) + EDGE_SCENERY_CLEARING_PAD,
+			radius: this.groundRadius(cluster) + EDGE_SCENERY_CLEARING_PAD,
 		}));
 		circles.push({ x: spawn.x, y: spawn.y, radius: SPAWN_EXCLUSION_RADIUS });
 		for (const pos of this.portalWorldPos.values()) {
@@ -731,20 +744,21 @@ export class WorldScene extends Phaser.Scene {
 			if (isRoot) {
 				sprite = this.drawBonfire(cluster.pos);
 			} else if (this.availability.worldArt) {
-				// world-cabinet is scaled to the wizard tower's pixel density
-				// (render/scale.ts's WORLD_CABINET_SCALE); CABINET_SCALE below
-				// is only for the photographic fallback. Tint is deliberately lightened toward
-				// white first (subtleTint) rather than applied at full
-				// strength — M10b batch-3 review: "stays subtle".
-				sprite = this.add.image(
+				// Drawn unscaled (props density). The world's theme colour goes on
+				// the gem overlay only, at full strength — tinting the whole
+				// sprite would muddy the stone the portal arches share.
+				const fountain = this.add.sprite(
 					cluster.pos.x,
 					cluster.pos.y,
-					WORLD_CABINET_KEY,
+					WORLD_FOUNTAIN_KEY,
+					0,
 				);
-				sprite
-					.setScale(WORLD_CABINET_SCALE)
-					.setTint(subtleTint(this.theme.tint, CABINET_TINT_STRENGTH))
-					.setDepth(2);
+				fountain.setDepth(2).play(WORLD_FOUNTAIN_IDLE_ANIM);
+				this.add
+					.image(cluster.pos.x, cluster.pos.y, WORLD_FOUNTAIN_GEM_KEY)
+					.setTint(this.theme.tint)
+					.setDepth(2.01);
+				sprite = fountain;
 			} else {
 				sprite = this.add.image(
 					cluster.pos.x,
@@ -796,17 +810,42 @@ export class WorldScene extends Phaser.Scene {
 	/** Fills portalWorldPos without creating any sprites — drawGround()'s scatter exclusions need real portal positions before drawPortals() itself runs (see create()'s ordering comment). */
 	private computePortalPositions(): void {
 		for (const cluster of this.manifest.clusters) {
-			const count = cluster.portalIds.length;
-			const radius = portalRingRadius(count);
+			const pathAngles: number[] = [];
+			for (const path of this.manifest.paths) {
+				if (path.from !== cluster.id && path.to !== cluster.id) continue;
+				const other = this.clustersById.get(
+					path.from === cluster.id ? path.to : path.from,
+				);
+				if (other)
+					pathAngles.push(
+						Math.atan2(
+							other.pos.y - cluster.pos.y,
+							other.pos.x - cluster.pos.x,
+						),
+					);
+			}
+			const ring = layoutPortalRing(
+				cluster.portalIds.length,
+				pathAngles,
+				PORTAL_RING_SIZES,
+			);
+			this.portalRingRadii.set(cluster.id, ring.radius);
 			cluster.portalIds.forEach((portalId, index) => {
-				const angle =
-					(Phaser.Math.PI2 * index) / Math.max(count, 1) - Math.PI / 2;
+				const angle = ring.angles[index] ?? 0;
 				this.portalWorldPos.set(portalId, {
-					x: cluster.pos.x + Math.cos(angle) * radius,
-					y: cluster.pos.y + Math.sin(angle) * radius,
+					x: cluster.pos.x + Math.cos(angle) * ring.radius,
+					y: cluster.pos.y + Math.sin(angle) * ring.radius,
 				});
 			});
 		}
+	}
+
+	/** Ground radius scales with the portal ring it has to contain, so busier clusters get a clearing that actually fits their arches instead of just reading as "bigger" arbitrarily. Valid once computePortalPositions() has run. */
+	private groundRadius(cluster: Cluster): number {
+		return (
+			(this.portalRingRadii.get(cluster.id) ?? PORTAL_RING_SIZES.minRadiusPx) +
+			CLEARING_OUTER_MARGIN
+		);
 	}
 
 	private drawPortals(): void {

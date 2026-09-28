@@ -33,8 +33,14 @@ import {
 	SHELF_CABIN_KEY,
 	SHELF_CABIN_PATH,
 	WORLD_ART_BIOMES,
-	WORLD_CABINET_KEY,
-	WORLD_CABINET_PATH,
+	WORLD_FOUNTAIN_FRAME_COUNT,
+	WORLD_FOUNTAIN_FRAME_HEIGHT,
+	WORLD_FOUNTAIN_FRAME_WIDTH,
+	WORLD_FOUNTAIN_GEM_KEY,
+	WORLD_FOUNTAIN_GEM_PATH,
+	WORLD_FOUNTAIN_IDLE_ANIM,
+	WORLD_FOUNTAIN_KEY,
+	WORLD_FOUNTAIN_PATH,
 } from "../assetPaths.js";
 
 export type PreloadSceneData =
@@ -149,7 +155,11 @@ export class PreloadScene extends Phaser.Scene {
 			this.load.image(propKey(name), propPath(name));
 		}
 		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
-		this.load.image(WORLD_CABINET_KEY, WORLD_CABINET_PATH);
+		this.load.spritesheet(WORLD_FOUNTAIN_KEY, WORLD_FOUNTAIN_PATH, {
+			frameWidth: WORLD_FOUNTAIN_FRAME_WIDTH,
+			frameHeight: WORLD_FOUNTAIN_FRAME_HEIGHT,
+		});
+		this.load.image(WORLD_FOUNTAIN_GEM_KEY, WORLD_FOUNTAIN_GEM_PATH);
 		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 		for (const [key, path] of atmosphereAssetEntries()) {
@@ -215,10 +225,22 @@ export class PreloadScene extends Phaser.Scene {
 			...Array.from({ length: PATH_STAMP_COUNT }, (_, i) => pathStampKey(i)),
 			...PROP_NAMES.map(propKey),
 			CASTLE_KEEP_KEY,
-			WORLD_CABINET_KEY,
+			WORLD_FOUNTAIN_KEY,
+			WORLD_FOUNTAIN_GEM_KEY,
 			FX_SPARK_KEY,
 		];
 		const worldArtAvailable = worldArtKeys.every((key) => this.loaded(key));
+		if (worldArtAvailable) {
+			this.anims.create({
+				key: WORLD_FOUNTAIN_IDLE_ANIM,
+				frames: this.anims.generateFrameNumbers(WORLD_FOUNTAIN_KEY, {
+					start: 0,
+					end: WORLD_FOUNTAIN_FRAME_COUNT - 1,
+				}),
+				frameRate: 8,
+				repeat: -1,
+			});
+		}
 
 		const availability: AssetAvailability = {
 			wizardTower: this.loaded(OPTIONAL_ASSET_KEYS.wizardTower),
