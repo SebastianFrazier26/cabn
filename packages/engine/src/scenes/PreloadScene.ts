@@ -216,6 +216,12 @@ export class PreloadScene extends Phaser.Scene {
 		}
 
 		for (const species of ANIMATED_MONSTER_SPECIES) {
+			// No animation => createMonsterSprite's fallback chain takes over.
+			if (
+				!this.loaded(monsterFrameKey(species, 0)) ||
+				!this.loaded(monsterFrameKey(species, 1))
+			)
+				continue;
 			this.anims.create({
 				key: monsterIdleAnim(species),
 				frames: [

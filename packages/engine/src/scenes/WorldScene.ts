@@ -41,7 +41,11 @@ import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
 import { GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
-import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
+import { MonsterOrbits } from "../render/monsterOrbit.js";
+import {
+	createMonsterSprite,
+	renderedMonsterSpecies,
+} from "../render/monsterSprite.js";
 import {
 	bakePathRibbons,
 	bakePaths,
@@ -88,6 +92,7 @@ import {
 } from "../systems/clickWalk.js";
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
+import { portalOrbitEllipse } from "../systems/monsterOrbit.js";
 import {
 	newlyApproached,
 	type PortalPoint,
@@ -173,6 +178,16 @@ const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * WORLD_PORTAL_SCALE;
 const ARCH_PREVIEW_DEPTH = 3.05;
 /** Motes/glow/sheen over the preview, still below monsters (4) and the player (5). */
 const ARCH_FX_DEPTH = 3.06;
+/** An orbiting monster on the far half of its ellipse — under the arch (3) so the stone and the opening's preview both hide it. */
+const MONSTER_BEHIND_ARCH_DEPTH = 2.95;
+const MONSTER_DEPTH = 4;
+/** Reach either side of a path's midpoint for the cross-cluster ouroboros' figure-eight. */
+const PATH_MONSTER_LOOP_PX = 70;
+// MONSTER_HOVER_SIZE was tuned beside the old 96px arch; circling the 2x arch
+// (192px) at those sizes they read as specks, so world monsters get a boost —
+// capped so the already-large ouroboros doesn't swallow the opening.
+const WORLD_MONSTER_SIZE_BOOST = 1.3;
+const WORLD_MONSTER_MAX_PX = 72;
 const ARCH_OPENING: ArchOpening = {
 	width: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO,
 	height: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO,
@@ -264,7 +279,7 @@ export class WorldScene extends Phaser.Scene {
 	private monstersById = new Map<string, Monster>();
 	private portalMonsterIds = new Map<string, string[]>();
 	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
-	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
+	private monsterOrbits: MonsterOrbits | null = null;
 
 	/** clusterId -> path -> file content, exactly as fetched — never mutated, so a "reset this file" always has the pristine original to fall back to. */
 	private chunkContents = new Map<string, Record<string, string>>();
@@ -360,6 +375,10 @@ export class WorldScene extends Phaser.Scene {
 		this.drawClusters();
 		this.drawPortals();
 		this.drawEditedMarkers();
+		this.monsterOrbits = new MonsterOrbits(this, prefersReducedMotion(), {
+			behind: MONSTER_BEHIND_ARCH_DEPTH,
+			front: MONSTER_DEPTH,
+		});
 		this.drawMonsters();
 		this.guideNpc = GuideNpc.spawn(this, {
 			manifest: this.manifest,
@@ -398,6 +417,9 @@ export class WorldScene extends Phaser.Scene {
 			this.archPreviews = null;
 			this.portalFx?.destroy();
 			this.portalFx = null;
+			this.monsterOrbits?.destroy();
+			this.monsterOrbits = null;
+			this.monsterSprites.clear();
 			// Phaser's CameraManager shuts down first (it subscribed when the
 			// scene started, before create()) and clears `main` — without the
 			// `?.` every return to the shelf threw here and froze the game.
@@ -1014,13 +1036,16 @@ export class WorldScene extends Phaser.Scene {
 		this.editedMarkers.delete(portalId);
 	}
 
-	// A monster hovers near its portal's arch (fanned apart if a file has more
-	// than one) or, for a cross-cluster ouroboros, sits at the midpoint of the
+	// A portal monster swirls around its arch on a flattened ellipse
+	// (render/monsterOrbit.ts), siblings evenly spaced in phase; a
+	// cross-cluster ouroboros loops a figure-eight across the midpoint of the
 	// WorldPath it's attached to — see run.ts's attachCycle for how that
 	// pathId (`${from}::${to}`, parsed back out below) gets assigned. Neither
-	// kind is walk-into-and-E encounterable here; only FileScene's
-	// portal-attached monsters are (see FileScene's onMonsterEncounterKey doc
-	// comment for why a world-space path monster doesn't fit that flow).
+	// kind is walk-into-and-E encounterable or clickable here: the arch's own
+	// hit target (clickInteractables) is the way in, so a moving sprite never
+	// has to be chased with the pointer, and FileScene's portal-attached
+	// monsters are the encounter (see its onMonsterEncounterKey doc comment
+	// for why a world-space path monster doesn't fit that flow).
 	private drawMonsters(): void {
 		for (const monster of this.manifest.monsters) {
 			if (this.save.defeatedMonsterIds.includes(monster.id)) continue;
@@ -1029,31 +1054,45 @@ export class WorldScene extends Phaser.Scene {
 		}
 	}
 
-	private drawPortalMonster(monster: Monster): void {
-		const portalId = monster.portalId;
-		if (!portalId) return;
-		const pos = this.portalWorldPos.get(portalId);
-		if (!pos) return;
-
-		const siblings = this.portalMonsterIds.get(portalId) ?? [];
-		const index = Math.max(siblings.indexOf(monster.id), 0);
-		const angle = -Math.PI / 2 + index * 0.7;
-		const radius = PORTAL_ARCH_DISPLAY_SIZE * 0.55;
-		const x = pos.x + Math.cos(angle) * radius;
-		const y =
-			pos.y + Math.sin(angle) * radius - PORTAL_ARCH_DISPLAY_SIZE * 0.25;
-
+	private addMonsterSprite(
+		monster: Monster,
+		x: number,
+		y: number,
+		fallbackPx: number,
+	) {
+		const drawn = renderedMonsterSpecies(this, monster.species);
 		const sprite = createMonsterSprite(
 			this,
 			x,
 			y,
 			monster.species,
-			MONSTER_HOVER_SIZE[monster.species] ?? 32,
+			Math.min(
+				(MONSTER_HOVER_SIZE[drawn] ?? fallbackPx) * WORLD_MONSTER_SIZE_BOOST,
+				WORLD_MONSTER_MAX_PX,
+			),
 		);
-		sprite.setDepth(4);
-		if (monster.species === "will-o-wisp") sprite.setAlpha(0.7); // wisps are cosmetic and meant to read as faint, not a real threat
+		sprite.setDepth(MONSTER_DEPTH);
 		this.monsterSprites.set(monster.id, sprite);
-		this.monsterBobTweens.set(monster.id, addHoverBob(this, sprite));
+		return { sprite, drawn };
+	}
+
+	private drawPortalMonster(monster: Monster): void {
+		const portalId = monster.portalId;
+		if (!portalId) return;
+		const pos = this.portalWorldPos.get(portalId);
+		if (!pos) return;
+		const ellipse = portalOrbitEllipse(pos, PORTAL_ARCH_DISPLAY_SIZE);
+		const { sprite, drawn } = this.addMonsterSprite(
+			monster,
+			ellipse.cx + ellipse.rx,
+			ellipse.cy,
+			32,
+		);
+		this.monsterOrbits?.add(monster.id, sprite, drawn, {
+			kind: "portal",
+			portalId,
+			ellipse,
+		});
 	}
 
 	private drawPathMonster(monster: Monster): void {
@@ -1064,23 +1103,26 @@ export class WorldScene extends Phaser.Scene {
 		const to = toId ? this.clustersById.get(toId) : undefined;
 		if (!from || !to) return;
 
-		const x = (from.pos.x + to.pos.x) / 2;
-		const y = (from.pos.y + to.pos.y) / 2;
-		const sprite = createMonsterSprite(
-			this,
-			x,
-			y,
-			monster.species,
-			MONSTER_HOVER_SIZE[monster.species] ?? 48,
+		const center = {
+			x: (from.pos.x + to.pos.x) / 2,
+			y: (from.pos.y + to.pos.y) / 2,
+		};
+		const { sprite, drawn } = this.addMonsterSprite(
+			monster,
+			center.x,
+			center.y,
+			48,
 		);
-		sprite.setDepth(4);
-		this.monsterSprites.set(monster.id, sprite);
-		this.monsterBobTweens.set(monster.id, addHoverBob(this, sprite, 6));
+		this.monsterOrbits?.add(monster.id, sprite, drawn, {
+			kind: "path",
+			center,
+			pathAngle: Math.atan2(to.pos.y - from.pos.y, to.pos.x - from.pos.x),
+			halfLength: PATH_MONSTER_LOOP_PX,
+		});
 	}
 
 	private removeMonsterSprite(monsterId: string): void {
-		this.monsterBobTweens.get(monsterId)?.stop();
-		this.monsterBobTweens.delete(monsterId);
+		this.monsterOrbits?.remove(monsterId);
 		this.monsterSprites.get(monsterId)?.destroy();
 		this.monsterSprites.delete(monsterId);
 	}
@@ -1174,7 +1216,7 @@ export class WorldScene extends Phaser.Scene {
 			: PORTAL_ARCH_FRAME_SIZE * BONFIRE_SCALE;
 	}
 
-	/** Hit areas derive from the same size constants the arches/bonfire are drawn with, not from the sprites, so they follow any change to how a portal is drawn. Monsters and cabinets aren't interactable in the world (see drawMonsters) — clicking them just walks there. */
+	/** Hit areas derive from the same size constants the arches/bonfire are drawn with, not from the sprites, so they follow any change to how a portal is drawn. Monsters and cabinets aren't interactable in the world (see drawMonsters) — clicking one just walks there, and clicking an orbiting monster over its arch hits the arch. */
 	private clickInteractables(): Interactable[] {
 		const targets: Interactable[] = [];
 		for (const [portalId, pos] of this.portalWorldPos) {
@@ -1305,6 +1347,7 @@ export class WorldScene extends Phaser.Scene {
 			{ x: view.x, y: view.y, w: view.width, h: view.height },
 		);
 		if (this.archPreviews) this.portalFx?.update(time, this.archPreviews);
+		this.monsterOrbits?.update(time, delta, view);
 		this.handleArrival(delta);
 		this.handlePortalEnter();
 		this.handleReturnToShelf();

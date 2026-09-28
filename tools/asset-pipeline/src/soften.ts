@@ -277,6 +277,16 @@ async function main() {
 		"ouroboros_idle1",
 		"will_o_wisp_idle0",
 		"will_o_wisp_idle1",
+		"imp_idle0",
+		"imp_idle1",
+		"magpie_idle0",
+		"magpie_idle1",
+		"skeleton_idle0",
+		"skeleton_idle1",
+		"bramble_idle0",
+		"bramble_idle1",
+		"shade_idle0",
+		"shade_idle1",
 	]) {
 		if (manifest[name]?.locked) continue;
 		jobs.push({

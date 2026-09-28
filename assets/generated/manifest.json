@@ -46,5 +46,35 @@
 	},
 	"will_o_wisp_idle1": {
 		"locked": false
+	},
+	"imp_idle0": {
+		"locked": false
+	},
+	"imp_idle1": {
+		"locked": false
+	},
+	"magpie_idle0": {
+		"locked": false
+	},
+	"magpie_idle1": {
+		"locked": false
+	},
+	"skeleton_idle0": {
+		"locked": false
+	},
+	"skeleton_idle1": {
+		"locked": false
+	},
+	"bramble_idle0": {
+		"locked": false
+	},
+	"bramble_idle1": {
+		"locked": false
+	},
+	"shade_idle0": {
+		"locked": false
+	},
+	"shade_idle1": {
+		"locked": false
 	}
 }

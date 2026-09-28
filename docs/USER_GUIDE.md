@@ -93,9 +93,17 @@ Every problem cabn finds in a world's files when it builds the world becomes a m
 
 ### New monsters (coming soon)
 
-<!-- Added alongside the extended annotators on feat/m10-monster-taxonomy (in progress when this was written, 2026-09-28). When those species land, move each into MONSTER_GUIDE in packages/engine/src/systems/guideContent.ts (guideDoc.test.ts fails until every species has an entry) and delete this section. -->
+<!-- Art for these landed first (feat/m10-monster-orbit); the annotators and schema species are in progress on feat/m10-monster-taxonomy as of 2026-09-28. When they land, move each into MONSTER_GUIDE in packages/engine/src/systems/guideContent.ts (guideDoc.test.ts fails until every species has an entry) and delete this section. -->
 
-Five more species are on their way, for new kinds of bugs cabn is learning to spot: syntax errors, leaked secrets, dead code, code smells, and bugs it can't classify. Their names are the **imp**, the **magpie**, the **skeleton**, the **bramble** and the **shade**. Which one stands for which bug will be listed in the table above once they arrive.
+Five more species are on their way, for new kinds of bugs cabn is learning to spot. Until they arrive you won't meet them in a world.
+
+| Monster | The bug it will stand for |
+| --- | --- |
+| Hex Imp | A syntax error. |
+| Magpie | A leaked secret, such as a password or API key left in the code. It carries a stolen coin. |
+| Skeleton | Dead code that nothing uses. |
+| Bramble | A code smell: tangled, overly complex code. |
+| Shade | Anything else, including findings from outside linters. |
 
 ### Fixing code defeats monsters
 

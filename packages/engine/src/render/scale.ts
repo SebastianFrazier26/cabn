@@ -74,6 +74,11 @@ export const MONSTER_HOVER_SIZE: Readonly<Record<string, number>> = {
 	gremlin: 32,
 	ouroboros: 64,
 	"will-o-wisp": 20,
+	imp: 32,
+	magpie: 34,
+	skeleton: 34,
+	bramble: 36,
+	shade: 38,
 };
 
 /** Smaller than MONSTER_HOVER_SIZE — FileScene's line height is 20px, so a monster standing beside the text has less room than one hovering near a world portal arch. */
@@ -84,6 +89,11 @@ export const MONSTER_FILE_SIZE: Readonly<Record<string, number>> = {
 	gremlin: 22,
 	ouroboros: 36,
 	"will-o-wisp": 14,
+	imp: 22,
+	magpie: 24,
+	skeleton: 24,
+	bramble: 24,
+	shade: 26,
 };
 
 export function fitSpriteToSize(
