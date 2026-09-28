@@ -1,4 +1,5 @@
 import type { StoreApi } from "zustand/vanilla";
+import { uiIconPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 
@@ -69,15 +70,10 @@ export class ToolRegistry {
 	}
 }
 
-// Icon paths point at the sprite pipeline's soft-rendered originals (see
-// assets/generated/originals) copied verbatim into every host app's
-// public/assets/ (apps/demo/scripts/build-world.mjs). orb, bag, quill, and
-// wand have no dedicated art yet (crystal orb, bag, quill, wand) —
-// placeholders noted below borrow the closest existing icon rather than
-// drawing a new one; quill reuses the same letter-opener icon as spyglass
-// since both read as "a writing implement" until real art lands, and wand
-// borrows the cabinet icon (the one icon not already claimed) purely so its
-// hotbar slot isn't blank.
+// M10a: spyglass/orb/bag/quill/wand now have real hand-drawn icons (the
+// approved UI mockup, assets/generated/ui/) instead of borrowed placeholders
+// — see assetPaths.ts's uiIconPath. Opener keeps the original key icon; it
+// was never a placeholder (a literal key reads correctly as "open").
 const ICON_BASE = "/assets/originals";
 
 export function createDefaultTools(): Tool[] {
@@ -95,14 +91,14 @@ export function createDefaultTools(): Tool[] {
 		{
 			id: "spyglass",
 			name: "Spyglass",
-			icon: `${ICON_BASE}/letter_opener_256.webp`,
+			icon: uiIconPath("spyglass"),
 			hotkey: "L",
 			onUse: (ctx) => ctx.store.getState().setSpyglassOpen(true),
 		},
 		{
 			id: "orb",
 			name: "Crystal orb",
-			icon: "/assets/placeholders/portal_arch_soft.png",
+			icon: uiIconPath("orb"),
 			// Registry hotkey is the display/lookup key; the hotbar's own keydown
 			// handler additionally intercepts Cmd/Ctrl+F (browser find) as a second
 			// way in — that interception is UI wiring, not registry mechanics.
@@ -112,14 +108,14 @@ export function createDefaultTools(): Tool[] {
 		{
 			id: "bag",
 			name: "Bag",
-			icon: `${ICON_BASE}/file_256.webp`,
+			icon: uiIconPath("bag"),
 			hotkey: "B",
 			onUse: (ctx) => ctx.bus.emit("tool:bag-use", {}),
 		},
 		{
 			id: "quill",
 			name: "Quill",
-			icon: `${ICON_BASE}/letter_opener_256.webp`,
+			icon: uiIconPath("quill"),
 			hotkey: "Q",
 			// Same shape as bag: FileScene owns the actual open-the-overlay logic
 			// (it needs the player's current line for the caret), this just signals
@@ -129,7 +125,7 @@ export function createDefaultTools(): Tool[] {
 		{
 			id: "wand",
 			name: "Wand",
-			icon: `${ICON_BASE}/cabinet_256.webp`,
+			icon: uiIconPath("wand"),
 			hotkey: "R",
 			// FileScene owns the run: it needs the file's current lines/language to
 			// build a trace script, same shape as bag/quill above.

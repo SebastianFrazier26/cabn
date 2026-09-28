@@ -156,3 +156,30 @@ export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_sof
 // else in placeholders/ is.
 export const FX_SPARK_KEY = "fx-spark";
 export const FX_SPARK_PATH = `${ASSET_BASE}/placeholders/fx_spark.png`;
+
+// M10a: the five hand-drawn item icons and three sparkle particles from the
+// approved UI mockup (assets/generated/ui/), copied into placeholders/ under
+// their existing filenames rather than adding a fourth synced source
+// directory to apps/demo/scripts/build-world.mjs — that directory also holds
+// the mockup's own .html/.md files, which have no reason to reach a public
+// asset folder. These are plain <img>/React assets (ToolHotbar, the
+// per-tool open-burst effects), not Phaser textures.
+export const UI_ICON_NAMES = [
+	"spyglass",
+	"orb",
+	"bag",
+	"quill",
+	"wand",
+] as const;
+export type UiIconName = (typeof UI_ICON_NAMES)[number];
+
+export function uiIconPath(name: UiIconName): string {
+	return `${ASSET_BASE}/placeholders/ui_icon_${name}_soft.png`;
+}
+
+export const UI_SPARKLE_COLORS = ["cyan", "gold", "violet"] as const;
+export type UiSparkleColor = (typeof UI_SPARKLE_COLORS)[number];
+
+export function uiSparklePath(color: UiSparkleColor): string {
+	return `${ASSET_BASE}/placeholders/ui_sparkle_${color}@8x.png`;
+}
