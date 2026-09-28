@@ -2,6 +2,7 @@ import type {
 	EmbedVerdict,
 	MediaPreview,
 	ShelfManifest,
+	SignEntry,
 	WorldManifest,
 } from "@cabn/world-schema";
 import Phaser from "phaser";
@@ -56,6 +57,7 @@ import {
 	WORLD_FOUNTAIN_PATH,
 } from "../assetPaths.js";
 import { preloadGuideNpcAssets } from "../render/guideNpc.js";
+import { preloadSignAssets } from "../render/signposts.js";
 
 export type PreloadSceneData =
 	| {
@@ -65,6 +67,7 @@ export type PreloadSceneData =
 			media?: ReadonlyMap<string, MediaPreview>;
 			shelfIndex?: number;
 			embeds?: ReadonlyMap<string, EmbedVerdict>;
+			signs?: readonly SignEntry[];
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 
@@ -202,6 +205,7 @@ export class PreloadScene extends Phaser.Scene {
 		this.load.image(WORLD_FOUNTAIN_GEM_KEY, WORLD_FOUNTAIN_GEM_PATH);
 		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
 		preloadGuideNpcAssets(this.load);
+		preloadSignAssets(this.load);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 		for (const [key, path] of atmosphereAssetEntries()) {
 			this.load.image(key, path);

@@ -44,6 +44,7 @@ test("cabn build <fixture> -o <outDir> via the built binary", async () => {
 		"media.json",
 		"monsters.json",
 		"search-index.json",
+		"signs.json",
 		"world.json",
 	]);
 });

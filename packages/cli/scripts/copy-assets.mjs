@@ -49,6 +49,8 @@ export const PLACEHOLDERS = [
 	"npc_guide_strip_soft.png",
 	"npc_guide_bubble_soft.png",
 	"npc_guide_portrait_soft.png",
+	"prop_seyn_sign_soft.png",
+	"ui_icon_sign_soft.png",
 	"imp_idle0_soft.png",
 	"imp_idle1_soft.png",
 	"magpie_idle0_soft.png",

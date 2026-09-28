@@ -24,6 +24,13 @@ const FORBIDDEN_MARKERS = [
 	"/exec",
 	"installLocalRunProvider",
 	"cabn serve",
+	// Same guarantee for owner writes (2026-09-28): only cabn serve's host page
+	// imports @cabn/engine/owner, whose wire strings these are. The engine's
+	// sign item and editor UI still ship here, but inert — without the owner
+	// client nothing can reach a write route.
+	"x-cabn-owner-token",
+	"/owner/signs/",
+	"__CABN_OWNER_TOKEN__",
 ];
 
 async function listJsFiles(dir) {

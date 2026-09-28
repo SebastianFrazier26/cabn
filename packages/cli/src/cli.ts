@@ -109,6 +109,7 @@ async function serve(rest: string[]): Promise<number> {
 				"allow-exec": { type: "boolean" },
 				timeout: { type: "string" },
 				offline: { type: "boolean" },
+				"no-owner": { type: "boolean" },
 			},
 			allowPositionals: true,
 		});
@@ -123,6 +124,7 @@ async function serve(rest: string[]): Promise<number> {
 			allowExec: values["allow-exec"] ?? false,
 			timeoutMs: values.timeout ? Number(values.timeout) : undefined,
 			offline: values.offline ?? false,
+			owner: !(values["no-owner"] ?? false),
 		});
 		// Never resolves on its own — `cabn serve` is a long-running command,
 		// stopped by the user (Ctrl-C) rather than exiting once "done".

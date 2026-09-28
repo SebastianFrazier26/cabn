@@ -18,6 +18,8 @@ import {
 	runScript,
 } from "./execRunner.js";
 import { bundleHostApp, hostPageHtml } from "./hostPage.js";
+import { generateOwnerToken } from "./ownerAuth.js";
+import { handleOwnerSignsRoute } from "./ownerSigns.js";
 import { runtimeForPath } from "./runtime.js";
 import {
 	constantTimeEqual,
@@ -37,12 +39,16 @@ export interface ServeOptions {
 	outputCapBytes?: number;
 	/** Skip the build-time framability check for url previews. */
 	offline?: boolean;
+	/** Owner mode (default on): the host page gets the sign item, and the token-gated owner routes that write .seyn files into `dir` exist. `--no-owner` turns both off. */
+	owner?: boolean;
 }
 
 export interface ServeHandle {
 	server: Server;
 	url: string;
 	token: string;
+	/** Undefined with owner mode off. Never printed — it lives only in the host page. */
+	ownerToken: string | undefined;
 	port: number;
 	close(): Promise<void>;
 }
@@ -109,6 +115,7 @@ interface ServeContext {
 	host: string;
 	port: number;
 	token: string;
+	ownerToken: string | undefined;
 	allowExec: boolean;
 	bundle: WorldBundle;
 	hostAppJs: string;
@@ -347,6 +354,17 @@ async function handleRequest(
 		await handleExec(req, res, ctx);
 		return;
 	}
+	// Same absent-not-forbidden treatment as /exec when owner mode is off.
+	if (
+		ctx.ownerToken &&
+		(await handleOwnerSignsRoute(req, res, url.pathname, {
+			dir: ctx.dir,
+			port: ctx.port,
+			ownerToken: ctx.ownerToken,
+			bundle: ctx.bundle,
+		}))
+	)
+		return;
 
 	res.writeHead(404);
 	res.end("not found");
@@ -389,14 +407,23 @@ export async function startServe(
 		source: resolvedDir,
 		embedNetwork: cliEmbedNetwork(opts.offline),
 	});
-	const hostAppJs = await bundleHostApp({ token, allowExec });
-	const html = hostPageHtml(token);
+	const ownerToken =
+		(opts.owner ?? true) && host === "127.0.0.1"
+			? generateOwnerToken()
+			: undefined;
+	const hostAppJs = await bundleHostApp({
+		token,
+		allowExec,
+		owner: ownerToken !== undefined,
+	});
+	const html = hostPageHtml(token, ownerToken);
 
 	const ctx: ServeContext = {
 		dir: resolvedDir,
 		host,
 		port,
 		token,
+		ownerToken,
 		allowExec,
 		bundle,
 		hostAppJs,
@@ -440,6 +467,7 @@ export async function startServe(
 		server,
 		url,
 		token,
+		ownerToken,
 		port: ctx.port,
 		close: () =>
 			new Promise((resolveClose) => {

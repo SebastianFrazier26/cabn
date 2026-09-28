@@ -26,6 +26,10 @@
 		"./local-exec": {
 			"types": "./dist/local-exec.d.ts",
 			"default": "./dist/local-exec.js"
+		},
+		"./owner": {
+			"types": "./dist/owner.d.ts",
+			"default": "./dist/owner.js"
 		}
 	},
 	"files": [

@@ -21,6 +21,7 @@ import {
 	type RichPortalPreview,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
+	SIGN_INDEX_FILENAME,
 	validateManifest,
 	type WorldChunk,
 	WorldChunkSchema,
@@ -48,6 +49,7 @@ import {
 import { buildPreview } from "./preview.js";
 import { buildCodePreview, buildImagePreview } from "./richPreview.js";
 import { buildSearchIndex, type SearchDoc } from "./search-index.js";
+import { buildSignIndex, isSeynPath } from "./signs.js";
 import type { FileSource, SourceEntry } from "./sources/types.js";
 import { buildClusterTree, buildDirTree } from "./tree.js";
 import {
@@ -190,15 +192,18 @@ export async function convert(
 		maxFileBytes,
 		includeSecrets: opts.includeSecrets,
 	});
+	// .seyn files become signs (signs.json), never portals — see world-schema's signs.ts.
+	const signFiles = walked.files.filter((f) => isSeynPath(f.path));
+	const worldFiles = walked.files.filter((f) => !isSeynPath(f.path));
 
 	if (cabnConfig) {
 		checkOverrideTargetsExist(
 			cabnConfig,
-			new Set(walked.files.map((f) => f.path)),
+			new Set(worldFiles.map((f) => f.path)),
 		);
 	}
 
-	const dirTree = buildDirTree(walked.files);
+	const dirTree = buildDirTree(worldFiles);
 	const clusterTree = buildClusterTree(dirTree);
 	const { clusters, paths, fileClusterId } = buildClusters(clusterTree, {
 		maxFilesPerCluster:
@@ -229,7 +234,7 @@ export async function convert(
 	);
 	const mediaPreviews = new Map<string, MediaPreview>();
 
-	for (const file of walked.files) {
+	for (const file of worldFiles) {
 		const clusterId = fileClusterId.get(file.path);
 		if (!clusterId) continue; // unreachable given buildClusters covers every walked file
 
@@ -334,7 +339,7 @@ export async function convert(
 			name: opts.name,
 			source: opts.source,
 			generatedAt: (opts.now?.() ?? new Date()).toISOString(),
-			fileCount: walked.files.length,
+			fileCount: worldFiles.length,
 			totalBytes: walked.totalBytes,
 			truncated: walked.truncated,
 			skippedFiles: walked.skippedFiles,
@@ -350,6 +355,9 @@ export async function convert(
 		...(cabnConfig?.guide !== undefined ? { guide: cabnConfig.guide } : {}),
 	};
 	validateManifest(manifest);
+
+	const signIndex = buildSignIndex(signFiles, portals, clusters);
+	for (const sign of signIndex.searchDocs) searchDocs.push(sign);
 
 	const searchIndex: SearchIndexFile = buildSearchIndex(searchDocs);
 	SearchIndexFileSchema.parse(searchIndex);
@@ -397,6 +405,9 @@ export async function convert(
 	};
 	MonsterIndexFileSchema.parse(monsterIndex);
 	bundle.set(MONSTER_INDEX_FILENAME, JSON.stringify(monsterIndex, null, 2));
+	// Always written, like media.json, so an engine can fetch it
+	// unconditionally for any bundle this converter produced.
+	bundle.set(SIGN_INDEX_FILENAME, JSON.stringify(signIndex.file, null, 2));
 	for (const [assetPath, bytes] of mediaBudget.assets()) {
 		bundle.set(assetPath, bytes);
 	}

@@ -1,3 +1,4 @@
+import type { SeynLinkTarget } from "@cabn/world-schema";
 import mitt, { type Emitter } from "mitt";
 
 // Bridge rule: state that must survive a re-render or be queried later lives
@@ -58,6 +59,10 @@ export type CabnEvents = {
 	"run:step": Record<string, never>;
 	"run:stop": Record<string, never>;
 	"run:set-speed": { speed: 1 | 2 | 4 };
+	/** A sign's internal link was clicked (SignReader/SignPopup) -> render/signposts.ts: walk the player to that portal/fountain/sign and highlight it. */
+	"sign:follow-link": { target: SeynLinkTarget };
+	/** The owner's placement banner (Enter) -> render/signposts.ts: put the new sign where the player stands. */
+	"sign:place-here": Record<string, never>;
 };
 
 export type CabnBus = Emitter<CabnEvents>;

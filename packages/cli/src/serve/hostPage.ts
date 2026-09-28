@@ -5,6 +5,8 @@ import * as esbuild from "esbuild";
 export interface HostPageOptions {
 	token: string;
 	allowExec: boolean;
+	/** Wires @cabn/engine/owner into CabnGame's `ownerSigns` prop — the sign item and edit controls. Off, the bundle never references that module. */
+	owner?: boolean;
 }
 
 /**
@@ -25,13 +27,20 @@ function entrySource(opts: HostPageOptions): string {
 				"installLocalRunProvider({ baseUrl: window.location.origin, token: window.__CABN_TOKEN__ });",
 			].join("\n")
 		: "";
+	const ownerWiring = opts.owner
+		? [
+				'import { createServeOwnerSigns } from "@cabn/engine/owner";',
+				"const ownerSigns = createServeOwnerSigns({ baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ });",
+			].join("\n")
+		: "const ownerSigns = undefined;";
 	return `
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
+${ownerWiring}
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs" }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", ownerSigns }));
 `;
 }
 
@@ -69,7 +78,16 @@ export async function bundleHostApp(opts: HostPageOptions): Promise<string> {
 	return output.text;
 }
 
-export function hostPageHtml(token: string): string {
+/**
+ * The owner token goes only into this page's inline script — never the URL
+ * (unlike the exec token, it isn't printed, so it doesn't end up in terminal
+ * scrollback or browser history). JSON.stringify of a hex string can't close
+ * the <script> element.
+ */
+export function hostPageHtml(token: string, ownerToken?: string): string {
+	const ownerScript = ownerToken
+		? `\n<script>window.__CABN_OWNER_TOKEN__ = ${JSON.stringify(ownerToken)};</script>`
+		: "";
 	return `<!doctype html>
 <html>
 <head>
@@ -79,7 +97,7 @@ export function hostPageHtml(token: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>
+<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>${ownerScript}
 <script type="module" src="/app.js?token=${encodeURIComponent(token)}"></script>
 </body>
 </html>`;

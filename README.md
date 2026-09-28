@@ -13,7 +13,7 @@ Under active reboot. The original Rust prototype is parked on the `rust-prototyp
 | `packages/world-schema` | `@cabn/world-schema` | Zod schemas + types for the world bundle (`world.json`, chunks, search index, assets), plus `validateManifest` |
 | `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index, error annotation -> monsters); `buildShelf()`: many worlds -> a shelf manifest |
 | `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf/file scenes, a zustand+mitt React bridge (`CabnGame` and its HUD: `ToolHotbar`, `SpyglassPanel`, `OrbSearch`, `BagTray`, `EditorOverlay`, `SettingsCorner`, `FileOverlay`, `MonsterCounter`, `EncounterBanner`, `RunOverlay`), walkable world with lazy chunk loading, in-arch portal previews, a shelf hub listing every converted world, a parchment file view you edit in place with a real text caret (shared buffer, undo history and save path with the quill) and enchanted markdown, a CodeMirror-backed quill editor with bag paste, monster sprites (hovering near portals/paths in the world, standing beside their line in a file) with a click-or-`Alt`+`Enter` fix-to-defeat battle loop, localStorage-backed save persistence (file edits, player position, visited clusters, bag slots, defeated monsters), a pluggable `ExecutionProvider` (`TraceProvider` heuristic by default and always in a hosted build; `LocalRunProvider`, real execution, only reachable via `@cabn/engine/local-exec` from a `cabn serve --allow-exec` host page) driving the wand tool's run parchment, and a soft bloom+vignette glow post-effect (always on where WebGL is available) |
-| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec]` |
+| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec] [--no-owner]` |
 | `apps/backend` | `@cabn/backend` | Authenticated Fastify upload/convert API — `POST /v1/worlds` (zip in, world bundle zip out) and `GET /healthz` |
 | `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf; also home to the Playwright browser smoke test (`e2e/`) |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
@@ -124,7 +124,7 @@ By default — everywhere, including this repo's own hosted demo — a run is a 
 ### `cabn serve` — running a file for real, locally only
 
 ```sh
-cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline]
+cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline] [--no-owner]
 ```
 
 The host page is sent with `Content-Security-Policy: frame-src <the world's allowedEmbedOrigins>` (`frame-src 'none'` when it has none) and no other directive, so the only thing the browser will ever frame is what `cabn.json` allowlisted; scripts, styles and workers are left unrestricted because the page runs an inline token script and a bundled app a broader policy would have to enumerate. `--offline` skips the build-time framability check (see above).
@@ -138,6 +138,14 @@ cabn serve ./my-project --allow-exec
 ```
 
 will print a loud warning banner and the URL to open.
+
+### Signs (`.seyn`)
+
+A `.seyn` file is a short note that stands in the world as a wooden signpost beside the arch or fountain it describes, instead of becoming a portal: a title line, paragraphs, `- ` bullets, `*emphasis*`, and `[[links]]` to files, folders, other signs and `https://` pages. Walk up to one and a popup shows it; `Enter` or a click opens it in full. An internal link walks you to its target and highlights it; a web link opens in a new tab (`noopener noreferrer`). Keep signs next to the files they describe (`src/index.seyn` beside `src/index.ts`). The format is specified in [`docs/SEYN.md`](docs/SEYN.md); the converter lists signs in a `signs.json` beside `world.json` (older engines ignore it and show the world without signs), and sign text is searchable with the orb.
+
+Everyone sees signs, hosted builds included. **Only the world owner can place, edit or delete them**, and only on a local `cabn serve` page: that page's hotbar has a sign item (`P`) no other page ever gets. Pick it, click where the sign should stand (the nearest arch or fountain becomes its target; `Enter` puts it beside you, `Esc` cancels), write it in the small editor with a live preview, and save. The file is written into `<dir>` and the sign appears at once, with no restart. A sign's reader also gets Edit and Delete buttons on that page.
+
+Saves go through an owner API that exists only in `cabn serve`, not in the hosted demo or any other build. Each request needs a random per-session owner token that is put only into the page itself (never into the printed URL). The request's `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`, and its `Origin` must be present and match. The body must be JSON (schema-checked, size-capped). The server writes only `.seyn` files (16 KiB max) inside the served folder: no absolute paths, `..`, hidden or ignored folders (`.git`, `node_modules`, `dist`…), symlinked folders pointing outside, or symlinks at the target. It never runs a shell. New files are created exclusively, so they never clobber an existing file; edits go to a temp file that is renamed over the old one. `--no-owner` serves the same page read-only: no sign item, and no owner routes at all.
 
 ### Monsters
 

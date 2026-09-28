@@ -118,6 +118,28 @@ Will-o'-wisps never fight: remove the `TODO` (or `FIXME`, `XXX`, `HACK`) and sav
 - **Web pages**: a world's author can point an arch at a real web page. Approach it and the same live page moves into the side preview, where you can interact with it. Sites that refuse framing show a title card and **Open in browser** instead. Only sites the author allowed can appear, and only over https.
 - **Sealed chests**: a file that's too big, looks like it holds a secret, or isn't safe to show (SVG, for example, can carry scripts) stays a sealed chest that shows its name, size and the reason.
 
+## Signs
+
+Wooden signposts stand beside some arches and fountains. Each one is a note the world's owner wrote. Walk up to one and a small card shows it at the side; press `Enter` or click it to read the whole sign, and `Esc` to put it down. Underlined words are links: one to a file, folder or another sign walks you there and makes it glow for a moment (it never goes in for you); one marked `↗` opens a web page in a new tab. A dashed underline means the link points at something that isn't in this world.
+
+### Writing signs (world owners)
+
+A sign is a `.seyn` text file kept next to the files it describes, such as `src/index.seyn` beside `src/index.ts`:
+
+```
+@near /src/index.ts
+# Start here
+
+This is the *entry point*.
+
+- Routes live in [[routes/|the routes folder]]
+- More at [[https://example.com/|the project site]]
+```
+
+`@near` says what it stands beside (a file, or a folder ending in `/`). `#` starts the title; `- ` starts a bullet; `*stars*` emphasise; `[[target|label]]` links. [`SEYN.md`](SEYN.md) has every rule.
+
+Only on your own `cabn serve` page can you place signs from inside the world: press `P` (the signpost in the hotbar), click where it should stand, write it in the editor (the preview updates as you type), and save. It's written into your folder and appears at once. Open one of your signs to edit or delete it. Nobody else ever gets the signpost item, including visitors to a hosted world. `cabn serve --no-owner` hides it for you too.
+
 ## For world authors: `cabn.json`
 
 A `cabn.json` at the root of a project changes how its world is built. Every field is optional except the version.

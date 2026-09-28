@@ -239,6 +239,12 @@ export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
 export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
 export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
 
+// The .seyn signpost (tools/asset-pipeline's pixelmaps/signpost.ts): the
+// guide NPC's 24x32 grid and density, drawn 48x64 like her.
+// Optional: without it render/signposts.ts draws a small wooden board itself.
+export const SIGNPOST_KEY = "seyn-signpost";
+export const SIGNPOST_PATH = `${ASSET_BASE}/placeholders/prop_seyn_sign_soft.png`;
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything
@@ -261,6 +267,7 @@ export const UI_ICON_NAMES = [
 	"quill",
 	"wand",
 	"key",
+	"sign",
 ] as const;
 export type UiIconName = (typeof UI_ICON_NAMES)[number];
 

@@ -1,0 +1,11 @@
+@near /
+# Welcome to harvest-log
+
+A tiny kitchen-garden API, turned into a clearing you can walk. Every arch is
+a file; every fountain is a folder.
+
+- The API starts at [[src/index.ts|the entry point]] — its sign says more: [[src/tour.seyn|read the tour]]
+- Plain notes live in [[docs/|the docs grove]]
+- The world was built by [[https://github.com/SebastianFrazier26/cabn|cabn]]
+
+Signs like this one are *.seyn* files the owner writes next to the code.

@@ -5,6 +5,7 @@ import {
 	createCabnGame,
 } from "../game.js";
 import { configureMedia } from "../render/mediaSources.js";
+import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
@@ -19,6 +20,7 @@ import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
 import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
+import { Signs } from "./SignPanels.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
 import { VictoryToast } from "./VictoryToast.js";
@@ -42,6 +44,13 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	 * notice. A Vite host can pass `import url from "pdfjs-dist/build/pdf.worker.min.mjs?url"`.
 	 */
 	pdfWorkerUrl?: string;
+	/**
+	 * The world owner's capability to place, edit and delete signs (.seyn
+	 * files). Only `cabn serve`'s local host page passes this (built by
+	 * @cabn/engine/owner against its loopback owner API); without it — every
+	 * hosted build and the demo — there is no sign item and no edit control.
+	 */
+	ownerSigns?: OwnerSignsApi;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -54,7 +63,12 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady, pdfWorkerUrl } = props;
+	const { onGameReady, pdfWorkerUrl, ownerSigns } = props;
+
+	useEffect(() => {
+		if (!handle) return;
+		handle.store.getState().setOwnerSigns(ownerSigns ?? null);
+	}, [handle, ownerSigns]);
 
 	useEffect(() => {
 		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
@@ -101,6 +115,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />
 					<GuideDialog store={handle.store} />
+					<Signs store={handle.store} bus={handle.bus} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

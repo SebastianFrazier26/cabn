@@ -5,6 +5,7 @@ import type {
 	Monster,
 	Portal,
 	Position,
+	SignEntry,
 	WorldChunk,
 	WorldManifest,
 } from "@cabn/world-schema";
@@ -41,7 +42,7 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
-import { GuideNpc } from "../render/guideNpc.js";
+import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { MonsterOrbits } from "../render/monsterOrbit.js";
 import {
@@ -76,6 +77,7 @@ import {
 	MONSTER_HOVER_SIZE,
 	WORLD_PORTAL_SCALE,
 } from "../render/scale.js";
+import { SignLayer } from "../render/signposts.js";
 import {
 	attachSky,
 	boundsWithSky,
@@ -158,6 +160,8 @@ export interface WorldSceneData {
 	shelfIndex?: number;
 	/** The bundle's embeds.json verdicts (BootScene); empty for a bundle without one. */
 	embeds?: ReadonlyMap<string, EmbedVerdict>;
+	/** The bundle's signs.json entries (BootScene); empty for a bundle without one. */
+	signs?: readonly SignEntry[];
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -280,6 +284,8 @@ export class WorldScene extends Phaser.Scene {
 	private returnTo: { shelfUrl: string } | undefined;
 	private shelfIndex: number | undefined;
 	private guideNpc: GuideNpc | null = null;
+	private signEntries: readonly SignEntry[] = [];
+	private signs: SignLayer | null = null;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -351,6 +357,7 @@ export class WorldScene extends Phaser.Scene {
 		this.worldBase = data.worldBase;
 		this.media = data.media ?? new Map();
 		this.embeds = data.embeds ?? new Map();
+		this.signEntries = data.signs ?? [];
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		this.shelfIndex = data.shelfIndex;
@@ -419,6 +426,7 @@ export class WorldScene extends Phaser.Scene {
 			},
 		});
 		this.createPlayer(spawn);
+		this.spawnSigns();
 		this.setupInput();
 		this.setupCamera();
 		this.publishPortalIndex();
@@ -457,6 +465,59 @@ export class WorldScene extends Phaser.Scene {
 			this.setNearWebPortal(null);
 			this.store.getState().setWorldMap(null);
 		});
+	}
+
+	/** Signposts for the bundle's .seyn files (render/signposts.ts) — placed last so they can keep clear of the props, the guide and the spawn point too. */
+	private spawnSigns(): void {
+		const spawn = this.defaultSpawnPos();
+		const obstacles: CircleKeepout[] = this.placedProps.map((prop) => ({
+			x: prop.x,
+			y: prop.y,
+			radius:
+				Math.max(prop.sprite.displayWidth, prop.sprite.displayHeight) * 0.4,
+		}));
+		obstacles.push({ x: spawn.x, y: spawn.y, radius: 40 });
+		if (this.guideNpc)
+			obstacles.push({
+				x: this.guideNpc.pos.x,
+				y: this.guideNpc.pos.y,
+				radius: 44,
+			});
+		this.signs = SignLayer.spawn(this, {
+			store: this.store,
+			bus: this.bus,
+			manifest: this.manifest,
+			signs: this.signEntries,
+			portalWorldPos: this.portalWorldPos,
+			groundRadius: (cluster) => this.groundRadius(cluster),
+			obstacles,
+			reducedMotion: prefersReducedMotion(),
+			walkTo: (pos) =>
+				this.walker.walkTo(
+					clampToBounds(pos, physicsBounds(this), BOUNDS_INSET_PX),
+					{
+						from: { x: this.player.body.x, y: this.player.body.y },
+						speed: SUMMONED_WALK_SPEED,
+						showMarker: false,
+					},
+				),
+			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
+			enterTakers: this.signEnterTakers(),
+		});
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.signs = null;
+		});
+	}
+
+	/** Where Enter keeps its old meaning even with a sign in reach: talking to the guide, and (from a shelf) going back at the bonfire — which covers the fresh spawn point. */
+	private signEnterTakers(): CircleKeepout[] {
+		const takers: CircleKeepout[] = [];
+		if (this.guideNpc)
+			takers.push({ ...this.guideNpc.pos, radius: GUIDE_INTERACT_RADIUS });
+		const root = this.rootCluster();
+		if (root && this.returnTo)
+			takers.push({ ...root.pos, radius: BONFIRE_INTERACT_RADIUS });
+		return takers;
 	}
 
 	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
@@ -1314,11 +1375,18 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		if (this.guideNpc) targets.push(this.guideNpc.interactable());
+		if (this.signs) targets.push(...this.signs.interactables());
 		return targets;
 	}
 
 	private onClick = (target: ClickTarget): void => {
 		this.pendingArrival = null;
+		if (this.signs?.isPlacing()) {
+			this.walker.cancel();
+			this.signs.placeAtPointer();
+			return;
+		}
+		if (this.signs?.isReading()) return;
 		if (this.tryOpenUrlArch(target)) {
 			this.walker.cancel();
 			return;
@@ -1409,7 +1477,7 @@ export class WorldScene extends Phaser.Scene {
 		}
 		// The dialogue box swallows its keys before Phaser sees them; this also
 		// holds still a movement key that was already down when it opened.
-		if (this.guideNpc?.isTalking()) {
+		if (this.guideNpc?.isTalking() || this.signs?.isReading()) {
 			this.walker.cancel();
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 		} else {
@@ -1470,6 +1538,11 @@ export class WorldScene extends Phaser.Scene {
 		if (target.kind === "npc") {
 			this.pendingArrival = null;
 			this.guideNpc?.talk();
+			return;
+		}
+		if (target.kind === "sign") {
+			this.pendingArrival = null;
+			this.signs?.open(target.id);
 			return;
 		}
 		if (target.kind !== "portal") {
@@ -1726,8 +1799,23 @@ export class WorldScene extends Phaser.Scene {
 
 	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the guide NPC, else the bonfire. */
 	private interact(): void {
-		if (this.enterNearestPortalInRange()) return;
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		// A sign stands beside its arch, so both can be in reach: the closer wins.
+		const sign = this.signs?.inReach(playerPos);
+		if (
+			sign &&
+			sign.dist < this.nearestPortalDistance(playerPos) &&
+			!this.signEnterTakers().some(
+				(t) =>
+					Phaser.Math.Distance.Between(playerPos.x, playerPos.y, t.x, t.y) <=
+					t.radius,
+			)
+		) {
+			this.walker.cancel();
+			this.signs?.open(sign.path);
+			return;
+		}
+		if (this.enterNearestPortalInRange()) return;
 		if (this.guideNpc?.inReach(playerPos)) {
 			this.walker.cancel();
 			this.guideNpc.talk();
@@ -1745,6 +1833,19 @@ export class WorldScene extends Phaser.Scene {
 		) {
 			this.returnToShelf();
 		}
+	}
+
+	private nearestPortalDistance(playerPos: Position): number {
+		let best = Number.POSITIVE_INFINITY;
+		for (const portalId of this.portalsInRange) {
+			const pos = this.portalWorldPos.get(portalId);
+			if (pos)
+				best = Math.min(
+					best,
+					Phaser.Math.Distance.Between(playerPos.x, playerPos.y, pos.x, pos.y),
+				);
+		}
+		return best;
 	}
 
 	private enterNearestPortalInRange(): boolean {

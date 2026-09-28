@@ -4,6 +4,7 @@ import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import {
 	createDefaultToolRegistry,
+	createSignTool,
 	type Tool,
 	type ToolRegistry,
 } from "../systems/tools.js";
@@ -49,6 +50,9 @@ export function ToolHotbar({
 	bus,
 }: ToolHotbarProps): React.ReactElement | null {
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
+	const [signTool] = useState(createSignTool);
+	const owner = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const signPlacing = useCabnStore(store, (s) => s.signPlacing);
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
@@ -88,6 +92,12 @@ export function ToolHotbar({
 			// quit) — they used to fire the wand/quill on their way through.
 			if (event.metaKey || event.ctrlKey || event.altKey) return;
 
+			if (key === "p" && store.getState().ownerSigns) {
+				if (currentMode !== "world") return;
+				event.preventDefault();
+				signTool.onUse({ store, bus });
+				return;
+			}
 			const toolId = HOTKEY_TOOL_IDS[key];
 			if (!toolId) return;
 			// Opening the orb focuses its input during this same keydown, so
@@ -97,7 +107,7 @@ export function ToolHotbar({
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [registry, store, bus]);
+	}, [registry, signTool, store, bus]);
 
 	// Hidden rather than just non-interactive while the editor is open — its
 	// tools (opener/spyglass/orb/bag-as-selection) all read as "world/file
@@ -131,6 +141,16 @@ export function ToolHotbar({
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
+			{owner && mode === "world" && (
+				<HotbarSlot
+					tool={signTool}
+					badge={null}
+					selected={signPlacing}
+					showLabel={false}
+					writing={false}
+					onUse={() => signTool.onUse({ store, bus })}
+				/>
+			)}
 		</div>
 	);
 }
@@ -163,6 +183,7 @@ function HotbarSlot({
 				event.currentTarget.blur();
 			}}
 			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
+			data-tool={tool.id}
 			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
