@@ -16,8 +16,16 @@ const assetsOutDir = join(demoRoot, "public", "assets");
 // Two contrasting worlds, not one: a TS/Python "codebase" and a markdown-only
 // notes vault, so the shelf visibly shows worlds with different biomes/file
 // kinds under the same wizard-tower hub, not two copies of the same shape.
+// The sample world also ingests an ESLint-format results file, so the demo
+// shows external findings (shades, for rules with no built-in class) next to
+// the built-in annotators' monsters. It lives outside sample-project
+// so it isn't itself a portal.
 const WORLDS = [
-	{ sourceDir: join(demoRoot, "sample-project"), name: "sample" },
+	{
+		sourceDir: join(demoRoot, "sample-project"),
+		name: "sample",
+		findingsPaths: [join(demoRoot, "sample-findings.eslint.json")],
+	},
 	{ sourceDir: join(demoRoot, "notes-vault"), name: "notes" },
 ];
 
@@ -46,9 +54,12 @@ async function main() {
 
 		if (shouldBuild(await pathExists(manifestPath), force)) {
 			if (force) await rm(outDir, { recursive: true, force: true });
-			const summary = await runBuild(world.sourceDir, { outDir });
+			const summary = await runBuild(world.sourceDir, {
+				outDir,
+				findingsPaths: world.findingsPaths,
+			});
 			console.log(
-				`cabn demo: built "${world.name}" world -> ${summary.clusters} clusters, ${summary.portals} portals (${summary.elapsedMs}ms)`,
+				`cabn demo: built "${world.name}" world -> ${summary.clusters} clusters, ${summary.portals} portals, ${summary.monsters} monsters (${summary.elapsedMs}ms)`,
 			);
 		} else {
 			console.log(

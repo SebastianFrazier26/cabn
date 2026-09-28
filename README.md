@@ -132,18 +132,47 @@ will print a loud warning banner and the URL to open.
 
 ### Monsters
 
-Every error a world's files have gets annotated at conversion time and spawns a monster, one species per error code:
+Every error a world's files have gets annotated at conversion time and spawns a monster, one species per error code. Tier is severity, from 0 (cosmetic) to 3. When a file has two or more real bugs, each of them goes up one tier.
 
-| Species | Error code | What it means |
-| --- | --- | --- |
-| Ghost | `NullTypeError` | A relative import or markdown link that doesn't resolve to any file in this world |
-| Rot-sprite | `Corrupted` | Invalid JSON, or a markdown frontmatter block that opens with `---` and never closes |
-| Warded Mimic | `InvalidMode` | The file contains an invalid/undecodable byte (shows up as the Unicode replacement character, U+FFFD) |
-| Gremlin | `IoError` | An unclosed, mismatched, or unexpected bracket, or an unterminated string literal |
-| Ouroboros | `OuroborosError` | A circular import between two or more files |
-| Will-o'-Wisp | `WispNote` | A `TODO`/`FIXME`/`XXX`/`HACK` left in a comment — cosmetic, tier 0, never an encounter |
+| Species | Error code | Tier | What it means |
+| --- | --- | --- | --- |
+| Ghost | `NullTypeError` | 1 | A relative import or markdown link that doesn't resolve to any file in this world |
+| Rot-sprite | `Corrupted` | 1 | Invalid JSON, or a markdown frontmatter block that opens with `---` and never closes |
+| Warded Mimic | `InvalidMode` | 1 | The file contains an invalid/undecodable byte (shows up as the Unicode replacement character, U+FFFD) |
+| Gremlin | `IoError` | 1 | An unclosed, mismatched, or unexpected bracket, or an unterminated string literal |
+| Ouroboros | `OuroborosError` | 1 | A circular import between two or more files |
+| Will-o'-Wisp | `WispNote` | 0 | A `TODO`/`FIXME`/`XXX`/`HACK` left in a comment — cosmetic, never an encounter |
+| Hex Imp | `SyntaxError` | 2 | A real parse error, from the same Lezer grammars the editor uses (JS/JSX, Python, CSS, HTML). TypeScript isn't covered, because that grammar flags too much valid TS; TS files still get gremlins. A file that has a gremlin gets no imps, so one mistake is one monster |
+| Magpie | `LeakedSecret` | 3 | A hard-coded credential: an AWS/GitHub/Anthropic/OpenAI/Slack/Stripe/Google key, a PEM private key, a database URL with a password in it, or a random-looking string assigned to a secret-ish name. The message shows only the key's prefix and length, never the value |
+| Skeleton | `DeadCode` | 1 | An unused import, an unused variable or function (JS/TS locals and module-private names, Python function locals), or code after `return`/`throw`/`raise`/`break`/`continue` |
+| Bramble | `CodeSmell` | 1 | A function over 80 lines, control flow nested more than 4 deep, a copy-pasted block of 6+ lines, or a debug leftover (`debugger`, `breakpoint()`, and `console.log`/`print` outside scripts, tests and CLIs). Change the limits in `cabn.json`: `"annotate": { "maxFunctionLines": 120, "maxNestingDepth": 5 }` |
+| Shade | `UnknownBug` | 1 | A finding from an external tool (`cabn build --findings`) that doesn't fit any built-in class |
 
 A monster hovers near its file's portal arch in the world (or, for an ouroboros whose cycle crosses clusters, at the midpoint of the path between them — cosmetic only, not fightable there) and stands beside its line inside the file. Walking into one and pressing `Enter` (or clicking it) starts an encounter: a short banner names the monster and shows the error, then the quill opens on the offending line. Saving re-checks every monster still open in that file, not just the one you're fighting — fix the underlying problem and it dies (a fade, a few sparkles, and "Fixed!"); the fix doesn't take and it shrugs off the hit with a shake and a hint, editor still open so you can try again. A wisp never triggers an encounter at all — removing its `TODO` and saving is enough to make it vanish. The HUD's bottom-left counter tracks how many bugs remain in the world you're in.
+
+A false alarm costs more than a missed bug in a game about fixing real bugs, so the newer annotators hold back:
+
+- The dead-code check counts a name as used if the word appears anywhere else in the file, comments and strings included. It never guesses at scopes.
+- The imp ignores known gaps in the grammars (constructs that are valid but that the grammar still marks as errors). A test runs the imp and dead-code checks over this repo's own source and expects zero hits.
+- The secret check skips placeholders (`your-key-here`, `example`, `xxxx`, `${VAR}`, strings with too little variety). Its generic "secret-ish name" pattern doesn't run in tests or in `.example`/`.sample` files.
+- The debug-print check skips scripts, tests, CLIs and server entry points.
+
+The five newer species (imp through shade) are stored in a separate `monsters.json` next to `world.json`. Older engines read `world.json` strictly and would reject an unknown species. With this split they load new worlds fine and just don't show these monsters. `world.json` itself is unchanged and `CABN_VERSION` stays 1.
+
+#### External findings (`--findings`)
+
+```sh
+eslint . --format json > eslint.json
+cabn build ./my-project --findings eslint.json --findings codeql.sarif
+```
+
+`--findings` can be given more than once. It takes `eslint --format json` output or any SARIF 2.1.0 file (CodeQL, Semgrep, Ruff, secret scanners, ...), and the file is validated before anything is used.
+
+- **Mapping**: each finding becomes the closest built-in monster, going by rule id and tags. For example, `no-unused-vars`/`F401` becomes a skeleton, `complexity`/`no-console` a bramble, a parse error an imp, a secret-scanner or CWE-798 rule a magpie, and `import/no-unresolved` a ghost. Anything else becomes a shade.
+- **Matching**: paths are matched relative to the directory being built. A finding for a path that isn't in the world is dropped. So is one on the same line and in the same class as a built-in monster.
+- **Secrets**: a secret finding never copies the scanner's message, because scanners often quote the value.
+- **Defeating**: the browser can't re-run the tool, so an external monster dies once the exact line it flagged changes.
+- **Why a CLI flag**: findings come from a CI run, not from the source tree, so they aren't a `cabn.json` field. That also means an uploaded zip can't inject monsters.
 
 ### Saving
 

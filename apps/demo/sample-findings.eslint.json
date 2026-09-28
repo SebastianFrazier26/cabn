@@ -1,0 +1,26 @@
+[
+	{
+		"filePath": "src/compost.ts",
+		"messages": [
+			{
+				"ruleId": "eqeqeq",
+				"severity": 2,
+				"message": "Expected '===' and instead saw '=='.",
+				"line": 13,
+				"column": 26
+			}
+		]
+	},
+	{
+		"filePath": "src/routes/harvest.ts",
+		"messages": [
+			{
+				"ruleId": "harvest/no-unbounded-array",
+				"severity": 1,
+				"message": "In-memory array grows without a cap; a busy season will exhaust memory.",
+				"line": 40,
+				"column": 3
+			}
+		]
+	}
+]

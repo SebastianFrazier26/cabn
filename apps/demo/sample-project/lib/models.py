@@ -1,6 +1,7 @@
 """Plain dataclasses shared by the offline scripts — no ORM, this is a fixture."""
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
