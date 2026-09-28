@@ -79,6 +79,9 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 210, 63, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 210, 63, 0.25);
 	--cabn-editor-gutter-border: rgba(59, 47, 107, 0.35);
+	--cabn-search-match-bg: rgba(255, 153, 51, 0.32);
+	--cabn-search-match-selected-bg: rgba(178, 124, 214, 0.55);
+	--cabn-selection-match-bg: rgba(79, 208, 216, 0.2);
 	/* A subtle "recessed panel" tint (run log, satchel lining) — a text-colored
 	   wash at low opacity. Day = dark ink on the near-white panel; night needs
 	   the opposite direction (white wash on the near-black panel) or it reads
@@ -92,6 +95,9 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 207, 77, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 207, 77, 0.25);
 	--cabn-editor-gutter-border: rgba(34, 26, 77, 0.35);
+	--cabn-search-match-bg: rgba(255, 170, 70, 0.3);
+	--cabn-search-match-selected-bg: rgba(190, 140, 230, 0.5);
+	--cabn-selection-match-bg: rgba(70, 201, 224, 0.2);
 	--cabn-inset-tint: rgba(255, 255, 255, 0.06);
 }
 
@@ -183,6 +189,15 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-hotbar-slot img { width: 40px; height: 40px; object-fit: contain; position: relative; z-index: 1; image-rendering: pixelated; }
 .cabn-hotbar-slot .cabn-key { position: relative; z-index: 1; font-size: 10px; color: var(--cabn-text-secondary); margin-top: 1px; font-family: var(--cabn-font-display); }
+/* Inside a file the slots grow a verb label ("Run", "Copy"...); the hotkey
+   moves to the top-left corner to make room. */
+.cabn-hotbar-slot.labeled { width: 76px; height: 78px; justify-content: flex-start; padding-top: 6px; }
+.cabn-hotbar-slot.labeled img { width: 38px; height: 38px; }
+.cabn-hotbar-slot.labeled .cabn-key { position: absolute; top: 3px; left: 6px; margin: 0; }
+.cabn-slot-label {
+	position: relative; z-index: 1; margin-top: 3px; font-size: 12px; line-height: 1.1;
+	font-family: var(--cabn-font-display); color: var(--cabn-text); white-space: nowrap;
+}
 .cabn-hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 0 0 0 3px var(--cabn-accent-yellow); transform: translateY(-3px); }
 /* .cabn-badge itself (shared with the satchel's closed-count badge) is defined
    in the bag section below — kept next to its other consumer rather than
@@ -455,33 +470,106 @@ const PIXEL_THEME_CSS = `
 }
 
 /*
- * ================= editor (quill) — ink blot + drifting glyphs =================
- * 2026-09-28 polish pass: neither of these actually rendered before this pass
- * (EditorOverlay.tsx had no markup for them at all, despite the mockup
- * always including them) — "barely visible" was really "entirely absent".
- * Opacities here are deliberately a notch above the mockup's own (0.4/0.6
- * peak) per explicit user feedback that the quill screen read as flat —
- * still low enough not to fight code readability (STYLE.md's "subtle, by
- * design" reasoning still holds), just no longer imperceptible.
+ * ================= editor (quill) — border motes =================
+ * Round-2 playtest (2026-09-28): violet glyphs/sparkles pinned to the book's
+ * frame — corners, edges, spine — instead of drifting over the top of the
+ * code (and the old ink blot, which sat on the code's top-right corner, is
+ * gone for the same reason). Each mote is centered on its anchor with
+ * negative margins, not translate(-50%), so the twinkle keyframe owns
+ * transform. The pale halo keeps them legible over both the dark frame
+ * border and whatever world shows behind the book. Reduced motion: no
+ * twinkle, just a faint static mote.
  */
-.cabn-editor-ink-blot {
-	position: absolute; top: -10px; right: 18px; width: 30px; height: 30px; border-radius: 50%;
-	background: radial-gradient(circle, var(--cabn-border-outer) 45%, transparent 72%);
-	opacity: 0.55; pointer-events: none; z-index: 2;
+.cabn-spellbook-frame { position: relative; flex: 1; min-height: 0; display: flex; }
+.cabn-spellbook-motes { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.cabn-spellbook-mote {
+	position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+	display: flex; align-items: center; justify-content: center; opacity: 0.45; pointer-events: none;
 }
-.cabn-editor-glyph {
-	position: absolute; pointer-events: none; z-index: 2;
-	font-family: var(--cabn-font-mono); color: var(--cabn-accent-violet);
-	font-size: 20px; opacity: 0;
+.cabn-spellbook-mote img { width: 20px; height: 20px; image-rendering: pixelated; filter: drop-shadow(0 0 2px var(--cabn-panel-body)); }
+.cabn-spellbook-mote.glyph {
+	font-family: var(--cabn-font-mono); font-size: 17px; font-weight: bold; color: var(--cabn-accent-violet);
+	text-shadow: 0 0 3px var(--cabn-panel-body), 1px 1px 0 var(--cabn-border-outer); white-space: nowrap;
 }
-@keyframes cabn-glyph-drift {
-	0% { opacity: 0; transform: translateY(0); }
-	15% { opacity: 0.7; }
-	100% { opacity: 0; transform: translateY(-32px); }
+@keyframes cabn-mote-twinkle {
+	0%, 100% { opacity: 0; transform: scale(0.6); }
+	20% { opacity: 1; transform: scale(1.15); }
+	55% { opacity: 0.7; transform: scale(0.9); }
 }
 @media (prefers-reduced-motion: no-preference) {
-	.cabn-editor-glyph { animation: cabn-glyph-drift 3.4s ease-in infinite; }
+	.cabn-spellbook-mote { opacity: 0; animation: cabn-mote-twinkle 3.2s ease-in-out infinite; }
 }
+
+/* ================= spellbook toolbar + tool dialogs ================= */
+.cabn-spellbook-toolbar {
+	display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 6px;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 4px 4px 0 rgba(0,0,0,0.2);
+}
+.cabn-spellbook-tool-wrap { display: inline-flex; align-items: center; }
+.cabn-spellbook-tool {
+	display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px;
+	font-family: var(--cabn-font-display); font-size: 12px; color: var(--cabn-text);
+	background: none; border: 2px solid transparent; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.cabn-spellbook-tool img { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; }
+.cabn-spellbook-tool:hover, .cabn-spellbook-tool:focus-visible {
+	background: var(--cabn-panel-body-alt); border-color: var(--cabn-border-outer); outline: none;
+}
+.cabn-spellbook-tool:active { transform: translate(1px, 1px); }
+.cabn-spellbook-tool-divider {
+	width: 3px; height: 22px; margin: 0 4px; border-radius: 2px; background: var(--cabn-border-outer); opacity: 0.25;
+}
+.cabn-spellbook-dialog {
+	position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 10;
+	width: min(380px, 92%); max-height: calc(100% - 16px); box-sizing: border-box;
+	display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 5px 5px 0 rgba(0,0,0,0.25);
+	font-family: var(--cabn-font-display);
+}
+.cabn-spellbook-dialog.wide { width: min(560px, 94%); }
+.cabn-spellbook-dialog-title { font-size: 13px; }
+.cabn-spellbook-dialog-title code { font-family: var(--cabn-font-mono); color: var(--cabn-syntax-function); }
+.cabn-spellbook-dialog-hint { font-size: 11px; color: var(--cabn-text-secondary); }
+.cabn-spellbook-dialog-actions { display: flex; align-items: center; gap: 8px; }
+.cabn-spellbook-dialog-actions .cabn-spellbook-dialog-hint { flex: 1; }
+.cabn-spellbook-dialog .cabn-btn:disabled { opacity: 0.5; cursor: default; }
+.cabn-spellbook-input {
+	font-family: var(--cabn-font-mono); font-size: 14px; color: var(--cabn-text);
+	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 8px; padding: 6px 8px;
+}
+.cabn-spellbook-input:focus { outline: 2px solid var(--cabn-accent-yellow); outline-offset: 1px; }
+.cabn-spellbook-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 260px; min-height: 0; }
+.cabn-spellbook-list-row {
+	display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; padding: 4px 8px;
+	background: none; border: none; border-radius: 6px; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.cabn-spellbook-list-row:hover { background: var(--cabn-inset-tint); }
+.cabn-spellbook-list-row.active { background: var(--cabn-editor-active-line-bg); box-shadow: inset 0 0 0 2px var(--cabn-accent-yellow); }
+.cabn-spellbook-list-name { flex: 1; font-family: var(--cabn-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cabn-spellbook-list-line { flex: none; min-width: 26px; text-align: right; font-family: var(--cabn-font-mono); color: var(--cabn-text-secondary); }
+.cabn-spellbook-kind {
+	flex: none; min-width: 20px; text-align: center; font-family: var(--cabn-font-mono); font-size: 11px;
+	background: var(--cabn-accent-violet); color: #201a3d; border-radius: 4px; padding: 0 3px;
+}
+.cabn-spellbook-list.preview .cabn-spellbook-list-row { cursor: default; }
+.cabn-spellbook-list.preview input { accent-color: var(--cabn-accent-violet); }
+.cabn-rename-preview { flex: 1; font-family: var(--cabn-font-mono); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+/* Fixed dark ink on the bright accents, same reasoning as .cabn-btn. */
+.cabn-rename-preview del { opacity: 0.6; }
+.cabn-rename-preview ins { text-decoration: none; background: var(--cabn-accent-green); color: #201a3d; border-radius: 3px; padding: 0 1px; }
+.cabn-rename-preview mark { background: var(--cabn-accent-yellow); color: #201a3d; border-radius: 3px; padding: 0 1px; }
+.cabn-spellbook-tool-hint {
+	position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 10;
+	font-size: 12px; padding: 5px 12px; white-space: nowrap;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 2px solid var(--cabn-border-outer); border-radius: 10px; box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+}
+.cabn-fold-marker { display: inline-block; padding: 0 3px; cursor: pointer; color: var(--cabn-editor-gutter-text); }
+.cabn-fold-marker.folded { color: var(--cabn-syntax-keyword); }
 
 /* ================= ribbon banners (encounter + victory) ================= */
 .cabn-ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 260px; padding: 10px 36px; }

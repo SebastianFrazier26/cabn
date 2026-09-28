@@ -122,6 +122,7 @@ export function ToolHotbar({
 					tool={tool}
 					badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
 					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
+					showLabel={mode === "file"}
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
@@ -133,13 +134,16 @@ function HotbarSlot({
 	tool,
 	badge,
 	selected,
+	showLabel,
 	onUse,
 }: {
 	tool: Tool;
 	badge: number | null;
 	selected: boolean;
+	showLabel: boolean;
 	onUse: () => void;
 }): React.ReactElement {
+	const label = showLabel ? tool.label : undefined;
 	return (
 		<button
 			type="button"
@@ -149,12 +153,16 @@ function HotbarSlot({
 				// next Enter meant for the world would re-click it as well.
 				event.currentTarget.blur();
 			}}
-			title={`${tool.name} (${tool.hotkey})`}
-			className={`cabn-hotbar-slot${selected ? " selected" : ""}`}
+			title={`${label ? `${label} — ` : ""}${tool.name} (${tool.hotkey})`}
+			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
 			<img src={tool.icon} alt={tool.name} />
-			<span className="cabn-key">{tool.hotkey}</span>
+			<span className="cabn-key">
+				{/* The labeled slot's corner only fits one glyph beside the icon. */}
+				{label && tool.hotkey === "Enter" ? "↵" : tool.hotkey}
+			</span>
+			{label && <span className="cabn-slot-label">{label}</span>}
 			{badge !== null && <span className="cabn-badge">{badge}</span>}
 		</button>
 	);
