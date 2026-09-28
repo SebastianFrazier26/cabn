@@ -1,172 +1,242 @@
-# cabn diegetic-storybook UI — style tokens (M10a mockup)
+# cabn pixel-RPG UI — style tokens (M10a mockup v2)
 
 Companion to `mockup.html`. This document describes the mockup as built —
 it is a proposal for review, not a spec already implemented in
 `packages/engine/src/react/`.
 
-## Concept
+## v2 — this is a reset, not a tweak
 
-UI made of the world's own materials: wood-plank frames, parchment fills,
-wax-seal buttons, hand-lettered serif type, pixel-art 9-slice borders drawn
-by the asset pipeline (`tools/asset-pipeline/src/ui-frames.ts`). No
-`border-radius` anywhere — corners are baked into the frame art itself (the
-tooltip bubble's 1px chamfer, the wood frame's square joints), never a CSS
-rounded rect. Flat rectangles with a 2px ink border (today's look, see every
-current `packages/engine/src/react/*.tsx`) are replaced by this frame/fill
-pairing everywhere.
+The first pass ("diegetic storybook": wood-plank frames, parchment fill,
+wax seals) was rejected outright: too textured ("like Minecraft dirt"), the
+parchment fill read as patchy and hard to read, the palette was bland, the
+hotbar was emoji in wooden squares, and every tool screen looked the same.
+This version throws out all of that and rebuilds around **Stardew Valley /
+Pokémon Black-White**: flat colorful panels with a simple outline + inset
+highlight bevel (no raster texture anywhere), a legible retro dialog font,
+real item-icon art in the hotbar, and a distinct particle/atmosphere effect
+per magical tool. Scene-transition concepts (page-turn / scroll-unroll /
+vignette iris) are the one thing carried over unchanged, per explicit
+feedback that they were fine.
+
+## Frame
+
+- `.panel`: flat `--panel-body` fill, `4px solid var(--border-outer)`,
+  `border-radius: 14px`, `box-shadow: inset 0 0 0 3px var(--border-highlight)`
+  for the inner bevel line, plus a flat `5px 5px 0 rgba(0,0,0,0.22)` hard
+  drop-shadow (no blur — a flat offset shadow is the GBA/DS convention, a
+  blurred one reads as a modern web card). Small rotated-square corner
+  accents (`::before`/`::after`) are a cheap nod to the corner dots common
+  on GBA/DS menu boxes.
+- No raster art anywhere in the frame. This is a deliberate reversal from
+  v1: CSS borders/radius/box-shadow give the exact same "flat colored
+  border, rounded corners" look Stardew/Pokémon menus have, with zero
+  texture risk and zero new binary assets to generate per panel.
+- Real pixel-art assets are now scoped to exactly two things: **item icons**
+  (the hotbar tools) and a **sparkle particle** — both listed below.
+
+## Item icons
+
+Five new tool icons (`tools/asset-pipeline/src/pixelmaps/ui-item-*.ts`),
+replacing v1's approach of borrowing whatever existing icon was closest
+(spyglass/quill both used `letter_opener_256.webp`, wand used
+`cabinet_256.webp` — see `packages/engine/src/systems/tools.ts`'s own
+comment on this). Each runs through the *same* `soften()` pass with no
+option overrides as `wizard_tower`/`character_idle`/`ghost` (the spyglass
+gets one override, see below), so they land in the same soft-rendered
+family as the existing recovered originals rather than reading as new art
+bolted on next to them. All five also carry the same small leaf-sprig +
+cream-flower accent cluster that `key.png`/`letter_opener.png` have near
+their base (`ui-icon-motifs.ts`), for the same reason.
+
+| icon | reads as | honest note |
+|---|---|---|
+| crystal orb | swirling violet/cyan glass sphere on a bronze stand | strongest of the five |
+| quill | feather + ink-dipped nib + gold-rimmed inkwell | strongest of the five |
+| bag | satchel with an arched carry handle + gold buckle | went through two silhouettes — v1's tapered-top shape read as a hood/cloak, not a bag; the handle loop is what fixed it |
+| wand | wrapped-grip rod with a glowing star tip | solid |
+| spyglass | flared brass tube tapering to a glass-tipped end | **weakest of the five** — two revision passes (added an eyepiece flare, replaced a circular lens with a flat tinted tube-tip so it stopped rendering as a diamond/star indistinguishable from the wand) improved it, but it still reads more as "a rod" than unmistakably "a telescope" at a glance. If this direction proceeds, this is the one icon worth a third pass or a different silhouette (e.g. a bent/collapsed two-segment shape) before it ships |
+
+`ui-frames.ts` overrides the spyglass's soften pass specifically
+(`bloomThreshold: 235, bloomStrength: 0.15`) — its pale-ghost-blue lens tip
+sits just above the default bloom threshold (180) and was blooming into a
+starburst that duplicated the wand's own signature glow.
+
+## Sparkle particle
+
+One small 4-point sparkle (`ui-sparkle.ts`), in three colors (violet/cyan/
+gold, all existing curated palette indices), reused at different positions,
+sizes, and animation delays as the "particle effect" for the orb search
+screen — one sprite standing in for a particle system rather than dozens of
+bespoke frames. Crisp only (no soften pass): at 9x9 source pixels these are
+meant to glow sharply against a colored backdrop, not read as soft objects.
+
+## Per-tool "magic" treatment
+
+The explicit ask was that each tool feel distinct, not just re-skinned —
+implemented as a different *atmosphere* layered into the same shared
+`.panel` chrome, so the UI still reads as one system:
+
+| tool | effect | how |
+|---|---|---|
+| spyglass (ls) | lens vignette + sweeping sheen | radial-gradient darkening at the panel edges, plus a diagonal light-gradient sweeping across on a 3.2s loop |
+| crystal orb (search) | violet/cyan swirling mist + sparkles | a blurred rotating conic-gradient behind the modal, plus 3-5 positioned sparkle sprites with staggered twinkle |
+| bag (tray) | open satchel interior | a warm brown radial vignette + dashed "stitched seam" inset border |
+| quill (editor) | ink & glyph shimmer | small code-glyph characters (`{ } % λ`) drifting upward and fading near the panel top, plus a soft ink-blot behind the plaque corner |
+| wand (run) | rune scroll | two counter-rotating dashed rings (violet + cyan) behind the panel, reading as an active spell circle rather than v1's literal unrolling parchment |
+
+All five are CSS-only (gradients, `clip-path`, keyframe animations, and the
+sparkle raster) — no new binary assets beyond the sparkle sprite itself.
 
 ## Color tokens
 
-All hex values are literal `assets/generated/palette.json` entries (indices
-noted) except the two backdrop tones, which are new — palette.json is
-sprite-extracted and has nothing meant for a full-screen background.
+Two palette variants, toggled live in `mockup.html` (top-right). Neither is
+palette.json-derived — palette.json is sprite-extracted (browns/greens for
+the cottagecore item art) and has nothing saturated enough for a Pokémon/
+Stardew-style chrome palette. These are new UI-only tokens, same as v1's
+`--world-bg-deep`/`--world-bg-mid` were.
 
-| token | hex | palette index | use |
-|---|---|---|---|
-| `--ink` | `#322214` | 0 | outlines, body text on light surfaces |
-| `--parchment` | `#efe0b3` | 27 | panel fill |
-| `--parchment-dark` | `#eacc90` | 26 | recessed/shaded parchment (gutters, sockets) |
-| `--wood-dark` | `#622b17` | 2 | frame shadow, plaques, secondary text on parchment |
-| `--wood-mid` | `#8c461f` | 5 | frame mid-tone |
-| `--wood-light` | `#a35424` | 8 | frame highlight base |
-| `--wood-highlight` | `#c66e29` | 13 | frame grain highlight |
-| `--gold` | `#e99b33` | 21 | trim, active-state rings, headline accents |
-| `--cream` | `#edeee4` | 29 | text on dark/wood surfaces |
-| `--steel` | `#8a9198` | 28 | hardware only — **not** text on parchment, see Accessibility |
-| `--seal-red` | `#c8281e` | 34 | wax seal (close/error/encounter ribbon) |
-| `--seal-plum` | `#58336b` | 32 | wax seal (save/confirm) |
-| `--victory-green` | `#6f863a` | 11 | victory ribbon |
-| `--world-bg-deep` | `#172410` | *new* | page backdrop, darkest |
-| `--world-bg-mid` | `#24371c` | *new* | page backdrop, mid |
+**Meadow** (default) — warm, Stardew-leaning:
 
-`--world-bg-deep`/`--world-bg-mid` are hand-picked, not extracted — open
-question below.
+| token | hex |
+|---|---|
+| `--panel-body` | `#fff8ec` |
+| `--panel-body-alt` | `#ffe8bf` |
+| `--border-outer` | `#3b2f6b` |
+| `--border-highlight` | `#8fd6ef` |
+| `--text` | `#2a2140` |
+| `--text-secondary` | `#5b4d8a` |
+| `--accent-yellow` | `#ffd23f` |
+| `--accent-green` | `#5ec26a` |
+| `--accent-pink` | `#ef5fa0` |
+| `--accent-orange` | `#ff9142` |
+| `--accent-cyan` | `#4fd0d8` |
+| `--accent-violet` | `#8a6fd6` |
+| `--sky-top` / `--sky-bottom` | `#7fd0f2` / `#bdeaa0` |
 
-## Type
+**Berry** — cooler, Pokémon-B/W-leaning:
 
-Two pairings are wired into `mockup.html` (toggle top-right); pick one, or
-call out a third direction.
+| token | hex |
+|---|---|
+| `--panel-body` | `#f3f0ff` |
+| `--panel-body-alt` | `#e3ddff` |
+| `--border-outer` | `#2a2159` |
+| `--border-highlight` | `#ffd23f` |
+| `--text` | `#241c47` |
+| `--text-secondary` | `#6a5fae` |
+| `--accent-yellow` | `#ffcf4d` |
+| `--accent-green` | `#46d19a` |
+| `--accent-pink` | `#ff4fa0` |
+| `--accent-orange` | `#ff7a45` |
+| `--accent-cyan` | `#46c9e0` |
+| `--accent-violet` | `#7a5fe0` |
+| `--sky-top` / `--sky-bottom` | `#6f5fd6` / `#ff9ecb` |
 
-**Pairing A — "Fell & Garamond"** (mockup default)
-- Display (titles, plaques, ribbon text): **IM Fell English SC** — an OFL
-  revival of an actual 1700s English type foundry. Reads as genuinely old,
-  a little severe.
-- Body (panels, tooltips, lists): **Cormorant Garamond** — OFL, elegant,
-  legible down to ~13px.
-- Mono (code): **JetBrains Mono** — OFL, deliberately *not* antique; code
-  needs to stay unambiguous even inside a parchment frame.
+## Type — a real, tested finding, not just a pick
 
-**Pairing B — "Cinzel & Alegreya"**
-- Display: **Cinzel Decorative** — OFL, carved-stone/illuminated-capital
-  feel, all-caps by design. Stronger for the ribbon banner, maybe too heavy
-  for small panel titles (see open questions).
-- Body: **Alegreya** — OFL, calligraphic serif built for long-form reading,
-  warmer than Cormorant.
-- Mono: **Fira Code** — OFL.
+The brief suggested Pixelify Sans. **It doesn't work and was rejected after
+testing**, not just picked around: at every weight (400/500/700) its
+lowercase `c` is visually indistinguishable from `o`, and several digits
+(`2`/`5` in particular) are ambiguous with `8`. This isn't a nitpick — it
+means the word "cabn" itself renders as "oabn" in the font the brief
+suggested. Screenshotted proof of this (and the replacement) is what
+`mockup.html` actually ships:
 
-All six typefaces are SIL Open Font License, self-hostable. `mockup.html`
-loads them from the Google Fonts CDN for preview convenience only —
-`packages/engine` can't reach a CDN at runtime the way this throwaway page
-can (`cabn serve` explicitly runs on `127.0.0.1` with no assumed internet),
-so real integration means downloading the two chosen weights and shipping
-them as static files the demo app serves itself.
+- **Rejected**: Pixelify Sans — `c`→`o` and digit confusion at every weight tested.
+- **Also tested, not used**: Press Start 2P (unambiguous but very poor
+  paragraph readability, more "arcade marquee" than "dialog box"), Jersey
+  10/15 (clear but reads as a scoreboard/jersey-number face, not dialog
+  text), Silkscreen (clear but its lowercase renders as small-caps —fine
+  for headers, awkward for body copy), VT323 (clear and legible, but reads
+  as a green CRT terminal, not a cozy RPG textbox).
+- **Chosen: DotGothic16`** — OFL, self-hostable, every character in "cabn -
+  pixel-RPG UI mockup v2 0123456789" is unambiguous at both the sizes
+  tested (16px headers, 13px body), and its dot-matrix construction is
+  genuinely in the same family Japanese RPG dialog boxes (which is what
+  Pokémon's own textbox font descends from) use. Used for every UI text
+  role in the mockup; `JetBrains Mono` (unchanged from v1) stays the code
+  font — legible monospace was already a requirement the brief carved out
+  as separate from the display-font question.
 
-### Type scale
-
-| role | size | pairing A face | pairing B face |
-|---|---|---|---|
-| ribbon / banner title | 20–22px | IM Fell English SC | Cinzel Decorative |
-| panel plaque / title | 15–16px | IM Fell English SC | Cinzel Decorative |
-| body text | 14–15px | Cormorant Garamond | Alegreya |
-| meta / secondary | 12–13px | Cormorant Garamond | Alegreya |
-| code | 13px | JetBrains Mono | Fira Code |
-| hotkey / hud label | 10–11px | JetBrains Mono | Fira Code |
-
-## Spacing & frame
-
-- Spacing scale: 4 / 8 / 12 / 16 / 24 / 32px — everything in the mockup is a
-  multiple of 4.
-- Wood frame source tile: 32×32px, `border-image-slice: 8` (crisp) /
-  `64` (soft raster, since the soft variant is upscaled 8× by `soften()`'s
-  `cellSize`). Displayed CSS border width: 14px for panels, 10px for the
-  small settings pill.
-- No radii. See Concept above.
+Re-verify the Google Fonts link still resolves when reviewing — this was
+checked today (see CHANGELOG date) against the live Google Fonts CDN, not
+assumed from training knowledge alone.
 
 ## Motion
 
-| interaction | duration | easing | notes |
-|---|---|---|---|
-| button press (wax seal) | 100ms | — (swaps to the `_pressed` sprite + scale 0.97) | no separate "pressed" easing curve, it's instant |
-| hover (hotbar lift, seal glow) | 180ms | `cubic-bezier(0.22, 1, 0.36, 1)` | "settle" curve — quick out, gentle stop |
-| panel/scroll open (`unroll`, `unfurl`, `pop-in`) | 340ms | `cubic-bezier(0.22, 1, 0.36, 1)` | same curve as hover, just slower — one vocabulary, not two |
-| scene transition — vignette iris | ~260ms | linear | concept only, not built |
-| scene transition — scroll-unroll | ~340ms | settle curve | concept only, reuses the panel-open keyframe |
-| scene transition — page-turn | ~420ms | settle curve | concept only, most expensive of the three |
+Unchanged in spirit from v1, same durations:
 
-A plain opacity fade (180ms, linear) is the *default* for every open
-animation, and the hotbar hover-lift / seal hover-scale transitions are
-unset by default too — the scale/transform versions only get added under
-`@media (prefers-reduced-motion: no-preference)`. Building it "reduced by
-default, enhanced when motion is allowed" means respecting the setting
-needs no `!important` fight against a base rule (which Biome's
-`noImportantStyles` lint also flags) — see `mockup.html`'s two motion
-blocks.
+| interaction | duration | easing |
+|---|---|---|
+| button press | 100ms | instant (box-shadow flattens + 2px translate) |
+| hover | 180ms | `cubic-bezier(0.22, 1, 0.36, 1)` |
+| panel/modal open | 340ms | same curve, slower |
+| ambient loops (sparkle twinkle, mist swirl, sheen sweep, rune spin) | 1.6s–12s | linear or ease-in-out, looping |
+| scene transition — vignette iris | ~260ms | linear |
+| scene transition — scroll-unroll | ~340ms | settle curve |
+| scene transition — page-turn | ~420ms | settle curve |
+
+Every ambient effect (sparkle twinkle, mist swirl, lens sheen, glyph drift,
+rune-ring spin) is **static by default** and only animates under
+`@media (prefers-reduced-motion: no-preference)` — same "reduced by
+default, enhanced when allowed" structure as v1, which avoids fighting a
+base rule with `!important` (Biome's `noImportantStyles` lint rule flags
+that pattern, which is what caught it during v1's build).
 
 ## Accessibility
 
-Contrast ratios below are computed (not eyeballed) via
-`tools/asset-pipeline/src/contrast.ts` (WCAG relative-luminance formula,
-also unit-tested against black/white = 21:1 in
-`tools/asset-pipeline/tests/contrast.test.ts`).
+Contrast ratios computed via `tools/asset-pipeline/src/contrast.ts` (WCAG
+relative-luminance formula, unit-tested against black/white = 21:1).
 
 | pair | ratio | verdict |
 |---|---|---|
-| ink on parchment (body text) | 11.63:1 | pass (AA normal + AAA) |
-| ink on cream | 13.06:1 | pass |
-| ink on parchment-dark | 9.85:1 | pass |
-| gold on ink (headline on dark) | 6.69:1 | pass |
-| **gold text on parchment** | **1.74:1** | **fail** — gold is trim/accent only, never body text on a light surface |
-| **steel on parchment** | **2.43:1** | **fail** |
-| **steel on parchment-dark** | **2.06:1** | **fail — this is the current `editorTheme.ts` gutter color today** (`steelGray` on `parchmentDark`), a pre-existing bug this mockup carries a fix for, see below |
-| steel on ink | 4.79:1 | pass (dark surfaces only) |
-| cream on seal-red | 4.75:1 | pass, barely — don't shrink below ~14px |
-| cream on seal-plum | 8.54:1 | pass |
+| Meadow: text on panel-body | 14.31:1 | pass |
+| Meadow: text on panel-body-alt | 12.62:1 | pass |
+| Meadow: text-secondary on panel-body | 6.92:1 | pass |
+| Meadow: cream/white on border-outer | 11.02:1 | pass |
+| Meadow: text on accent-yellow | 10.46:1 | pass |
+| Meadow: text on accent-cyan | 8.16:1 | pass |
+| Meadow: text on accent-pink | 4.90:1 | pass (barely — don't go below ~13px) |
+| Meadow: text on accent-green | 6.76:1 | pass |
+| **Meadow: white on accent-pink** | **3.08:1** | **fail — this is why every `.btn`/badge uses `--text` (dark), never white, on any accent color** |
+| **Meadow: white on accent-green** | **2.23:1** | **fail, same reason** |
+| Berry: text on panel-body | 14.05:1 | pass |
+| Berry: text on panel-body-alt | 12.05:1 | pass |
+| Berry: text-secondary on panel-body | 4.85:1 | pass (barely) |
+| Berry: gold/cream on border-outer | 9.96:1 / 12.82:1 | pass |
+| Berry: text on accent-yellow | 10.72:1 | pass |
+| Berry: text on accent-pink | 5.16:1 | pass |
 
-**Finding, not just a mockup choice:** the shipped `editorTheme.ts` puts
-`PALETTE.steelGray` (`#8a9198`) directly on `PALETTE.parchmentDark`
-(`#eacc90`) for the gutter and on `PALETTE.parchment` for
-punctuation/brackets — both fail WCAG AA (2.06:1 and 2.43:1 respectively,
-need ≥4.5:1 for normal-size text). The mockup's `--text-secondary-on-parchment`
-token uses `--wood-dark` (`#622b17`) instead, which gets 8.51:1 on parchment
-and 7.21:1 on parchment-dark. Recommend porting this swap back into
-`editorTheme.ts` regardless of which direction the rest of M10a takes —
-it's a real bug independent of the redesign.
+**Rule this produced:** every colored badge, pill, ribbon, and button uses
+`--text` (the dark ink color) for its label, never white — white only
+appears on the deep `--border-outer` surface (plaques, the topbar) and on
+the ribbon banners, where a `text-shadow` compensates (the ribbon's own
+saturated fill would otherwise put white text below 3.1:1, same failure
+mode as the buttons above).
 
-**Focus ring:** `:focus-visible` gets a double ring —
-`box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--gold)` — rather than a
-single color, because gold alone measures only 4.90:1 against wood-dark and
-would be much worse against parchment; pairing it with an inner ink ring
-guarantees a ≥3:1 non-text-contrast edge against both light and dark
-surfaces (WCAG 2.2 SC 2.4.11 is a 3:1 minimum against adjacent colors).
+v1's finding about the *currently shipped* `editorTheme.ts` gutter color
+(`steelGray` on `parchmentDark`, 2.06:1, real AA failure) still stands and
+is independent of which UI direction this milestone lands on — still not
+fixed pending the user's decision, per the instruction not to touch
+`editorTheme.ts` yet.
+
+**Focus ring**: same double-ring idea as v1, re-verified against the new
+tokens — `box-shadow: 0 0 0 2px var(--border-outer), 0 0 0 4px
+var(--accent-yellow)` on every button/input. `--border-outer` against
+`--accent-yellow` measures 8.06:1 (Meadow) / 9.78:1 (Berry), both well
+past the 3:1 WCAG 2.2 non-text-contrast minimum, and the dark inner ring
+means it stays visible even against panels whose own border is already
+`--border-outer`.
 
 ## Open questions for the user
 
-1. **Font pairing** — Fell & Garamond (more severe/antique) or Cinzel &
-   Alegreya (more illuminated-manuscript/heraldic)? Or neither — react to
-   direction only.
-2. **Parchment fill texture** — the current tile (`ui_parchment_fill.png`,
-   built by a sine-wave mottling function) reads a little too regular/plaid
-   at panel scale (see mockup screenshot); worth another pass with either a
-   larger tile or an actual noise-based fiber pattern before this goes
-   further.
-3. **Backdrop colors** (`--world-bg-deep`/`--world-bg-mid`) are invented,
-   not extracted from anything — fine for a mockup, but if this direction
-   is approved they should either get added to the curated palette
-   properly or be justified as intentionally out-of-palette "environment,
-   not sprite" tones.
-4. **Wax-seal hover** has no dedicated pixel art (CSS `brightness`/`scale`
-   only) — acceptable, or worth a proper glossy-hover sprite?
-5. **Wood frame grain** is closer to "textured static" than deliberate
-   plank boards at a glance — the strongest pixel work in this pass is the
-   wax seals and ribbons; the frame tile is the piece most worth a second
-   iteration if this direction moves forward.
+1. **Meadow or Berry?** Or react to direction only.
+2. **Spyglass icon** — acceptable as-is, or worth a third redesign pass
+   (see the item-icon table above)?
+3. **DotGothic16** — does the dot-matrix/Japanese-RPG-dialog lineage read
+   as "Pokémon/Stardew" enough, or does this need another round against a
+   different candidate (Jersey 10/15 and VT323 were the runners-up)?
+4. **Ambient effect intensity** — mist swirl/sheen/rune-ring opacities were
+   picked to be visible without fighting panel text; turn any of them up
+   (more overtly magical) or down (calmer)?
+5. Corner accent diamonds on panels are a small detail (8px) — bigger/bolder,
+   or leave subtle?

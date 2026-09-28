@@ -5,58 +5,37 @@ import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
 import { generatedDir, paletteJsonPath } from "./paths.js";
 import type { PixelMap } from "./pixelmap.js";
 import { renderPixelMap } from "./pixelmap.js";
-import { buildWaxSeal } from "./pixelmaps/ui-button.js";
-import { buildDividerFlourish } from "./pixelmaps/ui-divider.js";
-import {
-	buildWoodFrameTile,
-	WOOD_FRAME_OPTIONS,
-} from "./pixelmaps/ui-frame.js";
-import { buildHotbarSlot } from "./pixelmaps/ui-hotbar-slot.js";
-import { buildParchmentTile } from "./pixelmaps/ui-parchment.js";
-import { buildRibbonBanner } from "./pixelmaps/ui-ribbon.js";
-import { buildScrollRoller } from "./pixelmaps/ui-scroll-roller.js";
-import { buildTooltipBubble } from "./pixelmaps/ui-tooltip.js";
+import { buildBagIcon } from "./pixelmaps/ui-item-bag.js";
+import { buildCrystalOrbIcon } from "./pixelmaps/ui-item-orb.js";
+import { buildQuillIcon } from "./pixelmaps/ui-item-quill.js";
+import { buildSpyglassIcon } from "./pixelmaps/ui-item-spyglass.js";
+import { buildWandIcon } from "./pixelmaps/ui-item-wand.js";
+import { buildSparkle } from "./pixelmaps/ui-sparkle.js";
 import { soften } from "./soften.js";
 
 // Separate output dir from placeholders/manifest.json — this M10a mockup
 // round doesn't own that shared file (another agent's generate() pass does),
-// so UI frame art gets its own directory and its own small manifest.
+// so UI art gets its own directory and its own small manifest.
 export const uiDir = path.join(generatedDir, "ui");
 const uiManifestPath = path.join(uiDir, "manifest.json");
 
-// Raster multiplier for the "soft" variant — the same idea as
-// gen-placeholders' UPSCALE_FACTOR, but smaller: these are UI chrome meant to
-// sit at a few dozen CSS px, not full-screen sprites.
-const SOFT_CELL_SIZE = 8;
-const CRISP_UPSCALE = 4;
-
 interface UiAsset {
 	map: PixelMap;
-	/** CSS border-image-slice / background-size metadata for the mockup + eventual real integration. */
-	kind: "border-9slice" | "tile-repeat" | "sprite";
-	slicePx?: number;
+	kind: "item-icon" | "particle";
+	/** Upscale/soften only makes sense for the item icons — sparkles are used tiny and crisp. */
+	soften: boolean;
 }
 
 function buildAssets(): UiAsset[] {
 	return [
-		{
-			map: buildWoodFrameTile(),
-			kind: "border-9slice",
-			slicePx: WOOD_FRAME_OPTIONS.border,
-		},
-		{ map: buildParchmentTile(), kind: "tile-repeat" },
-		{ map: buildWaxSeal("red", false), kind: "sprite" },
-		{ map: buildWaxSeal("red", true), kind: "sprite" },
-		{ map: buildWaxSeal("plum", false), kind: "sprite" },
-		{ map: buildWaxSeal("plum", true), kind: "sprite" },
-		{ map: buildHotbarSlot(false), kind: "sprite" },
-		{ map: buildHotbarSlot(true), kind: "sprite" },
-		{ map: buildRibbonBanner("crimson"), kind: "sprite" },
-		{ map: buildRibbonBanner("victory"), kind: "sprite" },
-		{ map: buildTooltipBubble(), kind: "sprite" },
-		{ map: buildDividerFlourish(), kind: "sprite" },
-		{ map: buildScrollRoller("top"), kind: "sprite" },
-		{ map: buildScrollRoller("bottom"), kind: "sprite" },
+		{ map: buildCrystalOrbIcon(), kind: "item-icon", soften: true },
+		{ map: buildSpyglassIcon(), kind: "item-icon", soften: true },
+		{ map: buildBagIcon(), kind: "item-icon", soften: true },
+		{ map: buildQuillIcon(), kind: "item-icon", soften: true },
+		{ map: buildWandIcon(), kind: "item-icon", soften: true },
+		{ map: buildSparkle("violet"), kind: "particle", soften: false },
+		{ map: buildSparkle("cyan"), kind: "particle", soften: false },
+		{ map: buildSparkle("gold"), kind: "particle", soften: false },
 	];
 }
 
@@ -64,12 +43,21 @@ interface ManifestEntry {
 	kind: UiAsset["kind"];
 	width: number;
 	height: number;
-	slicePx?: number;
-	softCellSize: number;
 	crispFile: string;
 	crispUpscaledFile: string;
-	softFile: string;
+	softFile?: string;
 }
+
+const CRISP_UPSCALE = 8; // sparkles especially are tiny (9x9) — need a big multiple to read at all
+
+// Same idea as soften.ts's per-name overrides for ghost/will-o-wisp: the
+// spyglass's pale-ghost-blue lens sits just above the default bloom
+// threshold (180) and blew out into a starburst indistinguishable from the
+// wand's tip glow — raising the threshold above the lens's own luminance
+// keeps it a flat, readable disc instead.
+const SOFTEN_OVERRIDES: Record<string, Parameters<typeof soften>[1]> = {
+	ui_icon_spyglass: { bloomThreshold: 235, bloomStrength: 0.15 },
+};
 
 async function main() {
 	const palette: RGB[] = JSON.parse(
@@ -84,27 +72,33 @@ async function main() {
 		const image = renderPixelMap(map, palette);
 		const crispFile = `${map.name}.png`;
 		const crispUpscaledFile = `${map.name}@${CRISP_UPSCALE}x.png`;
-		const softFile = `${map.name}_soft.png`;
 
 		await writeRawRgbaPng(image, path.join(uiDir, crispFile));
 		await writeRawRgbaPng(
 			await upscaleNearest(image, CRISP_UPSCALE),
 			path.join(uiDir, crispUpscaledFile),
 		);
-		await writeRawRgbaPng(
-			soften(image, { cellSize: SOFT_CELL_SIZE }),
-			path.join(uiDir, softFile),
-		);
+
+		let softFile: string | undefined;
+		if (asset.soften) {
+			softFile = `${map.name}_soft.png`;
+			// No option overrides — same DEFAULT_SOFTEN_OPTIONS pass as
+			// wizard_tower/character_idle/ghost, so these icons land in the same
+			// "soft-rendered cottagecore" family as the existing originals rather
+			// than needing their own bespoke tuning.
+			await writeRawRgbaPng(
+				soften(image, SOFTEN_OVERRIDES[map.name]),
+				path.join(uiDir, softFile),
+			);
+		}
 
 		manifest[map.name] = {
 			kind: asset.kind,
 			width: map.width,
 			height: map.height,
-			...(asset.slicePx !== undefined ? { slicePx: asset.slicePx } : {}),
-			softCellSize: SOFT_CELL_SIZE,
 			crispFile,
 			crispUpscaledFile,
-			softFile,
+			...(softFile ? { softFile } : {}),
 		};
 		console.log(
 			`${map.name}: rendered ${map.width}x${map.height} (${asset.kind})`,

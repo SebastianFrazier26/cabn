@@ -2,388 +2,360 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>cabn — diegetic storybook UI mockup (M10a)</title>
+<title>cabn — pixel-RPG UI mockup v2 (M10a)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <!--
   Static style mockup, not the live engine UI. Opens by double-click (all
-  paths below are relative to this file inside assets/generated/ui/). Fonts
-  load from the Google Fonts CDN here only for preview convenience — see
-  STYLE.md for the OFL license note and the self-hosting plan for real
-  integration (packages/engine can't reach out to a CDN at runtime the way
-  this throwaway page can).
+  paths below are relative to this file inside assets/generated/ui/).
+  v2: the "diegetic storybook" (wood/parchment texture) direction from the
+  first pass was rejected — too textured, too muted, too samey across tools.
+  This rewrite goes Stardew Valley / Pokémon Black-White: flat colorful
+  panels, a retro dialog-box pixel font, real item-icon art in the hotbar
+  instead of emoji, and a distinct magical-particle treatment per tool.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 	:root {
-		/* ---- color tokens (see STYLE.md) ---- */
-		--ink: #322214;
-		--parchment: #efe0b3;
-		--parchment-dark: #eacc90;
-		--wood-dark: #622b17;
-		--wood-mid: #8c461f;
-		--wood-light: #a35424;
-		--wood-highlight: #c66e29;
-		--gold: #e99b33;
-		--cream: #edeee4;
-		--steel: #8a9198;
-		--seal-red: #c8281e;
-		--seal-plum: #58336b;
-		--seal-plum-highlight: #b27cd6;
-		--victory-green: #6f863a;
-		--text-secondary-on-parchment: var(--wood-dark); /* NOT steel — see STYLE.md a11y note */
-		--world-bg-deep: #172410;
-		--world-bg-mid: #24371c;
+		/* ---- "Meadow" palette (default) ---- */
+		--panel-body: #fff8ec;
+		--panel-body-alt: #ffe8bf;
+		--border-outer: #3b2f6b;
+		--border-highlight: #8fd6ef;
+		--text: #2a2140;
+		--text-secondary: #5b4d8a;
+		--accent-yellow: #ffd23f;
+		--accent-green: #5ec26a;
+		--accent-pink: #ef5fa0;
+		--accent-orange: #ff9142;
+		--accent-cyan: #4fd0d8;
+		--accent-violet: #8a6fd6;
+		--sky-top: #7fd0f2;
+		--sky-bottom: #bdeaa0;
 
-		/* ---- spacing / frame ---- */
 		--space-1: 4px;
 		--space-2: 8px;
 		--space-3: 12px;
 		--space-4: 16px;
 		--space-6: 24px;
-		--frame-slice: 8px;      /* ui_wood_frame.png's native border-image-slice */
-		--frame-width: 14px;     /* displayed CSS border width, upscaled from the slice */
 
-		/* ---- motion ---- */
 		--ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
-		--ease-close: cubic-bezier(0.5, 0, 0.75, 0);
 		--dur-press: 100ms;
 		--dur-hover: 180ms;
 		--dur-open: 340ms;
 
-		/* ---- type: pairing "fell" (default) ---- */
-		--font-display: "IM Fell English SC", serif;
-		--font-body: "Cormorant Garamond", serif;
+		--font-display: "DotGothic16", system-ui, sans-serif;
 		--font-mono: "JetBrains Mono", monospace;
 	}
-	body[data-pairing="cinzel"] {
-		--font-display: "Cinzel Decorative", serif;
-		--font-body: "Alegreya", serif;
-		--font-mono: "Fira Code", monospace;
+	body[data-palette="berry"] {
+		--panel-body: #f3f0ff;
+		--panel-body-alt: #e3ddff;
+		--border-outer: #2a2159;
+		--border-highlight: #ffd23f;
+		--text: #241c47;
+		--text-secondary: #6a5fae;
+		--accent-yellow: #ffcf4d;
+		--accent-green: #46d19a;
+		--accent-pink: #ff4fa0;
+		--accent-orange: #ff7a45;
+		--accent-cyan: #46c9e0;
+		--accent-violet: #7a5fe0;
+		--sky-top: #6f5fd6;
+		--sky-bottom: #ff9ecb;
 	}
 
 	* { box-sizing: border-box; }
 	html, body { margin: 0; padding: 0; }
 	body {
-		font-family: var(--font-body);
-		color: var(--cream);
-		background:
-			radial-gradient(ellipse 900px 500px at 20% -10%, rgba(233,155,51,0.08), transparent 60%),
-			linear-gradient(180deg, var(--world-bg-mid) 0%, var(--world-bg-deep) 70%);
+		font-family: var(--font-display);
+		color: #fff;
+		background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
 		min-height: 100vh;
 	}
 	img { image-rendering: pixelated; }
-
-	h1, h2, h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.02em; }
+	h1, h2, h3 { font-family: var(--font-display); font-weight: 700; }
 
 	/* ---- top bar ---- */
 	.topbar {
 		position: sticky; top: 0; z-index: 20;
-		display: flex; align-items: center; gap: var(--space-4);
-		flex-wrap: wrap;
+		display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
 		padding: var(--space-3) var(--space-6);
-		background: rgba(23, 36, 16, 0.92);
-		border-bottom: 2px solid var(--wood-dark);
+		background: rgba(42, 33, 64, 0.88);
+		border-bottom: 4px solid var(--border-outer);
 	}
-	.topbar h1 { margin: 0; font-size: 22px; color: var(--gold); }
-	.topbar p { margin: 0; font-size: 13px; opacity: 0.75; max-width: 46ch; }
-	.pairing-toggle { margin-left: auto; display: flex; gap: var(--space-2); }
-	.pairing-toggle button {
-		font-family: var(--font-mono); font-size: 12px;
-		background: var(--wood-dark); color: var(--cream);
-		border: 1px solid var(--gold); padding: 6px 10px; cursor: pointer;
+	.topbar h1 { margin: 0; font-size: 16px; color: var(--accent-yellow); text-shadow: 2px 2px 0 rgba(0,0,0,0.4); }
+	.topbar p { margin: 0; font-size: 11px; line-height: 1.6; max-width: 46ch; font-family: var(--font-mono); color: #fff; opacity: 0.85; }
+	.palette-toggle { margin-left: auto; display: flex; gap: var(--space-2); }
+	.palette-toggle button {
+		font-family: var(--font-mono); font-size: 11px;
+		background: var(--border-outer); color: #fff;
+		border: 2px solid var(--accent-yellow); padding: 6px 10px; cursor: pointer; border-radius: 6px;
 	}
-	.pairing-toggle button[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
+	.palette-toggle button[aria-pressed="true"] { background: var(--accent-yellow); color: var(--border-outer); }
 
 	/* ---- layout ---- */
-	main { padding: var(--space-6); display: flex; flex-direction: column; gap: 48px; max-width: 1280px; margin: 0 auto; }
+	main { padding: var(--space-6); display: flex; flex-direction: column; gap: 48px; max-width: 1320px; margin: 0 auto; }
 	section { display: flex; flex-direction: column; gap: var(--space-3); }
-	section > h2 { font-size: 20px; color: var(--gold); margin: 0; border-bottom: 1px dashed rgba(233,155,51,0.35); padding-bottom: var(--space-2); }
-	.section-note { font-size: 13px; opacity: 0.7; margin: 0; max-width: 70ch; }
+	section > h2 {
+		font-size: 16px; color: var(--border-outer); margin: 0; display: inline-flex; align-self: flex-start;
+		background: #fff; padding: 6px 14px; border-radius: 8px; border: 3px solid var(--border-outer);
+		box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+	}
+	.section-note {
+		font-size: 12px; line-height: 1.7; opacity: 0.95; max-width: 74ch; font-family: var(--font-mono);
+		color: var(--border-outer); background: rgba(255,255,255,0.55); padding: 6px 10px; border-radius: 6px;
+	}
 	.compare { display: flex; align-items: flex-start; gap: var(--space-6); flex-wrap: wrap; }
 	.stage {
 		position: relative;
-		background:
-			linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.35)),
-			var(--world-bg-mid);
-		border: 1px solid rgba(255,255,255,0.06);
+		background: rgba(255,255,255,0.18);
+		border: 2px dashed rgba(255,255,255,0.5);
+		border-radius: 10px;
 		padding: 28px;
 		min-height: 140px;
 		flex: 1 1 480px;
 		display: flex; align-items: center; justify-content: center;
+		overflow: hidden;
 	}
-	.current-thumb {
-		flex: 0 0 160px;
-		display: flex; flex-direction: column; gap: 6px; align-items: center;
-	}
-	.current-thumb span { font-family: var(--font-mono); font-size: 11px; opacity: 0.6; }
+	.current-thumb { flex: 0 0 160px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+	.current-thumb span { font-family: var(--font-mono); font-size: 10px; color: var(--border-outer); background: #fff; padding: 2px 6px; border-radius: 4px; }
 	.current-box {
 		width: 140px; min-height: 60px;
-		background: var(--parchment); color: var(--ink);
-		border: 2px solid var(--ink); border-radius: 6px;
+		background: #efe0b3; color: #322214;
+		border: 2px solid #322214; border-radius: 6px;
 		font-family: "Courier New", monospace; font-size: 10px;
 		display: flex; align-items: center; justify-content: center; text-align: center;
 		padding: 6px;
 	}
 
-	/* ---- diegetic panel base: wood 9-slice + parchment fill ---- */
+	/* ================= flat pixel panel (Pokémon B/W textbox-ish) ================= */
 	.panel {
 		position: relative;
-		border-style: solid;
-		border-width: var(--frame-width);
-		border-image-source: url("ui_wood_frame_soft.png");
-		border-image-slice: 64 fill; /* soft raster is 8x the crisp slice (SOFT_CELL_SIZE) */
-		border-image-width: var(--frame-width);
-		border-image-repeat: round;
-		background-image: url("ui_parchment_fill_soft.png");
-		background-repeat: repeat;
-		background-size: 64px 64px;
-		color: var(--ink);
+		background: var(--panel-body);
+		border: 4px solid var(--border-outer);
+		border-radius: 14px;
+		box-shadow: inset 0 0 0 3px var(--border-highlight), 5px 5px 0 rgba(0,0,0,0.22);
+		color: var(--text);
+		padding: 14px;
 	}
+	/* small corner accents, a common GBA/DS menu-box detail */
+	.panel::before, .panel::after {
+		content: ""; position: absolute; top: -3px; width: 8px; height: 8px;
+		background: var(--accent-yellow); border: 2px solid var(--border-outer); border-radius: 2px; transform: rotate(45deg);
+	}
+	.panel::before { left: 10px; }
+	.panel::after { right: 10px; }
 	.panel-title {
-		font-family: var(--font-display);
-		font-size: 16px;
-		text-align: center;
-		margin: -6px 0 6px;
-		color: var(--wood-dark);
+		font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--border-outer);
 	}
+	.panel-divider { height: 3px; background: var(--border-outer); opacity: 0.15; margin: 6px 0; border-radius: 2px; }
 
-	/* ---- wax seal buttons ---- */
-	.seal-btn {
-		width: 40px; height: 40px;
-		border: none; background: transparent; cursor: pointer; padding: 0;
-		background-image: url("ui_wax_seal_red_soft.png");
-		background-size: contain; background-repeat: no-repeat; background-position: center;
-	}
-	.seal-btn.plum { background-image: url("ui_wax_seal_plum_soft.png"); }
-	.seal-btn:hover { filter: brightness(1.18) saturate(1.1); transform: translateY(-1px) scale(1.04); }
-	.seal-btn:active { background-image: url("ui_wax_seal_red_pressed_soft.png"); transform: translateY(1px) scale(0.97); filter: brightness(0.92); }
-	.seal-btn.plum:active { background-image: url("ui_wax_seal_plum_pressed_soft.png"); }
-	.seal-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--gold); }
-	.seal-row { display: flex; gap: var(--space-3); align-items: center; }
-	.seal-label { font-family: var(--font-mono); font-size: 11px; color: var(--cream); opacity: 0.8; }
+	/* ---- sparkle particles (shared across the per-tool fx below) ---- */
+	.sparkle { position: absolute; pointer-events: none; opacity: 0.7; }
+	@keyframes twinkle { 0%, 100% { opacity: 0.15; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.15); } }
 
 	/* ================= 1. tool hotbar ================= */
 	.hotbar { display: flex; gap: 10px; }
 	.hotbar-slot {
-		position: relative; width: 56px; height: 56px;
-		background-image: url("ui_hotbar_slot_soft.png");
-		background-size: 100% 100%;
+		position: relative; width: 60px; height: 60px;
+		background: var(--panel-body);
+		border: 3px solid var(--border-outer); border-radius: 12px;
+		box-shadow: inset 0 0 0 2px var(--border-highlight);
 		display: flex; flex-direction: column; align-items: center; justify-content: center;
-		cursor: pointer; border: none; padding: 0;
+		cursor: pointer; padding: 4px;
 	}
-	.hotbar-slot:hover { transform: translateY(-3px); }
-	.hotbar-slot.selected { background-image: url("ui_hotbar_slot_selected_soft.png"); }
-	.hotbar-slot .icon { font-size: 20px; }
-	.hotbar-slot .key { font-family: var(--font-mono); font-size: 10px; color: var(--wood-dark); margin-top: 2px; }
+	.hotbar-slot img { width: 34px; height: 34px; object-fit: contain; }
+	.hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--border-highlight), 0 0 0 3px var(--accent-yellow); transform: translateY(-3px); }
+	.hotbar-slot .key { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary); margin-top: 1px; }
 	.hotbar-slot .badge {
 		position: absolute; top: -6px; right: -6px;
-		background: var(--seal-red); color: var(--cream);
-		border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
-		display: flex; align-items: center; justify-content: center;
-		border: 1px solid var(--ink);
+		background: var(--accent-pink); color: #fff;
+		border-radius: 50%; width: 18px; height: 18px; font-size: 10px; font-family: var(--font-mono);
+		display: flex; align-items: center; justify-content: center; border: 2px solid var(--border-outer);
 	}
 
-	/* ================= 2. spyglass panel ================= */
-	.spyglass { width: 300px; }
-	.spy-row {
-		display: flex; justify-content: space-between; gap: 8px;
-		padding: 6px 4px; font-size: 14px;
-		border-bottom: 1px solid rgba(98,43,23,0.25);
-		cursor: pointer;
+	/* ================= 2. spyglass — lens vignette ================= */
+	.spyglass-frame { width: 300px; position: relative; overflow: hidden; }
+	.spyglass-frame::before {
+		content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none;
+		background: radial-gradient(circle at center, transparent 55%, rgba(20,15,40,0.55) 100%);
 	}
-	.spy-row:hover { background: rgba(233,155,51,0.15); }
-	.spy-row .meta { color: var(--text-secondary-on-parchment); font-size: 12px; }
-	.divider {
-		height: 7px; margin: 6px 0;
-		background-image: url("ui_divider_flourish_soft.png");
-		background-size: 100% 100%; background-repeat: no-repeat;
+	.spyglass-frame::after {
+		content: ""; position: absolute; inset: -40%; pointer-events: none;
+		background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.35) 48%, transparent 56%);
 	}
+	@keyframes sheen { 0% { transform: translateX(-30%); } 100% { transform: translateX(30%); } }
+	.spy-row { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 8px; padding: 6px 4px; font-size: 13px; border-bottom: 2px dotted var(--border-outer); cursor: pointer; }
+	.spy-row:hover { background: rgba(143, 214, 239, 0.35); }
+	.spy-row .meta { color: var(--text-secondary); font-size: 11px; font-family: var(--font-mono); }
 
-	/* ================= 3. crystal orb search ================= */
-	.orb-backdrop { background: rgba(23,36,16,0.7); padding: 60px 20px; width: 100%; display: flex; justify-content: center; }
-	.orb-modal { width: min(520px, 100%); }
-	.orb-input {
-		width: 100%; font: inherit; font-size: 17px; background: transparent; border: none;
-		border-bottom: 2px dashed var(--wood-mid); outline: none; color: var(--ink); padding: 4px 2px 8px;
-	}
-	.orb-hit { padding: 8px 4px; border-bottom: 1px solid rgba(98,43,23,0.2); cursor: pointer; }
-	.orb-hit:hover { background: rgba(233,155,51,0.15); }
-	.orb-hit strong { font-size: 14px; }
-	.orb-hit span { display: block; font-size: 12px; color: var(--text-secondary-on-parchment); }
+	/* ================= 3. crystal orb search — violet/cyan mist ================= */
+	.orb-backdrop { background: radial-gradient(ellipse at center, rgba(80,60,150,0.45), rgba(20,15,50,0.75)); padding: 50px 20px; width: 100%; display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; }
+	.orb-mist { position: absolute; inset: -20%; background: conic-gradient(from 0deg, var(--accent-violet), var(--accent-cyan), var(--accent-violet)); opacity: 0.25; filter: blur(30px); }
+	@keyframes swirl { to { transform: rotate(360deg); } }
+	.orb-modal { position: relative; z-index: 1; width: min(520px, 100%); }
+	.orb-input { width: 100%; font: inherit; font-size: 14px; background: transparent; border: none; border-bottom: 3px dashed var(--border-outer); outline: none; color: var(--text); padding: 4px 2px 8px; font-family: var(--font-mono); }
+	.orb-hit { padding: 8px 4px; border-bottom: 2px dotted rgba(59,47,107,0.25); cursor: pointer; }
+	.orb-hit:hover { background: rgba(143, 214, 239, 0.35); }
+	.orb-hit strong { font-size: 12px; font-family: var(--font-mono); }
+	.orb-hit span { display: block; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); }
 
-	/* ================= 4. bag tray ================= */
-	.bag-tray { display: flex; flex-direction: column; gap: 6px; width: 220px; }
-	.bag-slot {
-		display: flex; align-items: center; justify-content: space-between;
-		background: var(--parchment); border: 1px solid var(--wood-dark);
-		padding: 5px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--ink);
+	/* ================= 4. bag tray — open satchel interior ================= */
+	.bag-frame { width: 240px; padding: 16px 12px; position: relative; overflow: hidden; }
+	.bag-frame::before {
+		content: ""; position: absolute; inset: 6px; border-radius: 8px; pointer-events: none;
+		background: radial-gradient(ellipse at 50% 0%, rgba(120,70,30,0.28), transparent 70%);
+		border: 2px dashed rgba(120,70,30,0.4);
 	}
-	.bag-slot.filled { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+	.bag-slot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; background: var(--panel-body-alt); border: 2px solid var(--border-outer); border-radius: 8px; padding: 5px 10px; font-family: var(--font-mono); font-size: 11px; color: var(--text); margin-bottom: 6px; }
+	.bag-slot.filled { box-shadow: 0 0 0 2px var(--accent-yellow); }
 	.bag-slot .x { opacity: 0.55; cursor: pointer; }
 
-	/* ================= 5. editor ================= */
-	.editor-frame { width: min(640px, 100%); padding: 0; overflow: hidden; }
-	.editor-plaque {
-		background: var(--wood-dark); color: var(--cream);
-		font-family: var(--font-display); font-size: 15px; text-align: center;
-		padding: 6px; border-bottom: 4px solid var(--ink);
-	}
-	.editor-body { padding: 14px 16px; }
-	.code-line { font-family: var(--font-mono); font-size: 13px; white-space: pre; line-height: 1.5; }
-	.code-line .kw { color: var(--wood-dark); font-weight: 600; }
-	.code-line .str { color: var(--victory-green); }
-	.code-line .fn { color: var(--seal-red); }
-	.code-line .cm { color: var(--text-secondary-on-parchment); font-style: italic; }
-	.editor-gutter { color: var(--text-secondary-on-parchment); opacity: 0.6; display: inline-block; width: 2.5ch; text-align: right; margin-right: 10px; }
+	/* ================= 5. editor — ink/glyph shimmer ================= */
+	.editor-frame { width: min(640px, 100%); padding: 0; overflow: hidden; position: relative; }
+	.editor-plaque { background: var(--border-outer); color: #fff; font-size: 12px; text-align: center; padding: 8px; border-radius: 10px 10px 0 0; }
+	.editor-body { padding: 14px 16px; position: relative; }
+	.editor-body .glyph { position: absolute; font-family: var(--font-mono); color: var(--accent-violet); opacity: 0.35; font-size: 16px; }
+	@keyframes glyph-drift { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: 0.5; } 100% { opacity: 0; transform: translateY(-26px); } }
+	.ink-blot { position: absolute; top: -10px; right: 14px; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle, var(--border-outer) 40%, transparent 70%); opacity: 0.5; }
+	.code-line { font-family: var(--font-mono); font-size: 12px; white-space: pre; line-height: 1.55; position: relative; z-index: 1; }
+	.code-line .kw { color: #b02f7c; font-weight: 600; }
+	.code-line .str { color: #2f9e5a; }
+	.code-line .fn { color: #c9532a; }
+	.code-line .cm { color: var(--text-secondary); font-style: italic; }
+	.editor-gutter { color: var(--text-secondary); opacity: 0.7; display: inline-block; width: 2.5ch; text-align: right; margin-right: 10px; }
 	.editor-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 10px 16px 14px; }
 
-	/* ================= 6. encounter banner + victory ================= */
-	.ribbon-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-	.ribbon-bg { width: 380px; height: auto; display: block; }
-	.ribbon-text {
-		position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-		font-family: var(--font-display); font-size: 20px; color: var(--cream);
-		text-shadow: 0 1px 0 rgba(0,0,0,0.6);
-	}
-	.encounter-card { width: min(420px, 100%); text-align: center; padding-top: 26px; }
-	.encounter-card .ribbon-wrap { margin-top: -46px; margin-bottom: 8px; }
-	.encounter-card p { margin: 0; font-size: 15px; }
-	.victory-toast { width: min(360px, 100%); text-align: center; padding-top: 26px; }
+	/* ---- flat pixel buttons (replace v1's wax seals) ---- */
+	.btn { font-family: var(--font-display); font-size: 12px; padding: 7px 16px; border-radius: 10px; border: 3px solid var(--border-outer); cursor: pointer; color: var(--text); box-shadow: 3px 3px 0 rgba(0,0,0,0.2); }
+	.btn:active { box-shadow: 1px 1px 0 rgba(0,0,0,0.2); transform: translate(2px, 2px); }
+	.btn.confirm { background: var(--accent-green); }
+	.btn.cancel { background: var(--accent-pink); }
+	.btn.neutral { background: var(--accent-yellow); }
 
-	/* ================= 7. run parchment ================= */
-	.run-scroll { width: min(420px, 100%); display: flex; flex-direction: column; transform-origin: top center; }
-	.roller { width: 100%; height: 22px; background-image: url("ui_scroll_roller_top_soft.png"); background-size: 100% 100%; }
-	.roller.bottom { background-image: url("ui_scroll_roller_bottom_soft.png"); }
-	.run-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; border-left: 2px solid var(--wood-dark); border-right: 2px solid var(--wood-dark); }
-	.run-line-current { background: rgba(233,155,51,0.28); border-left: 3px solid var(--gold); padding: 2px 8px; font-family: var(--font-mono); font-size: 12px; }
-	.run-log { background: rgba(50,34,20,0.06); padding: 6px 8px; font-family: var(--font-mono); font-size: 11px; max-height: 90px; overflow: auto; }
+	/* ================= 6. encounter banner & victory toast — flat notched ribbon ================= */
+	.ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 300px; padding: 10px 36px; margin-bottom: 10px; }
+	.ribbon-shape { position: absolute; inset: 0; background: var(--accent-pink); clip-path: polygon(6% 0%, 94% 0%, 100% 50%, 94% 100%, 6% 100%, 0% 50%); border-radius: 4px; box-shadow: 3px 3px 0 rgba(0,0,0,0.2); }
+	.ribbon.victory .ribbon-shape { background: var(--accent-green); }
+	.ribbon span { position: relative; z-index: 1; font-size: 15px; color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+	.encounter-card { width: min(420px, 100%); text-align: center; }
+	.encounter-card p { margin: 4px 0 0; font-size: 13px; font-family: var(--font-mono); }
+	.victory-toast { width: min(360px, 100%); text-align: center; }
+
+	/* ================= 7. wand / run — rune scroll ================= */
+	.rune-scroll { width: min(420px, 100%); position: relative; padding: 18px 16px; overflow: hidden; }
+	.rune-ring { position: absolute; inset: -30%; border-radius: 50%; border: 2px dashed var(--accent-violet); opacity: 0.35; }
+	.rune-ring.two { inset: -18%; border-color: var(--accent-cyan); }
+	@keyframes spin-slow { to { transform: rotate(360deg); } }
+	.rune-body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; }
+	.run-line-current { background: rgba(255,210,63,0.35); border-left: 4px solid var(--accent-yellow); padding: 2px 8px; font-family: var(--font-mono); font-size: 12px; border-radius: 4px; }
+	.run-log { background: rgba(59,47,107,0.08); padding: 6px 8px; font-family: var(--font-mono); font-size: 11px; max-height: 90px; overflow: auto; border-radius: 6px; }
 	.run-controls { display: flex; align-items: center; gap: 8px; }
-	.run-controls .speed { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--wood-dark); padding: 2px 8px; background: none; cursor: pointer; color: var(--ink); }
-	.run-controls .speed.active { background: var(--gold); }
+	.run-controls .speed { font-family: var(--font-mono); font-size: 11px; border: 2px solid var(--border-outer); padding: 3px 9px; background: #fff; cursor: pointer; color: var(--text); border-radius: 6px; }
+	.run-controls .speed.active { background: var(--accent-yellow); }
 
 	/* ================= 8/9/10: counter, settings, help ================= */
-	.hud-pill {
-		display: inline-flex; align-items: center; gap: 6px;
-		padding: 8px 14px 8px 10px; font-size: 13px;
-	}
-	.glow-toggle {
-		font-family: var(--font-mono); font-size: 12px; padding: 6px 12px; cursor: pointer;
-		background-image: url("ui_wood_frame_soft.png"); background-size: 100% 100%;
-		border: 10px solid transparent; border-image-source: url("ui_wood_frame_soft.png");
-		border-image-slice: 64 fill; border-image-width: 10px; border-image-repeat: round;
-		color: var(--ink);
-	}
+	.hud-pill { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; font-size: 12px; font-family: var(--font-mono); }
+	.glow-toggle { font-family: var(--font-mono); font-size: 11px; padding: 8px 14px; cursor: pointer; background: var(--panel-body); border: 3px solid var(--border-outer); border-radius: 20px; box-shadow: inset 0 0 0 2px var(--border-highlight); color: var(--text); }
 	.help-card { width: min(360px, 100%); }
-	.help-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
-	.help-row kbd { font-family: var(--font-mono); background: var(--wood-dark); color: var(--cream); padding: 1px 7px; font-size: 11px; }
+	.help-row { display: flex; justify-content: space-between; font-size: 12px; font-family: var(--font-mono); padding: 3px 0; }
+	.help-row kbd { font-family: var(--font-mono); background: var(--border-outer); color: #fff; padding: 1px 7px; border-radius: 4px; font-size: 11px; }
 
 	/* ================= 11: scene transitions ================= */
 	.transition-frames { display: flex; gap: var(--space-4); flex-wrap: wrap; }
-	.transition-frame { width: 220px; height: 130px; position: relative; overflow: hidden; background: var(--world-bg-deep); border: 1px solid rgba(255,255,255,0.1); }
-	.transition-frame .label { position: absolute; bottom: 4px; left: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--gold); }
-	.tf-pageturn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, var(--parchment) 45%, var(--wood-dark) 50%, transparent 55%); opacity: 0.9; }
-	.tf-unroll::before { content: ""; position: absolute; left: 10%; right: 10%; top: 20%; height: 45%; background: var(--parchment); border: 3px solid var(--wood-dark); }
-	.tf-vignette::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 30%, var(--world-bg-deep) 75%); }
-
-	/* ---- keyframes ---- */
-	@keyframes unroll { from { transform: scaleY(0.05); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
-	@keyframes unfurl { from { transform: scaleY(0.08); opacity: 0.3; } to { transform: scaleY(1); opacity: 1; } }
-	@keyframes pop-in { from { transform: scale(0.85) translateY(6px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+	.transition-frame { width: 220px; height: 130px; position: relative; overflow: hidden; background: var(--border-outer); border-radius: 10px; border: 2px solid rgba(255,255,255,0.2); }
+	.transition-frame .label { position: absolute; bottom: 4px; left: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--accent-yellow); }
+	.tf-pageturn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, var(--panel-body) 45%, var(--accent-violet) 50%, transparent 55%); opacity: 0.95; }
+	.tf-unroll::before { content: ""; position: absolute; left: 10%; right: 10%; top: 20%; height: 45%; background: var(--panel-body); border: 3px solid var(--accent-violet); border-radius: 10px; }
+	.tf-vignette::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 30%, var(--border-outer) 75%); }
 
 	/*
-	 * Default (and prefers-reduced-motion: reduce) state is a plain fade —
-	 * the scale/transform opens and hover transitions only apply under
-	 * :no-preference. Structuring it this way (base = reduced, enhance under
-	 * no-preference) means "respect reduced motion" needs no !important
-	 * fighting the base rules, just not adding the enhancement in the first
-	 * place.
+	 * Every ambient particle/swirl effect is static by default (set on the
+	 * base rules above) and only animates under :no-preference — same
+	 * "reduced by default, enhanced when allowed" structure as the motion
+	 * fixes below, so respecting the setting needs no !important.
 	 */
-	.orb-modal, .run-scroll, .encounter-card { animation: fade-only var(--dur-hover) linear; }
-	@keyframes fade-only { from { opacity: 0; } to { opacity: 1; } }
-
 	@media (prefers-reduced-motion: no-preference) {
-		.orb-modal { animation: unroll var(--dur-open) var(--ease-settle); }
-		.encounter-card { animation: pop-in var(--dur-open) var(--ease-settle); }
-		.run-scroll { animation: unfurl var(--dur-open) var(--ease-settle); }
-		.seal-btn { transition: filter var(--dur-hover) var(--ease-settle), transform var(--dur-hover) var(--ease-settle); }
-		.hotbar-slot { transition: transform var(--dur-hover) var(--ease-settle); }
+		.sparkle { animation: twinkle 1.6s ease-in-out infinite; }
+		.orb-mist { animation: swirl 12s linear infinite; }
+		.spyglass-frame::after { animation: sheen 3.2s linear infinite; }
+		.editor-body .glyph { opacity: 0; animation: glyph-drift 4s ease-in infinite; }
+		.rune-ring { animation: spin-slow 8s linear infinite; }
+		.rune-ring.two { animation-direction: reverse; animation-duration: 11s; }
 	}
 
 	/* ---- world backdrop strip ---- */
-	.world-backdrop {
-		position: relative; height: 220px; overflow: hidden;
-		background: radial-gradient(ellipse at 30% 100%, rgba(233,155,51,0.12), transparent 55%), var(--world-bg-deep);
-		border-bottom: 3px solid var(--wood-dark);
-	}
+	.world-backdrop { position: relative; height: 210px; overflow: hidden; background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom)); border-bottom: 4px solid var(--border-outer); }
 	.world-backdrop img { position: absolute; bottom: 0; }
-	.world-backdrop .caption {
-		position: absolute; top: 10px; right: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--cream); opacity: 0.6; max-width: 40ch; text-align: right;
+	.world-backdrop .caption { position: absolute; top: 10px; right: 16px; font-family: var(--font-mono); font-size: 10px; color: #fff; opacity: 0.85; max-width: 42ch; text-align: right; text-shadow: 1px 1px 0 rgba(0,0,0,0.3); }
+
+	/* Double ring (dark + gold) rather than a single color — a single accent-yellow
+	   ring measures fine against panel-body but a single border-outer ring would
+	   vanish against anything already using that color for its own border. */
+	button:focus-visible, input:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 2px var(--border-outer), 0 0 0 4px var(--accent-yellow);
 	}
 
-	footer { text-align: center; font-family: var(--font-mono); font-size: 11px; opacity: 0.5; padding: 40px 0 60px; }
-	footer a { color: var(--gold); }
+	footer { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--border-outer); padding: 40px 0 60px; }
+	footer a { color: var(--border-outer); }
 </style>
 </head>
-<body data-pairing="fell">
+<body data-palette="meadow">
 
 <div class="topbar">
-	<h1>cabn — storybook UI mockup</h1>
-	<p>Static style pass only — nothing here is wired to the engine. Toggle the two proposed font pairings below; everything else (colors, frames, motion) is shared.</p>
-	<div class="pairing-toggle">
-		<button type="button" data-pairing-btn="fell" aria-pressed="true">Fell &amp; Garamond</button>
-		<button type="button" data-pairing-btn="cinzel" aria-pressed="false">Cinzel &amp; Alegreya</button>
+	<h1>cabn — pixel-RPG UI mockup v2</h1>
+	<p>Static style pass only. v1 (wood/parchment "storybook") was rejected — too textured, too muted. This is a reset: Stardew Valley / Pokémon B&amp;W flat panels, a retro dialog pixel font, real item art in the hotbar, and a distinct particle effect per tool.</p>
+	<div class="palette-toggle">
+		<button type="button" data-palette-btn="meadow" aria-pressed="true">Meadow</button>
+		<button type="button" data-palette-btn="berry" aria-pressed="false">Berry</button>
 	</div>
 </div>
 
 <div class="world-backdrop">
-	<span class="caption">Backdrop: existing softened placeholder sprites (wizard_tower, character_idle, bonfire, ghost) — decorative composite, no new art generated for it.</span>
-	<img src="../placeholders/wizard_tower_soft.png" style="left: 60px; height: 210px;" alt="" />
-	<img src="../placeholders/character_idle_soft.png" style="left: 300px; height: 90px;" alt="" />
-	<img id="bonfire" src="../placeholders/bonfire_frame0_soft.png" style="left: 420px; height: 70px;" alt="" />
-	<img src="../placeholders/ghost_soft.png" style="left: 620px; height: 60px; opacity: 0.85;" alt="" />
+	<span class="caption">Backdrop: existing softened placeholder sprites (wizard_tower, character_idle, bonfire, ghost) over a brighter sky — same sprites as v1, new mood.</span>
+	<img src="../placeholders/wizard_tower_soft.png" style="left: 60px; height: 200px;" alt="" />
+	<img src="../placeholders/character_idle_soft.png" style="left: 300px; height: 86px;" alt="" />
+	<img id="bonfire" src="../placeholders/bonfire_frame0_soft.png" style="left: 420px; height: 66px;" alt="" />
+	<img src="../placeholders/ghost_soft.png" style="left: 620px; height: 56px; opacity: 0.85;" alt="" />
 </div>
 
 <main>
 
 <section>
-	<h2>1. Tool hotbar</h2>
-	<p class="section-note">Wood-socket slots instead of flat parchment squares; the selected slot's ring turns gold rather than getting a whole separate glow sprite. Hover lifts the slot 3px (a "picked up off the belt" read).</p>
+	<h2>1. Tool hotbar — real item art, not emoji</h2>
+	<p class="section-note">Every slot now shows the actual tool: the opener reuses the existing key_256.webp (already in the right style), the other five are new pixel-map icons run through the same soften() pass as wizard_tower/character_idle so they land in the same soft-rendered family. Flat rounded slot, selected = gold ring + lift, no wood texture anywhere.</p>
 	<div class="compare">
 		<div class="current-thumb">
 			<div class="current-box" style="display:flex; gap:4px; padding:8px;">
 				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
 				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
-				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
 			</div>
-			<span>current: ToolHotbar.tsx</span>
+			<span>current: emoji-in-wood (v1, rejected)</span>
 		</div>
 		<div class="stage">
 			<div class="hotbar">
-				<button class="hotbar-slot" type="button"><span class="icon">🗝️</span><span class="key">E</span></button>
-				<button class="hotbar-slot selected" type="button"><span class="icon">🔭</span><span class="key">L</span></button>
-				<button class="hotbar-slot" type="button"><span class="icon">🔮</span><span class="key">F</span></button>
-				<button class="hotbar-slot" type="button"><span class="icon">🎒</span><span class="key">B</span><span class="badge">2</span></button>
-				<button class="hotbar-slot" type="button"><span class="icon">🖋️</span><span class="key">Q</span></button>
-				<button class="hotbar-slot" type="button"><span class="icon">🪄</span><span class="key">R</span></button>
+				<button class="hotbar-slot" type="button"><img src="../originals/key_256.webp" alt="opener" /><span class="key">E</span></button>
+				<button class="hotbar-slot selected" type="button"><img src="ui_icon_spyglass_soft.png" alt="spyglass" /><span class="key">L</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_orb_soft.png" alt="crystal orb" /><span class="key">F</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_bag_soft.png" alt="bag" /><span class="key">B</span><span class="badge">2</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_quill_soft.png" alt="quill" /><span class="key">Q</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_wand_soft.png" alt="wand" /><span class="key">R</span></button>
 			</div>
 		</div>
 	</div>
 </section>
 
 <section>
-	<h2>2. Spyglass file list</h2>
-	<p class="section-note">Same wood-framed parchment panel shell every other panel in this mockup uses — "ls for the cluster you're standing in" stays a list, just dressed in the world's materials. Divider flourish separates header from rows.</p>
+	<h2>2. Spyglass file list — lens vignette</h2>
+	<p class="section-note">A soft dark vignette at the edges plus a diagonal sheen sweeping across every ~3s — reads as looking through a scope, distinct from every other panel's flat interior.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">flat parchment box,<br/>Courier list rows</div>
-			<span>current: SpyglassPanel.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">flat parchment box</div><span>current / v1</span></div>
 		<div class="stage">
-			<div class="panel spyglass" style="padding: 14px 14px 8px;">
+			<div class="panel spyglass-frame">
 				<div class="panel-title">ls — cottage/</div>
-				<div class="divider"></div>
+				<div class="panel-divider"></div>
 				<div class="spy-row"><span>✎ index.ts</span><span class="meta">ts · 2.1KB</span></div>
 				<div class="spy-row"><span>garden.py</span><span class="meta">py · 640B</span></div>
 				<div class="spy-row"><span>notes.md</span><span class="meta">md · 1.4KB</span></div>
@@ -393,16 +365,19 @@
 </section>
 
 <section>
-	<h2>3. Crystal orb search</h2>
-	<p class="section-note">Unrolls in with the same <code>unroll</code> keyframe as the run-scroll (see STYLE.md motion table) — one motion vocabulary for "a parchment surface is arriving," reused everywhere instead of a bespoke animation per overlay.</p>
+	<h2>3. Crystal orb search — violet/cyan swirling mist</h2>
+	<p class="section-note">A slowly rotating violet/cyan conic-gradient mist behind the modal, plus drifting sparkle particles (the same <code>ui_sparkle_*.png</code> asset, three colors, reused at different positions/sizes) — the most overtly "magical" of the five tool screens.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">dark scrim +<br/>flat parchment modal</div>
-			<span>current: OrbSearch.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">dark scrim + flat modal</div><span>current / v1</span></div>
 		<div class="stage" style="padding:0;">
 			<div class="orb-backdrop">
-				<div class="panel orb-modal" style="padding: 16px;">
+				<div class="orb-mist"></div>
+				<img class="sparkle" src="ui_sparkle_violet@8x.png" style="top:15%;left:12%;width:20px;animation-delay:0s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_cyan@8x.png" style="top:70%;left:20%;width:16px;animation-delay:0.4s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_violet@8x.png" style="top:20%;left:85%;width:14px;animation-delay:0.8s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_cyan@8x.png" style="top:80%;left:80%;width:22px;animation-delay:1.2s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_gold@8x.png" style="top:45%;left:6%;width:14px;animation-delay:0.2s;" alt="" />
+				<div class="panel orb-modal">
 					<input class="orb-input" placeholder="search the world..." value="garden" readonly />
 					<div class="orb-hit"><strong>garden.py</strong><span>def water_plants(): ...</span></div>
 					<div class="orb-hit"><strong>garden_notes.md</strong><span>## garden — watering schedule</span></div>
@@ -413,15 +388,12 @@
 </section>
 
 <section>
-	<h2>4. Bag tray</h2>
-	<p class="section-note">Slots keep the thin parchment strip shape (it's a tray of small clippings, not a panel) but swap the hairline border for a gold inset ring when a slot is pasteable, echoing the hotbar's selected-ring language.</p>
+	<h2>4. Bag tray — open satchel interior</h2>
+	<p class="section-note">A warm brown radial vignette with a dashed "stitched seam" inside the panel edge, like looking into an open pouch. Slots keep the flat pill shape; a pasteable slot gets a gold ring instead of a hairline border swap.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">stacked flat<br/>parchment rows</div>
-			<span>current: BagTray.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">stacked flat rows</div><span>current / v1</span></div>
 		<div class="stage">
-			<div class="bag-tray">
+			<div class="panel bag-frame">
 				<div class="bag-slot filled"><span>garden.py:12-18</span><span class="x">✕</span></div>
 				<div class="bag-slot"><span>index.ts:4</span><span class="x">✕</span></div>
 			</div>
@@ -430,25 +402,26 @@
 </section>
 
 <section>
-	<h2>5. Editor frame (quill)</h2>
-	<p class="section-note">A wooden plaque replaces the browser-tab-style header; save/close become wax seals instead of text buttons. Syntax colors are unchanged from editorTheme.ts's cottagecore palette — comment/punctuation now sit on rust (wood-dark) rather than steel gray, see the a11y note in STYLE.md on why.</p>
+	<h2>5. Editor frame (quill) — ink &amp; glyph shimmer</h2>
+	<p class="section-note">Small code-glyph characters (<code>{ } % λ</code>) drift upward and fade near the top of the panel, and a soft ink blot sits behind the plaque corner. Buttons are flat rounded rectangles now (green = save, pink = close), not wax seals.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">flat parchment,<br/>Courier New, text buttons</div>
-			<span>current: EditorOverlay.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">flat parchment, Courier</div><span>current / v1</span></div>
 		<div class="stage">
 			<div class="panel editor-frame">
+				<div class="ink-blot"></div>
 				<div class="editor-plaque">garden.py</div>
 				<div class="editor-body">
+					<span class="glyph" style="left:20px; top:10px; animation-delay:0s;">{ }</span>
+					<span class="glyph" style="left:60%; top:20px; animation-delay:1.3s;">λ</span>
+					<span class="glyph" style="left:80%; top:6px; animation-delay:2.6s;">%</span>
 					<div class="code-line"><span class="editor-gutter">1</span><span class="cm"># water the tomatoes daily</span></div>
 					<div class="code-line"><span class="editor-gutter">2</span><span class="kw">def</span> <span class="fn">water_plants</span>(soil):</div>
 					<div class="code-line"><span class="editor-gutter">3</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> soil.moisture &lt; <span class="fn">0.3</span>:</div>
 					<div class="code-line"><span class="editor-gutter">4</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="str">"watered"</span></div>
 				</div>
 				<div class="editor-actions">
-					<div class="seal-row"><button class="seal-btn" type="button" title="close"></button><span class="seal-label">close</span></div>
-					<div class="seal-row"><button class="seal-btn plum" type="button" title="save"></button><span class="seal-label">save</span></div>
+					<button class="btn cancel" type="button">Close</button>
+					<button class="btn confirm" type="button">Save</button>
 				</div>
 			</div>
 		</div>
@@ -456,20 +429,17 @@
 </section>
 
 <section>
-	<h2>6. Encounter banner &amp; victory toast</h2>
-	<p class="section-note">The ribbon comes in two colorways: crimson for an encounter/error, victory-green for the "all bugs fixed" toast — same asset, different <code>ui_ribbon_*.png</code>.</p>
+	<h2>6. Encounter banner &amp; victory toast — flat notched ribbon</h2>
+	<p class="section-note">A flat clip-path ribbon (pink for encounter/error, green for victory) instead of a raster wax/wood asset — reads clean at any size and costs nothing to recolor per-state.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">rounded parchment<br/>card, Georgia serif</div>
-			<span>current: EncounterBanner.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">rounded parchment card</div><span>current / v1</span></div>
 		<div class="stage" style="flex-direction: column; gap: 20px;">
 			<div class="panel encounter-card">
-				<div class="ribbon-wrap"><img class="ribbon-bg" src="ui_ribbon_crimson_soft.png" alt="" /><span class="ribbon-text">A Gremlin appeared!</span></div>
+				<div class="ribbon"><div class="ribbon-shape"></div><span>A Gremlin appeared!</span></div>
 				<p>TypeError: cannot read property 'water' of undefined</p>
 			</div>
 			<div class="panel victory-toast">
-				<div class="ribbon-wrap"><img class="ribbon-bg" src="ui_ribbon_victory_soft.png" alt="" /><span class="ribbon-text">Victory!</span></div>
+				<div class="ribbon victory"><div class="ribbon-shape"></div><span>Victory!</span></div>
 				<p>All bugs fixed in this world.</p>
 			</div>
 		</div>
@@ -477,28 +447,25 @@
 </section>
 
 <section>
-	<h2>7. Run parchment</h2>
-	<p class="section-note">RunOverlay's existing CSS radial-gradient rollers become actual pixel-art dowel end caps. Body keeps its own wood side-rails (2px solid, matching wood-dark) between the two rollers rather than a full 9-slice frame — a scroll's sides are cut paper edges, not a wood-bordered panel.</p>
+	<h2>7. Wand / run parchment — rune scroll</h2>
+	<p class="section-note">Two counter-rotating dashed rune rings (violet + cyan) behind a flat panel — reads as an active spell circle rather than a literal unrolling scroll (v1's wood-roller take is dropped along with the wood).</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">CSS gradient rollers +<br/>flat parchment body</div>
-			<span>current: RunOverlay.tsx</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">CSS gradient rollers + flat body</div><span>current / v1</span></div>
 		<div class="stage">
-			<div class="run-scroll">
-				<div class="roller"></div>
-				<div class="run-body" style="background-image: url('ui_parchment_fill_soft.png'); background-size: 64px 64px;">
-					<div style="font-weight:600; font-size: 13px;">Line 3 — step 2 / 5</div>
+			<div class="panel rune-scroll">
+				<div class="rune-ring"></div>
+				<div class="rune-ring two"></div>
+				<div class="rune-body">
+					<div style="font-size: 12px; font-family: var(--font-mono); font-weight: 600;">Line 3 — step 2 / 5</div>
 					<div class="run-line-current">if soil.moisture &lt; 0.3:</div>
 					<div class="run-log">&gt; watered<br/>&gt; watered<br/>&gt; done</div>
 					<div class="run-controls">
-						<button class="seal-btn" type="button" style="width:28px;height:28px;" title="pause"></button>
+						<button class="btn neutral" type="button" style="padding: 6px 10px;">⏸</button>
 						<button class="run-controls speed active" type="button">1x</button>
 						<button class="run-controls speed" type="button">2x</button>
 						<button class="run-controls speed" type="button">4x</button>
 					</div>
 				</div>
-				<div class="roller bottom"></div>
 			</div>
 		</div>
 	</div>
@@ -506,12 +473,9 @@
 
 <section>
 	<h2>8–10. Monster counter, settings corner, controls card</h2>
-	<p class="section-note">All three are small HUD chrome — same wood-framed pill/card as everything else, no new frame kind needed.</p>
+	<p class="section-note">Same flat panel/pill chrome as everywhere else — no new frame kind needed for HUD chrome.</p>
 	<div class="compare">
-		<div class="current-thumb">
-			<div class="current-box">flat parchment pills</div>
-			<span>current: MonsterCounter / SettingsCorner</span>
-		</div>
+		<div class="current-thumb"><div class="current-box">flat parchment pills</div><span>current / v1</span></div>
 		<div class="stage" style="flex-direction: column; align-items: flex-start; gap: 14px;">
 			<div class="panel hud-pill">3 bugs remain in this world</div>
 			<button class="glow-toggle" type="button">Glow: on</button>
@@ -529,8 +493,8 @@
 </section>
 
 <section>
-	<h2>11. Scene transition concept</h2>
-	<p class="section-note">Three static stills, not implemented — for reacting to direction only. <strong>Page-turn</strong> (~420ms, ease-settle): a diagonal parchment/wood wipe sweeps across on cluster change, like turning to the next page. <strong>Scroll-unroll</strong> (~340ms): reuses the panel-open <code>unroll</code> keyframe for entering a file/editor. <strong>Vignette iris</strong> (~260ms, linear): a circular closing/opening iris for encounter start/end, cheapest of the three and the one most likely to survive contact with `prefers-reduced-motion` (degrades to a plain fade).</p>
+	<h2>11. Scene transition concept (unchanged direction — kept from v1)</h2>
+	<p class="section-note">Three static stills, recolored to the new palette. <strong>Page-turn</strong> (~420ms): a diagonal wipe on cluster change. <strong>Scroll-unroll</strong> (~340ms): panel-open animation for entering a file/editor. <strong>Vignette iris</strong> (~260ms, linear): circular open/close for encounter start/end — cheapest, degrades to a plain fade under reduced motion.</p>
 	<div class="transition-frames">
 		<div class="transition-frame tf-pageturn"><span class="label">page-turn · 420ms</span></div>
 		<div class="transition-frame tf-unroll"><span class="label">scroll-unroll · 340ms</span></div>
@@ -539,36 +503,41 @@
 </section>
 
 <section>
-	<h2>Frame &amp; button raw art (crisp vs. soft)</h2>
-	<p class="section-note">The crisp source pixel maps (tools/asset-pipeline/src/pixelmaps/ui-*.ts) vs. the softened raster the panels above actually use — same soften() pass as every creature placeholder, cellSize 8.</p>
+	<h2>Item icon art (crisp vs. soft)</h2>
+	<p class="section-note">The five new tool icons, crisp pixel map vs. the soften()-passed version actually used in the hotbar above — same technique as wizard_tower/character_idle/ghost, so these read as the same family as the existing recovered originals rather than new bolted-on art.</p>
 	<div class="compare">
-		<div style="text-align:center;"><img src="ui_wood_frame@4x.png" style="width:128px;height:128px;" alt="wood frame crisp" /><div style="font-family: var(--font-mono); font-size:11px;">wood frame — crisp @4x</div></div>
-		<div style="text-align:center;"><img src="ui_wood_frame_soft.png" style="width:128px;height:128px;" alt="wood frame soft" /><div style="font-family: var(--font-mono); font-size:11px;">wood frame — soft</div></div>
-		<div style="text-align:center;"><img src="ui_wax_seal_red@4x.png" style="width:80px;height:80px;" alt="wax seal crisp" /><div style="font-family: var(--font-mono); font-size:11px;">wax seal — crisp @4x</div></div>
-		<div style="text-align:center;"><img src="ui_wax_seal_red_soft.png" style="width:80px;height:80px;" alt="wax seal soft" /><div style="font-family: var(--font-mono); font-size:11px;">wax seal — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_orb@8x.png" style="height:120px;" alt="orb crisp" /><div style="font-family: var(--font-mono); font-size:10px;">orb — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_orb_soft.png" style="height:120px;" alt="orb soft" /><div style="font-family: var(--font-mono); font-size:10px;">orb — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_spyglass@8x.png" style="height:120px;" alt="spyglass crisp" /><div style="font-family: var(--font-mono); font-size:10px;">spyglass — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_spyglass_soft.png" style="height:120px;" alt="spyglass soft" /><div style="font-family: var(--font-mono); font-size:10px;">spyglass — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_bag@8x.png" style="height:120px;" alt="bag crisp" /><div style="font-family: var(--font-mono); font-size:10px;">bag — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_bag_soft.png" style="height:120px;" alt="bag soft" /><div style="font-family: var(--font-mono); font-size:10px;">bag — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_quill@8x.png" style="height:120px;" alt="quill crisp" /><div style="font-family: var(--font-mono); font-size:10px;">quill — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_quill_soft.png" style="height:120px;" alt="quill soft" /><div style="font-family: var(--font-mono); font-size:10px;">quill — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_wand@8x.png" style="height:120px;" alt="wand crisp" /><div style="font-family: var(--font-mono); font-size:10px;">wand — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_wand_soft.png" style="height:120px;" alt="wand soft" /><div style="font-family: var(--font-mono); font-size:10px;">wand — soft</div></div>
 	</div>
 </section>
 
 </main>
 
 <footer>
-	cabn M10a — style mockup only. See <a href="STYLE.md">STYLE.md</a> for tokens, motion, and accessibility notes.
+	cabn M10a v2 — style mockup only. See <a href="STYLE.md">STYLE.md</a> for tokens, motion, and accessibility notes.
 </footer>
 
 <script>
-	// Font-pairing toggle — the only JS on this static page.
-	document.querySelectorAll("[data-pairing-btn]").forEach((btn) => {
+	// Palette toggle — the only interactive JS on this static page.
+	document.querySelectorAll("[data-palette-btn]").forEach((btn) => {
 		btn.addEventListener("click", () => {
-			const pairing = btn.getAttribute("data-pairing-btn");
-			document.body.setAttribute("data-pairing", pairing);
-			document.querySelectorAll("[data-pairing-btn]").forEach((b) => {
+			const palette = btn.getAttribute("data-palette-btn");
+			document.body.setAttribute("data-palette", palette);
+			document.querySelectorAll("[data-palette-btn]").forEach((b) => {
 				b.setAttribute("aria-pressed", String(b === btn));
 			});
 		});
 	});
 
-	// Decorative bonfire flicker — cycles the 4 existing placeholder frames.
-	// Skipped under reduced-motion, same principle as the CSS animations above.
+	// Decorative bonfire flicker — cycles the existing placeholder frames.
 	if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
 		const bonfire = document.getElementById("bonfire");
 		let frame = 0;

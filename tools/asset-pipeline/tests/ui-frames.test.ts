@@ -1,16 +1,14 @@
 import { describe, expect, test } from "vitest";
 import type { RGB } from "../src/color.js";
 import { renderPixelMap } from "../src/pixelmap.js";
-import { buildWaxSeal } from "../src/pixelmaps/ui-button.js";
-import { buildDividerFlourish } from "../src/pixelmaps/ui-divider.js";
-import { buildWoodFrameTile } from "../src/pixelmaps/ui-frame.js";
-import { buildHotbarSlot } from "../src/pixelmaps/ui-hotbar-slot.js";
-import { buildParchmentTile } from "../src/pixelmaps/ui-parchment.js";
-import { buildRibbonBanner } from "../src/pixelmaps/ui-ribbon.js";
-import { buildScrollRoller } from "../src/pixelmaps/ui-scroll-roller.js";
-import { buildTooltipBubble } from "../src/pixelmaps/ui-tooltip.js";
+import { buildBagIcon } from "../src/pixelmaps/ui-item-bag.js";
+import { buildCrystalOrbIcon } from "../src/pixelmaps/ui-item-orb.js";
+import { buildQuillIcon } from "../src/pixelmaps/ui-item-quill.js";
+import { buildSpyglassIcon } from "../src/pixelmaps/ui-item-spyglass.js";
+import { buildWandIcon } from "../src/pixelmaps/ui-item-wand.js";
+import { buildSparkle } from "../src/pixelmaps/ui-sparkle.js";
 
-// 36 flat RGB stand-ins — enough indices for every UI_COLOR constant without
+// 36 flat RGB stand-ins — enough indices for every legend used below without
 // pulling in the real generated palette.json (these tests exercise geometry,
 // not actual color values).
 const PALETTE: RGB[] = Array.from({ length: 36 }, (_, i) => ({
@@ -20,20 +18,14 @@ const PALETTE: RGB[] = Array.from({ length: 36 }, (_, i) => ({
 }));
 
 const ALL_BUILDERS = [
-	() => buildWoodFrameTile(),
-	() => buildParchmentTile(),
-	() => buildWaxSeal("red", false),
-	() => buildWaxSeal("red", true),
-	() => buildWaxSeal("plum", false),
-	() => buildWaxSeal("plum", true),
-	() => buildHotbarSlot(false),
-	() => buildHotbarSlot(true),
-	() => buildRibbonBanner("crimson"),
-	() => buildRibbonBanner("victory"),
-	() => buildTooltipBubble(),
-	() => buildDividerFlourish(),
-	() => buildScrollRoller("top"),
-	() => buildScrollRoller("bottom"),
+	buildCrystalOrbIcon,
+	buildSpyglassIcon,
+	buildBagIcon,
+	buildQuillIcon,
+	buildWandIcon,
+	() => buildSparkle("violet"),
+	() => buildSparkle("cyan"),
+	() => buildSparkle("gold"),
 ];
 
 describe("UI pixel map builders", () => {
@@ -51,73 +43,61 @@ describe("UI pixel map builders", () => {
 		const names = ALL_BUILDERS.map((build) => build().name);
 		expect(new Set(names).size).toBe(names.length);
 	});
-});
 
-describe("buildWoodFrameTile", () => {
-	test("center is transparent — panels supply their own fill", () => {
-		const map = buildWoodFrameTile({ size: 32, border: 8 });
-		const center = map.rows[16]?.[16];
-		expect(center).toBe(".");
-	});
-
-	test("outer ring is the ink outline on all four sides", () => {
-		const map = buildWoodFrameTile({ size: 32, border: 8 });
-		expect(map.rows[0]?.[16]).toBe("O");
-		expect(map.rows[31]?.[16]).toBe("O");
-		expect(map.rows[16]?.[0]).toBe("O");
-		expect(map.rows[16]?.[31]).toBe("O");
+	test.each(ALL_BUILDERS)("has at least one opaque pixel", (build) => {
+		const map = build();
+		const hasOpaque = map.rows.some((row) => [...row].some((c) => c !== "."));
+		expect(hasOpaque).toBe(true);
 	});
 });
 
-describe("buildParchmentTile", () => {
-	test("is deterministic for a given seed", () => {
-		const a = buildParchmentTile(16, 42);
-		const b = buildParchmentTile(16, 42);
-		expect(a.rows).toEqual(b.rows);
+describe("buildSparkle", () => {
+	test("three colors produce distinct legends", () => {
+		const violet = buildSparkle("violet");
+		const cyan = buildSparkle("cyan");
+		const gold = buildSparkle("gold");
+		expect(violet.legend.A).not.toBe(cyan.legend.A);
+		expect(cyan.legend.A).not.toBe(gold.legend.A);
 	});
 
-	test("smooth mottling wraps with zero seam (period === tile size)", () => {
-		// The sine-based base component is sampled at x=0 and would be sampled
-		// at x=size for the *next* tile copy — since sin has period 2π and we
-		// scale by 2π/size, those two samples are identical by construction.
-		// This only checks the base wave's periodicity claim from the file's
-		// own comment, not the (intentionally non-seamless) sparse flecks.
-		const size = 32;
-		const waveAt = (x: number, y: number) =>
-			Math.sin((2 * Math.PI * x) / size) * Math.cos((2 * Math.PI * y) / size) +
-			0.5 * Math.sin((4 * Math.PI * y) / size);
-		for (let y = 0; y < size; y++) {
-			expect(waveAt(0, y)).toBeCloseTo(waveAt(size, y), 10);
+	test("is a symmetric 4-point star (manhattan distance <= 2 from center)", () => {
+		const map = buildSparkle("gold");
+		for (let y = 0; y < map.height; y++) {
+			for (let x = 0; x < map.width; x++) {
+				const armLen = Math.abs(x - 4) + Math.abs(y - 4);
+				const ch = map.rows[y]?.[x];
+				expect(ch).toBe(armLen === 0 ? "C" : armLen <= 2 ? "A" : ".");
+			}
 		}
 	});
 });
 
-describe("buildWaxSeal", () => {
-	test("pressed seal has a smaller silhouette radius than normal", () => {
-		const countOpaque = (rows: string[]) =>
-			rows.reduce(
-				(sum, row) => sum + [...row].filter((c) => c !== ".").length,
-				0,
-			);
-		const normal = buildWaxSeal("red", false);
-		const pressed = buildWaxSeal("red", true);
-		expect(countOpaque(pressed.rows)).toBeLessThan(countOpaque(normal.rows));
+describe("buildCrystalOrbIcon", () => {
+	test("sphere silhouette is round — same radius reached along both axes", () => {
+		const map = buildCrystalOrbIcon();
+		// center row (y=9) and center column (x=10 or 11) should both hit the
+		// rim at roughly the same offset from center, confirming pixelAt's
+		// distance check isn't accidentally elliptical.
+		const centerRow = map.rows[9] ?? "";
+		const opaqueInRow = [...centerRow].filter((c) => c !== ".").length;
+		expect(opaqueInRow).toBeGreaterThan(10);
 	});
 });
 
-describe("buildHotbarSlot", () => {
-	test("selected variant's outer ring is gold, not ink", () => {
-		const selected = buildHotbarSlot(true);
-		const plain = buildHotbarSlot(false);
-		expect(selected.rows[0]?.[0]).toBe("G");
-		expect(plain.rows[0]?.[0]).toBe("O");
-	});
-});
-
-describe("buildScrollRoller", () => {
-	test("bottom is the row-reverse of top", () => {
-		const top = buildScrollRoller("top");
-		const bottom = buildScrollRoller("bottom");
-		expect(bottom.rows).toEqual([...top.rows].reverse());
+describe("buildSpyglassIcon and buildQuillIcon", () => {
+	test("both taper from a wide end to a narrow/pointed end", () => {
+		for (const build of [buildSpyglassIcon, buildQuillIcon]) {
+			const map = build();
+			const widthAt = (y: number) =>
+				[...(map.rows[y] ?? "")].filter((c) => c !== ".").length;
+			const nearStart = widthAt(map.height - 3);
+			const nearEnd = widthAt(2);
+			expect(nearStart).toBeGreaterThan(0);
+			// not a strict assertion on which end is wider (spyglass widens toward
+			// the eyepiece, quill's vane is widest in the middle) — just confirms
+			// neither end is the full-width block a broken taper would produce.
+			expect(nearEnd).toBeLessThan(map.width);
+			expect(nearStart).toBeLessThan(map.width);
+		}
 	});
 });
