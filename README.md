@@ -159,8 +159,9 @@ pnpm changeset
 Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — there is no `NPM_TOKEN` secret in this repo at all. One-time setup:
 
 1. Create the `cabn` org on npmjs.com (name confirmed free at the time of writing — the npm CLI can't create orgs, this is a manual web step).
-2. For each of the four packages, add a Trusted Publisher on npmjs.com pointing at `SebastianFrazier26/cabn`, workflow file `release.yml`. **Verify against npm's current docs whether a package must already exist on the registry before a Trusted Publisher can be attached to it** — this wasn't confirmed against live docs while writing this. If so, the very first `0.1.0` publish of each package needs one manual, one-time `pnpm -r publish --access public` from a maintainer's machine (with 2FA), after which the Trusted Publisher takes over for every release after.
-3. Run the "Release" workflow from the Actions tab (`workflow_dispatch`). It installs, builds, tests, then runs `changeset publish` with npm provenance enabled.
+2. **First publish is manual (verified 2026-09-27).** npm's docs state *"The package you're configuring must already exist on the npm registry"* before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm -r publish --access public` (npm will ask for a 2FA code).
+3. Attach the trusted publisher per package — either on npmjs.com (package → Settings → Trusted Publisher: GitHub Actions, owner `SebastianFrazier26`, repo `cabn`, workflow `release.yml`), or from the CLI with npm ≥ 11.15: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --allow-publish`. Trusted publishing itself needs npm ≥ 11.5.1 and Node ≥ 22.14 in the workflow.
+4. Run the "Release" workflow from the Actions tab (`workflow_dispatch`). It installs, builds, tests, then runs `changeset publish` with npm provenance enabled.
 
 ## Deploying the backend
 

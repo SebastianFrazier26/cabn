@@ -22,11 +22,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # Trusted Publishing needs a recent npm CLI. The exact minimum version
-      # is asserted by npm's own docs, which this workflow was written
-      # without live access to verify — pinned to the latest available at
-      # authoring time (2026-09-27) as a reasonably-safe floor. Re-check
-      # https://docs.npmjs.com/trusted-publishers before relying on this.
+      # Trusted Publishing requires npm >= 11.5.1 and Node >= 22.14 (npm docs,
+      # verified 2026-09-27); setup-node's `22` resolves to the latest 22.x.
       - name: Use a recent npm
         run: npm install -g npm@12.1.0
       - run: pnpm install --frozen-lockfile
