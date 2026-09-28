@@ -44,22 +44,20 @@ export function FileOverlay({
 			}}
 		>
 			<div
+				className="cabn-panel"
 				style={{
 					width: "min(720px, 90vw)",
 					maxHeight: "80vh",
-					background: "#efe0b3",
-					color: "#322214",
-					border: "3px solid #322214",
-					borderRadius: 8,
 					display: "flex",
 					flexDirection: "column",
-					fontFamily: '"Courier New", monospace',
+					padding: 0,
+					overflow: "hidden",
 				}}
 			>
 				<div
 					style={{
 						padding: "10px 16px",
-						borderBottom: "2px solid #322214",
+						borderBottom: "3px solid var(--cabn-border-outer)",
 						display: "flex",
 						justifyContent: "space-between",
 						alignItems: "center",
@@ -75,6 +73,7 @@ export function FileOverlay({
 						overflow: "auto",
 						whiteSpace: "pre-wrap",
 						wordBreak: "break-word",
+						fontFamily: "var(--cabn-font-mono)",
 					}}
 				>
 					(binary or unreadable file — no preview available)

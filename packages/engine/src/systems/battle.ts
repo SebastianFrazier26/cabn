@@ -2,6 +2,7 @@ import {
 	type Annotator,
 	bracketBalance,
 	brokenImport,
+	type ErrorAnnotation,
 	encodingIssue,
 	extractRelativeRefs,
 	parseFailure,
@@ -71,4 +72,31 @@ export function checkMonsterFixed(
 	if (!annotator) return true; // no re-check for an unrecognized code — never leaves the player permanently stuck
 	const results = annotator({ file, content, worldFiles });
 	return !results.some((r) => r.rule === monster.rule);
+}
+
+/**
+ * Every per-file annotator's live read of the buffer currently open in the
+ * quill — the spellbook's right page (SpellbookOverlay) uses this to list
+ * "current file's monster/annotator errors" without waiting for a save, by
+ * running the same pure per-file annotators `checkMonsterFixed` re-checks
+ * against, rather than reaching into WorldScene's `MonsterSummary[]` (which
+ * only ever holds *spawned* monsters at their last-saved content, and has no
+ * line data — see bridge/store.ts). circularImport/OuroborosError is
+ * deliberately excluded, same scope cut as `checkMonsterFixed` above: it's a
+ * multi-file cycle check that needs the whole world's import graph, not a
+ * single buffer.
+ */
+export function annotateFileLive(
+	file: PortalFile,
+	content: string,
+	worldFiles: ReadonlySet<string>,
+): ErrorAnnotation[] {
+	const seen = new Set<Annotator>();
+	const results: ErrorAnnotation[] = [];
+	for (const annotator of Object.values(PER_FILE_ANNOTATOR_BY_CODE)) {
+		if (!annotator || seen.has(annotator)) continue; // a couple of codes above share the same annotator function
+		seen.add(annotator);
+		results.push(...annotator({ file, content, worldFiles }));
+	}
+	return results;
 }
