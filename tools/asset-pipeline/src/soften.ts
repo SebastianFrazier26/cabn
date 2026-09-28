@@ -208,6 +208,26 @@ function featherEdges(
 	}
 }
 
+const MONSTER_FX_SLUGS = [
+	"ghost",
+	"rot_sprite",
+	"warded_mimic",
+	"gremlin",
+	"ouroboros",
+	"will_o_wisp",
+	"imp",
+	"magpie",
+	"skeleton",
+	"bramble",
+	"shade",
+];
+const MONSTER_FX_NAMES = MONSTER_FX_SLUGS.flatMap((slug) => [
+	`${slug}_hit`,
+	`${slug}_defeat0`,
+	`${slug}_defeat1`,
+	`${slug}_defeat2`,
+]);
+
 // ---- script entrypoint: batch-soften the calibration cabin + placeholders ----
 
 interface SoftenJob {
@@ -261,6 +281,13 @@ async function main() {
 		},
 	};
 
+	// Battle frames (monster-fx.ts) inherit their species' bloom tuning.
+	for (const name of MONSTER_FX_NAMES) {
+		const species = name.replace(/_(hit|defeat\d)$/, "");
+		const base = perNameOptions[species] ?? perNameOptions[`${species}_idle0`];
+		if (base) perNameOptions[name] = base;
+	}
+
 	for (const name of [
 		"portal_arch",
 		"ghost",
@@ -287,6 +314,7 @@ async function main() {
 		"bramble_idle1",
 		"shade_idle0",
 		"shade_idle1",
+		...MONSTER_FX_NAMES,
 	]) {
 		if (manifest[name]?.locked) continue;
 		jobs.push({
