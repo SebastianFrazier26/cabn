@@ -5,6 +5,7 @@ import {
 	createCabnGame,
 } from "../game.js";
 import { configureMedia } from "../render/mediaSources.js";
+import type { OwnerCapability } from "../systems/ownerApi.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
@@ -13,6 +14,7 @@ import { FileStatusLine } from "./FileStatusLine.js";
 import { GuideDialog } from "./GuideDialog.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { Pensieve } from "./Pensieve.js";
 import { PortalLivePage } from "./PortalLivePage.js";
 import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
@@ -21,6 +23,8 @@ import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
+import { UniverseBadge } from "./UniverseBadge.js";
+import { UniversePicker } from "./UniversePicker.js";
 import { VictoryToast } from "./VictoryToast.js";
 import { WorldMap } from "./WorldMap.js";
 
@@ -42,6 +46,13 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	 * notice. A Vite host can pass `import url from "pdfjs-dist/build/pdf.worker.min.mjs?url"`.
 	 */
 	pdfWorkerUrl?: string;
+	/**
+	 * Owner capability — only `cabn serve --owner`'s host page passes one
+	 * (see `@cabn/engine/owner`). With it the rift's picker gains an Owner
+	 * tab that commits edits and creates/switches branches in the real
+	 * repository. A hosted build never passes it.
+	 */
+	owner?: OwnerCapability;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -54,7 +65,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady, pdfWorkerUrl } = props;
+	const { onGameReady, pdfWorkerUrl, owner } = props;
 
 	useEffect(() => {
 		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
@@ -101,6 +112,9 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />
 					<GuideDialog store={handle.store} />
+					<UniverseBadge store={handle.store} />
+					<UniversePicker store={handle.store} bus={handle.bus} owner={owner} />
+					<Pensieve store={handle.store} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

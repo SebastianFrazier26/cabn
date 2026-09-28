@@ -41,6 +41,7 @@ export function PortalPreviewDock({
 	const live = useCabnStore(store, (s) =>
 		shouldDockLivePage(s as DockCandidateState),
 	);
+	const hasHistory = useCabnStore(store, (s) => s.git !== null);
 
 	if (!focused || mode !== "world" || spyglassOpen || worldBase === null)
 		return null;
@@ -95,6 +96,20 @@ export function PortalPreviewDock({
 					/>
 				)}
 			</div>
+			{hasHistory && (
+				<button
+					type="button"
+					className="cabn-btn neutral"
+					data-testid="dock-pensieve"
+					style={{ alignSelf: "flex-end", marginTop: 6 }}
+					onClick={(e) => {
+						e.currentTarget.blur();
+						store.getState().setPensievePortalId(focused.portalId);
+					}}
+				>
+					Pensieve: file history (H)
+				</button>
+			)}
 			<DockSparks />
 		</div>
 	);

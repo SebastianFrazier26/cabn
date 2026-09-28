@@ -58,6 +58,18 @@ export type CabnEvents = {
 	"run:step": Record<string, never>;
 	"run:stop": Record<string, never>;
 	"run:set-speed": { speed: 1 | 2 | 4 };
+	/**
+	 * UniversePicker -> the world's rift (render/rift.ts): reload as another
+	 * universe's prebuilt world (or the main world, universe null). The rift
+	 * owns the scene restart; SceneTransitionOverlay fades over it.
+	 * `restoreOverrides` (portal id -> text) is an in-browser stash being
+	 * restored into the target world's save before it boots.
+	 */
+	"universe:travel": {
+		worldUrl: string;
+		universe: { slug: string; branch: string } | null;
+		restoreOverrides?: Record<string, string>;
+	};
 };
 
 export type CabnBus = Emitter<CabnEvents>;

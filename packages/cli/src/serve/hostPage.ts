@@ -5,6 +5,8 @@ import * as esbuild from "esbuild";
 export interface HostPageOptions {
 	token: string;
 	allowExec: boolean;
+	/** `cabn serve --owner`: wires the owner git client into CabnGame. Absent from every other page. */
+	owner?: boolean;
 }
 
 /**
@@ -25,13 +27,20 @@ function entrySource(opts: HostPageOptions): string {
 				"installLocalRunProvider({ baseUrl: window.location.origin, token: window.__CABN_TOKEN__ });",
 			].join("\n")
 		: "";
+	const ownerWiring = opts.owner
+		? [
+				'import { createOwnerGitClient } from "@cabn/engine/owner";',
+				"const owner = { git: createOwnerGitClient({ baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ }) };",
+			].join("\n")
+		: "const owner = undefined;";
 	return `
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
+${ownerWiring}
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs" }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner }));
 `;
 }
 
@@ -69,7 +78,10 @@ export async function bundleHostApp(opts: HostPageOptions): Promise<string> {
 	return output.text;
 }
 
-export function hostPageHtml(token: string): string {
+export function hostPageHtml(token: string, ownerToken?: string): string {
+	const ownerScript = ownerToken
+		? `\n<script>window.__CABN_OWNER_TOKEN__ = ${JSON.stringify(ownerToken)};</script>`
+		: "";
 	return `<!doctype html>
 <html>
 <head>
@@ -79,7 +91,7 @@ export function hostPageHtml(token: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>
+<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>${ownerScript}
 <script type="module" src="/app.js?token=${encodeURIComponent(token)}"></script>
 </body>
 </html>`;

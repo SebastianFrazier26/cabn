@@ -14,6 +14,8 @@ async function build(rest: string[]): Promise<number> {
 				"include-secrets": { type: "boolean" },
 				findings: { type: "string", multiple: true },
 				offline: { type: "boolean" },
+				"no-history": { type: "boolean" },
+				"git-dir": { type: "string" },
 			},
 			allowPositionals: true,
 		});
@@ -28,6 +30,8 @@ async function build(rest: string[]): Promise<number> {
 			includeSecrets: values["include-secrets"],
 			findingsPaths: values.findings,
 			offline: values.offline,
+			history: !values["no-history"],
+			gitDir: values["git-dir"],
 		});
 		console.log(`Built world at ${summary.outDir}`);
 		console.log(
@@ -44,9 +48,16 @@ async function build(rest: string[]): Promise<number> {
 				`Note: ${b.portalId} -> ${b.url} refuses to be framed${b.detail ? ` (${b.detail})` : ""}; the world shows its title card and an "Open in browser" button instead.`,
 			);
 		}
+		if (summary.history) {
+			const h = summary.history;
+			console.log(
+				`History: ${h.commits} commits across ${h.branches} branch(es), ${h.tags} tag(s); universes: ${h.universes.length ? h.universes.join(", ") : "none"}; releases: ${h.releases}${h.releaseCount ? ` (${h.releaseCount})` : ""}`,
+			);
+		}
+		for (const warning of summary.warnings) console.warn(`Note: ${warning}`);
 		if (values.offline) {
 			console.log(
-				"Embed check skipped (--offline): url previews are assumed framable.",
+				"Embed check and GitHub releases skipped (--offline): url previews are assumed framable.",
 			);
 		}
 		if (summary.truncated) {
@@ -109,6 +120,9 @@ async function serve(rest: string[]): Promise<number> {
 				"allow-exec": { type: "boolean" },
 				timeout: { type: "string" },
 				offline: { type: "boolean" },
+				owner: { type: "boolean" },
+				"no-history": { type: "boolean" },
+				"git-dir": { type: "string" },
 			},
 			allowPositionals: true,
 		});
@@ -123,6 +137,9 @@ async function serve(rest: string[]): Promise<number> {
 			allowExec: values["allow-exec"] ?? false,
 			timeoutMs: values.timeout ? Number(values.timeout) : undefined,
 			offline: values.offline ?? false,
+			owner: values.owner ?? false,
+			history: !values["no-history"],
+			gitDir: values["git-dir"],
 		});
 		// Never resolves on its own — `cabn serve` is a long-running command,
 		// stopped by the user (Ctrl-C) rather than exiting once "done".

@@ -70,11 +70,14 @@ export function SceneTransitionOverlay({
 		const onReturnToShelf = () => play("cabin");
 		bus.on("shelf:enter-world", onEnterWorld);
 		bus.on("world:return-to-shelf", onReturnToShelf);
+		const onTravel = () => play("cabin");
+		bus.on("universe:travel", onTravel);
 
 		return () => {
 			unsubscribe();
 			bus.off("shelf:enter-world", onEnterWorld);
 			bus.off("world:return-to-shelf", onReturnToShelf);
+			bus.off("universe:travel", onTravel);
 		};
 	}, [store, bus]);
 

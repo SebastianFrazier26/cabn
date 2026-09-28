@@ -1,6 +1,7 @@
 import type {
 	Cluster,
 	EmbedVerdict,
+	HistoryIndexFile,
 	MediaPreview,
 	Monster,
 	Portal,
@@ -69,6 +70,7 @@ import {
 	propLightWorldPos,
 	propSmokeWorldPos,
 } from "../render/propPlacement.js";
+import { Rift } from "../render/rift.js";
 import {
 	BONFIRE_RAW_SIZE_PX,
 	BONFIRE_SCALE,
@@ -158,6 +160,14 @@ export interface WorldSceneData {
 	shelfIndex?: number;
 	/** The bundle's embeds.json verdicts (BootScene); empty for a bundle without one. */
 	embeds?: ReadonlyMap<string, EmbedVerdict>;
+	/** history.json (BootScene) — absent for a world without git history. */
+	git?: WorldGitData;
+}
+
+export interface WorldGitData {
+	history: HistoryIndexFile;
+	historyBase: string;
+	universe: { slug: string; branch: string } | null;
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -280,6 +290,8 @@ export class WorldScene extends Phaser.Scene {
 	private returnTo: { shelfUrl: string } | undefined;
 	private shelfIndex: number | undefined;
 	private guideNpc: GuideNpc | null = null;
+	private rift: Rift | null = null;
+	private git: WorldGitData | undefined;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -354,6 +366,7 @@ export class WorldScene extends Phaser.Scene {
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		this.shelfIndex = data.shelfIndex;
+		this.git = data.git;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
 		// by the last visit's return-to-shelf would otherwise still be true.
 		this.returningToShelf = false;
@@ -417,6 +430,28 @@ export class WorldScene extends Phaser.Scene {
 				this.save = withGuideTalked(this.save);
 				persistSave(this.save);
 			},
+		});
+		this.publishGitContext();
+		this.rift = Rift.spawn(this, {
+			manifest: this.manifest,
+			store: this.store,
+			bus: this.bus,
+			spawn: this.defaultSpawnPos(),
+			portalPositions: this.portalWorldPos.values(),
+			bonfireWidth: this.bonfireDisplayWidth(),
+			guidePos: this.guideNpc?.pos ?? null,
+			reducedMotion: prefersReducedMotion(),
+			returnTo: this.returnTo,
+			shelfIndex: this.shelfIndex,
+			applyOverrides: (files) => {
+				const savedAt = new Date().toISOString();
+				for (const [portalId, content] of Object.entries(files)) {
+					if (this.portalsById.has(portalId))
+						this.save = withFileOverride(this.save, portalId, content, savedAt);
+				}
+				persistSave(this.save);
+			},
+			beforeTravel: () => this.persistPlayerPos(),
 		});
 		this.createPlayer(spawn);
 		this.setupInput();
@@ -572,6 +607,32 @@ export class WorldScene extends Phaser.Scene {
 	// The spyglass panel and the orb's world-search results both read this off
 	// the store rather than holding their own copy of the manifest — React
 	// only ever gets game state through {store, bus}, never a manifest prop.
+	private publishGitContext(): void {
+		const git = this.git;
+		if (!git) {
+			this.store.getState().setGit(null);
+			return;
+		}
+		const branch =
+			git.universe?.branch ??
+			git.history.branches.find((b) => b.current)?.name ??
+			git.history.head.branch ??
+			"HEAD";
+		const suffix = git.universe ? `#${git.universe.branch}` : "";
+		const source = this.manifest.meta.source;
+		this.store.getState().setGit({
+			history: git.history,
+			historyBase: git.historyBase,
+			branch,
+			universe: git.universe,
+			worldId: this.worldId,
+			rootSource:
+				suffix && source.endsWith(suffix)
+					? source.slice(0, -suffix.length)
+					: source,
+		});
+	}
+
 	private publishPortalIndex(): void {
 		this.store.getState().setActiveWorldBase(this.worldBase);
 		this.store.getState().setPortals(
@@ -1314,6 +1375,7 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		if (this.guideNpc) targets.push(this.guideNpc.interactable());
+		if (this.rift) targets.push(this.rift.interactable());
 		return targets;
 	}
 
@@ -1409,7 +1471,7 @@ export class WorldScene extends Phaser.Scene {
 		}
 		// The dialogue box swallows its keys before Phaser sees them; this also
 		// holds still a movement key that was already down when it opened.
-		if (this.guideNpc?.isTalking()) {
+		if (this.guideNpc?.isTalking() || this.rift?.isOpen()) {
 			this.walker.cancel();
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 		} else {
@@ -1470,6 +1532,11 @@ export class WorldScene extends Phaser.Scene {
 		if (target.kind === "npc") {
 			this.pendingArrival = null;
 			this.guideNpc?.talk();
+			return;
+		}
+		if (target.kind === "rift") {
+			this.pendingArrival = null;
+			this.rift?.open();
 			return;
 		}
 		if (target.kind !== "portal") {
@@ -1731,6 +1798,11 @@ export class WorldScene extends Phaser.Scene {
 		if (this.guideNpc?.inReach(playerPos)) {
 			this.walker.cancel();
 			this.guideNpc.talk();
+			return;
+		}
+		if (this.rift?.inReach(playerPos)) {
+			this.walker.cancel();
+			this.rift.open();
 			return;
 		}
 		const root = this.rootCluster();

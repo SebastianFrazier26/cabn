@@ -1,12 +1,15 @@
 import {
 	EMBED_INDEX_FILENAME,
 	type EmbedVerdict,
+	HISTORY_INDEX_FILENAME,
+	type HistoryIndexFile,
 	MEDIA_INDEX_FILENAME,
 	type MediaPreview,
 	MONSTER_INDEX_FILENAME,
 	type Monster,
 	mergeMonsterIndex,
 	parseEmbedIndex,
+	parseHistoryIndex,
 	parseMediaIndex,
 	parseMonsterIndex,
 	validateManifest,
@@ -20,6 +23,8 @@ export type BootSceneData =
 			returnTo?: { shelfUrl: string };
 			/** This world's position in shelf.json's `worlds` (ShelfScene sets it); absent when a host boots a world directly. */
 			shelfIndex?: number;
+			/** Set when the rift reloads into an alternate universe: history.json stays the main world's (`historyBase`). */
+			universe?: { slug: string; branch: string; historyBase: string };
 	  }
 	| { shelfUrl: string };
 
@@ -74,12 +79,14 @@ export class BootScene extends Phaser.Scene {
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
-		const { returnTo, shelfIndex } = this.target;
+		const { returnTo, shelfIndex, universe } = this.target;
+		const historyBase = universe?.historyBase ?? worldBase;
 		Promise.all([
 			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
 			loadMonsterIndex(`${worldBase}${MONSTER_INDEX_FILENAME}`),
 			loadEmbedIndex(`${worldBase}${EMBED_INDEX_FILENAME}`),
-		]).then(([media, extraMonsters, embeds]) => {
+			loadHistoryIndex(`${historyBase}${HISTORY_INDEX_FILENAME}`),
+		]).then(([media, extraMonsters, embeds, history]) => {
 			if (!this.scene.isActive()) return;
 			// Merged here, once, so every scene and HUD piece downstream sees one
 			// `manifest.monsters` and never needs to know monsters.json exists.
@@ -91,6 +98,17 @@ export class BootScene extends Phaser.Scene {
 				media,
 				...(shelfIndex !== undefined ? { shelfIndex } : {}),
 				embeds,
+				...(history
+					? {
+							git: {
+								history,
+								historyBase,
+								universe: universe
+									? { slug: universe.slug, branch: universe.branch }
+									: null,
+							},
+						}
+					: {}),
 			});
 		});
 	}
@@ -122,6 +140,17 @@ async function loadMonsterIndex(url: string): Promise<Monster[]> {
 		return parseMonsterIndex(await res.json());
 	} catch {
 		return [];
+	}
+}
+
+/** history.json: same optional/advisory contract — no history just means no rift, timeline or pensieve. */
+async function loadHistoryIndex(url: string): Promise<HistoryIndexFile | null> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return null;
+		return parseHistoryIndex(await res.json());
+	} catch {
+		return null;
 	}
 }
 

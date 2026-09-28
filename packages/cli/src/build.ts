@@ -1,3 +1,4 @@
+import * as nodeFs from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
@@ -7,14 +8,19 @@ import {
 	type EmbedFetch,
 	type ExternalFinding,
 	FindingsValidationError,
+	type GitHistoryInput,
+	type GithubFetch,
+	type GithubNetwork,
 	parseFindingsFile,
 	ZipSource,
 } from "@cabn/converter";
 import {
 	EMBED_INDEX_FILENAME,
 	type FindingsSummary,
+	HISTORY_INDEX_FILENAME,
 	MONSTER_INDEX_FILENAME,
 	parseEmbedIndex,
+	parseHistoryIndex,
 	parseMonsterIndex,
 } from "@cabn/world-schema";
 
@@ -33,6 +39,19 @@ export interface BuildSummary {
 	/** Url previews whose site refuses to be framed (build-time check); empty when offline. */
 	embedBlocked: { portalId: string; url: string; detail?: string }[];
 	embedCheck: "network" | "offline";
+	/** Present when the source was a git repository root and history was written. */
+	history?: HistorySummary;
+	/** Non-fatal notes from the converter (e.g. why history was skipped). */
+	warnings: string[];
+}
+
+export interface HistorySummary {
+	commits: number;
+	branches: number;
+	tags: number;
+	universes: string[];
+	releases: string;
+	releaseCount: number;
 }
 
 export interface BuildOptions {
@@ -41,8 +60,14 @@ export interface BuildOptions {
 	includeSecrets?: boolean;
 	/** ESLint JSON or SARIF results files to turn into monsters (`--findings`, repeatable). */
 	findingsPaths?: string[];
-	/** Skip the build-time framability check for url previews (no network requests at all). */
+	/** Skip the build-time framability check for url previews and the GitHub releases request (no network requests at all). */
 	offline?: boolean;
+	/** false: no history.json/universes even for a repository root (`--no-history`). */
+	history?: boolean;
+	/** Read history from this git directory instead of `<dir>/.git` (`--git-dir`). */
+	gitDir?: string;
+	/** Replaces the network fetch for GitHub releases — the demo's canned releases and tests use it; GITHUB_TOKEN is still only ever added by cliGithubNetwork. */
+	githubFetch?: GithubFetch;
 }
 
 // 50 MB: comfortably above a large monorepo's SARIF, well below anything that
@@ -97,6 +122,64 @@ export function cliEmbedNetwork(
 	return { fetch: globalThis.fetch as unknown as EmbedFetch };
 }
 
+/**
+ * The CLI's opt-in to the build-time GitHub releases request: Node's fetch,
+ * plus `Authorization: Bearer $GITHUB_TOKEN` when that env var is set. The
+ * token lives only in this closure's request headers — convert() never sees
+ * it, and nothing it returns is written into the bundle except the
+ * zod-filtered release fields.
+ */
+export function cliGithubNetwork(
+	offline: boolean | undefined,
+	override?: GithubFetch,
+): GithubNetwork | undefined {
+	if (offline) return undefined;
+	if (override) return { fetch: override };
+	const token = process.env.GITHUB_TOKEN?.trim();
+	const fetch: GithubFetch = async (url, init) => {
+		const headers: Record<string, string> = { ...init.headers };
+		if (token) headers.authorization = `Bearer ${token}`;
+		const res = await globalThis.fetch(url, {
+			headers,
+			signal: init.signal,
+			redirect: "error",
+		});
+		return res;
+	};
+	return { fetch, authenticated: Boolean(token) };
+}
+
+/** The `git` option for convert(): only for a directory source, never a zip. */
+export function cliGitInput(
+	dir: string,
+	opts: Pick<BuildOptions, "history" | "gitDir" | "offline" | "githubFetch">,
+): (GitHistoryInput & { github?: GithubNetwork }) | undefined {
+	if (opts.history === false) return undefined;
+	return {
+		fs: nodeFs,
+		dir,
+		...(opts.gitDir ? { gitdir: resolve(opts.gitDir) } : {}),
+		github: cliGithubNetwork(opts.offline, opts.githubFetch),
+	};
+}
+
+export function historySummary(
+	bundle: Map<string, Uint8Array | string>,
+): HistorySummary | undefined {
+	const raw = bundle.get(HISTORY_INDEX_FILENAME);
+	if (typeof raw !== "string") return undefined;
+	const history = parseHistoryIndex(JSON.parse(raw));
+	if (!history) return undefined;
+	return {
+		commits: history.commits.length,
+		branches: history.branches.length,
+		tags: history.tags.length,
+		universes: history.branches.flatMap((b) => (b.universe ? [b.name] : [])),
+		releases: history.releases.source,
+		releaseCount: history.releases.items.length,
+	};
+}
+
 /** Pulls blocked url previews out of a bundle's embeds.json for the CLI's summary line. */
 export function embedSummary(bundle: Map<string, Uint8Array | string>): {
 	mode: "network" | "offline";
@@ -135,6 +218,7 @@ export async function runBuild(
 	const findings = opts.findingsPaths?.length
 		? await loadFindings(opts.findingsPaths)
 		: undefined;
+	const warnings: string[] = [];
 	const bundle = await convert(source, {
 		name,
 		source: resolvedInput,
@@ -144,6 +228,8 @@ export async function runBuild(
 		// ran in, which for `cabn build <dir>` is that dir.
 		findingsRoot: isZip ? undefined : resolvedInput,
 		embedNetwork: cliEmbedNetwork(opts.offline),
+		git: isZip ? undefined : cliGitInput(resolvedInput, opts),
+		onWarning: (message) => warnings.push(message),
 	});
 
 	for (const [relPath, content] of bundle) {
@@ -172,6 +258,7 @@ export async function runBuild(
 	)?.findings;
 
 	const embeds = embedSummary(bundle);
+	const history = historySummary(bundle);
 	return {
 		outDir,
 		clusters: manifest.clusters.length,
@@ -184,5 +271,7 @@ export async function runBuild(
 		...(findingsSummary ? { findings: findingsSummary } : {}),
 		embedBlocked: embeds.blocked,
 		embedCheck: embeds.mode,
+		...(history ? { history } : {}),
+		warnings,
 	};
 }

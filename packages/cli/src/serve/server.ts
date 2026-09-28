@@ -9,8 +9,13 @@ import {
 import { createRequire } from "node:module";
 import { basename, extname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-import { convert, DirSource, type WorldBundle } from "@cabn/converter";
-import { cliEmbedNetwork } from "../build.js";
+import {
+	convert,
+	DirSource,
+	type GithubFetch,
+	type WorldBundle,
+} from "@cabn/converter";
+import { cliEmbedNetwork, cliGitInput } from "../build.js";
 import {
 	DEFAULT_OUTPUT_CAP_BYTES,
 	DEFAULT_TIMEOUT_MS,
@@ -18,6 +23,8 @@ import {
 	runScript,
 } from "./execRunner.js";
 import { bundleHostApp, hostPageHtml } from "./hostPage.js";
+import { createOwnerSession, type OwnerSession } from "./ownerAuth.js";
+import { handleOwnerGit, type OwnerGitContext } from "./ownerGit.js";
 import { runtimeForPath } from "./runtime.js";
 import {
 	constantTimeEqual,
@@ -35,14 +42,27 @@ export interface ServeOptions {
 	allowExec?: boolean;
 	timeoutMs?: number;
 	outputCapBytes?: number;
-	/** Skip the build-time framability check for url previews. */
+	/** Skip the build-time framability check for url previews and the GitHub releases request. */
 	offline?: boolean;
+	/**
+	 * Owner mode: the page may commit in-game edits and create/switch
+	 * branches in the real repository through the token-gated /owner/ API.
+	 * Off by default; loopback only, like --allow-exec.
+	 */
+	owner?: boolean;
+	/** false: serve without git history (`--no-history`). */
+	history?: boolean;
+	gitDir?: string;
+	/** Tests only: replaces the GitHub releases fetch. */
+	githubFetch?: GithubFetch;
 }
 
 export interface ServeHandle {
 	server: Server;
 	url: string;
 	token: string;
+	/** Only in owner mode. */
+	ownerToken?: string;
 	port: number;
 	close(): Promise<void>;
 }
@@ -116,6 +136,7 @@ interface ServeContext {
 	csp: string;
 	timeoutMs: number | undefined;
 	outputCapBytes: number | undefined;
+	owner: OwnerGitContext | undefined;
 }
 
 async function readJsonBody(
@@ -347,9 +368,32 @@ async function handleRequest(
 		await handleExec(req, res, ctx);
 		return;
 	}
+	// Same "absent, not forbidden" rule as /exec: without --owner these routes don't exist.
+	if (
+		ctx.owner &&
+		url.pathname.startsWith("/owner/git/") &&
+		(await handleOwnerGit(req, res, url.pathname, ctx.owner))
+	) {
+		return;
+	}
 
 	res.writeHead(404);
 	res.end("not found");
+}
+
+/** Top-level chunks only (universes/ has its own): the text each world portal was converted from. */
+export function worldTextFromBundle(bundle: WorldBundle): Map<string, string> {
+	const text = new Map<string, string>();
+	for (const [key, value] of bundle) {
+		if (!key.startsWith("chunks/") || typeof value !== "string") continue;
+		const chunk = JSON.parse(value) as {
+			files?: Record<string, { content?: unknown }>;
+		};
+		for (const [path, file] of Object.entries(chunk.files ?? {})) {
+			if (typeof file.content === "string") text.set(path, file.content);
+		}
+	}
+	return text;
 }
 
 function worldEmbedOrigins(bundle: WorldBundle): unknown[] {
@@ -381,16 +425,32 @@ export async function startServe(
 			`cabn serve --allow-exec refuses a non-loopback host ("${host}") — real code execution is only ever offered on 127.0.0.1.`,
 		);
 	}
+	if (opts.owner && host !== "127.0.0.1") {
+		throw new Error(
+			`cabn serve --owner refuses a non-loopback host ("${host}") — repository writes are only ever offered on 127.0.0.1.`,
+		);
+	}
 
 	const resolvedDir = resolvePath(dir);
 	const token = randomBytes(32).toString("hex");
-	const bundle = await convert(new DirSource(resolvedDir), {
-		name: basename(resolvedDir),
-		source: resolvedDir,
-		embedNetwork: cliEmbedNetwork(opts.offline),
+	const convertWorld = () =>
+		convert(new DirSource(resolvedDir), {
+			name: basename(resolvedDir),
+			source: resolvedDir,
+			embedNetwork: cliEmbedNetwork(opts.offline),
+			git: cliGitInput(resolvedDir, opts),
+			onWarning: (message) => console.warn(`cabn serve: ${message}`),
+		});
+	const bundle = await convertWorld();
+	const ownerSession: OwnerSession | undefined = opts.owner
+		? createOwnerSession()
+		: undefined;
+	const hostAppJs = await bundleHostApp({
+		token,
+		allowExec,
+		owner: ownerSession !== undefined,
 	});
-	const hostAppJs = await bundleHostApp({ token, allowExec });
-	const html = hostPageHtml(token);
+	const html = hostPageHtml(token, ownerSession?.token);
 
 	const ctx: ServeContext = {
 		dir: resolvedDir,
@@ -404,7 +464,24 @@ export async function startServe(
 		csp: frameSrcPolicy(worldEmbedOrigins(bundle)),
 		timeoutMs: opts.timeoutMs,
 		outputCapBytes: opts.outputCapBytes,
+		owner: undefined,
 	};
+	let worldText = worldTextFromBundle(bundle);
+	if (ownerSession) {
+		ctx.owner = {
+			dir: resolvedDir,
+			...(opts.gitDir ? { gitdir: resolvePath(opts.gitDir) } : {}),
+			port: () => ctx.port,
+			session: ownerSession,
+			worldText: () => worldText,
+			reconvert: async () => {
+				const next = await convertWorld();
+				ctx.bundle = next;
+				ctx.csp = frameSrcPolicy(worldEmbedOrigins(next));
+				worldText = worldTextFromBundle(next);
+			},
+		};
+	}
 
 	const server = createServer((req, res) => {
 		handleRequest(req, res, ctx).catch((err: unknown) => {
@@ -434,12 +511,18 @@ export async function startServe(
 			`\n\u001b[31m\u001b[1mREAL CODE EXECUTION ENABLED for ${resolvedDir} — only use with code you trust.\u001b[0m\n`,
 		);
 	}
+	if (ownerSession) {
+		console.log(
+			`\u001b[33mOwner mode: this page can commit edits and create/switch branches in ${resolvedDir} (never push or fetch).\u001b[0m`,
+		);
+	}
 	console.log(`cabn serve: ${url}`);
 
 	return {
 		server,
 		url,
 		token,
+		...(ownerSession ? { ownerToken: ownerSession.token } : {}),
 		port: ctx.port,
 		close: () =>
 			new Promise((resolveClose) => {

@@ -49,7 +49,11 @@ function tokenDeclarations(tokens: PixelThemeTokens): string {
 	--cabn-syntax-function: ${toCssColor(tokens.syntaxFunction)};
 	--cabn-syntax-type: ${toCssColor(tokens.syntaxType)};
 	--cabn-syntax-attribute: ${toCssColor(tokens.syntaxAttribute)};
-	--cabn-editor-gutter-text: ${toCssColor(tokens.editorGutterText)};`;
+	--cabn-editor-gutter-text: ${toCssColor(tokens.editorGutterText)};
+	--cabn-diff-add-bg: ${toCssColor(tokens.diffAddBg)};
+	--cabn-diff-add-text: ${toCssColor(tokens.diffAddText)};
+	--cabn-diff-del-bg: ${toCssColor(tokens.diffDelBg)};
+	--cabn-diff-del-text: ${toCssColor(tokens.diffDelText)};`;
 }
 
 // M10a v3 tokens (assets/generated/ui/STYLE.md) verbatim — Meadow=day,

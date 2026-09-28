@@ -43,6 +43,9 @@ function editorPairs(
 		["tag name", tokens.syntaxString, tokens.panelBody],
 		["attribute name", tokens.syntaxAttribute, tokens.panelBody],
 		["punctuation / bracket / operator", tokens.text, tokens.panelBody],
+		["pensieve added line", tokens.diffAddText, tokens.diffAddBg],
+		["pensieve removed line", tokens.diffDelText, tokens.diffDelBg],
+		["pensieve context line", tokens.text, tokens.panelBody],
 	];
 }
 

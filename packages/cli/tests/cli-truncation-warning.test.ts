@@ -20,6 +20,7 @@ vi.mock("../src/build.js", () => ({
 			},
 		],
 		embedCheck: "network",
+		warnings: [],
 	}),
 }));
 

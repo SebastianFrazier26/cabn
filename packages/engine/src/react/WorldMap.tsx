@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import {
+	branchCommits,
+	changedPaths,
+	commitSubject,
+	formatCommitDate,
+	shortOid,
+} from "../systems/gitHistory.js";
 import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
 import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -16,6 +23,21 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
 	const open = useCabnStore(store, (s) => s.mapOpen);
 	const closeRef = useRef<HTMLButtonElement>(null);
+	const git = useCabnStore(store, (s) => s.git);
+	const commits = useMemo(
+		() => (git ? branchCommits(git.history, git.branch) : []),
+		[git],
+	);
+	// Slider position counts from the oldest commit (left) to the newest (right); null = timeline off.
+	const [step, setStep] = useState<number | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the map opens/closes or the universe changes.
+	useEffect(() => setStep(null), [open, git]);
+	const selectedCommit =
+		step === null ? undefined : commits[commits.length - 1 - step];
+	const highlight = useMemo(
+		() => changedPaths(selectedCommit),
+		[selectedCommit],
+	);
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			const state = store.getState();
@@ -25,7 +47,12 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 			}
 			if (state.mapOpen && event.key !== "Tab") {
 				event.stopPropagation();
-				if (event.key !== "Enter" && event.key !== " ") event.preventDefault();
+				// The timeline slider moves with the arrow keys natively.
+				const onSlider =
+					(event.target as HTMLElement | null)?.getAttribute?.("type") ===
+						"range" && /^(Arrow|Home$|End$|Page)/.test(event.key);
+				if (event.key !== "Enter" && event.key !== " " && !onSlider)
+					event.preventDefault();
 				if (
 					!event.repeat &&
 					(event.key === "Escape" || event.key.toLowerCase() === "m")
@@ -121,10 +148,12 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 						onKeyDown={(e) => {
 							if (e.key === "Tab") {
 								const buttons = Array.from(
-									e.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
+									e.currentTarget.querySelectorAll<HTMLElement>(
+										"button, input",
+									),
 								);
 								const index = buttons.indexOf(
-									document.activeElement as HTMLButtonElement,
+									document.activeElement as HTMLElement,
 								);
 								e.preventDefault();
 								buttons[
@@ -152,7 +181,21 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 								Close (Esc)
 							</button>
 						</div>
-						<MapDrawing map={map} store={store} bus={bus} large />
+						<MapDrawing
+							map={map}
+							store={store}
+							bus={bus}
+							large
+							highlight={highlight}
+						/>
+						{commits.length > 0 && (
+							<MapTimeline
+								commits={commits}
+								step={step}
+								setStep={setStep}
+								worldPaths={map.portals}
+							/>
+						)}
 						<p style={{ padding: "0 12px", fontSize: 12 }}>
 							Gold: you · cyan squares: files · red: undefeated monsters ·
 							bright clearings: visited. Select a file to walk there.
@@ -182,12 +225,104 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 	);
 }
 
+function MapTimeline({
+	commits,
+	step,
+	setStep,
+	worldPaths,
+}: {
+	commits: ReturnType<typeof branchCommits>;
+	step: number | null;
+	setStep: (step: number | null) => void;
+	worldPaths: WorldMapSummary["portals"];
+}): React.ReactElement {
+	const last = commits.length - 1;
+	const commit = step === null ? undefined : commits[last - step];
+	const inWorld = new Set(worldPaths.map((p) => p.id));
+	return (
+		<div
+			data-testid="map-timeline"
+			style={{ padding: "0 12px 8px", fontSize: 12 }}
+		>
+			<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+				<span>Timeline</span>
+				<button
+					type="button"
+					className="cabn-btn neutral"
+					aria-label="Older commit"
+					onClick={() => setStep(step === null ? last : Math.max(0, step - 1))}
+				>
+					◀
+				</button>
+				<input
+					type="range"
+					aria-label="Commit timeline"
+					data-testid="map-timeline-slider"
+					min={0}
+					max={last}
+					value={step ?? last}
+					onChange={(e) => setStep(Number(e.target.value))}
+					style={{ flex: 1 }}
+				/>
+				<button
+					type="button"
+					className="cabn-btn neutral"
+					aria-label="Newer commit"
+					onClick={() =>
+						setStep(step === null ? last : Math.min(last, step + 1))
+					}
+				>
+					▶
+				</button>
+				<button
+					type="button"
+					className="cabn-btn cancel"
+					disabled={step === null}
+					onClick={() => setStep(null)}
+				>
+					Off
+				</button>
+			</div>
+			{commit ? (
+				<div data-testid="map-timeline-commit" style={{ marginTop: 4 }}>
+					<strong>{commitSubject(commit)}</strong> ·{" "}
+					{formatCommitDate(commit.time)} · {commit.author} ·{" "}
+					{shortOid(commit.oid)} — {commit.changes.length} file(s) changed, gold
+					on the map
+					{commit.changes.some((c) => !inWorld.has(c.path)) && (
+						<span>
+							{" "}
+							(not in this world:{" "}
+							{commit.changes
+								.filter((c) => !inWorld.has(c.path))
+								.map((c) => `${c.path} ${c.status}`)
+								.slice(0, 6)
+								.join(", ")}
+							)
+						</span>
+					)}
+				</div>
+			) : (
+				<div style={{ marginTop: 4, color: "var(--cabn-text-secondary)" }}>
+					Slide through the last {commits.length} commits to see which files
+					each one changed.
+				</div>
+			)}
+		</div>
+	);
+}
+
 function MapDrawing({
 	map,
 	store,
 	bus,
 	large,
-}: Props & { map: WorldMapSummary; large: boolean }): React.ReactElement {
+	highlight,
+}: Props & {
+	map: WorldMapSummary;
+	large: boolean;
+	highlight?: ReadonlySet<string>;
+}): React.ReactElement {
 	const player = useCabnStore(store, (s) => s.playerPos);
 	const visited = useCabnStore(store, (s) => s.visitedClusterIds);
 	const defeated = useCabnStore(store, (s) => s.defeatedMonsterIds);
@@ -256,8 +391,21 @@ function MapDrawing({
 			})}
 			{map.portals.map((p) => {
 				const point = project(p.pos);
+				const changed = highlight?.has(p.id) ?? false;
 				return (
 					<g key={p.id}>
+						{changed && (
+							<circle
+								data-testid="map-portal-changed"
+								data-portal-id={p.id}
+								cx={point.x}
+								cy={point.y}
+								r={11}
+								fill="none"
+								stroke="#ffd23f"
+								strokeWidth={3}
+							/>
+						)}
 						{/* biome-ignore lint/a11y/useSemanticElements: SVG markers cannot contain HTML buttons; matching HTML destinations are below. */}
 						<rect
 							role="button"

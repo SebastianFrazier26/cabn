@@ -958,6 +958,7 @@ export class FileScene extends Phaser.Scene {
 			!s.searchOpen &&
 			!s.spyglassOpen &&
 			!s.bagOpen &&
+			s.pensievePortalId === null &&
 			s.activeFileState !== null;
 		const focused = document.activeElement === input;
 		if (writing && !focused && activeFocusOwner() !== "text") {

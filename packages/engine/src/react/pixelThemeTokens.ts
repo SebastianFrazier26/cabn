@@ -35,6 +35,11 @@ export interface PixelThemeTokens {
 	syntaxAttribute: number;
 	/** Same reasoning as the syntax-* colors, but against `panelBodyAlt` (the editor gutter's own background) rather than `panelBody`. */
 	editorGutterText: number;
+	/** The pensieve's diff lines: text on its own tinted row, each pair >= 4.5:1 (editorThemeContrast.test.ts). Rows also carry +/- so colour is never the only signal. */
+	diffAddBg: number;
+	diffAddText: number;
+	diffDelBg: number;
+	diffDelText: number;
 }
 
 export const DAY_TOKENS: PixelThemeTokens = {
@@ -57,6 +62,10 @@ export const DAY_TOKENS: PixelThemeTokens = {
 	syntaxType: 0xd8106a,
 	syntaxAttribute: 0x8b6b00,
 	editorGutterText: 0x55507f,
+	diffAddBg: 0xdcf5df,
+	diffAddText: 0x1d5e27,
+	diffDelBg: 0xfbe0e3,
+	diffDelText: 0x8f1d2c,
 };
 
 // 2026-09-28: was previously a near-white lavender panel (0xeeeaff) with dark
@@ -93,4 +102,8 @@ export const NIGHT_TOKENS: PixelThemeTokens = {
 	syntaxType: 0xff9fd0,
 	syntaxAttribute: 0xffe28a,
 	editorGutterText: 0xa89fd8,
+	diffAddBg: 0x173a26,
+	diffAddText: 0x9ff0b4,
+	diffDelBg: 0x44182a,
+	diffDelText: 0xffb3c4,
 };

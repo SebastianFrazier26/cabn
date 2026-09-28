@@ -50,6 +50,7 @@ import {
 	WORLD_FOUNTAIN_PATH,
 } from "../assetPaths.js";
 import { preloadGuideNpcAssets } from "../render/guideNpc.js";
+import type { WorldGitData } from "./WorldScene.js";
 
 export type PreloadSceneData =
 	| {
@@ -59,6 +60,7 @@ export type PreloadSceneData =
 			media?: ReadonlyMap<string, MediaPreview>;
 			shelfIndex?: number;
 			embeds?: ReadonlyMap<string, EmbedVerdict>;
+			git?: WorldGitData;
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 

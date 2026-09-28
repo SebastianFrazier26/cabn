@@ -92,13 +92,21 @@ describe("history.json", () => {
 					{
 						path: "a.md",
 						hunks: [
-							{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ["+a"] },
+							{
+								oldStart: 0,
+								oldLines: 0,
+								newStart: 1,
+								newLines: 1,
+								lines: ["+a"],
+							},
 						],
 					},
 				],
 			}),
 		).not.toBeNull();
-		expect(parseHistoryCommitDiff({ historyVersion: 1, oid: "x", files: [] })).toBeNull();
+		expect(
+			parseHistoryCommitDiff({ historyVersion: 1, oid: "x", files: [] }),
+		).toBeNull();
 	});
 });
 
@@ -121,7 +129,8 @@ describe("cabn.json history", () => {
 			{ unknownKey: true },
 		]) {
 			expect(
-				CabnConfigSchema.safeParse({ cabnConfigVersion: 1, history: bad }).success,
+				CabnConfigSchema.safeParse({ cabnConfigVersion: 1, history: bad })
+					.success,
 			).toBe(false);
 		}
 	});

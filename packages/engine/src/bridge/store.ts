@@ -1,4 +1,9 @@
-import type { FileKind, Position, Species } from "@cabn/world-schema";
+import type {
+	FileKind,
+	HistoryIndexFile,
+	Position,
+	Species,
+} from "@cabn/world-schema";
 import { isolateHistory } from "@codemirror/commands";
 import {
 	EditorSelection,
@@ -145,6 +150,26 @@ export interface CabnState {
 	guideNpc: GuideNpcSummary | null;
 	/** True while the guide's dialogue box (react/GuideDialog.tsx) is open — WorldScene holds the player still meanwhile. */
 	guideOpen: boolean;
+	git: GitContext | null;
+	/** True while the rift's universe picker is open — WorldScene holds the player still meanwhile. */
+	universeOpen: boolean;
+	/** The portal whose file history (the pensieve) is open, if any. */
+	pensievePortalId: string | null;
+}
+
+/** The world's git history, as the rift, map timeline and pensieve read it (WorldScene sets it from the bundle's history.json; null for a world without one). */
+export interface GitContext {
+	history: HistoryIndexFile;
+	/** Base url of the bundle history.json came from — the main world's, also while visiting a universe. */
+	historyBase: string;
+	/** The branch this world shows: the checked-out branch for the main world, the universe's branch otherwise. */
+	branch: string;
+	/** Set while visiting an alternate universe; null in the main world. */
+	universe: { slug: string; branch: string } | null;
+	/** This world's save slot (systems/save.ts computeWorldId). */
+	worldId: string;
+	/** The main world's meta.source, shared by every universe of it (the in-browser stash key). */
+	rootSource: string;
 }
 
 export interface GuideNpcSummary {
@@ -207,6 +232,10 @@ export interface CabnActions {
 	setNearWebPortal(portal: NearWebPortal | null): void;
 	setGuideNpc(guide: GuideNpcSummary | null): void;
 	setGuideOpen(open: boolean): void;
+	setGit(git: GitContext | null): void;
+	/** Opens only in world mode, with history loaded and nothing else modal. */
+	setUniverseOpen(open: boolean): void;
+	setPensievePortalId(portalId: string | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -243,6 +272,9 @@ const initialState: CabnState = {
 	nearWebPortal: null,
 	guideNpc: null,
 	guideOpen: false,
+	git: null,
+	universeOpen: false,
+	pensievePortalId: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -276,6 +308,9 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				nearWebPortal: null,
 				guideNpc: null,
 				guideOpen: false,
+				git: null,
+				universeOpen: false,
+				pensievePortalId: null,
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -388,5 +423,18 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
 		setGuideNpc: (guideNpc) => set({ guideNpc }),
 		setGuideOpen: (guideOpen) => set({ guideOpen }),
+		setGit: (git) => set({ git, universeOpen: false, pensievePortalId: null }),
+		setUniverseOpen: (open) => {
+			const s = get();
+			set({
+				universeOpen:
+					open &&
+					s.git !== null &&
+					s.mode === "world" &&
+					!s.guideOpen &&
+					!s.mapOpen,
+			});
+		},
+		setPensievePortalId: (pensievePortalId) => set({ pensievePortalId }),
 	}));
 }

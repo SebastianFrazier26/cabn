@@ -24,6 +24,9 @@ const FORBIDDEN_MARKERS = [
 	"/exec",
 	"installLocalRunProvider",
 	"cabn serve",
+	// The owner API (repository writes) exists only behind `cabn serve --owner`, same rule.
+	"x-cabn-owner-token",
+	"createOwnerGitClient",
 ];
 
 async function listJsFiles(dir) {
