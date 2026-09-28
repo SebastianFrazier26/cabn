@@ -8,9 +8,9 @@ import {
 	SEYN_MAX_BYTES,
 	SEYN_MAX_OFFSET,
 	type SeynDocument,
+	serializeSeyn,
 	seynNearValue,
 	seynPlainText,
-	serializeSeyn,
 } from "../src/index.js";
 
 describe("parseSeyn: structure", () => {

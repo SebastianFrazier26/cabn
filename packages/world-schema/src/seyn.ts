@@ -74,8 +74,11 @@ export function normalizeSeynSource(source: string): string {
 			.replace(/\t/g, " ")
 			// C0 (minus LF), DEL, C1, and the bidi overrides/isolates that can make
 			// rendered text read differently from its source.
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-			.replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g, "")
+			.replace(
+				// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
+				/[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g,
+				"",
+			)
 	);
 }
 
