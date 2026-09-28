@@ -40,10 +40,9 @@ const SIGN_DEPTH = 2.4;
 const GHOST_DEPTH = 5.63;
 /** Above the night grade (5.5) and light pools (5.6), like the click marker. */
 const HIGHLIGHT_DEPTH = 5.62;
-/** Enter/click-arrival reads the sign within this distance of its board. */
-export const SIGN_INTERACT_RADIUS = 56;
-/** The small popup shows within this distance — wider than interact, so it's up before Enter is in reach. */
-const SIGN_FOCUS_RADIUS = 84;
+/** Within this distance of its board a sign shows its popup and Enter reads it — one radius, so the popup's "Enter to read" is always true. */
+export const SIGN_INTERACT_RADIUS = 84;
+const SIGN_FOCUS_RADIUS = SIGN_INTERACT_RADIUS;
 const SIGN_ARRIVE_RADIUS = 40;
 const HIGHLIGHT_MS = 2400;
 
@@ -65,6 +64,8 @@ export interface SignLayerOptions {
 	/** Summoned walk (no portal entry on arrival) — a link or search result leading somewhere. */
 	walkTo: (pos: Position) => void;
 	playerPos: () => Position;
+	/** Other things Enter goes to first when the player is within their radius (the guide NPC) — the popup stays down there. */
+	enterTakers?: readonly CircleKeepout[];
 }
 
 interface PlacedSign {
@@ -545,6 +546,24 @@ export class SignLayer {
 				if (d <= bestDist) {
 					bestDist = d;
 					focused = s.entry.path;
+				}
+			}
+			// Same tie-break as WorldScene.interact(): with an arch closer than
+			// the sign, Enter goes through the arch, so the popup (whose hint
+			// promises Enter reads the sign) stays down.
+			if (
+				focused &&
+				this.opts.enterTakers?.some(
+					(t) => Math.hypot(player.x - t.x, player.y - t.y) <= t.radius,
+				)
+			)
+				focused = null;
+			if (focused) {
+				for (const arch of this.geometry.arches) {
+					if (Math.hypot(player.x - arch.x, player.y - arch.y) < bestDist) {
+						focused = null;
+						break;
+					}
 				}
 			}
 		}

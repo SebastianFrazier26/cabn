@@ -42,7 +42,7 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
-import { GuideNpc } from "../render/guideNpc.js";
+import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { MonsterOrbits } from "../render/monsterOrbit.js";
 import {
@@ -502,10 +502,22 @@ export class WorldScene extends Phaser.Scene {
 					},
 				),
 			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
+			enterTakers: this.signEnterTakers(),
 		});
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.signs = null;
 		});
+	}
+
+	/** Where Enter keeps its old meaning even with a sign in reach: talking to the guide, and (from a shelf) going back at the bonfire — which covers the fresh spawn point. */
+	private signEnterTakers(): CircleKeepout[] {
+		const takers: CircleKeepout[] = [];
+		if (this.guideNpc)
+			takers.push({ ...this.guideNpc.pos, radius: GUIDE_INTERACT_RADIUS });
+		const root = this.rootCluster();
+		if (root && this.returnTo)
+			takers.push({ ...root.pos, radius: BONFIRE_INTERACT_RADIUS });
+		return takers;
 	}
 
 	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
@@ -1790,7 +1802,15 @@ export class WorldScene extends Phaser.Scene {
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		// A sign stands beside its arch, so both can be in reach: the closer wins.
 		const sign = this.signs?.inReach(playerPos);
-		if (sign && sign.dist < this.nearestPortalDistance(playerPos)) {
+		if (
+			sign &&
+			sign.dist < this.nearestPortalDistance(playerPos) &&
+			!this.signEnterTakers().some(
+				(t) =>
+					Phaser.Math.Distance.Between(playerPos.x, playerPos.y, t.x, t.y) <=
+					t.radius,
+			)
+		) {
 			this.walker.cancel();
 			this.signs?.open(sign.path);
 			return;
