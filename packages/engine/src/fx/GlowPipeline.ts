@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
+import { firstPipeline } from "./firstPipeline.js";
 import {
 	clampGlowParams,
 	DEFAULT_GLOW_PARAMS,
@@ -56,7 +57,8 @@ export function isGlowSupported(game: Phaser.Game): boolean {
 /** Registers the pipeline once per game instance — `addPipeline` throws if called twice with the same key. */
 function ensurePipelineRegistered(game: Phaser.Game): void {
 	const renderer = game.renderer as Phaser.Renderer.WebGL.WebGLRenderer;
-	if (!renderer.pipelines.has(GLOW_PIPELINE_KEY)) {
+	// `pipelines.has` only checks regular pipelines; post-pipeline classes live in their own map.
+	if (!renderer.pipelines.postPipelineClasses.has(GLOW_PIPELINE_KEY)) {
 		renderer.pipelines.addPostPipeline(GLOW_PIPELINE_KEY, GlowPipeline);
 	}
 }
@@ -74,14 +76,16 @@ export function applyGlow(
 ): void {
 	if (!isGlowSupported(game)) return;
 	ensurePipelineRegistered(game);
-	let pipeline = camera.getPostPipeline(GLOW_PIPELINE_KEY) as
-		| GlowPipeline
-		| undefined;
+	let pipeline = firstPipeline(
+		camera.getPostPipeline(GLOW_PIPELINE_KEY) as GlowPipeline | GlowPipeline[],
+	);
 	if (!pipeline) {
 		camera.setPostPipeline(GLOW_PIPELINE_KEY);
-		pipeline = camera.getPostPipeline(GLOW_PIPELINE_KEY) as
-			| GlowPipeline
-			| undefined;
+		pipeline = firstPipeline(
+			camera.getPostPipeline(GLOW_PIPELINE_KEY) as
+				| GlowPipeline
+				| GlowPipeline[],
+		);
 	}
 	pipeline?.configure(params);
 }
