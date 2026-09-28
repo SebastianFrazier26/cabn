@@ -142,10 +142,10 @@ export function OrbSearch({
 
 	return (
 		<div
+			className="cabn-orb-backdrop"
 			style={{
 				position: "absolute",
 				inset: 0,
-				background: "rgba(20, 16, 40, 0.6)",
 				display: "flex",
 				alignItems: "flex-start",
 				justifyContent: "center",

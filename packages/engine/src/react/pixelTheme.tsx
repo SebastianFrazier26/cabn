@@ -1,7 +1,13 @@
 import { useEffect } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
+import { toCssColor } from "../palette.js";
 import { DOT_GOTHIC16_LATIN_WOFF2_BASE64 } from "./fonts/dotGothic16.js";
+import {
+	DAY_TOKENS,
+	NIGHT_TOKENS,
+	type PixelThemeTokens,
+} from "./pixelThemeTokens.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 // Every class/custom-property name here is prefixed `cabn-`/`--cabn-` and
@@ -10,6 +16,41 @@ import { useCabnStore } from "./useCabnStore.js";
 // inside a host page, not a full page it owns, so it must never reach past
 // its own container into the host's global `:root`/`body` styles.
 const STYLE_ELEMENT_ID = "cabn-pixel-theme-style";
+
+/** The `--cabn-*` custom-property declarations shared by both theme blocks — generated from pixelThemeTokens.ts (the tested source of truth) rather than typed twice, so the CSS this actually ships and the contrast test can never drift apart. */
+function tokenDeclarations(tokens: PixelThemeTokens): string {
+	return `
+	--cabn-panel-body: ${toCssColor(tokens.panelBody)};
+	--cabn-panel-body-alt: ${toCssColor(tokens.panelBodyAlt)};
+	--cabn-border-outer: ${toCssColor(tokens.borderOuter)};
+	--cabn-border-highlight: ${toCssColor(tokens.borderHighlight)};
+	--cabn-text: ${toCssColor(tokens.text)};
+	--cabn-text-secondary: ${toCssColor(tokens.textSecondary)};
+	--cabn-accent-yellow: ${toCssColor(tokens.accentYellow)};
+	--cabn-accent-green: ${toCssColor(tokens.accentGreen)};
+	--cabn-accent-pink: ${toCssColor(tokens.accentPink)};
+	--cabn-accent-orange: ${toCssColor(tokens.accentOrange)};
+	--cabn-accent-cyan: ${toCssColor(tokens.accentCyan)};
+	--cabn-accent-violet: ${toCssColor(tokens.accentViolet)};
+	/*
+	 * Quill/editor syntax colors — hand-darkened variants of the accents
+	 * above (same technique packages/engine/src/palette.ts's goldDark/
+	 * amethystDark/etc. already use), computed against --cabn-panel-body so
+	 * every fg/bg pair clears WCAG AA (4.5:1) for text; see
+	 * packages/engine/tests/editorThemeContrast.test.ts, which asserts this
+	 * per token (reading pixelThemeTokens.ts live, not a copied hex) so a
+	 * future accent-color change can't silently regress it. The raw accents
+	 * above are all too light on this near-white panel body to use directly
+	 * as text — same reason the palette.ts *Dark variants exist.
+	 */
+	--cabn-syntax-keyword: ${toCssColor(tokens.syntaxKeyword)};
+	--cabn-syntax-string: ${toCssColor(tokens.syntaxString)};
+	--cabn-syntax-number: ${toCssColor(tokens.syntaxNumber)};
+	--cabn-syntax-function: ${toCssColor(tokens.syntaxFunction)};
+	--cabn-syntax-type: ${toCssColor(tokens.syntaxType)};
+	--cabn-syntax-attribute: ${toCssColor(tokens.syntaxAttribute)};
+	--cabn-editor-gutter-text: ${toCssColor(tokens.editorGutterText)};`;
+}
 
 // M10a v3 tokens (assets/generated/ui/STYLE.md) verbatim — Meadow=day,
 // Berry=night. Deliberately separate from packages/engine/src/palette.ts's
@@ -25,37 +66,27 @@ const PIXEL_THEME_CSS = `
 	font-display: swap;
 }
 
-.cabn-pixel-root {
-	--cabn-panel-body: #f2f8ff;
-	--cabn-panel-body-alt: #dff0ff;
-	--cabn-border-outer: #3b2f6b;
-	--cabn-border-highlight: #8fd6ef;
-	--cabn-text: #201a3d;
-	--cabn-text-secondary: #55507f;
-	--cabn-accent-yellow: #ffd23f;
-	--cabn-accent-green: #5ec26a;
-	--cabn-accent-pink: #ef5fa0;
-	--cabn-accent-orange: #ff9142;
-	--cabn-accent-cyan: #4fd0d8;
-	--cabn-accent-violet: #8a6fd6;
+.cabn-pixel-root {${tokenDeclarations(DAY_TOKENS)}
 	--cabn-font-display: "CabnDotGothic16", system-ui, sans-serif;
 	--cabn-font-mono: "JetBrains Mono", "Courier New", monospace;
+	/* Plain rgba literals, not color-mix() with the accent tokens above — this
+	   CSS ships as a JS template string with no build-time autoprefixing/
+	   fallback story, so it sticks to a function every evergreen browser this
+	   project targets already supports. Not sourced from pixelThemeTokens.ts
+	   (unlike the block above) — the contrast test only cares about text
+	   fg/bg pairs, and these are translucent overlay tints, never text color. */
+	--cabn-editor-selection-bg: rgba(79, 208, 216, 0.45);
+	--cabn-editor-active-line-bg: rgba(255, 210, 63, 0.18);
+	--cabn-editor-active-gutter-bg: rgba(255, 210, 63, 0.25);
+	--cabn-editor-gutter-border: rgba(59, 47, 107, 0.35);
 	font-family: var(--cabn-font-display);
 	color: var(--cabn-text);
 }
-.cabn-pixel-root[data-theme="night"] {
-	--cabn-panel-body: #eeeaff;
-	--cabn-panel-body-alt: #ded6ff;
-	--cabn-border-outer: #221a4d;
-	--cabn-border-highlight: #ffd23f;
-	--cabn-text: #1c1640;
-	--cabn-text-secondary: #635ca8;
-	--cabn-accent-yellow: #ffcf4d;
-	--cabn-accent-green: #46d19a;
-	--cabn-accent-pink: #ff4fa0;
-	--cabn-accent-orange: #ff7a45;
-	--cabn-accent-cyan: #46c9e0;
-	--cabn-accent-violet: #7a5fe0;
+.cabn-pixel-root[data-theme="night"] {${tokenDeclarations(NIGHT_TOKENS)}
+	--cabn-editor-selection-bg: rgba(70, 201, 224, 0.45);
+	--cabn-editor-active-line-bg: rgba(255, 207, 77, 0.18);
+	--cabn-editor-active-gutter-bg: rgba(255, 207, 77, 0.25);
+	--cabn-editor-gutter-border: rgba(34, 26, 77, 0.35);
 }
 
 /* ================= flat pixel panel (Pokemon B/W textbox-ish), STYLE.md "Frame" ================= */
@@ -156,12 +187,31 @@ const PIXEL_THEME_CSS = `
 }
 
 /* ================= crystal orb search — violet/cyan/pink mist ================= */
-.cabn-orb-mist {
-	position: absolute; inset: -30%;
-	background: conic-gradient(from 0deg, var(--cabn-accent-violet), var(--cabn-accent-cyan), var(--cabn-accent-pink), var(--cabn-accent-violet));
-	opacity: 0.5; filter: blur(22px);
+/*
+ * 2026-09-28 polish pass: the original backdrop was a flat rgba(...) scrim
+ * the full size of the viewport, with mist layers extending *beyond* it
+ * (inset: -30%/-10%) — at night (a darker world already) that read as
+ * washing out almost the whole screen instead of just framing the panel.
+ * Now a radial vignette (opaque near the panel, fading to fully transparent
+ * at the edges) plus mist circles sized/blurred to stay concentrated near
+ * the center, so the world is still readable at the corners while walking
+ * up to open the orb.
+ */
+.cabn-orb-backdrop {
+	background: radial-gradient(
+		ellipse at center,
+		rgba(20, 16, 40, 0.68) 0%,
+		rgba(20, 16, 40, 0.38) 42%,
+		rgba(20, 16, 40, 0.08) 72%,
+		rgba(20, 16, 40, 0) 100%
+	);
 }
-.cabn-orb-mist.two { inset: -10%; opacity: 0.3; filter: blur(14px); }
+.cabn-orb-mist {
+	position: absolute; inset: 14%; border-radius: 50%;
+	background: conic-gradient(from 0deg, var(--cabn-accent-violet), var(--cabn-accent-cyan), var(--cabn-accent-pink), var(--cabn-accent-violet));
+	opacity: 0.3; filter: blur(46px);
+}
+.cabn-orb-mist.two { inset: 26%; opacity: 0.2; filter: blur(30px); }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-orb-mist { animation: cabn-swirl 10s linear infinite; }
 	.cabn-orb-mist.two { animation: cabn-swirl 14s linear infinite reverse; }
@@ -181,6 +231,35 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-bag-slot.filled { box-shadow: 0 0 0 2px var(--cabn-accent-yellow); }
 .cabn-bag-slot .cabn-x { opacity: 0.55; cursor: pointer; }
+
+/*
+ * ================= editor (quill) — ink blot + drifting glyphs =================
+ * 2026-09-28 polish pass: neither of these actually rendered before this pass
+ * (EditorOverlay.tsx had no markup for them at all, despite the mockup
+ * always including them) — "barely visible" was really "entirely absent".
+ * Opacities here are deliberately a notch above the mockup's own (0.4/0.6
+ * peak) per explicit user feedback that the quill screen read as flat —
+ * still low enough not to fight code readability (STYLE.md's "subtle, by
+ * design" reasoning still holds), just no longer imperceptible.
+ */
+.cabn-editor-ink-blot {
+	position: absolute; top: -10px; right: 18px; width: 30px; height: 30px; border-radius: 50%;
+	background: radial-gradient(circle, var(--cabn-border-outer) 45%, transparent 72%);
+	opacity: 0.55; pointer-events: none; z-index: 2;
+}
+.cabn-editor-glyph {
+	position: absolute; pointer-events: none; z-index: 2;
+	font-family: var(--cabn-font-mono); color: var(--cabn-accent-violet);
+	font-size: 20px; opacity: 0;
+}
+@keyframes cabn-glyph-drift {
+	0% { opacity: 0; transform: translateY(0); }
+	15% { opacity: 0.7; }
+	100% { opacity: 0; transform: translateY(-32px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-editor-glyph { animation: cabn-glyph-drift 3.4s ease-in infinite; }
+}
 
 /* ================= ribbon banners (encounter + victory) ================= */
 .cabn-ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 260px; padding: 10px 36px; }

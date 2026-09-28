@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { PALETTE } from "../src/palette.js";
+import {
+	DAY_TOKENS,
+	NIGHT_TOKENS,
+	type PixelThemeTokens,
+} from "../src/react/pixelThemeTokens.js";
 
 /** WCAG 2.x relative-luminance contrast ratio for two opaque 0xRRGGBB sRGB colors. */
 function contrastRatio(a: number, b: number): number {
@@ -19,28 +23,45 @@ function contrastRatio(a: number, b: number): number {
 	return (lighter + 0.05) / (darker + 0.05);
 }
 
-// Every fg/bg text pairing the cottagecore quill editor theme renders (see
-// ../src/react/editorTheme.ts) — kept as PALETTE lookups, not copied hexes, so this
-// fails the moment either color drifts back below WCAG AA (4.5:1) for text.
-const EDITOR_TEXT_PAIRS: Array<[role: string, fg: number, bg: number]> = [
-	["body text", PALETTE.ink, PALETTE.parchment],
-	["gutter / line numbers", PALETTE.rust, PALETTE.parchmentDark],
-	["comment", PALETTE.trail, PALETTE.parchment],
-	["keyword", PALETTE.goldDark, PALETTE.parchment],
-	["string", PALETTE.biome.meadowDark, PALETTE.parchment],
-	["number / bool / null / atom", PALETTE.amethystDark, PALETTE.parchment],
-	["function / property name", PALETTE.rust, PALETTE.parchment],
-	["type name / class name", PALETTE.plum, PALETTE.parchment],
-	["tag name", PALETTE.biome.grove, PALETTE.parchment],
-	["attribute name", PALETTE.biome.gladeDark, PALETTE.parchment],
-	["punctuation / bracket / operator", PALETTE.ink, PALETTE.parchment],
-];
+// Every fg/bg text pairing the quill editor theme renders (see
+// ../src/react/editorTheme.ts) against the *actual* pixelTheme.tsx tokens
+// (pixelThemeTokens.ts), not copied hexes — fails the moment either color
+// drifts back below WCAG AA (4.5:1) for text, in either theme.
+function editorPairs(
+	tokens: PixelThemeTokens,
+): Array<[role: string, fg: number, bg: number]> {
+	return [
+		["body text", tokens.text, tokens.panelBody],
+		["gutter / line numbers", tokens.editorGutterText, tokens.panelBodyAlt],
+		["comment", tokens.textSecondary, tokens.panelBody],
+		["keyword", tokens.syntaxKeyword, tokens.panelBody],
+		["string", tokens.syntaxString, tokens.panelBody],
+		["number / bool / null / atom", tokens.syntaxNumber, tokens.panelBody],
+		["function / property name", tokens.syntaxFunction, tokens.panelBody],
+		["type name / class name", tokens.syntaxType, tokens.panelBody],
+		// Tag name reuses syntaxString (see editorTheme.ts's own comment on why).
+		["tag name", tokens.syntaxString, tokens.panelBody],
+		["attribute name", tokens.syntaxAttribute, tokens.panelBody],
+		["punctuation / bracket / operator", tokens.text, tokens.panelBody],
+	];
+}
 
-describe("cottagecore editor theme contrast", () => {
-	test.each(EDITOR_TEXT_PAIRS)(
-		"%s clears WCAG AA (4.5:1) for text",
-		(_role, fg, bg) => {
-			expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
-		},
-	);
+describe("pixel-theme editor contrast", () => {
+	describe("day", () => {
+		test.each(editorPairs(DAY_TOKENS))(
+			"%s clears WCAG AA (4.5:1) for text",
+			(_role, fg, bg) => {
+				expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+			},
+		);
+	});
+
+	describe("night", () => {
+		test.each(editorPairs(NIGHT_TOKENS))(
+			"%s clears WCAG AA (4.5:1) for text",
+			(_role, fg, bg) => {
+				expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+			},
+		);
+	});
 });

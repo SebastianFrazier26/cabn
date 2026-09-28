@@ -8,11 +8,12 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
+import { uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { insertTextAt } from "../systems/insertText.js";
 import { loadLanguageExtension } from "./editorLanguages.js";
-import { cottagecoreEditorExtensions } from "./editorTheme.js";
+import { pixelEditorExtensions } from "./editorTheme.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface EditorOverlayProps {
@@ -21,6 +22,28 @@ export interface EditorOverlayProps {
 }
 
 const BAG_SLOT_ALT_KEYS = ["1", "2", "3", "4", "5"];
+
+// Open-burst sparks + drifting ink glyphs — violet, per STYLE.md's editor
+// color pairing ("a small violet burst when the editor opens"). Positions
+// mirror the approved mockup (mockup.html's #editor-burst/.glyph elements).
+const OPEN_BURST_SPARKS: ReadonlyArray<{
+	tx: number;
+	ty: number;
+	delayMs: number;
+}> = [
+	{ tx: -50, ty: -20, delayMs: 0 },
+	{ tx: 50, ty: -20, delayMs: 70 },
+];
+const DRIFTING_GLYPHS: ReadonlyArray<{
+	symbol: string;
+	left: string;
+	top: number;
+	delayMs: number;
+}> = [
+	{ symbol: "{ }", left: "24px", top: 10, delayMs: 0 },
+	{ symbol: "λ", left: "55%", top: 20, delayMs: 1100 },
+	{ symbol: "%", left: "80%", top: 6, delayMs: 2200 },
+];
 
 /**
  * The quill: a CodeMirror 6 panel over the open file. Mounts/unmounts its
@@ -49,6 +72,10 @@ export function EditorOverlay({
 	dirtyRef.current = dirty;
 	const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 	const [battleHint, setBattleHint] = useState<string | null>(null);
+	// Remounting the burst element (key={playToken}) on every open is what
+	// retriggers its CSS animation — same "remount == retrigger" pattern
+	// RunOverlay's own unfurl animation already relies on.
+	const [playToken, setPlayToken] = useState(0);
 
 	const isOpen = mode === "editor";
 
@@ -62,6 +89,7 @@ export function EditorOverlay({
 
 		setDirty(false);
 		setConfirmingDiscard(false);
+		setPlayToken((token) => token + 1);
 
 		loadLanguageExtension(editorLanguage).then((languageExtension) => {
 			if (cancelled || !hostRef.current) return;
@@ -71,7 +99,7 @@ export function EditorOverlay({
 				extensions: [
 					keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
 					history(),
-					cottagecoreEditorExtensions,
+					pixelEditorExtensions,
 					...(languageExtension ? [languageExtension] : []),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) setDirty(true);
@@ -206,7 +234,12 @@ export function EditorOverlay({
 			className="cabn-panel"
 			style={{
 				position: "absolute",
-				inset: "24px 24px 24px 24px",
+				// Wider margins than the rest of the HUD's panels (2026-09-28 polish
+				// pass) — the previous 24px read as "a full-screen flat block" at
+				// typical viewport sizes; this leaves the world visibly framed
+				// around every edge, matching the mockup's "the quill's magic
+				// screen" intent rather than a plain document viewer.
+				inset: "44px 88px",
 				zIndex: 8,
 				display: "flex",
 				flexDirection: "column",
@@ -239,7 +272,68 @@ export function EditorOverlay({
 					Ctrl/Cmd-S save · Esc close · Alt+1-5 paste bag slot
 				</span>
 			</div>
-			<div ref={hostRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }} />
+			<div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+				<div className="cabn-editor-ink-blot" />
+				{DRIFTING_GLYPHS.map((g) => (
+					<span
+						key={g.symbol}
+						className="cabn-editor-glyph"
+						style={{
+							left: g.left,
+							top: g.top,
+							animationDelay: `${g.delayMs}ms`,
+						}}
+					>
+						{g.symbol}
+					</span>
+				))}
+				<div ref={hostRef} style={{ height: "100%", overflow: "auto" }} />
+				<div key={playToken} className="cabn-effect-burst play">
+					{OPEN_BURST_SPARKS.map((s, i) => (
+						// Fixed, static per-render burst layout, never reordered — index
+						// is a stable enough key, same reasoning as RunOverlay's log.
+						<img
+							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+							key={i}
+							className="cabn-spark"
+							src={uiSparklePath("violet")}
+							alt=""
+							style={
+								{
+									"--cabn-tx": `${s.tx}px`,
+									"--cabn-ty": `${s.ty}px`,
+									animationDelay: `${s.delayMs}ms`,
+								} as React.CSSProperties
+							}
+						/>
+					))}
+				</div>
+			</div>
+			<div
+				style={{
+					display: "flex",
+					justifyContent: "flex-end",
+					gap: 10,
+					padding: "10px 16px 14px",
+				}}
+			>
+				<button
+					type="button"
+					className="cabn-btn cancel"
+					onClick={requestClose}
+					style={{ padding: "7px 16px" }}
+				>
+					Close
+				</button>
+				<button
+					type="button"
+					className="cabn-btn confirm"
+					onClick={handleSave}
+					style={{ padding: "7px 16px" }}
+				>
+					Save
+				</button>
+			</div>
 			{battleHint && (
 				<div
 					className="cabn-panel"
