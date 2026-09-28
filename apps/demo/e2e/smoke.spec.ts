@@ -129,10 +129,13 @@ test("demo loads, renders a non-blank world, and walking into a cabin loads a wo
 	// it's now offset beside the tower's footprint), so this steers toward
 	// the cabin from wherever the store reports the *actual* spawn is,
 	// rather than assuming (0,0) and walking straight up — robust to that
-	// offset changing again without this test needing to know why.
+	// offset changing again without this test needing to know why. Stops
+	// well inside the real CABIN_ENTER_RADIUS (70px, ShelfScene.ts) rather
+	// than right at its edge, so a burst's overshoot never lands the player
+	// just outside it the instant before E is pressed.
 	const CABIN_POS = { x: 0, y: -480 };
-	const CABIN_ENTER_RADIUS = 70;
-	await walkToward(page, CABIN_POS, CABIN_ENTER_RADIUS);
+	const WALK_STOP_RADIUS = 50;
+	await walkToward(page, CABIN_POS, WALK_STOP_RADIUS);
 	// Not page.keyboard.press("e") — CDP's down+up pair for a `.press()` can
 	// land within a single browser input-processing tick, before the game
 	// loop's next update() ever polls the key, and Phaser's JustDown() then

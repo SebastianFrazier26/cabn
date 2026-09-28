@@ -8,9 +8,13 @@ import {
 	BONFIRE_FRAME_COUNT,
 	biomeTileSheetKey,
 	biomeTileSheetPath,
+	CASTLE_KEEP_KEY,
+	CASTLE_KEEP_PATH,
 	DECAL_FRAME_SIZE,
 	DECAL_SHEET_KEY,
 	DECAL_SHEET_PATH,
+	FX_SPARK_KEY,
+	FX_SPARK_PATH,
 	MONSTER_GHOST_KEY,
 	MONSTER_GHOST_PATH,
 	monsterFrameKey,
@@ -135,6 +139,8 @@ export class PreloadScene extends Phaser.Scene {
 		for (const name of PROP_NAMES) {
 			this.load.image(propKey(name), propPath(name));
 		}
+		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
+		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 	}
 
 	create(): void {
@@ -182,6 +188,8 @@ export class PreloadScene extends Phaser.Scene {
 			DECAL_SHEET_KEY,
 			...Array.from({ length: PATH_STAMP_COUNT }, (_, i) => pathStampKey(i)),
 			...PROP_NAMES.map(propKey),
+			CASTLE_KEEP_KEY,
+			FX_SPARK_KEY,
 		];
 		const worldArtAvailable = worldArtKeys.every(
 			(key) => !this.missingOptional.has(key),

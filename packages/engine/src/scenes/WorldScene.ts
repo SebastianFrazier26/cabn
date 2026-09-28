@@ -17,10 +17,12 @@ import {
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
+import { attachTimeOfDayGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
+import { bakeGroundField } from "../render/groundField.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
@@ -32,14 +34,20 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
-import { placeProps } from "../render/propPlacement.js";
 import {
+	type PlacedProp,
+	placeProps,
+	propSmokeWorldPos,
+} from "../render/propPlacement.js";
+import {
+	BONFIRE_RAW_SIZE_PX,
 	BONFIRE_SCALE,
 	CABINET_SCALE,
 	MONSTER_HOVER_SIZE,
 	PORTAL_SCALE,
 } from "../render/scale.js";
 import { touchChunk } from "../systems/chunkCache.js";
+import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
 	newlyApproached,
 	type PortalPoint,
@@ -105,11 +113,22 @@ function groundRadius(cluster: Cluster): number {
 // — kept so the tiled ground reads the same footprint the ellipse did.
 const GROUND_RADIUS_Y_RATIO = 0.65;
 const DECALS_PER_CLUSTER = 14;
-const PROPS_PER_CLUSTER = 3;
-const PORTAL_EXCLUSION_RADIUS = 44;
+const PROPS_PER_CLUSTER = 4;
+// 58 = PORTAL_ARCH_DISPLAY_SIZE (96) / 2 + a 10px margin — batch 1 excluded
+// only 44px around a portal, less than the arch's own half-width, so a prop
+// could still land partway inside the sprite (the "arches and props overlap"
+// bug flagged in review).
+const PORTAL_EXCLUSION_RADIUS = 58;
 const SPAWN_EXCLUSION_RADIUS = 56;
+// Batch 1 never excluded the cluster center itself — cabinet/bonfire always
+// sit exactly there, so a prop or decal could land directly on top of one.
+const CLUSTER_CENTER_EXCLUSION_RADIUS = 60;
 const PATH_CORRIDOR_EXCLUSION_RADIUS = 26;
 const PATH_CORRIDOR_SAMPLE_SPACING = 40;
+/** Fixed, not per-world — the field's own texture variety already comes from tile position, not from needing a different seed per world. */
+const FIELD_SEED = 20260928;
+/** Same reasoning as ShelfScene's TOWER_SPAWN_CLEARANCE — clear space between the player's physics body and the bonfire's edge. */
+const BONFIRE_SPAWN_CLEARANCE = 24;
 /** Subtle per-world identity tint over the tiled ground — a low-alpha overlay rather than Phaser's multiplicative sprite tint, which would recolor the tile art itself instead of just washing over it. */
 const GROUND_THEME_TINT_ALPHA = 0.12;
 
@@ -143,8 +162,12 @@ export class WorldScene extends Phaser.Scene {
 	private worldId = "";
 	private save: SaveData = emptySaveData("");
 	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
+	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
+	private placedProps: PlacedProp[] = [];
+	private ambientEffects: { destroy(): void } | null = null;
 	private unsubscribeBagSlots: (() => void) | null = null;
 	private unsubscribeGlow: (() => void) | null = null;
+	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
 	private movementKeys!: MovementKeys;
@@ -221,10 +244,46 @@ export class WorldScene extends Phaser.Scene {
 		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
-		this.unsubscribeGlow = attachGlowLifecycle(this, this.store);
+		this.unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
+		this.setupAmbientEffects();
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.unsubscribeGlow?.();
 			this.unsubscribeGlow = null;
+			this.unsubscribeAmbientTimeOfDay?.();
+			this.unsubscribeAmbientTimeOfDay = null;
+			this.ambientEffects?.destroy();
+			this.ambientEffects = null;
+		});
+	}
+
+	/** Fireflies/motes/embers/smoke (fx/effects.ts) plus the lamp-post/cottage-window flicker — re-created (not just re-tinted) whenever timeOfDay changes, since fireflies-vs-motes is a swap, not a param tweak. */
+	private setupAmbientEffects(): void {
+		const reducedMotion = prefersReducedMotion();
+		const root =
+			this.manifest.clusters.find((c) => c.path === ".") ??
+			this.manifest.clusters[0];
+		const chimneyPositions = this.placedProps
+			.map(propSmokeWorldPos)
+			.filter((pos): pos is { x: number; y: number } => pos !== null);
+		for (const prop of this.placedProps) {
+			if (prop.name === "lamp-post" || prop.name === "cottage") {
+				attachLanternFlicker(this, prop.sprite, reducedMotion);
+			}
+		}
+
+		const rebuild = (): void => {
+			this.ambientEffects?.destroy();
+			this.ambientEffects = attachWorldEffects(this, {
+				bounds: this.computeWorldBounds(),
+				timeOfDay: this.store.getState().timeOfDay,
+				bonfirePos: root?.pos,
+				chimneyPositions,
+				reducedMotion,
+			});
+		};
+		rebuild();
+		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
+			if (state.timeOfDay !== prev.timeOfDay) rebuild();
 		});
 	}
 
@@ -334,6 +393,11 @@ export class WorldScene extends Phaser.Scene {
 		spawn: Position,
 	): ScatterExclusion[] {
 		const exclusions = this.pathExclusionsForCluster(cluster);
+		exclusions.push({
+			x: cluster.pos.x,
+			y: cluster.pos.y,
+			radius: CLUSTER_CENTER_EXCLUSION_RADIUS,
+		});
 		for (const portalId of cluster.portalIds) {
 			const pos = this.portalWorldPos.get(portalId);
 			if (pos)
@@ -362,12 +426,15 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	/**
-	 * Tiled biome ground + scattered decals, baked per cluster (see
-	 * groundBaker.ts), with the old tinted-ellipse fill as a full fallback
-	 * when the batch-1 art didn't load — never a half-tiled scene. Props
-	 * (trees, fences, etc.) are placed here too since they share the same
-	 * per-cluster exclusion zones, even though they render as their own
-	 * sprites rather than being baked (see propPlacement.ts's doc comment).
+	 * One continuous grass field across the whole world (`groundField.ts`,
+	 * chunked), with clusters marked as clearings on top of it — a subtle
+	 * biome-tinted patch, a ring of flowers at its edge, and scattered decals
+	 * — rather than batch 1's isolated per-cluster ellipses floating over an
+	 * empty background. Falls back to the old tinted-ellipse-only fill (no
+	 * field at all) when the batch-1/2 art didn't load — never a half-tiled
+	 * scene. Props (trees, fences, etc.) are placed here too since they share
+	 * the same per-cluster exclusion zones, even though they render as their
+	 * own sprites rather than being baked (see propPlacement.ts's doc comment).
 	 */
 	private drawGround(spawn: Position): void {
 		if (!this.availability.worldArt) {
@@ -384,7 +451,16 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 
-		const tintOverlay = this.add.graphics().setDepth(0.5);
+		for (const field of bakeGroundField(
+			this,
+			this.computeWorldBounds(),
+			biomeTileSheetKey("meadow"),
+			FIELD_SEED,
+		)) {
+			field.setDepth(0);
+		}
+
+		const tintOverlay = this.add.graphics().setDepth(0.6);
 		for (const cluster of this.manifest.clusters) {
 			const radiusX = groundRadius(cluster);
 			const radiusY = radiusX * GROUND_RADIUS_Y_RATIO;
@@ -400,8 +476,9 @@ export class WorldScene extends Phaser.Scene {
 				radiusY,
 				exclusions,
 				decalCount: DECALS_PER_CLUSTER,
+				ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
 				seed: 20260928,
-			}).setDepth(0);
+			}).setDepth(0.5);
 
 			tintOverlay.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
 			tintOverlay.fillEllipse(
@@ -411,17 +488,19 @@ export class WorldScene extends Phaser.Scene {
 				radiusY * 2,
 			);
 
-			placeProps({
-				scene: this,
-				clusterId: cluster.id,
-				centerX: cluster.pos.x,
-				centerY: cluster.pos.y,
-				radiusX,
-				radiusY,
-				exclusions,
-				count: PROPS_PER_CLUSTER,
-				depth: 2,
-			});
+			this.placedProps.push(
+				...placeProps({
+					scene: this,
+					clusterId: cluster.id,
+					centerX: cluster.pos.x,
+					centerY: cluster.pos.y,
+					radiusX,
+					radiusY,
+					exclusions,
+					count: PROPS_PER_CLUSTER,
+					depth: 2,
+				}),
+			);
 		}
 	}
 
@@ -439,8 +518,6 @@ export class WorldScene extends Phaser.Scene {
 		}
 
 		const segments: PathSegment[] = [];
-		const xs: number[] = [];
-		const ys: number[] = [];
 		for (const path of this.manifest.paths) {
 			const from = this.clustersById.get(path.from);
 			const to = this.clustersById.get(path.to);
@@ -450,22 +527,13 @@ export class WorldScene extends Phaser.Scene {
 				from: from.pos,
 				to: to.pos,
 			});
-			xs.push(from.pos.x, to.pos.x);
-			ys.push(from.pos.y, to.pos.y);
 		}
 		if (segments.length === 0) return;
 
-		const margin = 200; // room for the widest stamp so a path never clips at the bake canvas edge
-		bakePaths(
-			this,
-			{
-				minX: Math.min(...xs) - margin,
-				minY: Math.min(...ys) - margin,
-				maxX: Math.max(...xs) + margin,
-				maxY: Math.max(...ys) + margin,
-			},
-			segments,
-		).setDepth(1);
+		// Same bounds as the ground field/camera (computeWorldBounds), not a
+		// tighter box hugging just the path endpoints — a mismatch there used
+		// to leave the path's own bake canvas clipping a stamp right at its edge.
+		bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
 	}
 
 	// Same seed for every cabinet in this world (this.theme, set once in
@@ -672,12 +740,33 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setDefeatedMonsterIds(this.save.defeatedMonsterIds);
 	}
 
-	/** Pure computation of where the player starts — split out of createPlayer() so drawGround()'s scatter exclusions can use the same spawn point before any sprite exists (see create()'s ordering comment). */
+	/**
+	 * Pure computation of where the player starts — split out of
+	 * createPlayer() so drawGround()'s scatter exclusions can use the same
+	 * spawn point before any sprite exists (see create()'s ordering comment).
+	 * A first-ever visit (no saved position) used to spawn exactly on the
+	 * root cluster's own position — the bonfire's position too, since
+	 * drawBonfire() draws it there — which is the M10b batch-2 review's
+	 * "player spawns on top of the bonfire". Offset east of it instead, by
+	 * its actual display size (computed from the same scale constants
+	 * drawBonfire() uses, not read off a live sprite — the bonfire hasn't
+	 * been drawn yet at this point in create()'s ordering).
+	 */
 	private resolveSpawnPos(): Position {
-		return (
-			this.save.playerPositions.world ??
-			this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 }
-		);
+		const saved = this.save.playerPositions.world;
+		if (saved) return saved;
+
+		const root =
+			this.manifest.clusters.find((c) => c.path === ".") ??
+			this.manifest.clusters[0];
+		if (!root) return { x: 0, y: 0 };
+		const bonfireWidth = this.availability.bonfire
+			? BONFIRE_RAW_SIZE_PX * BONFIRE_SCALE
+			: PORTAL_ARCH_FRAME_SIZE * BONFIRE_SCALE;
+		return {
+			x: root.pos.x + bonfireWidth / 2 + BONFIRE_SPAWN_CLEARANCE,
+			y: root.pos.y,
+		};
 	}
 
 	private createPlayer(spawn: Position): void {
@@ -743,13 +832,38 @@ export class WorldScene extends Phaser.Scene {
 		};
 	}
 
-	private setupCamera(): void {
+	/** One shared bounds calc for the camera, the ground field bake, and the path bake — the three used to each compute a slightly different box, which is exactly how a field baked for one area and a camera clamped to another used to leave a sliver of void at the edge. */
+	private computeWorldBounds(): {
+		minX: number;
+		minY: number;
+		maxX: number;
+		maxY: number;
+	} {
 		const xs = this.manifest.clusters.map((c) => c.pos.x);
 		const ys = this.manifest.clusters.map((c) => c.pos.y);
-		const minX = Math.min(0, ...xs) - WORLD_MARGIN;
-		const maxX = Math.max(0, ...xs) + WORLD_MARGIN;
-		const minY = Math.min(0, ...ys) - WORLD_MARGIN;
-		const maxY = Math.max(0, ...ys) + WORLD_MARGIN;
+		// A world with few clusters clustered near the origin (e.g. two
+		// clusters directly north/south of each other) can have bounds
+		// narrower than the actual browser viewport — the camera can't scroll
+		// past its own bounds, so on a wide window that used to show the
+		// M10b batch-2 continuous ground field ending in a hard black edge
+		// mid-screen rather than reaching it. Margin grows with the viewport
+		// (half its width/height + padding) so the field/camera bounds always
+		// comfortably exceed whatever's actually on screen.
+		const margin = Math.max(
+			WORLD_MARGIN,
+			this.scale.width / 2 + 150,
+			this.scale.height / 2 + 150,
+		);
+		return {
+			minX: Math.min(0, ...xs) - margin,
+			maxX: Math.max(0, ...xs) + margin,
+			minY: Math.min(0, ...ys) - margin,
+			maxY: Math.max(0, ...ys) + margin,
+		};
+	}
+
+	private setupCamera(): void {
+		const { minX, minY, maxX, maxY } = this.computeWorldBounds();
 
 		this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
 		this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);

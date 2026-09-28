@@ -4,7 +4,16 @@ import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { persistGlowEnabled } from "../systems/glowSettings.js";
+import type { TimeOfDayOverride } from "../systems/timeOfDay.js";
+import { persistTimeOfDayOverride } from "../systems/timeOfDaySettings.js";
 import { useCabnStore } from "./useCabnStore.js";
+
+const NEXT_TIME_OF_DAY_OVERRIDE: Record<TimeOfDayOverride, TimeOfDayOverride> =
+	{
+		auto: "day",
+		day: "night",
+		night: "auto",
+	};
 
 export interface SettingsCornerProps {
 	store: StoreApi<CabnStore>;
@@ -24,6 +33,7 @@ export function SettingsCorner({
 }: SettingsCornerProps): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
 	const glowEnabled = useCabnStore(store, (s) => s.glowEnabled);
+	const timeOfDayOverride = useCabnStore(store, (s) => s.timeOfDayOverride);
 	const [confirming, setConfirming] = useState(false);
 
 	if (mode === "editor") return null;
@@ -61,6 +71,32 @@ export function SettingsCorner({
 				}}
 			>
 				Glow: {glowEnabled ? "on" : "off"}
+			</button>
+			<button
+				type="button"
+				title="cycle day/night (auto follows your clock)"
+				onClick={() => {
+					const next = NEXT_TIME_OF_DAY_OVERRIDE[timeOfDayOverride];
+					store.getState().setTimeOfDayOverride(next);
+					persistTimeOfDayOverride(next);
+				}}
+				style={{
+					height: 32,
+					borderRadius: 16,
+					border: `2px solid ${toCssColor(PALETTE.ink)}`,
+					background: toCssColor(PALETTE.parchment),
+					color: toCssColor(PALETTE.ink),
+					cursor: "pointer",
+					fontFamily: '"Courier New", monospace',
+					fontSize: 11,
+					padding: "0 10px",
+				}}
+			>
+				{timeOfDayOverride === "auto"
+					? "Auto"
+					: timeOfDayOverride === "day"
+						? "Day"
+						: "Night"}
 			</button>
 			{confirming ? (
 				<div

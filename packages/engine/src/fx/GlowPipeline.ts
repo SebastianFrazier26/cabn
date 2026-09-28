@@ -4,8 +4,10 @@ import type { CabnStore } from "../bridge/store.js";
 import { firstPipeline } from "./firstPipeline.js";
 import {
 	clampGlowParams,
+	DAY_GLOW_PARAMS,
 	DEFAULT_GLOW_PARAMS,
 	type GlowParams,
+	NIGHT_GLOW_PARAMS,
 } from "./glowParams.js";
 import { GLOW_FRAG_SHADER } from "./glowShader.js";
 
@@ -39,6 +41,13 @@ export class GlowPipeline extends Phaser.Renderer.WebGL.Pipelines
 		this.set1f("bloomIntensity", this.params.bloomIntensity);
 		this.set1f("vignetteStrength", this.params.vignetteStrength);
 		this.set1f("vignetteRadius", this.params.vignetteRadius);
+		this.set3f(
+			"tint",
+			this.params.tint.r,
+			this.params.tint.g,
+			this.params.tint.b,
+		);
+		this.set1f("brightness", this.params.brightness);
 	}
 }
 
@@ -125,4 +134,42 @@ export function attachGlowLifecycle(
 		if (state.glowEnabled === prev.glowEnabled) return;
 		syncGlow(scene.game, camera, state.glowEnabled, params);
 	});
+}
+
+/**
+ * WorldScene/ShelfScene's call site: attachGlowLifecycle with whichever of
+ * DAY_GLOW_PARAMS/NIGHT_GLOW_PARAMS matches store.timeOfDay right now, *and*
+ * re-syncs live if timeOfDay changes mid-session (the settings override, or
+ * "auto" crossing the clock boundary — see game.ts's periodic
+ * refreshTimeOfDay) — attachGlowLifecycle itself only reacts to glowEnabled,
+ * so this adds a second small subscription rather than complicating that
+ * more general helper's signature for a day/night concern only these two
+ * scenes have.
+ */
+export function attachTimeOfDayGlow(
+	scene: Phaser.Scene,
+	store: StoreApi<CabnStore>,
+): () => void {
+	const paramsFor = (timeOfDay: CabnStore["timeOfDay"]): GlowParams =>
+		timeOfDay === "night" ? NIGHT_GLOW_PARAMS : DAY_GLOW_PARAMS;
+
+	const unsubscribeLifecycle = attachGlowLifecycle(
+		scene,
+		store,
+		paramsFor(store.getState().timeOfDay),
+	);
+	const unsubscribeTimeOfDay = store.subscribe((state, prev) => {
+		if (state.timeOfDay === prev.timeOfDay) return;
+		syncGlow(
+			scene.game,
+			scene.cameras.main,
+			state.glowEnabled,
+			paramsFor(state.timeOfDay),
+		);
+	});
+
+	return () => {
+		unsubscribeLifecycle();
+		unsubscribeTimeOfDay();
+	};
 }

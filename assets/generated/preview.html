@@ -243,27 +243,27 @@
 		</div>
 	</section>
 	<section class="icon-row">
-		<h3>Path stamps (soft dirt-brush sprites stamped along a segment at runtime — see render/pathStamps.ts — rather than corner/T/cross tiles, since paths run at arbitrary angles between clusters)</h3>
+		<h3>Path stamps — cobblestone (batch 2 replaced batch 1's round dirt-brush blobs, which review called "blob stacks that look like pancakes")</h3>
+		<p class="note">Rectangular stone-block strips with a warm sand edge-stone border, rotated at runtime to match the path's own direction (render/pathBaker.ts) rather than laid flat like batch 1's stamps.</p>
 		<div class="stage">
-			<figure><img class="pixel" src="placeholders/path_stamp_0.png" alt="path stamp small, crisp"><figcaption>small, crisp</figcaption></figure>
-			<figure><img class="soft" src="placeholders/path_stamp_0_soft.png" alt="path stamp small, softened"><figcaption>small, softened</figcaption></figure>
-			<figure><img class="pixel" src="placeholders/path_stamp_1.png" alt="path stamp medium, crisp"><figcaption>medium, crisp</figcaption></figure>
-			<figure><img class="soft" src="placeholders/path_stamp_1_soft.png" alt="path stamp medium, softened"><figcaption>medium, softened</figcaption></figure>
-			<figure><img class="pixel" src="placeholders/path_stamp_2.png" alt="path stamp large, crisp"><figcaption>large, crisp</figcaption></figure>
-			<figure><img class="soft" src="placeholders/path_stamp_2_soft.png" alt="path stamp large, softened"><figcaption>large, softened</figcaption></figure>
-			<figure><img class="pixel" src="placeholders/path_stamp_3.png" alt="path stamp elongated, crisp"><figcaption>elongated, crisp</figcaption></figure>
-			<figure><img class="soft" src="placeholders/path_stamp_3_soft.png" alt="path stamp elongated, softened"><figcaption>elongated, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_0.png" alt="cobblestone segment a, crisp"><figcaption>cobble-a, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_0_soft.png" alt="cobblestone segment a, softened"><figcaption>cobble-a, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_1.png" alt="cobblestone segment b, crisp"><figcaption>cobble-b, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_1_soft.png" alt="cobblestone segment b, softened"><figcaption>cobble-b, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_2.png" alt="cobblestone segment c, crisp"><figcaption>cobble-c, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_2_soft.png" alt="cobblestone segment c, softened"><figcaption>cobble-c, softened</figcaption></figure>
 		</div>
 	</section>
 	<section class="icon-row">
-		<h3>Props (10)</h3>
+		<h3>Props (13, plus the shelf's one-off castle keep)</h3>
+		<p class="note">Batch 2 cottagecore set — "stone-lantern" upgraded to "lamp-post" and "log-pile" replaced with "stone-wall" (both flagged weak in batch-1 review); cottage, flower-bed, bench, and the castle keep are new. Trees gained a third, higher canopy tier for a taller/more layered silhouette.</p>
 		<div class="stage">
 			
 			<figure><img class="soft" src="placeholders/prop_fence_soft.png" alt="fence prop"><figcaption>fence</figcaption></figure>
 
 			<figure><img class="soft" src="placeholders/prop_hedge_soft.png" alt="hedge prop"><figcaption>hedge</figcaption></figure>
 
-			<figure><img class="soft" src="placeholders/prop_stone_lantern_soft.png" alt="stone_lantern prop"><figcaption>stone-lantern</figcaption></figure>
+			<figure><img class="soft" src="placeholders/prop_lamp_post_soft.png" alt="lamp_post prop"><figcaption>lamp-post</figcaption></figure>
 
 			<figure><img class="soft" src="placeholders/prop_tree_small_soft.png" alt="tree_small prop"><figcaption>tree-small</figcaption></figure>
 
@@ -277,7 +277,15 @@
 
 			<figure><img class="soft" src="placeholders/prop_flower_pot_soft.png" alt="flower_pot prop"><figcaption>flower-pot</figcaption></figure>
 
-			<figure><img class="soft" src="placeholders/prop_log_pile_soft.png" alt="log_pile prop"><figcaption>log-pile</figcaption></figure>
+			<figure><img class="soft" src="placeholders/prop_stone_wall_soft.png" alt="stone_wall prop"><figcaption>stone-wall</figcaption></figure>
+
+			<figure><img class="soft" src="placeholders/prop_cottage_soft.png" alt="cottage prop"><figcaption>cottage</figcaption></figure>
+
+			<figure><img class="soft" src="placeholders/prop_flower_bed_soft.png" alt="flower_bed prop"><figcaption>flower-bed</figcaption></figure>
+
+			<figure><img class="soft" src="placeholders/prop_bench_soft.png" alt="bench prop"><figcaption>bench</figcaption></figure>
+
+			<figure><img class="soft" src="placeholders/prop_castle_keep_soft.png" alt="castle_keep prop"><figcaption>castle-keep</figcaption></figure>
 		</div>
 	</section>
 	<section class="icon-row">
@@ -287,12 +295,17 @@
 			<figure><img class="soft" src="world-art/mock-scene.png" alt="composed mock scene: tiled clearing with decals, path, and props" style="width: 320px; image-rendering: pixelated;"><figcaption>mock-scene.png</figcaption></figure>
 		</div>
 	</section>
+
+	<h2>Continuous ground field, day/night, and effects — batch 2 (M10b)</h2>
+	<p class="note">Batch 1's per-cluster ellipses left everything else as an empty background — review: "the shelf is an empty dark void", "cluster ground is blocky squares... floating in the void". <code>render/groundField.ts</code> now bakes one uninterrupted grass field across the whole camera bounds (chunked into fixed-size RenderTextures), with clusters/the shelf tower marked as clearings on top of it (a subtle biome patch, a flower ring, scattered props) rather than being the only ground that exists. Day/night (<code>systems/timeOfDay.ts</code>, store's timeOfDay/timeOfDayOverride fields) drives a warm-by-day/cool-blue-violet-by-night color grading in the glow post-fx pipeline (<code>fx/glowShader.ts</code>'s new tint/brightness uniforms) — night also lowers the bloom threshold so lantern/window/bonfire highlights (already bright, curated warm tones) bloom into a glow that day's higher threshold mostly suppresses, which is what stands in for a bespoke per-light glow-pool system. Ambient particles (<code>render/effects.ts</code>, one shared soft-dot sprite tinted/scaled per effect): fireflies at night, drifting motes by day, bonfire embers, chimney smoke from cottages, and a lantern/cottage-window alpha flicker — all skipped or made static under <code>prefers-reduced-motion</code>.</p>
 	<section class="icon-row">
 		<h3>In-engine (headless Playwright screenshots)</h3>
-		<p class="note">The actual demo, not a mockup — captured via <code>apps/demo/e2e</code>'s Playwright setup against a production build. See the CHANGELOG for how these were captured.</p>
+		<p class="note">The actual demo, not a mockup — captured via <code>apps/demo/e2e</code>'s Playwright setup against a production build, with <code>store.setTimeOfDayOverride()</code> forcing day/night deterministically. See the CHANGELOG for how these were captured.</p>
 		<div class="stage">
-			<figure><img class="soft" src="review/shelf.png" alt="shelf scene screenshot: wizard tower at correct scale, player spawned beside it" style="width: 420px;"><figcaption>shelf — tower scale + spawn fix</figcaption></figure>
-			<figure><img class="soft" src="review/world-inside.png" alt="inside a world: tiled biome ground, path stamps, scattered decals and props" style="width: 420px;"><figcaption>inside a world — tiled ground, paths, props</figcaption></figure>
+			<figure><img class="soft" src="review/shelf-day.png" alt="shelf scene by day: continuous grass field, tower, castle keep, cottage, cobblestone paths" style="width: 420px;"><figcaption>shelf — day</figcaption></figure>
+			<figure><img class="soft" src="review/shelf-night.png" alt="shelf scene by night: cool blue-violet color grading" style="width: 420px;"><figcaption>shelf — night</figcaption></figure>
+			<figure><img class="soft" src="review/world-day.png" alt="inside a world by day: continuous field, cottagecore props, cobblestone paths" style="width: 420px;"><figcaption>inside a world — day</figcaption></figure>
+			<figure><img class="soft" src="review/world-night.png" alt="inside a world by night: cool color grading, bonfire and window highlights still warm" style="width: 420px;"><figcaption>inside a world — night</figcaption></figure>
 		</div>
 	</section>
 

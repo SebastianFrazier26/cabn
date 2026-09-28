@@ -25,8 +25,13 @@ export interface BakeClusterGroundParams {
 	exclusions: readonly ScatterExclusion[];
 	decalCount: number;
 	decalMinSpacing?: number;
+	/** Evenly-spaced flower decals right at the clearing's edge — the "ring of flowers" the clearing-marking brief asks for, on top of (not instead of) the scattered interior decals. 0 skips the ring. */
+	ringFlowerCount?: number;
 	seed: number;
 }
+
+// decals.ts's buildDecals() order: 0 = flower-pink, 1 = flower-blue.
+const RING_FLOWER_VARIANTS = [0, 1];
 
 /**
  * Bakes one cluster's tiled biome ground plus its scattered decals into a
@@ -91,6 +96,20 @@ export function bakeClusterGround(
 		const rtX = decal.x - grid.originX - DECAL_FRAME_SIZE / 2;
 		const rtY = decal.y - grid.originY - DECAL_FRAME_SIZE / 2;
 		rt.drawFrame(DECAL_SHEET_KEY, decal.variant, rtX, rtY);
+	}
+
+	const ringCount = params.ringFlowerCount ?? 0;
+	for (let i = 0; i < ringCount; i++) {
+		const angle = (Math.PI * 2 * i) / ringCount;
+		const x = Math.cos(angle) * radiusX * 0.92;
+		const y = Math.sin(angle) * radiusY * 0.92;
+		const variant = RING_FLOWER_VARIANTS[i % RING_FLOWER_VARIANTS.length] ?? 0;
+		rt.drawFrame(
+			DECAL_SHEET_KEY,
+			variant,
+			x - grid.originX - DECAL_FRAME_SIZE / 2,
+			y - grid.originY - DECAL_FRAME_SIZE / 2,
+		);
 	}
 
 	return rt;

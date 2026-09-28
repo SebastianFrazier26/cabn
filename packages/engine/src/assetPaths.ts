@@ -108,7 +108,7 @@ export const DECAL_SHEET_PATH = `${ASSET_BASE}/placeholders/decals_soft.png`;
 export const DECAL_FRAME_SIZE = 24;
 export const DECAL_COUNT = 6;
 
-export const PATH_STAMP_COUNT = 4;
+export const PATH_STAMP_COUNT = 3;
 export function pathStampKey(index: number): string {
 	return `path-stamp-${index}`;
 }
@@ -116,17 +116,24 @@ export function pathStampPath(index: number): string {
 	return `${ASSET_BASE}/placeholders/path_stamp_${index}_soft.png`;
 }
 
+// M10b batch 2: "stone-lantern" -> "lamp-post" (upgraded design) and
+// "log-pile" -> "stone-wall" (replaced, weaker of the batch-1 set per
+// review) plus 3 new cottagecore props. Renamed rather than kept alongside
+// the old names since nothing outside this pool ever names a prop directly.
 export const PROP_NAMES = [
 	"fence",
 	"hedge",
-	"stone-lantern",
+	"lamp-post",
 	"tree-small",
 	"tree-large",
 	"bush",
 	"well",
 	"signpost",
 	"flower-pot",
-	"log-pile",
+	"stone-wall",
+	"cottage",
+	"flower-bed",
+	"bench",
 ] as const;
 export type PropName = (typeof PROP_NAMES)[number];
 
@@ -136,3 +143,16 @@ export function propKey(name: PropName): string {
 export function propPath(name: PropName): string {
 	return `${ASSET_BASE}/placeholders/prop_${name.replace(/-/g, "_")}_soft.png`;
 }
+
+// The shelf's one-off decorative keep near the tower — not part of the
+// PROP_NAMES scatter pool (see props.ts's castleKeep doc comment), so it
+// gets its own optional key/path pair, same shape as wizardTower/bonfire.
+export const CASTLE_KEEP_KEY = "castle-keep";
+export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_soft.png`;
+
+// The one shared sprite behind every ambient particle effect (fireflies,
+// motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
+// dot, not pixel art, so it isn't run through soften() the way everything
+// else in placeholders/ is.
+export const FX_SPARK_KEY = "fx-spark";
+export const FX_SPARK_PATH = `${ASSET_BASE}/placeholders/fx_spark.png`;

@@ -12,6 +12,10 @@ import {
 	loadGlowEnabled,
 	prefersReducedMotion,
 } from "./systems/glowSettings.js";
+import { loadTimeOfDayOverride } from "./systems/timeOfDaySettings.js";
+
+/** How often "auto" re-checks the clock — frequent enough that a session left open actually crosses the day/night boundary live, cheap enough (one Date + a couple of comparisons) that it's not worth gating behind anything fancier. */
+const TIME_OF_DAY_REFRESH_MS = 60_000;
 
 export interface CabnGameHandle {
 	game: Phaser.Game;
@@ -42,6 +46,11 @@ export function createCabnGame(
 		.setGlowEnabled(
 			loadGlowEnabled() ?? defaultGlowEnabled(prefersReducedMotion()),
 		);
+	store.getState().setTimeOfDayOverride(loadTimeOfDayOverride() ?? "auto");
+	const timeOfDayInterval = setInterval(
+		() => store.getState().refreshTimeOfDay(),
+		TIME_OF_DAY_REFRESH_MS,
+	);
 
 	const game = new Phaser.Game({
 		type: Phaser.AUTO,
@@ -67,6 +76,9 @@ export function createCabnGame(
 
 	game.registry.set("store", store);
 	game.registry.set("bus", bus);
+	game.events.once(Phaser.Core.Events.DESTROY, () =>
+		clearInterval(timeOfDayInterval),
+	);
 	game.scene.start("boot", target);
 
 	return { game, store, bus };

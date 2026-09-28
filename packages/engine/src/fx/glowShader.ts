@@ -19,11 +19,20 @@ uniform float threshold;
 uniform float bloomIntensity;
 uniform float vignetteStrength;
 uniform float vignetteRadius;
+// M10b batch 2 day/night color grading — see glowParams.ts's GlowParams.tint
+// doc comment. Applied to every texture2D sample (not just the center one)
+// so the blurred bright-pass taps are graded consistently with the base color.
+uniform vec3 tint;
+uniform float brightness;
 
 varying vec2 outTexCoord;
 
 float luma(vec3 color) {
 	return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+vec3 grade(vec3 color) {
+	return color * tint * brightness;
 }
 
 vec3 brightPass(vec3 color) {
@@ -34,7 +43,8 @@ vec3 brightPass(vec3 color) {
 
 void main() {
 	vec4 base = texture2D(uMainSampler, outTexCoord);
-	vec3 bloom = brightPass(base.rgb) * 0.3846;
+	vec3 gradedBase = grade(base.rgb);
+	vec3 bloom = brightPass(gradedBase) * 0.3846;
 
 	vec2 offsets[4];
 	offsets[0] = vec2(texel.x * 1.3846, 0.0);
@@ -48,12 +58,12 @@ void main() {
 	weights[3] = 0.0769;
 
 	for (int i = 0; i < 4; i++) {
-		vec3 plus = brightPass(texture2D(uMainSampler, outTexCoord + offsets[i]).rgb);
-		vec3 minus = brightPass(texture2D(uMainSampler, outTexCoord - offsets[i]).rgb);
+		vec3 plus = brightPass(grade(texture2D(uMainSampler, outTexCoord + offsets[i]).rgb));
+		vec3 minus = brightPass(grade(texture2D(uMainSampler, outTexCoord - offsets[i]).rgb));
 		bloom += (plus + minus) * weights[i];
 	}
 
-	vec3 color = base.rgb + bloom * bloomIntensity;
+	vec3 color = gradedBase + bloom * bloomIntensity;
 
 	// Soft-clip: subtract any over-1.0 overflow from every channel equally,
 	// rather than letting the GPU hard-clip each channel independently. A

@@ -1,13 +1,22 @@
 import type { ShelfManifest, ShelfWorldEntry } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
-import { ASSET_KEYS, OPTIONAL_ASSET_KEYS } from "../assetPaths.js";
+import {
+	ASSET_KEYS,
+	biomeTileSheetKey,
+	CASTLE_KEEP_KEY,
+	OPTIONAL_ASSET_KEYS,
+} from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
+import { attachTimeOfDayGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
+import { bakeClusterGround } from "../render/groundBaker.js";
+import { bakeGroundField } from "../render/groundField.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
+import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -16,12 +25,16 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
+import { type PlacedProp, placeProps } from "../render/propPlacement.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
 import { CABIN_SCALE, WIZARD_TOWER_SCALE } from "../render/scale.js";
+import { largestAngularGapMidpoint } from "../systems/angularGap.js";
+import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
+import type { ScatterExclusion } from "../systems/scatter.js";
 import { themeFromSeed } from "../systems/theme.js";
 import type { AssetAvailability } from "./PreloadScene.js";
 
@@ -37,6 +50,12 @@ const CABIN_ENTER_RADIUS = 70;
 const WORLD_MARGIN = 400;
 /** Clear space between the player's physics body and the tower's edge — see playerController.ts's body.setSize(24, 16). */
 const TOWER_SPAWN_CLEARANCE = 24;
+/** How far out the tower's own "clearing" (meadow patch + flower ring) extends. */
+const TOWER_CLEARING_RADIUS = 170;
+const TOWER_CLEARING_EXCLUSION_RADIUS = 90;
+const CABIN_PATH_EXCLUSION_RADIUS = 26;
+const CASTLE_KEEP_DISTANCE = 260;
+const SHELF_PROPS_NEAR_TOWER = ["lamp-post", "bench", "flower-bed"] as const;
 
 interface CabinPlacement {
 	world: ShelfWorldEntry;
@@ -59,6 +78,10 @@ export class ShelfScene extends Phaser.Scene {
 
 	private cabins: CabinPlacement[] = [];
 	private cabinsInRange = new Set<string>();
+	private placedProps: PlacedProp[] = [];
+	private castleKeepPos = { x: 0, y: 0 };
+	private ambientEffects: { destroy(): void } | null = null;
+	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
 	private playerTextures!: PlayerTextures;
@@ -78,13 +101,12 @@ export class ShelfScene extends Phaser.Scene {
 		this.bus = this.registry.get("bus");
 		this.cabins = [];
 		this.cabinsInRange = new Set();
+		this.placedProps = [];
 	}
 
 	create(): void {
 		this.layoutCabins();
 		const tower = this.drawTower();
-		this.drawPaths();
-		this.drawCabins();
 
 		// Spawn beside the tower, not on top of it (M10b batch-1 fix — the
 		// tower used to sit at this same (0,0) point the player spawned at).
@@ -94,6 +116,10 @@ export class ShelfScene extends Phaser.Scene {
 		// displayWidth rather than a hardcoded offset so the cabinet-fallback
 		// tower (much smaller — see drawTower) still gets a correctly-sized gap.
 		const spawn = { x: tower.displayWidth / 2 + TOWER_SPAWN_CLEARANCE, y: 0 };
+
+		this.drawGround(spawn);
+		this.drawPaths();
+		this.drawCabins();
 
 		this.playerTextures = {
 			front: ASSET_KEYS.characterIdle,
@@ -110,8 +136,37 @@ export class ShelfScene extends Phaser.Scene {
 		this.setupCamera();
 		this.store.getState().setPlayerPos(spawn);
 
-		const unsubscribeGlow = attachGlowLifecycle(this, this.store);
-		this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribeGlow);
+		const unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
+		this.setupAmbientEffects();
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			unsubscribeGlow();
+			this.unsubscribeAmbientTimeOfDay?.();
+			this.unsubscribeAmbientTimeOfDay = null;
+			this.ambientEffects?.destroy();
+			this.ambientEffects = null;
+		});
+	}
+
+	/** Same shape as WorldScene's — fireflies/motes plus the tower-area lamp post's flicker (no chimney smoke on the shelf: SHELF_PROPS_NEAR_TOWER never includes "cottage"). */
+	private setupAmbientEffects(): void {
+		const reducedMotion = prefersReducedMotion();
+		for (const prop of this.placedProps) {
+			if (prop.name === "lamp-post")
+				attachLanternFlicker(this, prop.sprite, reducedMotion);
+		}
+
+		const rebuild = (): void => {
+			this.ambientEffects?.destroy();
+			this.ambientEffects = attachWorldEffects(this, {
+				bounds: this.computeWorldBounds(),
+				timeOfDay: this.store.getState().timeOfDay,
+				reducedMotion,
+			});
+		};
+		rebuild();
+		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
+			if (state.timeOfDay !== prev.timeOfDay) rebuild();
+		});
 	}
 
 	private layoutCabins(): void {
@@ -157,6 +212,120 @@ export class ShelfScene extends Phaser.Scene {
 		return sprite;
 	}
 
+	/** Shared by the field bake, the path bake, and the camera — one box, not three slightly different ones (see WorldScene's identical method for why that used to matter). */
+	private computeWorldBounds(): {
+		minX: number;
+		minY: number;
+		maxX: number;
+		maxY: number;
+	} {
+		const xs = this.cabins.map((c) => c.pos.x);
+		const ys = this.cabins.map((c) => c.pos.y);
+		// See WorldScene's identical computeWorldBounds for why this grows
+		// with the viewport rather than staying a flat margin — the shelf's
+		// own two-cabin demo layout is exactly the narrow-bounds case that
+		// used to show the ground field ending in a hard black edge.
+		const margin = Math.max(
+			WORLD_MARGIN,
+			this.scale.width / 2 + 150,
+			this.scale.height / 2 + 150,
+		);
+		return {
+			minX: Math.min(0, ...xs) - margin,
+			maxX: Math.max(0, ...xs) + margin,
+			minY: Math.min(0, ...ys) - margin,
+			maxY: Math.max(0, ...ys) + margin,
+		};
+	}
+
+	/**
+	 * One continuous grass field across the shelf (M10b batch-2 fix — the
+	 * shelf previously had no ground at all, just the tower/cabins floating
+	 * over the void), a meadow "clearing" patch + flower ring around the
+	 * tower, a couple of cottagecore props tucked in beside it, and one
+	 * decorative castle keep placed in whichever direction has the most
+	 * angular room between cabin spokes (`largestAngularGapMidpoint`) so it
+	 * never sits on top of a cabin or its path, regardless of how many
+	 * worlds this shelf has.
+	 */
+	private drawGround(spawn: { x: number; y: number }): void {
+		if (!this.availability.worldArt) return;
+
+		const bounds = this.computeWorldBounds();
+		for (const field of bakeGroundField(
+			this,
+			bounds,
+			biomeTileSheetKey("meadow"),
+			20260928,
+		)) {
+			field.setDepth(0);
+		}
+
+		const cabinAngles = this.cabins.map((c) => Math.atan2(c.pos.y, c.pos.x));
+		const keepAngle = largestAngularGapMidpoint(cabinAngles);
+		this.castleKeepPos = {
+			x: Math.cos(keepAngle) * CASTLE_KEEP_DISTANCE,
+			y: Math.sin(keepAngle) * CASTLE_KEEP_DISTANCE,
+		};
+
+		const exclusions: ScatterExclusion[] = [
+			{ x: 0, y: 0, radius: TOWER_CLEARING_EXCLUSION_RADIUS },
+			{ x: spawn.x, y: spawn.y, radius: TOWER_SPAWN_CLEARANCE + 30 },
+			{ x: this.castleKeepPos.x, y: this.castleKeepPos.y, radius: 70 },
+		];
+		const clearingOuterRadius =
+			TOWER_CLEARING_RADIUS + CABIN_PATH_EXCLUSION_RADIUS;
+		for (const cabin of this.cabins) {
+			for (const point of stampPointsAlongSegment(
+				{ x: 0, y: 0 },
+				cabin.pos,
+				40,
+			)) {
+				if (
+					Phaser.Math.Distance.Between(point.x, point.y, 0, 0) <=
+					clearingOuterRadius
+				) {
+					exclusions.push({
+						x: point.x,
+						y: point.y,
+						radius: CABIN_PATH_EXCLUSION_RADIUS,
+					});
+				}
+			}
+		}
+
+		bakeClusterGround({
+			scene: this,
+			clusterId: "shelf-tower",
+			biomeSheetKey: biomeTileSheetKey("meadow"),
+			centerX: 0,
+			centerY: 0,
+			radiusX: TOWER_CLEARING_RADIUS,
+			radiusY: TOWER_CLEARING_RADIUS * 0.72,
+			exclusions,
+			decalCount: 10,
+			ringFlowerCount: 10,
+			seed: 20260928,
+		}).setDepth(0.5);
+
+		this.placedProps = placeProps({
+			scene: this,
+			clusterId: "shelf-tower",
+			centerX: 0,
+			centerY: 0,
+			radiusX: TOWER_CLEARING_RADIUS,
+			radiusY: TOWER_CLEARING_RADIUS * 0.72,
+			exclusions,
+			count: 3,
+			depth: 2,
+			allowedNames: SHELF_PROPS_NEAR_TOWER,
+		});
+
+		this.add
+			.image(this.castleKeepPos.x, this.castleKeepPos.y, CASTLE_KEEP_KEY)
+			.setDepth(2);
+	}
+
 	private drawPaths(): void {
 		if (!this.availability.worldArt) {
 			const g = this.add.graphics().setDepth(1);
@@ -166,24 +335,12 @@ export class ShelfScene extends Phaser.Scene {
 		}
 
 		if (this.cabins.length === 0) return;
-		const xs = this.cabins.map((c) => c.pos.x);
-		const ys = this.cabins.map((c) => c.pos.y);
-		const margin = 200;
 		const segments: PathSegment[] = this.cabins.map((cabin) => ({
 			id: `spoke::${cabin.world.id}`,
 			from: { x: 0, y: 0 },
 			to: cabin.pos,
 		}));
-		bakePaths(
-			this,
-			{
-				minX: Math.min(0, ...xs) - margin,
-				minY: Math.min(0, ...ys) - margin,
-				maxX: Math.max(0, ...xs) + margin,
-				maxY: Math.max(0, ...ys) + margin,
-			},
-			segments,
-		).setDepth(1);
+		bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
 	}
 
 	private drawCabins(): void {
@@ -212,12 +369,7 @@ export class ShelfScene extends Phaser.Scene {
 	}
 
 	private setupCamera(): void {
-		const xs = this.cabins.map((c) => c.pos.x);
-		const ys = this.cabins.map((c) => c.pos.y);
-		const minX = Math.min(0, ...xs) - WORLD_MARGIN;
-		const maxX = Math.max(0, ...xs) + WORLD_MARGIN;
-		const minY = Math.min(0, ...ys) - WORLD_MARGIN;
-		const maxY = Math.max(0, ...ys) + WORLD_MARGIN;
+		const { minX, minY, maxX, maxY } = this.computeWorldBounds();
 
 		this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
 		this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);

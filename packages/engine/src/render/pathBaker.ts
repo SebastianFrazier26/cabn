@@ -18,18 +18,26 @@ export interface PathSegment {
 	to: Position;
 }
 
-const STAMP_SPACING_PX = 26;
-const STAMP_JITTER_PX = 3;
+const STAMP_JITTER_PX = 2;
+// Segments abut with a slight overlap (not edge-to-edge exactly) so a seam
+// never shows even with the per-point jitter above nudging things sideways.
+const STAMP_OVERLAP_RATIO = 0.86;
 
 /**
  * Bakes every path in a world (or the shelf's tower-to-cabin spokes) into one
  * world-bounds-sized `RenderTexture` — same "one GameObject, not thousands of
  * sprites" reasoning as groundBaker.ts, and doubly so here since a path
- * spans clusters rather than sitting inside one. Stamps are placed
- * unrotated: `stampPointsAlongSegment`'s `angle` is still computed (and
- * tested) for a future directional stamp, but every stamp shipped this batch
- * is a soft round/oval dirt blob with no inherent facing, so rotating it
- * would be wasted transform work for a visually identical result.
+ * spans clusters rather than sitting inside one.
+ *
+ * Batch 1 stamped round dirt blobs unrotated (fine — a blob has no facing).
+ * Batch 2's cobblestone segments are rectangular strips, so they're drawn via
+ * a reusable-per-texture-key throwaway `Image` (never added to the display
+ * list — `scene.make.image({key}, false)`), rotated to the segment's own
+ * `angle` before each `RenderTexture#draw` call: `draw()` given a Game
+ * Object renders it with its *own* transform (rotation/scale/tint) but the
+ * call's (x, y) override its position — see Phaser's
+ * `DynamicTexture#batchGameObject`, which is the one thing `drawFrame()`
+ * (batch 1's tool, frame-index + position only) can't do.
  */
 export function bakePaths(
 	scene: Phaser.Scene,
@@ -45,31 +53,34 @@ export function bakePaths(
 		height,
 	);
 
+	const stampImages = new Map<string, Phaser.GameObjects.Image>();
+	const getStampImage = (key: string): Phaser.GameObjects.Image => {
+		let image = stampImages.get(key);
+		if (!image) {
+			image = scene.make.image({ key }, false);
+			stampImages.set(key, image);
+		}
+		return image;
+	};
+	const stampWidth = (key: string): number =>
+		(scene.textures.get(key).getSourceImage() as { width: number }).width;
+	const spacing = stampWidth(pathStampKey(0)) * STAMP_OVERLAP_RATIO;
+
 	for (const segment of segments) {
 		const seed = hashStringSeed(segment.id);
 		const rand = mulberry32(seed);
-		const points = stampPointsAlongSegment(
-			segment.from,
-			segment.to,
-			STAMP_SPACING_PX,
-			{
-				jitterAmount: STAMP_JITTER_PX,
-				jitterSeed: seed,
-			},
-		);
+		const points = stampPointsAlongSegment(segment.from, segment.to, spacing, {
+			jitterAmount: STAMP_JITTER_PX,
+			jitterSeed: seed,
+		});
 		for (const point of points) {
 			const key = pathStampKey(Math.floor(rand() * PATH_STAMP_COUNT));
-			const frame = scene.textures.get(key).getSourceImage() as {
-				width: number;
-				height: number;
-			};
-			rt.draw(
-				key,
-				point.x - bounds.minX - frame.width / 2,
-				point.y - bounds.minY - frame.height / 2,
-			);
+			const image = getStampImage(key);
+			image.setRotation(point.angle);
+			rt.draw(image, point.x - bounds.minX, point.y - bounds.minY);
 		}
 	}
 
+	for (const image of stampImages.values()) image.destroy();
 	return rt;
 }

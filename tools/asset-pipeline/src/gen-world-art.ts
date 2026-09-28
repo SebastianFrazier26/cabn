@@ -18,7 +18,11 @@ import {
 } from "./world-art/biome-tiles.js";
 import { buildDecals } from "./world-art/decals.js";
 import { buildPathStampGrids } from "./world-art/path-stamps-art.js";
-import { buildProps } from "./world-art/props.js";
+import {
+	buildCastleKeep,
+	buildProps,
+	type PropPaletteIndices,
+} from "./world-art/props.js";
 
 const worldArtDir = path.join(generatedDir, "world-art");
 
@@ -249,12 +253,16 @@ interface PathStampsResult {
 }
 
 async function genPathStamps(palette: RGB[]): Promise<PathStampsResult> {
+	// Cool gray cobblestones with a warm sand edge-stone border — a small,
+	// deliberate piece of the "warm/cool mix" the batch-2 review asked for,
+	// not just a uniform gray road.
 	const grids = buildPathStampGrids(
-		PALETTE.pathBase,
-		PALETTE.pathShadow,
+		PALETTE.stoneMid,
+		PALETTE.stoneDark,
+		PALETTE.stoneLight,
 		PALETTE.pathHighlight,
 	);
-	const names = ["small", "medium", "large", "elongated"];
+	const names = ["cobble-a", "cobble-b", "cobble-c"];
 	const frames: { index: number; name: string; key: string; file: string }[] =
 		[];
 	const softFrames: RawImage[] = [];
@@ -285,47 +293,59 @@ interface PropsResult {
 	softFramesByName: Record<string, RawImage>;
 }
 
+const PROP_PALETTE: PropPaletteIndices = {
+	wood: PALETTE.woodWarm,
+	woodDark: PALETTE.woodDark,
+	woodLight: PALETTE.woodLight,
+	hedgeTones: {
+		shadow: PALETTE.groveShadow,
+		base: PALETTE.groveBase,
+		highlight: PALETTE.groveHighlight,
+	},
+	stone: PALETTE.stoneMid,
+	stoneShadow: PALETTE.stoneDark,
+	stoneHighlight: PALETTE.stoneLight,
+	glow: PALETTE.lanternGlow,
+	glowBright: PALETTE.cream,
+	treeTones: {
+		shadow: PALETTE.groveShadow,
+		base: PALETTE.groveBase,
+		highlight: PALETTE.groveHighlight,
+	},
+	trunk: PALETTE.woodDark,
+	blossomAccent: PALETTE.berryPink,
+	bushTones: {
+		shadow: PALETTE.meadowShadow,
+		base: PALETTE.meadowBase,
+		highlight: PALETTE.meadowHighlight,
+	},
+	waterDark: PALETTE.ink,
+	plankCream: PALETTE.parchment,
+	ink: PALETTE.ink,
+	potColor: PALETTE.terracotta,
+	potShadow: PALETTE.woodDark,
+	dirt: PALETTE.pathShadow,
+	petal: PALETTE.berryPink,
+	petalCenter: PALETTE.sunYellow,
+	stem: PALETTE.groveBase,
+	// Warm cottage — terracotta walls, a deeper terracotta roof, a bright
+	// window glow (same "bright enough to catch the night bloom threshold"
+	// reasoning as lampPost's glow slit — see props.ts).
+	wallColor: PALETTE.terracotta,
+	wallShadow: PALETTE.woodDark,
+	roofColor: PALETTE.autumnOrange,
+	roofShadow: PALETTE.autumnOrangeDark,
+	windowFrame: PALETTE.woodDark,
+	windowGlow: PALETTE.lanternGlow,
+	doorColor: PALETTE.woodDark,
+	chimneyColor: PALETTE.stoneMid,
+	bedBorder: PALETTE.woodWarm,
+	bedSoil: PALETTE.pathShadow,
+	flagColor: PALETTE.berryPink,
+};
+
 async function genProps(palette: RGB[]): Promise<PropsResult> {
-	const props = buildProps({
-		wood: PALETTE.woodWarm,
-		woodDark: PALETTE.woodDark,
-		woodLight: PALETTE.woodLight,
-		hedgeTones: {
-			shadow: PALETTE.groveShadow,
-			base: PALETTE.groveBase,
-			highlight: PALETTE.groveHighlight,
-		},
-		stone: PALETTE.stoneMid,
-		stoneShadow: PALETTE.stoneDark,
-		stoneHighlight: PALETTE.stoneLight,
-		glow: PALETTE.lanternGlow,
-		glowBright: PALETTE.cream,
-		treeTones: {
-			shadow: PALETTE.groveShadow,
-			base: PALETTE.groveBase,
-			highlight: PALETTE.groveHighlight,
-		},
-		trunk: PALETTE.woodDark,
-		blossomAccent: PALETTE.berryPink,
-		bushTones: {
-			shadow: PALETTE.meadowShadow,
-			base: PALETTE.meadowBase,
-			highlight: PALETTE.meadowHighlight,
-		},
-		waterDark: PALETTE.ink,
-		plankCream: PALETTE.parchment,
-		ink: PALETTE.ink,
-		potColor: PALETTE.terracotta,
-		potShadow: PALETTE.woodDark,
-		dirt: PALETTE.pathShadow,
-		petal: PALETTE.berryPink,
-		petalCenter: PALETTE.sunYellow,
-		stem: PALETTE.groveBase,
-		logBase: PALETTE.woodWarm,
-		logShadow: PALETTE.woodDark,
-		logHighlight: PALETTE.woodLight,
-		ringColor: PALETTE.ink,
-	});
+	const props = buildProps(PROP_PALETTE);
 
 	const propIndex: { name: string; key: string; file: string }[] = [];
 	const softFramesByName: Record<string, RawImage> = {};
@@ -347,6 +367,30 @@ async function genProps(palette: RGB[]): Promise<PropsResult> {
 		});
 	}
 	return { index: { props: propIndex }, softFramesByName };
+}
+
+interface CastleKeepResult {
+	index: Record<string, unknown>;
+}
+
+/** The shelf's one-off decorative keep — see props.ts's castleKeep doc comment for why it isn't in the random PROP_NAMES pool. */
+async function genCastleKeep(palette: RGB[]): Promise<CastleKeepResult> {
+	const prop = buildCastleKeep(PROP_PALETTE);
+	const { crisp, soft } = await renderSoft(
+		prop.grid,
+		"prop_castle_keep",
+		palette,
+		prop.cellSize,
+		20261300,
+	);
+	await writePair("prop_castle_keep", crisp, soft, 8);
+	return {
+		index: {
+			name: prop.name,
+			key: "castle-keep",
+			file: "placeholders/prop_castle_keep_soft.png",
+		},
+	};
 }
 
 const MOCK_TILE_SIZE = 32;
@@ -462,6 +506,36 @@ async function genMockScene(
 	await writeRawRgbaPng(canvas, path.join(worldArtDir, "mock-scene.png"));
 }
 
+const SPARK_TEXTURE_SIZE = 16;
+
+/**
+ * A soft white radial-gradient dot — not pixel art at all, deliberately: this
+ * is the one shared sprite behind every particle effect (fireflies, motes,
+ * bonfire embers, chimney smoke — see render/effects.ts), tinted/scaled per
+ * effect at runtime rather than needing a bespoke shape for each. A literal
+ * leaf or smoke-puff silhouette wouldn't read any differently at the couple
+ * of pixels a particle actually renders at.
+ */
+function buildSparkTexture(): RawImage {
+	const size = SPARK_TEXTURE_SIZE;
+	const data = Buffer.alloc(size * size * 4);
+	const center = size / 2;
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			const dx = (x + 0.5 - center) / center;
+			const dy = (y + 0.5 - center) / center;
+			const dist = Math.sqrt(dx * dx + dy * dy);
+			const falloff = Math.max(0, 1 - dist) ** 2;
+			const idx = (y * size + x) * 4;
+			data[idx] = 255;
+			data[idx + 1] = 255;
+			data[idx + 2] = 255;
+			data[idx + 3] = Math.round(falloff * 255);
+		}
+	}
+	return { data, width: size, height: size };
+}
+
 async function main() {
 	const palette: RGB[] = JSON.parse(
 		await readFile(paletteJsonPath, "utf8"),
@@ -473,6 +547,11 @@ async function main() {
 	const decals = await genDecals(palette);
 	const pathStamps = await genPathStamps(palette);
 	const props = await genProps(palette);
+	const castleKeep = await genCastleKeep(palette);
+	await writeRawRgbaPng(
+		buildSparkTexture(),
+		path.join(placeholdersDir, "fx_spark.png"),
+	);
 	await genMockScene(
 		biomes.softFramesByBiome.meadow ?? [],
 		decals.softFrames,
@@ -489,6 +568,7 @@ async function main() {
 		decals: decals.index,
 		pathStamps: pathStamps.index,
 		props: props.index,
+		castleKeep: castleKeep.index,
 		mockScene: "mock-scene.png",
 	};
 	await writeFile(

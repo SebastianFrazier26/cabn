@@ -4,7 +4,17 @@
 export const CABIN_SCALE = 0.5;
 export const CABINET_SCALE = 0.375;
 export const PORTAL_SCALE = 0.375;
-export const BONFIRE_SCALE = 0.375;
+
+// bonfire's pixel map is 32x32 (tools/asset-pipeline/src/pixelmaps/bonfire.ts),
+// rendered at soften()'s default cellSize (16) into a 512x512 raw sprite —
+// the same "pixelmap asset sharing a flat-photo scale constant" bug as the
+// wizard tower's (see WIZARD_TOWER_SCALE below): the old 0.375 displayed it
+// at 192x192, nearly 3x the player's own height, with the player then
+// spawning at its exact center (M10b batch-2 review: "the bonfire is huge
+// and the player stands in it"). Targets 80px tall — a modest campfire
+// slightly smaller than a cabinet (96px), not a landmark.
+export const BONFIRE_RAW_SIZE_PX = 512;
+export const BONFIRE_SCALE = 0.156;
 
 // wizard_tower's pixel map is 48x80 (tools/asset-pipeline/src/pixelmaps/
 // wizard-tower.ts), rendered through soften()'s default cellSize (16) into a

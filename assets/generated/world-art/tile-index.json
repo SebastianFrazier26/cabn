@@ -65,27 +65,21 @@
 		"frames": [
 			{
 				"index": 0,
-				"name": "small",
+				"name": "cobble-a",
 				"key": "path-stamp-0",
 				"file": "placeholders/path_stamp_0_soft.png"
 			},
 			{
 				"index": 1,
-				"name": "medium",
+				"name": "cobble-b",
 				"key": "path-stamp-1",
 				"file": "placeholders/path_stamp_1_soft.png"
 			},
 			{
 				"index": 2,
-				"name": "large",
+				"name": "cobble-c",
 				"key": "path-stamp-2",
 				"file": "placeholders/path_stamp_2_soft.png"
-			},
-			{
-				"index": 3,
-				"name": "elongated",
-				"key": "path-stamp-3",
-				"file": "placeholders/path_stamp_3_soft.png"
 			}
 		]
 	},
@@ -102,9 +96,9 @@
 				"file": "placeholders/prop_hedge_soft.png"
 			},
 			{
-				"name": "stone-lantern",
-				"key": "prop-stone-lantern",
-				"file": "placeholders/prop_stone_lantern_soft.png"
+				"name": "lamp-post",
+				"key": "prop-lamp-post",
+				"file": "placeholders/prop_lamp_post_soft.png"
 			},
 			{
 				"name": "tree-small",
@@ -137,11 +131,31 @@
 				"file": "placeholders/prop_flower_pot_soft.png"
 			},
 			{
-				"name": "log-pile",
-				"key": "prop-log-pile",
-				"file": "placeholders/prop_log_pile_soft.png"
+				"name": "stone-wall",
+				"key": "prop-stone-wall",
+				"file": "placeholders/prop_stone_wall_soft.png"
+			},
+			{
+				"name": "cottage",
+				"key": "prop-cottage",
+				"file": "placeholders/prop_cottage_soft.png"
+			},
+			{
+				"name": "flower-bed",
+				"key": "prop-flower-bed",
+				"file": "placeholders/prop_flower_bed_soft.png"
+			},
+			{
+				"name": "bench",
+				"key": "prop-bench",
+				"file": "placeholders/prop_bench_soft.png"
 			}
 		]
+	},
+	"castleKeep": {
+		"name": "castle-keep",
+		"key": "castle-keep",
+		"file": "placeholders/prop_castle_keep_soft.png"
 	},
 	"mockScene": "mock-scene.png"
 }
