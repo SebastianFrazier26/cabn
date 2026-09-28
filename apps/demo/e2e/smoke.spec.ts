@@ -10,6 +10,7 @@ import { PNG } from "pngjs";
 interface CabnStoreSnapshot {
 	mode: string;
 	activeWorldBase: string | null;
+	playerPos: { x: number; y: number };
 }
 
 // window.__cabnStore only exists when the page is loaded with ?e2e=1 — see
@@ -81,13 +82,20 @@ test("demo loads, renders a non-blank world, and walking into a cabin loads a wo
 	expect(initial?.activeWorldBase).toBeNull();
 
 	// ShelfScene places the demo's first world's cabin CABIN_RING_RADIUS
-	// (480px) due "up" (angle -PI/2) from the player's (0,0) spawn point,
-	// player speed is 220px/s — see packages/engine/src/scenes/ShelfScene.ts.
-	// Walking up for ~2.2s comfortably closes the distance to within
-	// CABIN_ENTER_RADIUS (70px) without needing to read pixel positions back
-	// out of the page.
+	// (480px) due "up" from the player's (0,0) spawn, and E enters within
+	// CABIN_ENTER_RADIUS (70px) — see packages/engine/src/scenes/ShelfScene.ts.
+	// Walk until the store reports the player has arrived rather than for a
+	// fixed duration: CI runners render far fewer frames per second than a
+	// dev machine, so a fixed 2.2s hold only covered about half the distance
+	// there.
+	const ARRIVED_Y = -(480 - 40);
 	await page.keyboard.down("ArrowUp");
-	await page.waitForTimeout(2200);
+	await expect
+		.poll(async () => (await getStoreState(page))?.playerPos.y ?? 0, {
+			timeout: 20_000,
+			intervals: [100],
+		})
+		.toBeLessThanOrEqual(ARRIVED_Y);
 	await page.keyboard.up("ArrowUp");
 	// Not page.keyboard.press("e") — CDP's down+up pair for a `.press()` can
 	// land within a single browser input-processing tick, before the game

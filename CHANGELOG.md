@@ -2,6 +2,8 @@
 
 ## 2026-09-27
 
+- Browser smoke test: the walk to the first cabin now holds the key until the store reports the player has arrived, instead of for a fixed 2.2s. GitHub's runners render far fewer frames per second than a dev machine, so the timed walk covered only about half the distance there and the first CI run failed.
+
 - Release docs: replaced the unverified Trusted Publishing caveats with facts checked against npm's docs — packages must exist before a trusted publisher can be attached (so 0.1.0 is a one-time manual publish), `npm trust github` can attach it from the CLI (npm ≥ 11.15), and trusted publishing needs npm ≥ 11.5.1 / Node ≥ 22.14.
 
 - M8: an authenticated converter backend, a manual npm release pipeline, and a headless-browser CI smoke test.
