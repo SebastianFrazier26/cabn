@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-28
+
+- M10a (phase 1, mockup only): a "diegetic storybook" UI style proposal — not wired into the engine. `tools/asset-pipeline/src/ui-frames.ts` (`pnpm -F @cabn/asset-pipeline ui`) generates wood-frame 9-slice borders, a tileable parchment fill, wax-seal buttons (red/plum × normal/pressed), hotbar sockets (empty/selected), crimson/victory ribbon banners, a tooltip bubble, a divider flourish, and scroll-roller end caps — crisp + softened (`soften()`) variants, all into `assets/generated/ui/` (its own `manifest.json`, doesn't touch the shared one). `assets/generated/ui/mockup.html` reskins every current React overlay (hotbar, spyglass, orb search, bag tray, editor, encounter banner, run parchment, monster counter, settings corner, controls card) side-by-side with the current flat-parchment look, with a live toggle between two OFL font pairings (IM Fell English SC/Cormorant Garamond/JetBrains Mono vs. Cinzel Decorative/Alegreya/Fira Code) and CSS-only panel-open/button-press motion. `assets/generated/ui/STYLE.md` documents the tokens, motion table, and WCAG contrast findings — including a real pre-existing a11y bug this mockup's tokens fix but hasn't been ported back yet: `editorTheme.ts`'s gutter/punctuation color (`steelGray` on `parchmentDark`) measures 2.06:1, well under the 4.5:1 AA minimum. New pure-logic modules (`contrast.ts`, the `pixelmaps/ui-*.ts` builders) have unit tests; nothing engine-side changed.
+
 ## 2026-09-27
 
 - Release docs: replaced the unverified Trusted Publishing caveats with facts checked against npm's docs — packages must exist before a trusted publisher can be attached (so 0.1.0 is a one-time manual publish), `npm trust github` can attach it from the CLI (npm ≥ 11.15), and trusted publishing needs npm ≥ 11.5.1 / Node ≥ 22.14.

@@ -1,0 +1,129 @@
+{
+	"ui_wood_frame": {
+		"kind": "border-9slice",
+		"width": 32,
+		"height": 32,
+		"slicePx": 8,
+		"softCellSize": 8,
+		"crispFile": "ui_wood_frame.png",
+		"crispUpscaledFile": "ui_wood_frame@4x.png",
+		"softFile": "ui_wood_frame_soft.png"
+	},
+	"ui_parchment_fill": {
+		"kind": "tile-repeat",
+		"width": 32,
+		"height": 32,
+		"softCellSize": 8,
+		"crispFile": "ui_parchment_fill.png",
+		"crispUpscaledFile": "ui_parchment_fill@4x.png",
+		"softFile": "ui_parchment_fill_soft.png"
+	},
+	"ui_wax_seal_red": {
+		"kind": "sprite",
+		"width": 20,
+		"height": 20,
+		"softCellSize": 8,
+		"crispFile": "ui_wax_seal_red.png",
+		"crispUpscaledFile": "ui_wax_seal_red@4x.png",
+		"softFile": "ui_wax_seal_red_soft.png"
+	},
+	"ui_wax_seal_red_pressed": {
+		"kind": "sprite",
+		"width": 20,
+		"height": 20,
+		"softCellSize": 8,
+		"crispFile": "ui_wax_seal_red_pressed.png",
+		"crispUpscaledFile": "ui_wax_seal_red_pressed@4x.png",
+		"softFile": "ui_wax_seal_red_pressed_soft.png"
+	},
+	"ui_wax_seal_plum": {
+		"kind": "sprite",
+		"width": 20,
+		"height": 20,
+		"softCellSize": 8,
+		"crispFile": "ui_wax_seal_plum.png",
+		"crispUpscaledFile": "ui_wax_seal_plum@4x.png",
+		"softFile": "ui_wax_seal_plum_soft.png"
+	},
+	"ui_wax_seal_plum_pressed": {
+		"kind": "sprite",
+		"width": 20,
+		"height": 20,
+		"softCellSize": 8,
+		"crispFile": "ui_wax_seal_plum_pressed.png",
+		"crispUpscaledFile": "ui_wax_seal_plum_pressed@4x.png",
+		"softFile": "ui_wax_seal_plum_pressed_soft.png"
+	},
+	"ui_hotbar_slot": {
+		"kind": "sprite",
+		"width": 28,
+		"height": 28,
+		"softCellSize": 8,
+		"crispFile": "ui_hotbar_slot.png",
+		"crispUpscaledFile": "ui_hotbar_slot@4x.png",
+		"softFile": "ui_hotbar_slot_soft.png"
+	},
+	"ui_hotbar_slot_selected": {
+		"kind": "sprite",
+		"width": 28,
+		"height": 28,
+		"softCellSize": 8,
+		"crispFile": "ui_hotbar_slot_selected.png",
+		"crispUpscaledFile": "ui_hotbar_slot_selected@4x.png",
+		"softFile": "ui_hotbar_slot_selected_soft.png"
+	},
+	"ui_ribbon_crimson": {
+		"kind": "sprite",
+		"width": 64,
+		"height": 16,
+		"softCellSize": 8,
+		"crispFile": "ui_ribbon_crimson.png",
+		"crispUpscaledFile": "ui_ribbon_crimson@4x.png",
+		"softFile": "ui_ribbon_crimson_soft.png"
+	},
+	"ui_ribbon_victory": {
+		"kind": "sprite",
+		"width": 64,
+		"height": 16,
+		"softCellSize": 8,
+		"crispFile": "ui_ribbon_victory.png",
+		"crispUpscaledFile": "ui_ribbon_victory@4x.png",
+		"softFile": "ui_ribbon_victory_soft.png"
+	},
+	"ui_tooltip_bubble": {
+		"kind": "sprite",
+		"width": 24,
+		"height": 17,
+		"softCellSize": 8,
+		"crispFile": "ui_tooltip_bubble.png",
+		"crispUpscaledFile": "ui_tooltip_bubble@4x.png",
+		"softFile": "ui_tooltip_bubble_soft.png"
+	},
+	"ui_divider_flourish": {
+		"kind": "sprite",
+		"width": 40,
+		"height": 7,
+		"softCellSize": 8,
+		"crispFile": "ui_divider_flourish.png",
+		"crispUpscaledFile": "ui_divider_flourish@4x.png",
+		"softFile": "ui_divider_flourish_soft.png"
+	},
+	"ui_scroll_roller_top": {
+		"kind": "sprite",
+		"width": 48,
+		"height": 10,
+		"softCellSize": 8,
+		"crispFile": "ui_scroll_roller_top.png",
+		"crispUpscaledFile": "ui_scroll_roller_top@4x.png",
+		"softFile": "ui_scroll_roller_top_soft.png"
+	},
+	"ui_scroll_roller_bottom": {
+		"kind": "sprite",
+		"width": 48,
+		"height": 10,
+		"softCellSize": 8,
+		"crispFile": "ui_scroll_roller_bottom.png",
+		"crispUpscaledFile": "ui_scroll_roller_bottom@4x.png",
+		"softFile": "ui_scroll_roller_bottom_soft.png"
+	}
+}

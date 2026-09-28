@@ -15,6 +15,7 @@
 		"bonfire": "tsx src/bonfire-animation.ts",
 		"composite": "tsx src/portal-composite.ts",
 		"preview": "tsx src/preview-page.ts",
+		"ui": "tsx src/ui-frames.ts",
 		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run bonfire && pnpm run composite && pnpm run preview"
 	},
 	"dependencies": {

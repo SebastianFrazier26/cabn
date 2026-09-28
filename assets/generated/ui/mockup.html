@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>cabn — diegetic storybook UI mockup (M10a)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Static style mockup, not the live engine UI. Opens by double-click (all
+  paths below are relative to this file inside assets/generated/ui/). Fonts
+  load from the Google Fonts CDN here only for preview convenience — see
+  STYLE.md for the OFL license note and the self-hosting plan for real
+  integration (packages/engine can't reach out to a CDN at runtime the way
+  this throwaway page can).
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&family=Cinzel+Decorative:wght@400;700&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+	:root {
+		/* ---- color tokens (see STYLE.md) ---- */
+		--ink: #322214;
+		--parchment: #efe0b3;
+		--parchment-dark: #eacc90;
+		--wood-dark: #622b17;
+		--wood-mid: #8c461f;
+		--wood-light: #a35424;
+		--wood-highlight: #c66e29;
+		--gold: #e99b33;
+		--cream: #edeee4;
+		--steel: #8a9198;
+		--seal-red: #c8281e;
+		--seal-plum: #58336b;
+		--seal-plum-highlight: #b27cd6;
+		--victory-green: #6f863a;
+		--text-secondary-on-parchment: var(--wood-dark); /* NOT steel — see STYLE.md a11y note */
+		--world-bg-deep: #172410;
+		--world-bg-mid: #24371c;
+
+		/* ---- spacing / frame ---- */
+		--space-1: 4px;
+		--space-2: 8px;
+		--space-3: 12px;
+		--space-4: 16px;
+		--space-6: 24px;
+		--frame-slice: 8px;      /* ui_wood_frame.png's native border-image-slice */
+		--frame-width: 14px;     /* displayed CSS border width, upscaled from the slice */
+
+		/* ---- motion ---- */
+		--ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+		--ease-close: cubic-bezier(0.5, 0, 0.75, 0);
+		--dur-press: 100ms;
+		--dur-hover: 180ms;
+		--dur-open: 340ms;
+
+		/* ---- type: pairing "fell" (default) ---- */
+		--font-display: "IM Fell English SC", serif;
+		--font-body: "Cormorant Garamond", serif;
+		--font-mono: "JetBrains Mono", monospace;
+	}
+	body[data-pairing="cinzel"] {
+		--font-display: "Cinzel Decorative", serif;
+		--font-body: "Alegreya", serif;
+		--font-mono: "Fira Code", monospace;
+	}
+
+	* { box-sizing: border-box; }
+	html, body { margin: 0; padding: 0; }
+	body {
+		font-family: var(--font-body);
+		color: var(--cream);
+		background:
+			radial-gradient(ellipse 900px 500px at 20% -10%, rgba(233,155,51,0.08), transparent 60%),
+			linear-gradient(180deg, var(--world-bg-mid) 0%, var(--world-bg-deep) 70%);
+		min-height: 100vh;
+	}
+	img { image-rendering: pixelated; }
+
+	h1, h2, h3 { font-family: var(--font-display); font-weight: 400; letter-spacing: 0.02em; }
+
+	/* ---- top bar ---- */
+	.topbar {
+		position: sticky; top: 0; z-index: 20;
+		display: flex; align-items: center; gap: var(--space-4);
+		flex-wrap: wrap;
+		padding: var(--space-3) var(--space-6);
+		background: rgba(23, 36, 16, 0.92);
+		border-bottom: 2px solid var(--wood-dark);
+	}
+	.topbar h1 { margin: 0; font-size: 22px; color: var(--gold); }
+	.topbar p { margin: 0; font-size: 13px; opacity: 0.75; max-width: 46ch; }
+	.pairing-toggle { margin-left: auto; display: flex; gap: var(--space-2); }
+	.pairing-toggle button {
+		font-family: var(--font-mono); font-size: 12px;
+		background: var(--wood-dark); color: var(--cream);
+		border: 1px solid var(--gold); padding: 6px 10px; cursor: pointer;
+	}
+	.pairing-toggle button[aria-pressed="true"] { background: var(--gold); color: var(--ink); }
+
+	/* ---- layout ---- */
+	main { padding: var(--space-6); display: flex; flex-direction: column; gap: 48px; max-width: 1280px; margin: 0 auto; }
+	section { display: flex; flex-direction: column; gap: var(--space-3); }
+	section > h2 { font-size: 20px; color: var(--gold); margin: 0; border-bottom: 1px dashed rgba(233,155,51,0.35); padding-bottom: var(--space-2); }
+	.section-note { font-size: 13px; opacity: 0.7; margin: 0; max-width: 70ch; }
+	.compare { display: flex; align-items: flex-start; gap: var(--space-6); flex-wrap: wrap; }
+	.stage {
+		position: relative;
+		background:
+			linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.35)),
+			var(--world-bg-mid);
+		border: 1px solid rgba(255,255,255,0.06);
+		padding: 28px;
+		min-height: 140px;
+		flex: 1 1 480px;
+		display: flex; align-items: center; justify-content: center;
+	}
+	.current-thumb {
+		flex: 0 0 160px;
+		display: flex; flex-direction: column; gap: 6px; align-items: center;
+	}
+	.current-thumb span { font-family: var(--font-mono); font-size: 11px; opacity: 0.6; }
+	.current-box {
+		width: 140px; min-height: 60px;
+		background: var(--parchment); color: var(--ink);
+		border: 2px solid var(--ink); border-radius: 6px;
+		font-family: "Courier New", monospace; font-size: 10px;
+		display: flex; align-items: center; justify-content: center; text-align: center;
+		padding: 6px;
+	}
+
+	/* ---- diegetic panel base: wood 9-slice + parchment fill ---- */
+	.panel {
+		position: relative;
+		border-style: solid;
+		border-width: var(--frame-width);
+		border-image-source: url("ui_wood_frame_soft.png");
+		border-image-slice: 64 fill; /* soft raster is 8x the crisp slice (SOFT_CELL_SIZE) */
+		border-image-width: var(--frame-width);
+		border-image-repeat: round;
+		background-image: url("ui_parchment_fill_soft.png");
+		background-repeat: repeat;
+		background-size: 64px 64px;
+		color: var(--ink);
+	}
+	.panel-title {
+		font-family: var(--font-display);
+		font-size: 16px;
+		text-align: center;
+		margin: -6px 0 6px;
+		color: var(--wood-dark);
+	}
+
+	/* ---- wax seal buttons ---- */
+	.seal-btn {
+		width: 40px; height: 40px;
+		border: none; background: transparent; cursor: pointer; padding: 0;
+		background-image: url("ui_wax_seal_red_soft.png");
+		background-size: contain; background-repeat: no-repeat; background-position: center;
+	}
+	.seal-btn.plum { background-image: url("ui_wax_seal_plum_soft.png"); }
+	.seal-btn:hover { filter: brightness(1.18) saturate(1.1); transform: translateY(-1px) scale(1.04); }
+	.seal-btn:active { background-image: url("ui_wax_seal_red_pressed_soft.png"); transform: translateY(1px) scale(0.97); filter: brightness(0.92); }
+	.seal-btn.plum:active { background-image: url("ui_wax_seal_plum_pressed_soft.png"); }
+	.seal-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--gold); }
+	.seal-row { display: flex; gap: var(--space-3); align-items: center; }
+	.seal-label { font-family: var(--font-mono); font-size: 11px; color: var(--cream); opacity: 0.8; }
+
+	/* ================= 1. tool hotbar ================= */
+	.hotbar { display: flex; gap: 10px; }
+	.hotbar-slot {
+		position: relative; width: 56px; height: 56px;
+		background-image: url("ui_hotbar_slot_soft.png");
+		background-size: 100% 100%;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		cursor: pointer; border: none; padding: 0;
+	}
+	.hotbar-slot:hover { transform: translateY(-3px); }
+	.hotbar-slot.selected { background-image: url("ui_hotbar_slot_selected_soft.png"); }
+	.hotbar-slot .icon { font-size: 20px; }
+	.hotbar-slot .key { font-family: var(--font-mono); font-size: 10px; color: var(--wood-dark); margin-top: 2px; }
+	.hotbar-slot .badge {
+		position: absolute; top: -6px; right: -6px;
+		background: var(--seal-red); color: var(--cream);
+		border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+		display: flex; align-items: center; justify-content: center;
+		border: 1px solid var(--ink);
+	}
+
+	/* ================= 2. spyglass panel ================= */
+	.spyglass { width: 300px; }
+	.spy-row {
+		display: flex; justify-content: space-between; gap: 8px;
+		padding: 6px 4px; font-size: 14px;
+		border-bottom: 1px solid rgba(98,43,23,0.25);
+		cursor: pointer;
+	}
+	.spy-row:hover { background: rgba(233,155,51,0.15); }
+	.spy-row .meta { color: var(--text-secondary-on-parchment); font-size: 12px; }
+	.divider {
+		height: 7px; margin: 6px 0;
+		background-image: url("ui_divider_flourish_soft.png");
+		background-size: 100% 100%; background-repeat: no-repeat;
+	}
+
+	/* ================= 3. crystal orb search ================= */
+	.orb-backdrop { background: rgba(23,36,16,0.7); padding: 60px 20px; width: 100%; display: flex; justify-content: center; }
+	.orb-modal { width: min(520px, 100%); }
+	.orb-input {
+		width: 100%; font: inherit; font-size: 17px; background: transparent; border: none;
+		border-bottom: 2px dashed var(--wood-mid); outline: none; color: var(--ink); padding: 4px 2px 8px;
+	}
+	.orb-hit { padding: 8px 4px; border-bottom: 1px solid rgba(98,43,23,0.2); cursor: pointer; }
+	.orb-hit:hover { background: rgba(233,155,51,0.15); }
+	.orb-hit strong { font-size: 14px; }
+	.orb-hit span { display: block; font-size: 12px; color: var(--text-secondary-on-parchment); }
+
+	/* ================= 4. bag tray ================= */
+	.bag-tray { display: flex; flex-direction: column; gap: 6px; width: 220px; }
+	.bag-slot {
+		display: flex; align-items: center; justify-content: space-between;
+		background: var(--parchment); border: 1px solid var(--wood-dark);
+		padding: 5px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--ink);
+	}
+	.bag-slot.filled { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+	.bag-slot .x { opacity: 0.55; cursor: pointer; }
+
+	/* ================= 5. editor ================= */
+	.editor-frame { width: min(640px, 100%); padding: 0; overflow: hidden; }
+	.editor-plaque {
+		background: var(--wood-dark); color: var(--cream);
+		font-family: var(--font-display); font-size: 15px; text-align: center;
+		padding: 6px; border-bottom: 4px solid var(--ink);
+	}
+	.editor-body { padding: 14px 16px; }
+	.code-line { font-family: var(--font-mono); font-size: 13px; white-space: pre; line-height: 1.5; }
+	.code-line .kw { color: var(--wood-dark); font-weight: 600; }
+	.code-line .str { color: var(--victory-green); }
+	.code-line .fn { color: var(--seal-red); }
+	.code-line .cm { color: var(--text-secondary-on-parchment); font-style: italic; }
+	.editor-gutter { color: var(--text-secondary-on-parchment); opacity: 0.6; display: inline-block; width: 2.5ch; text-align: right; margin-right: 10px; }
+	.editor-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 10px 16px 14px; }
+
+	/* ================= 6. encounter banner + victory ================= */
+	.ribbon-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+	.ribbon-bg { width: 380px; height: auto; display: block; }
+	.ribbon-text {
+		position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+		font-family: var(--font-display); font-size: 20px; color: var(--cream);
+		text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+	}
+	.encounter-card { width: min(420px, 100%); text-align: center; padding-top: 26px; }
+	.encounter-card .ribbon-wrap { margin-top: -46px; margin-bottom: 8px; }
+	.encounter-card p { margin: 0; font-size: 15px; }
+	.victory-toast { width: min(360px, 100%); text-align: center; padding-top: 26px; }
+
+	/* ================= 7. run parchment ================= */
+	.run-scroll { width: min(420px, 100%); display: flex; flex-direction: column; transform-origin: top center; }
+	.roller { width: 100%; height: 22px; background-image: url("ui_scroll_roller_top_soft.png"); background-size: 100% 100%; }
+	.roller.bottom { background-image: url("ui_scroll_roller_bottom_soft.png"); }
+	.run-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; border-left: 2px solid var(--wood-dark); border-right: 2px solid var(--wood-dark); }
+	.run-line-current { background: rgba(233,155,51,0.28); border-left: 3px solid var(--gold); padding: 2px 8px; font-family: var(--font-mono); font-size: 12px; }
+	.run-log { background: rgba(50,34,20,0.06); padding: 6px 8px; font-family: var(--font-mono); font-size: 11px; max-height: 90px; overflow: auto; }
+	.run-controls { display: flex; align-items: center; gap: 8px; }
+	.run-controls .speed { font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--wood-dark); padding: 2px 8px; background: none; cursor: pointer; color: var(--ink); }
+	.run-controls .speed.active { background: var(--gold); }
+
+	/* ================= 8/9/10: counter, settings, help ================= */
+	.hud-pill {
+		display: inline-flex; align-items: center; gap: 6px;
+		padding: 8px 14px 8px 10px; font-size: 13px;
+	}
+	.glow-toggle {
+		font-family: var(--font-mono); font-size: 12px; padding: 6px 12px; cursor: pointer;
+		background-image: url("ui_wood_frame_soft.png"); background-size: 100% 100%;
+		border: 10px solid transparent; border-image-source: url("ui_wood_frame_soft.png");
+		border-image-slice: 64 fill; border-image-width: 10px; border-image-repeat: round;
+		color: var(--ink);
+	}
+	.help-card { width: min(360px, 100%); }
+	.help-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+	.help-row kbd { font-family: var(--font-mono); background: var(--wood-dark); color: var(--cream); padding: 1px 7px; font-size: 11px; }
+
+	/* ================= 11: scene transitions ================= */
+	.transition-frames { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+	.transition-frame { width: 220px; height: 130px; position: relative; overflow: hidden; background: var(--world-bg-deep); border: 1px solid rgba(255,255,255,0.1); }
+	.transition-frame .label { position: absolute; bottom: 4px; left: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--gold); }
+	.tf-pageturn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, var(--parchment) 45%, var(--wood-dark) 50%, transparent 55%); opacity: 0.9; }
+	.tf-unroll::before { content: ""; position: absolute; left: 10%; right: 10%; top: 20%; height: 45%; background: var(--parchment); border: 3px solid var(--wood-dark); }
+	.tf-vignette::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 30%, var(--world-bg-deep) 75%); }
+
+	/* ---- keyframes ---- */
+	@keyframes unroll { from { transform: scaleY(0.05); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+	@keyframes unfurl { from { transform: scaleY(0.08); opacity: 0.3; } to { transform: scaleY(1); opacity: 1; } }
+	@keyframes pop-in { from { transform: scale(0.85) translateY(6px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+
+	/*
+	 * Default (and prefers-reduced-motion: reduce) state is a plain fade —
+	 * the scale/transform opens and hover transitions only apply under
+	 * :no-preference. Structuring it this way (base = reduced, enhance under
+	 * no-preference) means "respect reduced motion" needs no !important
+	 * fighting the base rules, just not adding the enhancement in the first
+	 * place.
+	 */
+	.orb-modal, .run-scroll, .encounter-card { animation: fade-only var(--dur-hover) linear; }
+	@keyframes fade-only { from { opacity: 0; } to { opacity: 1; } }
+
+	@media (prefers-reduced-motion: no-preference) {
+		.orb-modal { animation: unroll var(--dur-open) var(--ease-settle); }
+		.encounter-card { animation: pop-in var(--dur-open) var(--ease-settle); }
+		.run-scroll { animation: unfurl var(--dur-open) var(--ease-settle); }
+		.seal-btn { transition: filter var(--dur-hover) var(--ease-settle), transform var(--dur-hover) var(--ease-settle); }
+		.hotbar-slot { transition: transform var(--dur-hover) var(--ease-settle); }
+	}
+
+	/* ---- world backdrop strip ---- */
+	.world-backdrop {
+		position: relative; height: 220px; overflow: hidden;
+		background: radial-gradient(ellipse at 30% 100%, rgba(233,155,51,0.12), transparent 55%), var(--world-bg-deep);
+		border-bottom: 3px solid var(--wood-dark);
+	}
+	.world-backdrop img { position: absolute; bottom: 0; }
+	.world-backdrop .caption {
+		position: absolute; top: 10px; right: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--cream); opacity: 0.6; max-width: 40ch; text-align: right;
+	}
+
+	footer { text-align: center; font-family: var(--font-mono); font-size: 11px; opacity: 0.5; padding: 40px 0 60px; }
+	footer a { color: var(--gold); }
+</style>
+</head>
+<body data-pairing="fell">
+
+<div class="topbar">
+	<h1>cabn — storybook UI mockup</h1>
+	<p>Static style pass only — nothing here is wired to the engine. Toggle the two proposed font pairings below; everything else (colors, frames, motion) is shared.</p>
+	<div class="pairing-toggle">
+		<button type="button" data-pairing-btn="fell" aria-pressed="true">Fell &amp; Garamond</button>
+		<button type="button" data-pairing-btn="cinzel" aria-pressed="false">Cinzel &amp; Alegreya</button>
+	</div>
+</div>
+
+<div class="world-backdrop">
+	<span class="caption">Backdrop: existing softened placeholder sprites (wizard_tower, character_idle, bonfire, ghost) — decorative composite, no new art generated for it.</span>
+	<img src="../placeholders/wizard_tower_soft.png" style="left: 60px; height: 210px;" alt="" />
+	<img src="../placeholders/character_idle_soft.png" style="left: 300px; height: 90px;" alt="" />
+	<img id="bonfire" src="../placeholders/bonfire_frame0_soft.png" style="left: 420px; height: 70px;" alt="" />
+	<img src="../placeholders/ghost_soft.png" style="left: 620px; height: 60px; opacity: 0.85;" alt="" />
+</div>
+
+<main>
+
+<section>
+	<h2>1. Tool hotbar</h2>
+	<p class="section-note">Wood-socket slots instead of flat parchment squares; the selected slot's ring turns gold rather than getting a whole separate glow sprite. Hover lifts the slot 3px (a "picked up off the belt" read).</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box" style="display:flex; gap:4px; padding:8px;">
+				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
+				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
+				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
+			</div>
+			<span>current: ToolHotbar.tsx</span>
+		</div>
+		<div class="stage">
+			<div class="hotbar">
+				<button class="hotbar-slot" type="button"><span class="icon">🗝️</span><span class="key">E</span></button>
+				<button class="hotbar-slot selected" type="button"><span class="icon">🔭</span><span class="key">L</span></button>
+				<button class="hotbar-slot" type="button"><span class="icon">🔮</span><span class="key">F</span></button>
+				<button class="hotbar-slot" type="button"><span class="icon">🎒</span><span class="key">B</span><span class="badge">2</span></button>
+				<button class="hotbar-slot" type="button"><span class="icon">🖋️</span><span class="key">Q</span></button>
+				<button class="hotbar-slot" type="button"><span class="icon">🪄</span><span class="key">R</span></button>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>2. Spyglass file list</h2>
+	<p class="section-note">Same wood-framed parchment panel shell every other panel in this mockup uses — "ls for the cluster you're standing in" stays a list, just dressed in the world's materials. Divider flourish separates header from rows.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">flat parchment box,<br/>Courier list rows</div>
+			<span>current: SpyglassPanel.tsx</span>
+		</div>
+		<div class="stage">
+			<div class="panel spyglass" style="padding: 14px 14px 8px;">
+				<div class="panel-title">ls — cottage/</div>
+				<div class="divider"></div>
+				<div class="spy-row"><span>✎ index.ts</span><span class="meta">ts · 2.1KB</span></div>
+				<div class="spy-row"><span>garden.py</span><span class="meta">py · 640B</span></div>
+				<div class="spy-row"><span>notes.md</span><span class="meta">md · 1.4KB</span></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>3. Crystal orb search</h2>
+	<p class="section-note">Unrolls in with the same <code>unroll</code> keyframe as the run-scroll (see STYLE.md motion table) — one motion vocabulary for "a parchment surface is arriving," reused everywhere instead of a bespoke animation per overlay.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">dark scrim +<br/>flat parchment modal</div>
+			<span>current: OrbSearch.tsx</span>
+		</div>
+		<div class="stage" style="padding:0;">
+			<div class="orb-backdrop">
+				<div class="panel orb-modal" style="padding: 16px;">
+					<input class="orb-input" placeholder="search the world..." value="garden" readonly />
+					<div class="orb-hit"><strong>garden.py</strong><span>def water_plants(): ...</span></div>
+					<div class="orb-hit"><strong>garden_notes.md</strong><span>## garden — watering schedule</span></div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>4. Bag tray</h2>
+	<p class="section-note">Slots keep the thin parchment strip shape (it's a tray of small clippings, not a panel) but swap the hairline border for a gold inset ring when a slot is pasteable, echoing the hotbar's selected-ring language.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">stacked flat<br/>parchment rows</div>
+			<span>current: BagTray.tsx</span>
+		</div>
+		<div class="stage">
+			<div class="bag-tray">
+				<div class="bag-slot filled"><span>garden.py:12-18</span><span class="x">✕</span></div>
+				<div class="bag-slot"><span>index.ts:4</span><span class="x">✕</span></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>5. Editor frame (quill)</h2>
+	<p class="section-note">A wooden plaque replaces the browser-tab-style header; save/close become wax seals instead of text buttons. Syntax colors are unchanged from editorTheme.ts's cottagecore palette — comment/punctuation now sit on rust (wood-dark) rather than steel gray, see the a11y note in STYLE.md on why.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">flat parchment,<br/>Courier New, text buttons</div>
+			<span>current: EditorOverlay.tsx</span>
+		</div>
+		<div class="stage">
+			<div class="panel editor-frame">
+				<div class="editor-plaque">garden.py</div>
+				<div class="editor-body">
+					<div class="code-line"><span class="editor-gutter">1</span><span class="cm"># water the tomatoes daily</span></div>
+					<div class="code-line"><span class="editor-gutter">2</span><span class="kw">def</span> <span class="fn">water_plants</span>(soil):</div>
+					<div class="code-line"><span class="editor-gutter">3</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> soil.moisture &lt; <span class="fn">0.3</span>:</div>
+					<div class="code-line"><span class="editor-gutter">4</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="str">"watered"</span></div>
+				</div>
+				<div class="editor-actions">
+					<div class="seal-row"><button class="seal-btn" type="button" title="close"></button><span class="seal-label">close</span></div>
+					<div class="seal-row"><button class="seal-btn plum" type="button" title="save"></button><span class="seal-label">save</span></div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>6. Encounter banner &amp; victory toast</h2>
+	<p class="section-note">The ribbon comes in two colorways: crimson for an encounter/error, victory-green for the "all bugs fixed" toast — same asset, different <code>ui_ribbon_*.png</code>.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">rounded parchment<br/>card, Georgia serif</div>
+			<span>current: EncounterBanner.tsx</span>
+		</div>
+		<div class="stage" style="flex-direction: column; gap: 20px;">
+			<div class="panel encounter-card">
+				<div class="ribbon-wrap"><img class="ribbon-bg" src="ui_ribbon_crimson_soft.png" alt="" /><span class="ribbon-text">A Gremlin appeared!</span></div>
+				<p>TypeError: cannot read property 'water' of undefined</p>
+			</div>
+			<div class="panel victory-toast">
+				<div class="ribbon-wrap"><img class="ribbon-bg" src="ui_ribbon_victory_soft.png" alt="" /><span class="ribbon-text">Victory!</span></div>
+				<p>All bugs fixed in this world.</p>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>7. Run parchment</h2>
+	<p class="section-note">RunOverlay's existing CSS radial-gradient rollers become actual pixel-art dowel end caps. Body keeps its own wood side-rails (2px solid, matching wood-dark) between the two rollers rather than a full 9-slice frame — a scroll's sides are cut paper edges, not a wood-bordered panel.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">CSS gradient rollers +<br/>flat parchment body</div>
+			<span>current: RunOverlay.tsx</span>
+		</div>
+		<div class="stage">
+			<div class="run-scroll">
+				<div class="roller"></div>
+				<div class="run-body" style="background-image: url('ui_parchment_fill_soft.png'); background-size: 64px 64px;">
+					<div style="font-weight:600; font-size: 13px;">Line 3 — step 2 / 5</div>
+					<div class="run-line-current">if soil.moisture &lt; 0.3:</div>
+					<div class="run-log">&gt; watered<br/>&gt; watered<br/>&gt; done</div>
+					<div class="run-controls">
+						<button class="seal-btn" type="button" style="width:28px;height:28px;" title="pause"></button>
+						<button class="run-controls speed active" type="button">1x</button>
+						<button class="run-controls speed" type="button">2x</button>
+						<button class="run-controls speed" type="button">4x</button>
+					</div>
+				</div>
+				<div class="roller bottom"></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>8–10. Monster counter, settings corner, controls card</h2>
+	<p class="section-note">All three are small HUD chrome — same wood-framed pill/card as everything else, no new frame kind needed.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box">flat parchment pills</div>
+			<span>current: MonsterCounter / SettingsCorner</span>
+		</div>
+		<div class="stage" style="flex-direction: column; align-items: flex-start; gap: 14px;">
+			<div class="panel hud-pill">3 bugs remain in this world</div>
+			<button class="glow-toggle" type="button">Glow: on</button>
+			<div class="panel help-card">
+				<div class="panel-title">Controls</div>
+				<div class="help-row"><span>Walk</span><kbd>WASD</kbd></div>
+				<div class="help-row"><span>Open door</span><kbd>E</kbd></div>
+				<div class="help-row"><span>Spyglass</span><kbd>L</kbd></div>
+				<div class="help-row"><span>Search</span><kbd>F</kbd></div>
+				<div class="help-row"><span>Quill</span><kbd>Q</kbd></div>
+				<div class="help-row"><span>Wand (run)</span><kbd>R</kbd></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>11. Scene transition concept</h2>
+	<p class="section-note">Three static stills, not implemented — for reacting to direction only. <strong>Page-turn</strong> (~420ms, ease-settle): a diagonal parchment/wood wipe sweeps across on cluster change, like turning to the next page. <strong>Scroll-unroll</strong> (~340ms): reuses the panel-open <code>unroll</code> keyframe for entering a file/editor. <strong>Vignette iris</strong> (~260ms, linear): a circular closing/opening iris for encounter start/end, cheapest of the three and the one most likely to survive contact with `prefers-reduced-motion` (degrades to a plain fade).</p>
+	<div class="transition-frames">
+		<div class="transition-frame tf-pageturn"><span class="label">page-turn · 420ms</span></div>
+		<div class="transition-frame tf-unroll"><span class="label">scroll-unroll · 340ms</span></div>
+		<div class="transition-frame tf-vignette"><span class="label">vignette iris · 260ms</span></div>
+	</div>
+</section>
+
+<section>
+	<h2>Frame &amp; button raw art (crisp vs. soft)</h2>
+	<p class="section-note">The crisp source pixel maps (tools/asset-pipeline/src/pixelmaps/ui-*.ts) vs. the softened raster the panels above actually use — same soften() pass as every creature placeholder, cellSize 8.</p>
+	<div class="compare">
+		<div style="text-align:center;"><img src="ui_wood_frame@4x.png" style="width:128px;height:128px;" alt="wood frame crisp" /><div style="font-family: var(--font-mono); font-size:11px;">wood frame — crisp @4x</div></div>
+		<div style="text-align:center;"><img src="ui_wood_frame_soft.png" style="width:128px;height:128px;" alt="wood frame soft" /><div style="font-family: var(--font-mono); font-size:11px;">wood frame — soft</div></div>
+		<div style="text-align:center;"><img src="ui_wax_seal_red@4x.png" style="width:80px;height:80px;" alt="wax seal crisp" /><div style="font-family: var(--font-mono); font-size:11px;">wax seal — crisp @4x</div></div>
+		<div style="text-align:center;"><img src="ui_wax_seal_red_soft.png" style="width:80px;height:80px;" alt="wax seal soft" /><div style="font-family: var(--font-mono); font-size:11px;">wax seal — soft</div></div>
+	</div>
+</section>
+
+</main>
+
+<footer>
+	cabn M10a — style mockup only. See <a href="STYLE.md">STYLE.md</a> for tokens, motion, and accessibility notes.
+</footer>
+
+<script>
+	// Font-pairing toggle — the only JS on this static page.
+	document.querySelectorAll("[data-pairing-btn]").forEach((btn) => {
+		btn.addEventListener("click", () => {
+			const pairing = btn.getAttribute("data-pairing-btn");
+			document.body.setAttribute("data-pairing", pairing);
+			document.querySelectorAll("[data-pairing-btn]").forEach((b) => {
+				b.setAttribute("aria-pressed", String(b === btn));
+			});
+		});
+	});
+
+	// Decorative bonfire flicker — cycles the 4 existing placeholder frames.
+	// Skipped under reduced-motion, same principle as the CSS animations above.
+	if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+		const bonfire = document.getElementById("bonfire");
+		let frame = 0;
+		setInterval(() => {
+			frame = (frame + 1) % 4;
+			bonfire.src = `../placeholders/bonfire_frame${frame}_soft.png`;
+		}, 180);
+	}
+</script>
+
+</body>
+</html>
