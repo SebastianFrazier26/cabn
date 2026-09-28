@@ -118,6 +118,30 @@ Will-o'-wisps never fight: remove the `TODO` (or `FIXME`, `XXX`, `HACK`) and sav
 - **Web pages**: a world's author can point an arch at a real web page. Approach it and the same live page moves into the side preview, where you can interact with it. Sites that refuse framing show a title card and **Open in browser** instead. Only sites the author allowed can appear, and only over https.
 - **Sealed chests**: a file that's too big, looks like it holds a secret, or isn't safe to show (SVG, for example, can carry scripts) stays a sealed chest that shows its name, size and the reason.
 
+## AI pets (bring your own key)
+
+A pet is a small companion that follows you around a world and answers questions about its files, using **your own** account with an AI provider. Click **Pet** under the day/night switch (top left, in any world), pick a provider, paste your API key and press **Summon pet**.
+
+| Provider | Pet | Key |
+| --- | --- | --- |
+| Claude (Anthropic) | Clementine, a little orange cat | yes |
+| OpenAI | Onyx, a black ferret | yes |
+| Gemini (Google) | Gem, a bluebird | yes |
+| Ollama (local) | Lulu, a llama | no, it runs on your computer |
+| Qwen (Alibaba Model Studio) | Quill, an owl | yes (pick your key's region) |
+| DeepSeek | Dew, a whale that floats beside you | yes |
+
+- **Talk to it**: click the pet, or press `Enter` when nothing else (an arch, Wren, the bonfire) is in reach. Type a question and press `Enter` (`Shift+Enter` for a new line). **Stop** cancels an answer in progress; `Esc` closes the chat.
+- **What it can do**: list the world's files, read their raw text (long files in pieces), search them, and **propose edits**. It never runs code and never changes a file by itself. Files it read show under its answer; click one to walk to that file's arch.
+- **Proposed edits**: the answer shows a proposal card. **Review in spellbook** opens the file with a before/after diff on the spellbook's right page. **Accept** puts the change into the file's buffer as one undoable step (it isn't saved yet: save with `Ctrl+S` / `Cmd+S` as usual, which re-checks the file's monsters); **Reject** drops it. If the file changed since the pet looked, the proposal is marked stale instead.
+- **Model**: each provider has a short list; the first is the default. **Test connection** sends one tiny request, so it checks the key, the model and that your browser can reach the provider.
+- **Out of credits**: the pet tells you its "communication spell has worn off" and links your provider's billing page. A wrong key, a rate limit or a network problem get their own messages.
+- The pet is only in worlds: not on the shelf, and not inside a file.
+
+**Where your key goes.** Only into this browser. By default it's kept for this tab only (session storage) and gone when you close the tab. **Remember on this device** keeps it in local storage until you press **Forget key**; the key is then only as safe as this browser profile, so prefer a key with a spending limit. Questions go straight from your browser to the provider you picked; cabn's servers, the site hosting the game and `cabn serve` never see, relay or store the key. It isn't in world saves, exports, URLs or logs, and the page never shows it again after you save it. A file an undefeated magpie is guarding (a leaked secret) is not sent to the provider at all.
+
+**Ollama** needs no key, but it has to be reachable from the page. A world opened on your own machine works out of the box. A hosted (https) page can only reach it if Ollama allows that page's origin (`OLLAMA_ORIGINS`) and the browser allows the page to talk to your local network; Safari doesn't.
+
 ## For world authors: `cabn.json`
 
 A `cabn.json` at the root of a project changes how its world is built. Every field is optional except the version.

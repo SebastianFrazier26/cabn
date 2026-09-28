@@ -189,6 +189,10 @@ Edits, your position in the world, which clusters you've visited, your bag slots
 
 The top-left corner holds the one setting: time of day — `Auto` (follows your clock), `Day` or `Night`, persisted separately from any one world's save. The soft bloom+vignette glow on the world/shelf/file cameras is always on, and silently absent only where WebGL isn't available; a reduced-motion preference turns off ambient animation, not the (static) glow.
 
+### AI pets (bring your own key)
+
+Below it, **Pet** lets a player bring their own Claude, OpenAI, Gemini, Qwen or DeepSeek key (or a local Ollama) and get a pixel pet that follows them and answers questions about the world's files: it reads raw files, searches, and proposes edits that are applied only after the player accepts a diff in the spellbook. Provider calls go straight from the browser to the provider with plain `fetch` (no SDKs); the key lives only in that browser (session storage by default, local storage only on opt-in) and never reaches the backend, the host page's server or `cabn serve`. The demo's postbuild also fails if a key-shaped string (`sk-…`, Google, GitHub, AWS keys, private key blocks) lands in the bundle. The player's side is in [the guide](docs/USER_GUIDE.md#ai-pets-bring-your-own-key); the code is `packages/engine/src/pets/` (provider table in `providers.ts`, agent loop in `agentLoop.ts`). A host page with a Content-Security-Policy needs the providers' API origins in `connect-src`.
+
 ## Backend API
 
 `apps/backend` (`@cabn/backend`) is a Fastify service wrapping `@cabn/converter`: `POST /v1/worlds` takes a single-file multipart zip upload and returns the converted world bundle as a zip (`world.json`, `chunks/*.json`, `search-index.json`, `assets.json`); `GET /healthz` returns `{ok: true, version}` unauthenticated. Nothing is persisted — the upload is converted in memory and discarded once the response is sent.
