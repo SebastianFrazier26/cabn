@@ -18,6 +18,7 @@ import {
 } from "./pixelmaps/ui-screen-satchel.js";
 import { buildSpyglassScreen } from "./pixelmaps/ui-screen-spyglass.js";
 import { buildSparkle } from "./pixelmaps/ui-sparkle.js";
+import { buildToolIcon, TOOL_ICON_NAMES } from "./pixelmaps/ui-tool-icons.js";
 import { soften } from "./soften.js";
 
 // Separate output dir from placeholders/manifest.json — this M10a mockup
@@ -28,7 +29,7 @@ const uiManifestPath = path.join(uiDir, "manifest.json");
 
 interface UiAsset {
 	map: PixelMap;
-	kind: "item-icon" | "particle" | "tool-screen";
+	kind: "item-icon" | "tool-icon" | "particle" | "tool-screen";
 	/** Upscale/soften only makes sense for the item icons — sparkles are used tiny and crisp. */
 	soften: boolean;
 }
@@ -48,6 +49,13 @@ function buildAssets(): UiAsset[] {
 		{ map: buildSpyglassScreen(), kind: "tool-screen", soften: true },
 		{ map: buildSatchelScreen(), kind: "tool-screen", soften: true },
 		{ map: buildSatchelFlap(), kind: "tool-screen", soften: true },
+		...TOOL_ICON_NAMES.map(
+			(name): UiAsset => ({
+				map: buildToolIcon(name),
+				kind: "tool-icon",
+				soften: true,
+			}),
+		),
 	];
 }
 
