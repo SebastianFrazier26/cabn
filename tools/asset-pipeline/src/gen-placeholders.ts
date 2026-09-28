@@ -4,13 +4,18 @@ import type { RGB } from "./color.js";
 import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
 import { manifestJsonPath, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type PixelMap, renderPixelMap } from "./pixelmap.js";
+import { brambleIdle0, brambleIdle1 } from "./pixelmaps/bramble.js";
 import { characterIdle } from "./pixelmaps/character-idle.js";
 import { characterIdleBack } from "./pixelmaps/character-idle-back.js";
 import { ghost } from "./pixelmaps/ghost.js";
 import { gremlinIdle0, gremlinIdle1 } from "./pixelmaps/gremlin.js";
+import { impIdle0, impIdle1 } from "./pixelmaps/imp.js";
+import { magpieIdle0, magpieIdle1 } from "./pixelmaps/magpie.js";
 import { ouroborosIdle0, ouroborosIdle1 } from "./pixelmaps/ouroboros.js";
 import { portalArch } from "./pixelmaps/portal-arch.js";
 import { rotSpriteIdle0, rotSpriteIdle1 } from "./pixelmaps/rot-sprite.js";
+import { shadeIdle0, shadeIdle1 } from "./pixelmaps/shade.js";
+import { skeletonIdle0, skeletonIdle1 } from "./pixelmaps/skeleton.js";
 import {
 	wardedMimicIdle0,
 	wardedMimicIdle1,
@@ -35,6 +40,17 @@ const ALL_PIXEL_MAPS: PixelMap[] = [
 	ouroborosIdle1,
 	willOWispIdle0,
 	willOWispIdle1,
+	// 2026-09-28 annotator species (converter lint/secret/dead-code findings).
+	impIdle0,
+	impIdle1,
+	magpieIdle0,
+	magpieIdle1,
+	skeletonIdle0,
+	skeletonIdle1,
+	brambleIdle0,
+	brambleIdle1,
+	shadeIdle0,
+	shadeIdle1,
 ];
 const UPSCALE_FACTOR = 8;
 

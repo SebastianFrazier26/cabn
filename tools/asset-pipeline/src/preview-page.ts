@@ -68,6 +68,11 @@ async function main() {
 		{ slug: "gremlin", species: "gremlin (IoError)" },
 		{ slug: "ouroboros", species: "ouroboros (OuroborosError)" },
 		{ slug: "will_o_wisp", species: "will-o-wisp (WispNote)" },
+		{ slug: "imp", species: "imp — Hex Imp (syntax errors)" },
+		{ slug: "magpie", species: "magpie (leaked secrets)" },
+		{ slug: "skeleton", species: "skeleton (dead code)" },
+		{ slug: "bramble", species: "bramble (code smells / complexity)" },
+		{ slug: "shade", species: "shade (catch-all / external linters)" },
 	];
 	const monsterRows = monsterSpecies
 		.map(({ slug, species }) => {
