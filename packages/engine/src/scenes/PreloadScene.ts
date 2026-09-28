@@ -29,6 +29,8 @@ import {
 	pathStampPath,
 	propKey,
 	propPath,
+	SHELF_CABIN_KEY,
+	SHELF_CABIN_PATH,
 	WORLD_ART_BIOMES,
 	WORLD_CABINET_KEY,
 	WORLD_CABINET_PATH,
@@ -56,6 +58,8 @@ export interface AssetAvailability {
 	characterBack: boolean;
 	/** All of: 3 biome tile sheets, the shared decal sheet, 4 path stamps, 10 props — WorldScene/ShelfScene fall back to tinted ellipses/dashed lines entirely if any one piece is missing, rather than a half-tiled scene. */
 	worldArt: boolean;
+	/** The procedural shelf cabin — ShelfScene falls back to the photographic ASSET_KEYS.cabin without it. */
+	shelfCabin: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -143,7 +147,20 @@ export class PreloadScene extends Phaser.Scene {
 		}
 		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
 		this.load.image(WORLD_CABINET_KEY, WORLD_CABINET_PATH);
+		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
+	}
+
+	/**
+	 * FILE_LOAD_ERROR alone misses a missing file on any host with an SPA
+	 * fallback (vite preview, most static hosts with rewrites): the request
+	 * "succeeds" with index.html, the image then fails to decode, and no
+	 * texture is ever added — found while checking the shelf-cabin fallback,
+	 * where every optional sprite rendered as an invisible missing texture
+	 * instead of falling back.
+	 */
+	private loaded(key: string): boolean {
+		return !this.missingOptional.has(key) && this.textures.exists(key);
 	}
 
 	create(): void {
@@ -159,7 +176,7 @@ export class PreloadScene extends Phaser.Scene {
 
 		const bonfireAvailable = Array.from(
 			{ length: BONFIRE_FRAME_COUNT },
-			(_, i) => !this.missingOptional.has(OPTIONAL_ASSET_KEYS.bonfireFrame(i)),
+			(_, i) => this.loaded(OPTIONAL_ASSET_KEYS.bonfireFrame(i)),
 		).every(Boolean);
 		if (bonfireAvailable) {
 			this.anims.create({
@@ -195,17 +212,14 @@ export class PreloadScene extends Phaser.Scene {
 			WORLD_CABINET_KEY,
 			FX_SPARK_KEY,
 		];
-		const worldArtAvailable = worldArtKeys.every(
-			(key) => !this.missingOptional.has(key),
-		);
+		const worldArtAvailable = worldArtKeys.every((key) => this.loaded(key));
 
 		const availability: AssetAvailability = {
-			wizardTower: !this.missingOptional.has(OPTIONAL_ASSET_KEYS.wizardTower),
+			wizardTower: this.loaded(OPTIONAL_ASSET_KEYS.wizardTower),
 			bonfire: bonfireAvailable,
-			characterBack: !this.missingOptional.has(
-				OPTIONAL_ASSET_KEYS.characterIdleBack,
-			),
+			characterBack: this.loaded(OPTIONAL_ASSET_KEYS.characterIdleBack),
 			worldArt: worldArtAvailable,
+			shelfCabin: this.loaded(SHELF_CABIN_KEY),
 		};
 
 		if ("shelfManifest" in this.target) {

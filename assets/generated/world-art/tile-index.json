@@ -162,5 +162,10 @@
 		"key": "world-cabinet",
 		"file": "placeholders/prop_world_cabinet_soft.png"
 	},
+	"shelfCabin": {
+		"name": "shelf-cabin",
+		"key": "shelf-cabin",
+		"file": "placeholders/prop_shelf_cabin_soft.png"
+	},
 	"mockScene": "mock-scene.png"
 }

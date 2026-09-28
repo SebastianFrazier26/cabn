@@ -157,6 +157,13 @@ export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_sof
 export const WORLD_CABINET_KEY = "world-cabinet";
 export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet_soft.png`;
 
+// M10 art-consistency pass: replaces ASSET_KEYS.cabin (the photographic
+// cabin_256.webp) for ShelfScene's per-world cabins — see
+// tools/asset-pipeline's world-art/shelf-cabin.ts. Optional, same fallback
+// shape as WORLD_CABINET_KEY: ShelfScene keeps the old cabin if this fails.
+export const SHELF_CABIN_KEY = "shelf-cabin";
+export const SHELF_CABIN_PATH = `${ASSET_BASE}/placeholders/prop_shelf_cabin_soft.png`;
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything
@@ -164,7 +171,8 @@ export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet
 export const FX_SPARK_KEY = "fx-spark";
 export const FX_SPARK_PATH = `${ASSET_BASE}/placeholders/fx_spark.png`;
 
-// M10a: the five hand-drawn item icons and three sparkle particles from the
+// M10a: the hand-drawn item icons (plus the opener's key, redrawn in the
+// same style by the M10 art-consistency pass) and three sparkle particles from the
 // approved UI mockup (assets/generated/ui/), copied into placeholders/ under
 // their existing filenames rather than adding a fourth synced source
 // directory to apps/demo/scripts/build-world.mjs — that directory also holds
@@ -177,6 +185,7 @@ export const UI_ICON_NAMES = [
 	"bag",
 	"quill",
 	"wand",
+	"key",
 ] as const;
 export type UiIconName = (typeof UI_ICON_NAMES)[number];
 

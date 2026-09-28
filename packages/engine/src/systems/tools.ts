@@ -70,18 +70,12 @@ export class ToolRegistry {
 	}
 }
 
-// M10a: spyglass/orb/bag/quill/wand now have real hand-drawn icons (the
-// approved UI mockup, assets/generated/ui/) instead of borrowed placeholders
-// — see assetPaths.ts's uiIconPath. Opener keeps the original key icon; it
-// was never a placeholder (a literal key reads correctly as "open").
-const ICON_BASE = "/assets/originals";
-
 export function createDefaultTools(): Tool[] {
 	return [
 		{
 			id: "opener",
 			name: "Opener",
-			icon: `${ICON_BASE}/key_256.webp`,
+			icon: uiIconPath("key"),
 			hotkey: "E",
 			// WorldScene polls its own E key directly for frame-accurate movement
 			// feel and subscribes to this event too, so a hotbar click behaves

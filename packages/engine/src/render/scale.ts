@@ -31,6 +31,18 @@ export const WIZARD_TOWER_RAW_WIDTH_PX = 768;
 export const WIZARD_TOWER_RAW_HEIGHT_PX = 1280;
 export const WIZARD_TOWER_SCALE = 0.14;
 
+// The procedural shelf cabin (52x48 grid) and world cabinet (30x40) are both
+// rendered at the tower's cellSize 16 (tools/asset-pipeline's
+// gen-world-art.ts LANDMARK_CELL_SIZE), so sharing the tower's scale is what
+// gives all three the same on-screen pixel size (~2.2px per grid cell, close
+// to the player's 2px) — the M10 playtest's "cabins are a lot more detailed
+// than the tower" complaint was exactly a density mismatch. Resulting
+// heights: cabin ~108px (~1.7x the 64px player), cabinet ~90px (~1.4x —
+// the playtest asked for 1.3-1.6x; batch 3's unscaled 132px cabinet read as
+// "oversized brown blocks").
+export const SHELF_CABIN_SCALE = WIZARD_TOWER_SCALE;
+export const WORLD_CABINET_SCALE = WIZARD_TOWER_SCALE;
+
 // castle-keep's pixel map is 32x44 (tools/asset-pipeline/src/world-art/
 // props.ts), cellSize 6 like every other prop -> raw 192x264. Every other
 // prop in this batch is deliberately unscaled (propPlacement.ts never calls

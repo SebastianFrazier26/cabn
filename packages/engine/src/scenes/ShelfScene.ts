@@ -6,6 +6,7 @@ import {
 	biomeTileSheetKey,
 	CASTLE_KEEP_KEY,
 	OPTIONAL_ASSET_KEYS,
+	SHELF_CABIN_KEY,
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -39,6 +40,7 @@ import {
 	CABIN_SCALE,
 	CASTLE_KEEP_TARGET_HEIGHT_PX,
 	fitSpriteToSize,
+	SHELF_CABIN_SCALE,
 	WIZARD_TOWER_SCALE,
 } from "../render/scale.js";
 import { largestAngularGapMidpoint } from "../systems/angularGap.js";
@@ -49,7 +51,7 @@ import {
 } from "../systems/portalApproach.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
-import { themeFromSeed } from "../systems/theme.js";
+import { subtleTint, themeFromSeed } from "../systems/theme.js";
 import type { AssetAvailability } from "./PreloadScene.js";
 
 export interface ShelfSceneData {
@@ -69,6 +71,8 @@ const TOWER_CLEARING_RADIUS = 170;
 const TOWER_CLEARING_EXCLUSION_RADIUS = 90;
 const CABIN_PATH_EXCLUSION_RADIUS = 26;
 const CASTLE_KEEP_DISTANCE = 260;
+/** How much of the per-world theme tint reaches the procedural cabin (systems/theme.ts's subtleTint). Higher than WorldScene's cabinet (0.35) because the cabin's tint is what tells worlds apart on the shelf, but still well short of full strength, which muddies the warm windows and ivy. */
+const SHELF_CABIN_TINT_STRENGTH = 0.5;
 const SHELF_PROPS_NEAR_TOWER = ["lamp-post", "bench", "flower-bed"] as const;
 
 interface CabinPlacement {
@@ -406,8 +410,20 @@ export class ShelfScene extends Phaser.Scene {
 	private drawCabins(): void {
 		for (const cabin of this.cabins) {
 			const theme = themeFromSeed(cabin.world.themeSeed);
-			const sprite = this.add.image(cabin.pos.x, cabin.pos.y, ASSET_KEYS.cabin);
-			sprite.setScale(CABIN_SCALE).setTint(theme.tint).setDepth(2);
+			const procedural = this.availability.shelfCabin;
+			const sprite = this.add.image(
+				cabin.pos.x,
+				cabin.pos.y,
+				procedural ? SHELF_CABIN_KEY : ASSET_KEYS.cabin,
+			);
+			sprite
+				.setScale(procedural ? SHELF_CABIN_SCALE : CABIN_SCALE)
+				.setTint(
+					procedural
+						? subtleTint(theme.tint, SHELF_CABIN_TINT_STRENGTH)
+						: theme.tint,
+				)
+				.setDepth(2);
 
 			this.add
 				.text(

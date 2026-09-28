@@ -2,10 +2,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RGB } from "./color.js";
 import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
-import { generatedDir, paletteJsonPath } from "./paths.js";
+import { generatedDir, paletteJsonPath, placeholdersDir } from "./paths.js";
 import type { PixelMap } from "./pixelmap.js";
 import { renderPixelMap } from "./pixelmap.js";
 import { buildBagIcon } from "./pixelmaps/ui-item-bag.js";
+import { buildKeyIcon } from "./pixelmaps/ui-item-key.js";
 import { buildCrystalOrbIcon } from "./pixelmaps/ui-item-orb.js";
 import { buildQuillIcon } from "./pixelmaps/ui-item-quill.js";
 import { buildSpyglassIcon } from "./pixelmaps/ui-item-spyglass.js";
@@ -33,6 +34,7 @@ function buildAssets(): UiAsset[] {
 		{ map: buildBagIcon(), kind: "item-icon", soften: true },
 		{ map: buildQuillIcon(), kind: "item-icon", soften: true },
 		{ map: buildWandIcon(), kind: "item-icon", soften: true },
+		{ map: buildKeyIcon(), kind: "item-icon", soften: true },
 		{ map: buildSparkle("violet"), kind: "particle", soften: false },
 		{ map: buildSparkle("cyan"), kind: "particle", soften: false },
 		{ map: buildSparkle("gold"), kind: "particle", soften: false },
@@ -86,10 +88,12 @@ async function main() {
 			// wizard_tower/character_idle/ghost, so these icons land in the same
 			// "soft-rendered cottagecore" family as the existing originals rather
 			// than needing their own bespoke tuning.
-			await writeRawRgbaPng(
-				soften(image, SOFTEN_OVERRIDES[map.name]),
-				path.join(uiDir, softFile),
-			);
+			const softImage = soften(image, SOFTEN_OVERRIDES[map.name]);
+			await writeRawRgbaPng(softImage, path.join(uiDir, softFile));
+			// The engine loads icons from placeholders/ (see engine
+			// assetPaths.ts's uiIconPath) — written here too so a regenerated
+			// icon can't silently drift from the copy the game actually ships.
+			await writeRawRgbaPng(softImage, path.join(placeholdersDir, softFile));
 		}
 
 		manifest[map.name] = {
