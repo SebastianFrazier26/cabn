@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>cabn — pixel-RPG UI mockup v3 (M10a)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  Static style mockup, not the live engine UI. Opens by double-click (all
+  paths below are relative to this file inside assets/generated/ui/).
+  v3: v2's direction was approved ("wayyyy better"). This is a refinement
+  pass, not another reset — day/night theming (Meadow=day, Berry=night, tied
+  to the local clock with a manual override), the pixel font applied to all
+  UI text (not just headings), stronger/more per-tool magic effects, and
+  higher-resolution item icons with richer 4-tone shading.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+	:root {
+		/* ---- Day theme (default) — clean/cool panels, bright sky ---- */
+		--panel-body: #f2f8ff;
+		--panel-body-alt: #dff0ff;
+		--border-outer: #3b2f6b;
+		--border-highlight: #8fd6ef;
+		--text: #201a3d;
+		--text-secondary: #55507f;
+		--accent-yellow: #ffd23f;
+		--accent-green: #5ec26a;
+		--accent-pink: #ef5fa0;
+		--accent-orange: #ff9142;
+		--accent-cyan: #4fd0d8;
+		--accent-violet: #8a6fd6;
+		--sky-top: #8fd8f5;
+		--sky-bottom: #cdeeb0;
+		--celestial: var(--accent-yellow);
+		--celestial-glow: rgba(255,210,63,0.55);
+		--star-opacity: 0;
+
+		--space-1: 4px;
+		--space-2: 8px;
+		--space-3: 12px;
+		--space-4: 16px;
+		--space-6: 24px;
+
+		--ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+		--dur-press: 100ms;
+		--dur-hover: 180ms;
+		--dur-open: 340ms;
+
+		--font-display: "DotGothic16", system-ui, sans-serif;
+		--font-mono: "JetBrains Mono", monospace;
+	}
+	/* ---- Night theme — same clean/cool panel logic, deep indigo sky + stars ---- */
+	body[data-theme="night"] {
+		--panel-body: #eeeaff;
+		--panel-body-alt: #ded6ff;
+		--border-outer: #221a4d;
+		--border-highlight: #ffd23f;
+		--text: #1c1640;
+		--text-secondary: #635ca8;
+		--accent-yellow: #ffcf4d;
+		--accent-green: #46d19a;
+		--accent-pink: #ff4fa0;
+		--accent-orange: #ff7a45;
+		--accent-cyan: #46c9e0;
+		--accent-violet: #7a5fe0;
+		--sky-top: #120e33;
+		--sky-bottom: #3b2f75;
+		--celestial: #e9e9ff;
+		--celestial-glow: rgba(233,233,255,0.5);
+		--star-opacity: 0.9;
+	}
+
+	* { box-sizing: border-box; }
+	html, body { margin: 0; padding: 0; }
+	body {
+		font-family: var(--font-display);
+		color: #fff;
+		background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+		min-height: 100vh;
+		transition: background 400ms var(--ease-settle);
+	}
+	img { image-rendering: pixelated; }
+	h1, h2, h3 { font-family: var(--font-display); font-weight: 700; }
+
+	/* ---- top bar ---- */
+	.topbar {
+		position: sticky; top: 0; z-index: 20;
+		display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+		padding: var(--space-3) var(--space-6);
+		background: rgba(20, 16, 40, 0.9);
+		border-bottom: 4px solid var(--border-outer);
+	}
+	.topbar h1 { margin: 0; font-size: 16px; color: var(--accent-yellow); text-shadow: 2px 2px 0 rgba(0,0,0,0.4); }
+	.topbar p { margin: 0; font-size: 11px; line-height: 1.6; max-width: 46ch; font-family: var(--font-mono); color: #fff; opacity: 0.85; }
+	.theme-toggle { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
+	.theme-toggle .current { font-family: var(--font-mono); font-size: 10px; color: #fff; opacity: 0.7; margin-right: 4px; }
+	.theme-toggle button {
+		font-family: var(--font-display); font-size: 11px;
+		background: var(--border-outer); color: #fff;
+		border: 2px solid var(--accent-yellow); padding: 6px 10px; cursor: pointer; border-radius: 6px;
+	}
+	.theme-toggle button[aria-pressed="true"] { background: var(--accent-yellow); color: var(--border-outer); }
+
+	/* ---- layout ---- */
+	main { padding: var(--space-6); display: flex; flex-direction: column; gap: 48px; max-width: 1320px; margin: 0 auto; }
+	section { display: flex; flex-direction: column; gap: var(--space-3); }
+	section > h2 {
+		font-size: 16px; color: var(--border-outer); margin: 0; display: inline-flex; align-self: flex-start;
+		background: #fff; padding: 6px 14px; border-radius: 8px; border: 3px solid var(--border-outer);
+		box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+	}
+	.section-note {
+		font-size: 12px; line-height: 1.7; opacity: 0.95; max-width: 74ch; font-family: var(--font-mono);
+		color: var(--border-outer); background: rgba(255,255,255,0.55); padding: 6px 10px; border-radius: 6px;
+	}
+	.replay-btn {
+		align-self: flex-start; font-family: var(--font-mono); font-size: 10px; cursor: pointer;
+		background: rgba(255,255,255,0.7); border: 2px solid var(--border-outer); color: var(--border-outer);
+		padding: 4px 10px; border-radius: 6px;
+	}
+	.compare { display: flex; align-items: flex-start; gap: var(--space-6); flex-wrap: wrap; }
+	.stage {
+		position: relative;
+		background: rgba(255,255,255,0.18);
+		border: 2px dashed rgba(255,255,255,0.5);
+		border-radius: 10px;
+		padding: 28px;
+		min-height: 140px;
+		flex: 1 1 480px;
+		display: flex; align-items: center; justify-content: center;
+		overflow: hidden;
+	}
+	.current-thumb { flex: 0 0 160px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+	.current-thumb span { font-family: var(--font-mono); font-size: 10px; color: var(--border-outer); background: #fff; padding: 2px 6px; border-radius: 4px; }
+	.current-box {
+		width: 140px; min-height: 60px;
+		background: #efe0b3; color: #322214;
+		border: 2px solid #322214; border-radius: 6px;
+		font-family: "Courier New", monospace; font-size: 10px;
+		display: flex; align-items: center; justify-content: center; text-align: center;
+		padding: 6px;
+	}
+
+	/* ================= flat pixel panel (Pokémon B/W textbox-ish) ================= */
+	.panel {
+		position: relative;
+		background: var(--panel-body);
+		border: 4px solid var(--border-outer);
+		border-radius: 14px;
+		box-shadow: inset 0 0 0 3px var(--border-highlight), 5px 5px 0 rgba(0,0,0,0.22);
+		color: var(--text);
+		padding: 14px;
+	}
+	/* small corner accents, a common GBA/DS menu-box detail */
+	.panel::before, .panel::after {
+		content: ""; position: absolute; top: -3px; width: 8px; height: 8px;
+		background: var(--accent-yellow); border: 2px solid var(--border-outer); border-radius: 2px; transform: rotate(45deg);
+	}
+	.panel::before { left: 10px; }
+	.panel::after { right: 10px; }
+	.panel-title {
+		font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--border-outer);
+	}
+	.panel-divider { height: 3px; background: var(--border-outer); opacity: 0.15; margin: 6px 0; border-radius: 2px; }
+
+	/* ---- sparkle particles + open/close burst (shared across the per-tool fx below) ---- */
+	.sparkle { position: absolute; pointer-events: none; opacity: 0.85; }
+	@keyframes twinkle { 0%, 100% { opacity: 0.25; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.25); } }
+	.effect-burst { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+	.effect-burst .spark { position: absolute; top: 50%; left: 50%; width: 16px; margin: -8px; opacity: 0; }
+	@keyframes burst-out {
+		0% { opacity: 1; transform: translate(0, 0) scale(1.3); }
+		100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3); }
+	}
+	@keyframes burst-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+	/* Reduced-motion default: fade in place, no radiating translate/scale. */
+	.effect-burst.play .spark { animation: burst-fade 500ms ease-out forwards; }
+
+	/* ================= 1. tool hotbar ================= */
+	.hotbar { display: flex; gap: 10px; }
+	.hotbar-slot {
+		position: relative; width: 64px; height: 64px; overflow: hidden;
+		background: var(--panel-body);
+		border: 3px solid var(--border-outer); border-radius: 12px;
+		box-shadow: inset 0 0 0 2px var(--border-highlight);
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		cursor: pointer; padding: 4px;
+	}
+	.hotbar-slot img { width: 40px; height: 40px; object-fit: contain; position: relative; z-index: 1; }
+	.hotbar-slot .key { position: relative; z-index: 1; font-size: 10px; color: var(--text-secondary); margin-top: 1px; }
+	.hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--border-highlight), 0 0 0 3px var(--accent-yellow); transform: translateY(-3px); }
+	.hotbar-slot .badge {
+		position: absolute; top: -6px; right: -6px; z-index: 2;
+		background: var(--accent-pink); color: var(--text);
+		border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+		display: flex; align-items: center; justify-content: center; border: 2px solid var(--border-outer);
+	}
+	/* hover shimmer: a diagonal sheen sweeps once on hover — reduced-motion
+	   falls back to a flat brightness bump instead of a moving sweep. */
+	.hotbar-slot::after {
+		content: ""; position: absolute; inset: -60%; z-index: 1; pointer-events: none;
+		background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.65) 50%, transparent 58%);
+		transform: translateX(-60%);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.hotbar-slot:hover { filter: brightness(1.15); }
+	}
+
+	/* ================= 2. spyglass — lens vignette ================= */
+	.spyglass-frame { width: 300px; position: relative; overflow: hidden; }
+	.spyglass-frame::before {
+		content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 2;
+		background: radial-gradient(circle at center, transparent 45%, rgba(10,8,30,0.65) 100%);
+	}
+	.spyglass-frame::after {
+		content: ""; position: absolute; inset: -40%; pointer-events: none; z-index: 2;
+		background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.5) 50%, transparent 65%);
+	}
+	.spy-row { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 8px; padding: 6px 4px; font-size: 13px; border-bottom: 2px dotted var(--border-outer); cursor: pointer; }
+	.spy-row:hover { background: rgba(143, 214, 239, 0.35); }
+	.spy-row .meta { color: var(--text-secondary); font-size: 11px; }
+
+	/* ================= 3. crystal orb search — violet/cyan mist ================= */
+	.orb-backdrop { background: radial-gradient(ellipse at center, rgba(90,60,170,0.6), rgba(10,8,35,0.85)); padding: 50px 20px; width: 100%; display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; }
+	.orb-mist { position: absolute; inset: -30%; background: conic-gradient(from 0deg, var(--accent-violet), var(--accent-cyan), var(--accent-pink), var(--accent-violet)); opacity: 0.5; filter: blur(22px); }
+	.orb-mist.two { inset: -10%; opacity: 0.3; filter: blur(14px); }
+	.orb-modal { position: relative; z-index: 3; width: min(520px, 100%); }
+	.orb-input { width: 100%; font: inherit; font-size: 14px; background: transparent; border: none; border-bottom: 3px dashed var(--border-outer); outline: none; color: var(--text); padding: 4px 2px 8px; }
+	.orb-hit { padding: 8px 4px; border-bottom: 2px dotted rgba(59,47,107,0.25); cursor: pointer; }
+	.orb-hit:hover { background: rgba(143, 214, 239, 0.35); }
+	.orb-hit strong { font-size: 12px; }
+	.orb-hit span { display: block; font-size: 11px; color: var(--text-secondary); }
+
+	/* ================= 4. bag tray — open satchel interior ================= */
+	.bag-frame { width: 240px; padding: 16px 12px; position: relative; overflow: hidden; }
+	.bag-frame::before {
+		content: ""; position: absolute; inset: 6px; border-radius: 8px; pointer-events: none;
+		background: radial-gradient(ellipse at 50% 0%, rgba(120,70,30,0.32), transparent 70%);
+		border: 2px dashed rgba(120,70,30,0.45);
+	}
+	.bag-slot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; background: var(--panel-body-alt); border: 2px solid var(--border-outer); border-radius: 8px; padding: 5px 10px; font-size: 11px; color: var(--text); margin-bottom: 6px; }
+	.bag-slot.filled { box-shadow: 0 0 0 2px var(--accent-yellow); }
+	.bag-slot .x { opacity: 0.55; cursor: pointer; }
+
+	/* ================= 5. editor — ink/glyph shimmer ================= */
+	.editor-frame { width: min(640px, 100%); padding: 0; overflow: hidden; position: relative; }
+	.editor-plaque { background: var(--border-outer); color: #fff; font-size: 12px; text-align: center; padding: 8px; border-radius: 10px 10px 0 0; }
+	.editor-body { padding: 14px 16px; position: relative; }
+	.editor-body .glyph { position: absolute; font-family: var(--font-mono); color: var(--accent-violet); opacity: 0.4; font-size: 16px; }
+	@keyframes glyph-drift { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: 0.6; } 100% { opacity: 0; transform: translateY(-26px); } }
+	.ink-blot { position: absolute; top: -10px; right: 14px; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle, var(--border-outer) 40%, transparent 70%); opacity: 0.5; }
+	.code-line { font-family: var(--font-mono); font-size: 12px; white-space: pre; line-height: 1.55; position: relative; z-index: 1; }
+	.code-line .kw { color: #b02f7c; font-weight: 600; }
+	.code-line .str { color: #2f9e5a; }
+	.code-line .fn { color: #c9532a; }
+	.code-line .cm { color: var(--text-secondary); font-style: italic; }
+	.editor-gutter { font-family: var(--font-mono); color: var(--text-secondary); opacity: 0.7; display: inline-block; width: 2.5ch; text-align: right; margin-right: 10px; }
+	.editor-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 10px 16px 14px; }
+
+	/* ---- flat pixel buttons ---- */
+	.btn { font-family: var(--font-display); font-size: 12px; padding: 7px 16px; border-radius: 10px; border: 3px solid var(--border-outer); cursor: pointer; color: var(--text); box-shadow: 3px 3px 0 rgba(0,0,0,0.2); }
+	.btn:active { box-shadow: 1px 1px 0 rgba(0,0,0,0.2); transform: translate(2px, 2px); }
+	.btn.confirm { background: var(--accent-green); }
+	.btn.cancel { background: var(--accent-pink); }
+	.btn.neutral { background: var(--accent-yellow); }
+
+	/* ================= 6. encounter banner & victory toast ================= */
+	.ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 300px; padding: 10px 36px; margin-bottom: 10px; }
+	.ribbon-shape { position: absolute; inset: 0; background: var(--accent-pink); clip-path: polygon(6% 0%, 94% 0%, 100% 50%, 94% 100%, 6% 100%, 0% 50%); border-radius: 4px; box-shadow: 3px 3px 0 rgba(0,0,0,0.2); }
+	.ribbon.victory .ribbon-shape { background: var(--accent-green); }
+	.ribbon span { position: relative; z-index: 1; font-size: 15px; color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.35); }
+	.encounter-card { width: min(420px, 100%); text-align: center; position: relative; }
+	.encounter-card p { margin: 4px 0 0; font-size: 13px; }
+	.encounter-flash { position: absolute; inset: -4px; border-radius: 16px; background: #fff; opacity: 0; pointer-events: none; }
+	@keyframes shake { 10%, 90% { transform: translateX(-2px); } 20%, 80% { transform: translateX(3px); } 30%, 50%, 70% { transform: translateX(-5px); } 40%, 60% { transform: translateX(5px); } }
+	@keyframes flash-pulse { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+	.encounter-card.play .encounter-flash { animation: flash-pulse 450ms ease-out; }
+	.victory-toast { width: min(360px, 100%); text-align: center; position: relative; }
+	.confetti { position: absolute; width: 8px; height: 8px; top: 50%; left: 50%; margin: -4px; opacity: 0; }
+	@keyframes confetti-out {
+		0% { opacity: 1; transform: translate(0,0) rotate(0deg); }
+		100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--rot)); }
+	}
+	/* Reduced-motion default: fade in place, same reasoning as .effect-burst above. */
+	.victory-toast.play .confetti { animation: burst-fade 500ms ease-out forwards; }
+
+	/* ================= 7. wand / run — rune scroll ================= */
+	.rune-scroll { width: min(420px, 100%); position: relative; padding: 18px 16px; overflow: hidden; }
+	.rune-ring { position: absolute; inset: -26%; border-radius: 50%; border: 3px dashed var(--accent-violet); opacity: 0.55; }
+	.rune-ring.two { inset: -14%; border-color: var(--accent-cyan); border-width: 2px; }
+	.rune-ring.three { inset: -36%; border-color: var(--accent-yellow); border-width: 2px; opacity: 0.4; }
+	.rune-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-yellow); box-shadow: 0 0 8px 2px var(--accent-yellow); }
+	.rune-body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; }
+	.run-line-current { background: rgba(255,210,63,0.35); border-left: 4px solid var(--accent-yellow); padding: 2px 8px; font-family: var(--font-mono); font-size: 12px; border-radius: 4px; }
+	.run-log { background: rgba(59,47,107,0.08); padding: 6px 8px; font-family: var(--font-mono); font-size: 11px; max-height: 90px; overflow: auto; border-radius: 6px; }
+	.run-controls { display: flex; align-items: center; gap: 8px; }
+	.run-controls .speed { font-family: var(--font-display); font-size: 11px; border: 2px solid var(--border-outer); padding: 3px 9px; background: #fff; cursor: pointer; color: var(--text); border-radius: 6px; }
+	.run-controls .speed.active { background: var(--accent-yellow); }
+
+	/* ================= 8/9/10: counter, settings, help ================= */
+	.hud-pill { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; font-size: 12px; }
+	.glow-toggle { font-family: var(--font-display); font-size: 11px; padding: 8px 14px; cursor: pointer; background: var(--panel-body); border: 3px solid var(--border-outer); border-radius: 20px; box-shadow: inset 0 0 0 2px var(--border-highlight); color: var(--text); }
+	.help-card { width: min(360px, 100%); }
+	.help-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+	.help-row kbd { font-family: var(--font-display); background: var(--border-outer); color: #fff; padding: 1px 7px; border-radius: 4px; font-size: 11px; }
+
+	/* ================= 11: scene transitions ================= */
+	.transition-frames { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+	.transition-frame { width: 220px; height: 130px; position: relative; overflow: hidden; background: var(--border-outer); border-radius: 10px; border: 2px solid rgba(255,255,255,0.2); }
+	.transition-frame .label { position: absolute; bottom: 4px; left: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--accent-yellow); }
+	.tf-pageturn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, var(--panel-body) 45%, var(--accent-violet) 50%, transparent 55%); opacity: 0.95; }
+	.tf-unroll::before { content: ""; position: absolute; left: 10%; right: 10%; top: 20%; height: 45%; background: var(--panel-body); border: 3px solid var(--accent-violet); border-radius: 10px; }
+	.tf-vignette::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 30%, var(--border-outer) 75%); }
+
+	/*
+	 * Every ambient/loop effect is static by default and only animates under
+	 * :no-preference — "reduced by default, enhanced when allowed" avoids
+	 * fighting a base rule with !important (Biome's noImportantStyles lint
+	 * flags that pattern). One-shot effects (burst/confetti/shake) are gated
+	 * the same way below, except the flash-pulse opacity fade, which is left
+	 * running under reduced motion too — a brief opacity change isn't the
+	 * vestibular-motion category that setting exists for.
+	 */
+	@media (prefers-reduced-motion: no-preference) {
+		.sparkle { animation: twinkle 1.4s ease-in-out infinite; }
+		.orb-mist { animation: swirl 10s linear infinite; }
+		.orb-mist.two { animation: swirl 14s linear infinite reverse; }
+		.spyglass-frame::after { animation: sheen 2.6s linear infinite; }
+		.editor-body .glyph { opacity: 0; animation: glyph-drift 3.4s ease-in infinite; }
+		.rune-ring { animation: spin-slow 7s linear infinite; }
+		.rune-ring.two { animation-direction: reverse; animation-duration: 9s; }
+		.rune-ring.three { animation-duration: 13s; }
+		.hotbar-slot:hover::after { animation: sheen 650ms ease-out; }
+		.encounter-card.play { animation: shake 450ms ease-in-out; }
+		.effect-burst.play .spark { animation: burst-out 600ms ease-out forwards; }
+		.victory-toast.play .confetti { animation: confetti-out 900ms ease-out forwards; }
+	}
+	@keyframes swirl { to { transform: rotate(360deg); } }
+	@keyframes sheen { 0% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+	@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+	/* ---- world backdrop strip ---- */
+	.world-backdrop { position: relative; height: 210px; overflow: hidden; background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom)); border-bottom: 4px solid var(--border-outer); transition: background 400ms var(--ease-settle); }
+	.world-backdrop img { position: absolute; bottom: 0; }
+	.world-backdrop .caption { position: absolute; top: 10px; right: 16px; font-family: var(--font-mono); font-size: 10px; color: #fff; opacity: 0.85; max-width: 42ch; text-align: right; text-shadow: 1px 1px 0 rgba(0,0,0,0.3); }
+	.celestial { position: absolute; top: 18px; right: 90px; width: 34px; height: 34px; border-radius: 50%; background: var(--celestial); box-shadow: 0 0 24px 6px var(--celestial-glow); transition: background 400ms, box-shadow 400ms; }
+	.star { position: absolute; width: 2px; height: 2px; background: #fff; border-radius: 50%; opacity: var(--star-opacity); transition: opacity 400ms; }
+
+	/* Double ring (dark + gold) rather than a single color — a single accent-yellow
+	   ring measures fine against panel-body but a single border-outer ring would
+	   vanish against anything already using that color for its own border. */
+	button:focus-visible, input:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 2px var(--border-outer), 0 0 0 4px var(--accent-yellow);
+	}
+
+	footer { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--border-outer); padding: 40px 0 60px; }
+	footer a { color: var(--border-outer); }
+</style>
+</head>
+<body data-theme="day">
+
+<div class="topbar">
+	<h1>cabn — pixel-RPG UI mockup v3</h1>
+	<p>v2's direction was approved. This pass: day/night theming (local clock + manual override), the pixel font applied everywhere (not just headings), stronger per-tool magic effects, and higher-res item icons.</p>
+	<div class="theme-toggle">
+		<span class="current" id="theme-current">auto -&gt; day</span>
+		<button type="button" data-mode-btn="auto" aria-pressed="true">Auto</button>
+		<button type="button" data-mode-btn="day" aria-pressed="false">Day</button>
+		<button type="button" data-mode-btn="night" aria-pressed="false">Night</button>
+	</div>
+</div>
+
+<div class="world-backdrop">
+	<span class="caption">Backdrop: existing softened placeholder sprites (wizard_tower, character_idle, bonfire, ghost) — day/night only changes the sky gradient + this sun/moon + stars, no new sprites.</span>
+	<div class="celestial"></div>
+	<div class="star" style="top:30px;left:120px;"></div>
+	<div class="star" style="top:60px;left:220px;"></div>
+	<div class="star" style="top:20px;left:380px;"></div>
+	<div class="star" style="top:80px;left:500px;"></div>
+	<div class="star" style="top:40px;left:650px;"></div>
+	<div class="star" style="top:70px;left:780px;"></div>
+	<div class="star" style="top:25px;left:900px;"></div>
+	<div class="star" style="top:55px;left:1020px;"></div>
+	<img src="../placeholders/wizard_tower_soft.png" style="left: 60px; height: 200px;" alt="" />
+	<img src="../placeholders/character_idle_soft.png" style="left: 300px; height: 86px;" alt="" />
+	<img id="bonfire" src="../placeholders/bonfire_frame0_soft.png" style="left: 420px; height: 66px;" alt="" />
+	<img src="../placeholders/ghost_soft.png" style="left: 620px; height: 56px; opacity: 0.85;" alt="" />
+</div>
+
+<main>
+
+<section>
+	<h2>1. Tool hotbar — real item art, hover shimmer</h2>
+	<p class="section-note">Same real item icons as v2, now at 48-64px source resolution with 4-tone shading (see the icon-art section below) and a bit bigger on screen (64px slot / 40px icon) to show it off. New: a sheen sweeps across a slot on hover.</p>
+	<div class="compare">
+		<div class="current-thumb">
+			<div class="current-box" style="display:flex; gap:4px; padding:8px;">
+				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
+				<div style="width:24px;height:24px;background:#efe0b3;border:2px solid #322214;"></div>
+			</div>
+			<span>current: emoji-in-wood (v1, rejected)</span>
+		</div>
+		<div class="stage">
+			<div class="hotbar">
+				<button class="hotbar-slot" type="button"><img src="../originals/key_256.webp" alt="opener" /><span class="key">E</span></button>
+				<button class="hotbar-slot selected" type="button"><img src="ui_icon_spyglass_soft.png" alt="spyglass" /><span class="key">L</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_orb_soft.png" alt="crystal orb" /><span class="key">F</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_bag_soft.png" alt="bag" /><span class="key">B</span><span class="badge">2</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_quill_soft.png" alt="quill" /><span class="key">Q</span></button>
+				<button class="hotbar-slot" type="button"><img src="ui_icon_wand_soft.png" alt="wand" /><span class="key">R</span></button>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>2. Spyglass file list — lens vignette + open burst</h2>
+	<p class="section-note">Darker, tighter vignette and a faster, brighter sheen than v2. New: an opening burst of sparkles when the panel appears (replay it below — real integration would tie this to the panel's actual mount).</p>
+	<button class="replay-btn" type="button" data-replay-target="spy-burst">&#9654; replay open effect</button>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">flat parchment box</div><span>current / v1</span></div>
+		<div class="stage">
+			<div class="panel spyglass-frame">
+				<div class="panel-title">ls — cottage/</div>
+				<div class="panel-divider"></div>
+				<div class="spy-row"><span>&#9998; index.ts</span><span class="meta">ts &middot; 2.1KB</span></div>
+				<div class="spy-row"><span>garden.py</span><span class="meta">py &middot; 640B</span></div>
+				<div class="spy-row"><span>notes.md</span><span class="meta">md &middot; 1.4KB</span></div>
+				<div class="effect-burst" id="spy-burst">
+					<img class="spark" src="ui_sparkle_cyan@8x.png" style="--tx:-60px;--ty:-40px;" alt="" />
+					<img class="spark" src="ui_sparkle_cyan@8x.png" style="--tx:60px;--ty:-30px;animation-delay:60ms;" alt="" />
+					<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:0px;--ty:-70px;animation-delay:120ms;" alt="" />
+					<img class="spark" src="ui_sparkle_cyan@8x.png" style="--tx:-70px;--ty:30px;animation-delay:180ms;" alt="" />
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>3. Crystal orb search — violet/cyan/pink swirling mist</h2>
+	<p class="section-note">Two counter-rotating mist layers now (was one), brighter and less blurred so the swirl actually reads, plus twice as many sparkles at higher opacity. New: an opening burst radiating from the modal.</p>
+	<button class="replay-btn" type="button" data-replay-target="orb-burst">&#9654; replay open effect</button>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">dark scrim + flat modal</div><span>current / v1</span></div>
+		<div class="stage" style="padding:0;">
+			<div class="orb-backdrop">
+				<div class="orb-mist"></div>
+				<div class="orb-mist two"></div>
+				<img class="sparkle" src="ui_sparkle_violet@8x.png" style="top:15%;left:12%;width:22px;animation-delay:0s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_cyan@8x.png" style="top:70%;left:20%;width:18px;animation-delay:0.4s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_violet@8x.png" style="top:20%;left:85%;width:16px;animation-delay:0.8s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_cyan@8x.png" style="top:80%;left:80%;width:24px;animation-delay:1.2s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_gold@8x.png" style="top:45%;left:6%;width:16px;animation-delay:0.2s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_gold@8x.png" style="top:10%;left:55%;width:14px;animation-delay:0.6s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_violet@8x.png" style="top:60%;left:92%;width:16px;animation-delay:1.0s;" alt="" />
+				<img class="sparkle" src="ui_sparkle_cyan@8x.png" style="top:90%;left:45%;width:14px;animation-delay:1.4s;" alt="" />
+				<div class="panel orb-modal">
+					<input class="orb-input" placeholder="search the world..." value="garden" readonly />
+					<div class="orb-hit"><strong>garden.py</strong><span>def water_plants(): ...</span></div>
+					<div class="orb-hit"><strong>garden_notes.md</strong><span>## garden — watering schedule</span></div>
+					<div class="effect-burst" id="orb-burst">
+						<img class="spark" src="ui_sparkle_violet@8x.png" style="--tx:-90px;--ty:-50px;" alt="" />
+						<img class="spark" src="ui_sparkle_cyan@8x.png" style="--tx:90px;--ty:-50px;animation-delay:50ms;" alt="" />
+						<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:0px;--ty:-90px;animation-delay:100ms;" alt="" />
+						<img class="spark" src="ui_sparkle_violet@8x.png" style="--tx:-90px;--ty:50px;animation-delay:150ms;" alt="" />
+						<img class="spark" src="ui_sparkle_cyan@8x.png" style="--tx:90px;--ty:50px;animation-delay:200ms;" alt="" />
+						<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:0px;--ty:90px;animation-delay:250ms;" alt="" />
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>4. Bag tray — open satchel interior + open burst</h2>
+	<p class="section-note">Stronger vignette than v2. New: a small warm-toned burst (gold/orange sparkles, matching the leather) when the tray opens.</p>
+	<button class="replay-btn" type="button" data-replay-target="bag-burst">&#9654; replay open effect</button>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">stacked flat rows</div><span>current / v1</span></div>
+		<div class="stage">
+			<div class="panel bag-frame">
+				<div class="bag-slot filled"><span>garden.py:12-18</span><span class="x">&#10005;</span></div>
+				<div class="bag-slot"><span>index.ts:4</span><span class="x">&#10005;</span></div>
+				<div class="effect-burst" id="bag-burst">
+					<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:-40px;--ty:-30px;" alt="" />
+					<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:40px;--ty:-30px;animation-delay:80ms;" alt="" />
+					<img class="spark" src="ui_sparkle_gold@8x.png" style="--tx:0px;--ty:-50px;animation-delay:160ms;" alt="" />
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>5. Editor frame (quill) — ink &amp; glyph shimmer + open burst</h2>
+	<p class="section-note">Same drifting glyphs/ink blot as v2 (subtle, by design — this panel is for reading code, not for the flashiest magic). New: a small violet burst when the editor opens.</p>
+	<button class="replay-btn" type="button" data-replay-target="editor-burst">&#9654; replay open effect</button>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">flat parchment, Courier</div><span>current / v1</span></div>
+		<div class="stage">
+			<div class="panel editor-frame">
+				<div class="ink-blot"></div>
+				<div class="editor-plaque">garden.py</div>
+				<div class="editor-body">
+					<span class="glyph" style="left:20px; top:10px; animation-delay:0s;">{ }</span>
+					<span class="glyph" style="left:60%; top:20px; animation-delay:1.1s;">&lambda;</span>
+					<span class="glyph" style="left:80%; top:6px; animation-delay:2.2s;">%</span>
+					<div class="code-line"><span class="editor-gutter">1</span><span class="cm"># water the tomatoes daily</span></div>
+					<div class="code-line"><span class="editor-gutter">2</span><span class="kw">def</span> <span class="fn">water_plants</span>(soil):</div>
+					<div class="code-line"><span class="editor-gutter">3</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">if</span> soil.moisture &lt; <span class="fn">0.3</span>:</div>
+					<div class="code-line"><span class="editor-gutter">4</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="str">"watered"</span></div>
+					<div class="effect-burst" id="editor-burst">
+						<img class="spark" src="ui_sparkle_violet@8x.png" style="--tx:-50px;--ty:-20px;" alt="" />
+						<img class="spark" src="ui_sparkle_violet@8x.png" style="--tx:50px;--ty:-20px;animation-delay:70ms;" alt="" />
+					</div>
+				</div>
+				<div class="editor-actions">
+					<button class="btn cancel" type="button">Close</button>
+					<button class="btn confirm" type="button">Save</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>6. Encounter banner &amp; victory toast — shake/flash + confetti burst</h2>
+	<p class="section-note">New: the encounter card gets a brief shake + white flash on appearing (a "hit" beat) — replay it below. The victory toast now bursts colored confetti instead of sitting static. Both respect reduced motion: the shake is skipped entirely (flash-only), confetti still plays but the panel doesn't move.</p>
+	<div style="display:flex; gap:8px;">
+		<button class="replay-btn" type="button" data-replay-target="encounter-card">&#9654; replay encounter shake</button>
+		<button class="replay-btn" type="button" data-replay-target="victory-toast">&#9654; replay victory confetti</button>
+	</div>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">rounded parchment card</div><span>current / v1</span></div>
+		<div class="stage" style="flex-direction: column; gap: 20px;">
+			<div class="panel encounter-card" id="encounter-card">
+				<div class="encounter-flash"></div>
+				<div class="ribbon"><div class="ribbon-shape"></div><span>A Gremlin appeared!</span></div>
+				<p>TypeError: cannot read property 'water' of undefined</p>
+			</div>
+			<div class="panel victory-toast" id="victory-toast">
+				<div class="ribbon victory"><div class="ribbon-shape"></div><span>Victory!</span></div>
+				<p>All bugs fixed in this world.</p>
+				<div class="confetti" style="--tx:-70px;--ty:-60px;--rot:180deg;background:var(--accent-yellow);"></div>
+				<div class="confetti" style="--tx:70px;--ty:-60px;--rot:-180deg;background:var(--accent-pink);animation-delay:40ms;"></div>
+				<div class="confetti" style="--tx:-90px;--ty:10px;--rot:120deg;background:var(--accent-cyan);animation-delay:80ms;"></div>
+				<div class="confetti" style="--tx:90px;--ty:10px;--rot:-120deg;background:var(--accent-green);animation-delay:120ms;"></div>
+				<div class="confetti" style="--tx:-40px;--ty:60px;--rot:200deg;background:var(--accent-orange);animation-delay:160ms;"></div>
+				<div class="confetti" style="--tx:40px;--ty:60px;--rot:-200deg;background:var(--accent-violet);animation-delay:200ms;"></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>7. Wand / run parchment — rune scroll (three rings now)</h2>
+	<p class="section-note">A third, wider ring plus small glowing rune dots fixed to the middle ring's edge — reads much more like an active spell circle than v2's two thin rings.</p>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">CSS gradient rollers + flat body</div><span>current / v1</span></div>
+		<div class="stage">
+			<div class="panel rune-scroll">
+				<div class="rune-ring three"></div>
+				<div class="rune-ring"></div>
+				<div class="rune-ring two"></div>
+				<div class="rune-dot" style="top:6%;left:50%;"></div>
+				<div class="rune-dot" style="top:50%;left:94%;"></div>
+				<div class="rune-dot" style="top:94%;left:50%;"></div>
+				<div class="rune-dot" style="top:50%;left:6%;"></div>
+				<div class="rune-body">
+					<div style="font-size: 12px; font-weight: 600;">Line 3 — step 2 / 5</div>
+					<div class="run-line-current">if soil.moisture &lt; 0.3:</div>
+					<div class="run-log">&gt; watered<br/>&gt; watered<br/>&gt; done</div>
+					<div class="run-controls">
+						<button class="btn neutral" type="button" style="padding: 6px 10px;">&#9208;</button>
+						<button class="run-controls speed active" type="button">1x</button>
+						<button class="run-controls speed" type="button">2x</button>
+						<button class="run-controls speed" type="button">4x</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>8–10. Monster counter, settings corner, controls card</h2>
+	<p class="section-note">Same flat panel/pill chrome as everywhere else, now in the pixel font throughout (v2 left this in mono).</p>
+	<div class="compare">
+		<div class="current-thumb"><div class="current-box">flat parchment pills</div><span>current / v1</span></div>
+		<div class="stage" style="flex-direction: column; align-items: flex-start; gap: 14px;">
+			<div class="panel hud-pill">3 bugs remain in this world</div>
+			<button class="glow-toggle" type="button">Glow: on</button>
+			<div class="panel help-card">
+				<div class="panel-title">Controls</div>
+				<div class="help-row"><span>Walk</span><kbd>WASD</kbd></div>
+				<div class="help-row"><span>Open door</span><kbd>E</kbd></div>
+				<div class="help-row"><span>Spyglass</span><kbd>L</kbd></div>
+				<div class="help-row"><span>Search</span><kbd>F</kbd></div>
+				<div class="help-row"><span>Quill</span><kbd>Q</kbd></div>
+				<div class="help-row"><span>Wand (run)</span><kbd>R</kbd></div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<section>
+	<h2>11. Scene transition concept (unchanged direction — kept from v1/v2)</h2>
+	<p class="section-note">Three static stills, recolored. <strong>Page-turn</strong> (~420ms): a diagonal wipe on cluster change. <strong>Scroll-unroll</strong> (~340ms): panel-open animation for entering a file/editor. <strong>Vignette iris</strong> (~260ms, linear): circular open/close for encounter start/end — cheapest, degrades to a plain fade under reduced motion.</p>
+	<div class="transition-frames">
+		<div class="transition-frame tf-pageturn"><span class="label">page-turn &middot; 420ms</span></div>
+		<div class="transition-frame tf-unroll"><span class="label">scroll-unroll &middot; 340ms</span></div>
+		<div class="transition-frame tf-vignette"><span class="label">vignette iris &middot; 260ms</span></div>
+	</div>
+</section>
+
+<section>
+	<h2>Item icon art (crisp vs. soft) — v3, 48-64px source, 4-tone shading</h2>
+	<p class="section-note">All five redrawn at roughly double v2's resolution with a shared lighting model (<code>ui-icon-shading.ts</code>): a fixed up-left light source quantized into 4 bands, reused consistently across every icon rather than each having its own ad hoc two-tone split.</p>
+	<div class="compare">
+		<div style="text-align:center;"><img src="ui_icon_orb@8x.png" style="height:160px;" alt="orb crisp" /><div style="font-family: var(--font-mono); font-size:10px;">orb — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_orb_soft.png" style="height:160px;" alt="orb soft" /><div style="font-family: var(--font-mono); font-size:10px;">orb — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_spyglass@8x.png" style="height:160px;" alt="spyglass crisp" /><div style="font-family: var(--font-mono); font-size:10px;">spyglass — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_spyglass_soft.png" style="height:160px;" alt="spyglass soft" /><div style="font-family: var(--font-mono); font-size:10px;">spyglass — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_bag@8x.png" style="height:160px;" alt="bag crisp" /><div style="font-family: var(--font-mono); font-size:10px;">bag — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_bag_soft.png" style="height:160px;" alt="bag soft" /><div style="font-family: var(--font-mono); font-size:10px;">bag — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_quill@8x.png" style="height:160px;" alt="quill crisp" /><div style="font-family: var(--font-mono); font-size:10px;">quill — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_quill_soft.png" style="height:160px;" alt="quill soft" /><div style="font-family: var(--font-mono); font-size:10px;">quill — soft</div></div>
+		<div style="text-align:center;"><img src="ui_icon_wand@8x.png" style="height:160px;" alt="wand crisp" /><div style="font-family: var(--font-mono); font-size:10px;">wand — crisp</div></div>
+		<div style="text-align:center;"><img src="ui_icon_wand_soft.png" style="height:160px;" alt="wand soft" /><div style="font-family: var(--font-mono); font-size:10px;">wand — soft</div></div>
+	</div>
+</section>
+
+</main>
+
+<footer>
+	cabn M10a v3 — style mockup only. See <a href="STYLE.md">STYLE.md</a> for tokens/motion/a11y and <a href="IMPLEMENTATION-PLAN.md">IMPLEMENTATION-PLAN.md</a> for how this maps onto packages/engine.
+</footer>
+
+<script>
+	// ---- day/night theme: auto (local clock) / day / night ----
+	function computeAutoTheme() {
+		const hour = new Date().getHours();
+		return hour >= 6 && hour < 18 ? "day" : "night";
+	}
+	let themeMode = "auto";
+	function applyTheme() {
+		const resolved = themeMode === "auto" ? computeAutoTheme() : themeMode;
+		document.body.setAttribute("data-theme", resolved);
+		document.getElementById("theme-current").textContent =
+			themeMode === "auto" ? `auto -> ${resolved}` : resolved;
+	}
+	document.querySelectorAll("[data-mode-btn]").forEach((btn) => {
+		btn.addEventListener("click", () => {
+			themeMode = btn.getAttribute("data-mode-btn");
+			applyTheme();
+			document.querySelectorAll("[data-mode-btn]").forEach((b) => {
+				b.setAttribute("aria-pressed", String(b === btn));
+			});
+		});
+	});
+	applyTheme();
+
+	// ---- replay buttons for the one-shot effects (burst/shake/confetti) ----
+	// Restarting a CSS animation from JS needs a reflow between removing and
+	// re-adding the class — reading offsetWidth forces that reflow.
+	document.querySelectorAll("[data-replay-target]").forEach((btn) => {
+		btn.addEventListener("click", () => {
+			const el = document.getElementById(btn.getAttribute("data-replay-target"));
+			if (!el) return;
+			el.classList.remove("play");
+			void el.offsetWidth;
+			el.classList.add("play");
+		});
+	});
+
+	// Decorative bonfire flicker — cycles the existing placeholder frames.
+	if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+		const bonfire = document.getElementById("bonfire");
+		let frame = 0;
+		setInterval(() => {
+			frame = (frame + 1) % 4;
+			bonfire.src = `../placeholders/bonfire_frame${frame}_soft.png`;
+		}, 180);
+	}
+</script>
+
+</body>
+</html>

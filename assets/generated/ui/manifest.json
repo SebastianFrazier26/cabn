@@ -1,0 +1,63 @@
+{
+	"ui_icon_orb": {
+		"kind": "item-icon",
+		"width": 44,
+		"height": 52,
+		"crispFile": "ui_icon_orb.png",
+		"crispUpscaledFile": "ui_icon_orb@8x.png",
+		"softFile": "ui_icon_orb_soft.png"
+	},
+	"ui_icon_spyglass": {
+		"kind": "item-icon",
+		"width": 44,
+		"height": 58,
+		"crispFile": "ui_icon_spyglass.png",
+		"crispUpscaledFile": "ui_icon_spyglass@8x.png",
+		"softFile": "ui_icon_spyglass_soft.png"
+	},
+	"ui_icon_bag": {
+		"kind": "item-icon",
+		"width": 44,
+		"height": 48,
+		"crispFile": "ui_icon_bag.png",
+		"crispUpscaledFile": "ui_icon_bag@8x.png",
+		"softFile": "ui_icon_bag_soft.png"
+	},
+	"ui_icon_quill": {
+		"kind": "item-icon",
+		"width": 40,
+		"height": 60,
+		"crispFile": "ui_icon_quill.png",
+		"crispUpscaledFile": "ui_icon_quill@8x.png",
+		"softFile": "ui_icon_quill_soft.png"
+	},
+	"ui_icon_wand": {
+		"kind": "item-icon",
+		"width": 34,
+		"height": 60,
+		"crispFile": "ui_icon_wand.png",
+		"crispUpscaledFile": "ui_icon_wand@8x.png",
+		"softFile": "ui_icon_wand_soft.png"
+	},
+	"ui_sparkle_violet": {
+		"kind": "particle",
+		"width": 9,
+		"height": 9,
+		"crispFile": "ui_sparkle_violet.png",
+		"crispUpscaledFile": "ui_sparkle_violet@8x.png"
+	},
+	"ui_sparkle_cyan": {
+		"kind": "particle",
+		"width": 9,
+		"height": 9,
+		"crispFile": "ui_sparkle_cyan.png",
+		"crispUpscaledFile": "ui_sparkle_cyan@8x.png"
+	},
+	"ui_sparkle_gold": {
+		"kind": "particle",
+		"width": 9,
+		"height": 9,
+		"crispFile": "ui_sparkle_gold.png",
+		"crispUpscaledFile": "ui_sparkle_gold@8x.png"
+	}
+}
