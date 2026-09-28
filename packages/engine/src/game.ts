@@ -7,6 +7,11 @@ import { FileScene } from "./scenes/FileScene.js";
 import { PreloadScene } from "./scenes/PreloadScene.js";
 import { ShelfScene } from "./scenes/ShelfScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
+import {
+	defaultGlowEnabled,
+	loadGlowEnabled,
+	prefersReducedMotion,
+} from "./systems/glowSettings.js";
 
 export interface CabnGameHandle {
 	game: Phaser.Game;
@@ -29,6 +34,14 @@ export function createCabnGame(
 ): CabnGameHandle {
 	const store = createCabnStore();
 	const bus = createCabnBus();
+	// A persisted choice always wins; otherwise fall back to the platform's own
+	// reduced-motion preference (see glowSettings.ts) rather than always
+	// defaulting on.
+	store
+		.getState()
+		.setGlowEnabled(
+			loadGlowEnabled() ?? defaultGlowEnabled(prefersReducedMotion()),
+		);
 
 	const game = new Phaser.Game({
 		type: Phaser.AUTO,

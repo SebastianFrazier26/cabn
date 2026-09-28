@@ -16,6 +16,7 @@ import {
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
@@ -124,6 +125,7 @@ export class WorldScene extends Phaser.Scene {
 	private save: SaveData = emptySaveData("");
 	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
 	private unsubscribeBagSlots: (() => void) | null = null;
+	private unsubscribeGlow: (() => void) | null = null;
 
 	private player!: PlayerHandle;
 	private movementKeys!: MovementKeys;
@@ -190,6 +192,11 @@ export class WorldScene extends Phaser.Scene {
 		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
+		this.unsubscribeGlow = attachGlowLifecycle(this, this.store);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.unsubscribeGlow?.();
+			this.unsubscribeGlow = null;
+		});
 	}
 
 	// The spyglass panel and the orb's world-search results both read this off

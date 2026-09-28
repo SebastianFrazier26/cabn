@@ -12,6 +12,10 @@ export function helpText(): string {
 		"                                          (--include-secrets reads .env/*.pem/etc content instead of leaving them metadata-only)",
 		"  cabn inspect <bundleDir>               Validate and summarize a world bundle",
 		"  cabn shelf <bundleDir...> [-o outDir]  Build a shelf.json listing multiple converted worlds",
+		"  cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms]",
+		"                                          Convert <dir> in memory and serve it as a walkable game, bound to",
+		"                                          127.0.0.1 only. --allow-exec enables REAL code execution of files",
+		"                                          you run with the wand tool — only pass it for code you trust.",
 		"  cabn --version                         Print the CLI version",
 		"  cabn --help                            Show this help text",
 	].join("\n");

@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { runBuild } from "./build.js";
 import { CLI_VERSION, helpText } from "./help.js";
 import { formatSummary, runInspect } from "./inspect.js";
+import { DEFAULT_SERVE_PORT, startServe } from "./serve/server.js";
 import { runShelf } from "./shelf.js";
 
 async function build(rest: string[]): Promise<number> {
@@ -79,6 +80,42 @@ async function shelf(rest: string[]): Promise<number> {
 	}
 }
 
+async function serve(rest: string[]): Promise<number> {
+	try {
+		const { values, positionals } = parseArgs({
+			args: rest,
+			options: {
+				port: { type: "string" },
+				"allow-exec": { type: "boolean" },
+				timeout: { type: "string" },
+			},
+			allowPositionals: true,
+		});
+		const dir = positionals[0];
+		if (!dir) {
+			console.error("cabn serve: missing <dir>");
+			return 1;
+		}
+
+		const handle = await startServe(dir, {
+			port: values.port ? Number(values.port) : DEFAULT_SERVE_PORT,
+			allowExec: values["allow-exec"] ?? false,
+			timeoutMs: values.timeout ? Number(values.timeout) : undefined,
+		});
+		// Never resolves on its own — `cabn serve` is a long-running command,
+		// stopped by the user (Ctrl-C) rather than exiting once "done".
+		await new Promise<void>((resolveForever) => {
+			process.once("SIGINT", () => {
+				handle.close().then(() => resolveForever());
+			});
+		});
+		return 0;
+	} catch (err) {
+		console.error(`cabn serve failed: ${(err as Error).message}`);
+		return 1;
+	}
+}
+
 export async function run(argv: string[]): Promise<number> {
 	const [command, ...rest] = argv;
 
@@ -93,6 +130,7 @@ export async function run(argv: string[]): Promise<number> {
 	if (command === "build") return build(rest);
 	if (command === "inspect") return inspect(rest);
 	if (command === "shelf") return shelf(rest);
+	if (command === "serve") return serve(rest);
 
 	console.error(`cabn: unknown command "${command}"`);
 	console.log(helpText());

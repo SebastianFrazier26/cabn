@@ -8,6 +8,7 @@
 		"dev": "vite",
 		"prebuild": "node scripts/build-world.mjs",
 		"build": "tsc --noEmit -p tsconfig.json && vite build",
+		"postbuild": "node scripts/check-no-exec-in-bundle.mjs",
 		"preview": "vite preview",
 		"build:world": "node scripts/build-world.mjs",
 		"test": "vitest run"

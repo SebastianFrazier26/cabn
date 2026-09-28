@@ -6,6 +6,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
+		},
+		"./local-exec": {
+			"types": "./dist/local-exec.d.ts",
+			"default": "./dist/local-exec.js"
 		}
 	},
 	"files": [

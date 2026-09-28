@@ -11,13 +11,14 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `pnpm format` — `biome format --write .`
 - `pnpm -F @cabn/demo dev` — run the walkable demo (predev converts `apps/demo/sample-project/` into a world bundle if one isn't already built)
 - `pnpm -F @cabn/demo build:world` — (re)convert the sample project and sync sprites into `apps/demo/public/`; append `-- --force` to rebuild an already-built world
+- `cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms]` — convert `<dir>` in memory and serve it as a walkable game on `127.0.0.1` only; `--allow-exec` enables REAL code execution of files run with the wand tool (only use on code you trust — see README's `cabn serve` section)
 
 ## Layout
 
 - `packages/world-schema` — `@cabn/world-schema`, world data model; other packages depend on it via `workspace:*`
 - `packages/converter` — `@cabn/converter`, directory/zip → world conversion
-- `packages/engine` — `@cabn/engine`, Phaser 3 + zustand + mitt game engine (scenes, React bridge — `CabnGame`/`FileOverlay`)
-- `packages/cli` — `@cabn/cli`, `cabn` bin
+- `packages/engine` — `@cabn/engine`, Phaser 3 + zustand + mitt game engine (scenes, React bridge — `CabnGame`/`FileOverlay`). Main entry (`.`) is always execution-safe (`TraceProvider` only); real execution (`LocalRunProvider`) lives behind a separate `./local-exec` subpath export that only a `cabn serve --allow-exec` host page ever imports
+- `packages/cli` — `@cabn/cli`, `cabn` bin (`build`/`inspect`/`shelf`/`serve`)
 - `apps/backend` — private, Fastify planned but not yet installed
 - `apps/demo` — private, Vite + React app that converts `sample-project/` and renders it via `@cabn/engine`
 - `tools/asset-pipeline` — private, `@cabn/asset-pipeline`; palette extraction, sprite recovery, placeholder generation, preview page (see its scripts: `palette`, `recover`, `placeholders`, `preview`, `generate`)

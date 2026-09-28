@@ -41,8 +41,13 @@ export function ToolHotbar({
 			// The editor traps its own keys (including single letters that would
 			// otherwise dispatch a tool, e.g. typing "b" in code) — CodeMirror's
 			// content div isn't an <input>/<textarea> so isTypingTarget alone
-			// wouldn't catch it, hence the explicit mode check.
-			if (store.getState().mode === "editor") return;
+			// wouldn't catch it, hence the explicit mode check. A run in progress
+			// has its own keys (Space/N/1-2-4/Esc, see RunOverlay) that would
+			// otherwise collide with nothing here today but are excluded on the
+			// same principle — this hotbar's keys are for "not currently inside
+			// another modal thing".
+			const currentMode = store.getState().mode;
+			if (currentMode === "editor" || currentMode === "run") return;
 
 			const key = event.key.toLowerCase();
 
@@ -60,6 +65,7 @@ export function ToolHotbar({
 			else if (key === "l") registry.dispatch("spyglass", { store, bus });
 			else if (key === "b") registry.dispatch("bag", { store, bus });
 			else if (key === "q") registry.dispatch("quill", { store, bus });
+			else if (key === "r") registry.dispatch("wand", { store, bus });
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
@@ -68,8 +74,9 @@ export function ToolHotbar({
 	// Hidden rather than just non-interactive while the editor is open — its
 	// tools (opener/spyglass/orb/bag-as-selection) all read as "world/file
 	// navigation", none of which apply mid-edit, and the space is better left
-	// to the editor panel.
-	if (mode === "editor") return null;
+	// to the editor panel. Same reasoning for a run in progress: RunOverlay
+	// owns the screen instead.
+	if (mode === "editor" || mode === "run") return null;
 
 	return (
 		<div

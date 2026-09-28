@@ -71,11 +71,13 @@ export class ToolRegistry {
 
 // Icon paths point at the sprite pipeline's soft-rendered originals (see
 // assets/generated/originals) copied verbatim into every host app's
-// public/assets/ (apps/demo/scripts/build-world.mjs). orb, bag, and quill have
-// no dedicated art yet (crystal orb, bag, quill) — placeholders noted below
-// borrow the closest existing icon rather than drawing a new one; quill
-// reuses the same letter-opener icon as spyglass since both read as "a
-// writing implement" until real art lands.
+// public/assets/ (apps/demo/scripts/build-world.mjs). orb, bag, quill, and
+// wand have no dedicated art yet (crystal orb, bag, quill, wand) —
+// placeholders noted below borrow the closest existing icon rather than
+// drawing a new one; quill reuses the same letter-opener icon as spyglass
+// since both read as "a writing implement" until real art lands, and wand
+// borrows the cabinet icon (the one icon not already claimed) purely so its
+// hotbar slot isn't blank.
 const ICON_BASE = "/assets/originals";
 
 export function createDefaultTools(): Tool[] {
@@ -123,6 +125,15 @@ export function createDefaultTools(): Tool[] {
 			// (it needs the player's current line for the caret), this just signals
 			// intent.
 			onUse: (ctx) => ctx.bus.emit("tool:quill-use", {}),
+		},
+		{
+			id: "wand",
+			name: "Wand",
+			icon: `${ICON_BASE}/cabinet_256.webp`,
+			hotkey: "R",
+			// FileScene owns the run: it needs the file's current lines/language to
+			// build a trace script, same shape as bag/quill above.
+			onUse: (ctx) => ctx.bus.emit("tool:wand-use", {}),
 		},
 	];
 }
