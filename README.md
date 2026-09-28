@@ -99,6 +99,10 @@ A `url` override renders as a live sandboxed iframe (`PortalEmbed`) — see `pac
 
 In the world, walking up to a url arch lays that live page over the arch's opening (one at a time, unmounted when you walk away); clicking the page in the arch, or the side panel's "Open in browser" button, opens it in a new tab. Only origins in `allowedEmbedOrigins` are framed or opened. The demo's `docs/website.md` is such a web portal, pointed at `https://example.com/`.
 
+Walk right up to a url arch (the side panel's range) and that same live page moves out of the arch into the side panel at a readable size (laid out 640px wide), where you can scroll it and click links inside it; it's one iframe throughout, moved with CSS rather than re-mounted, so the page isn't loaded twice. Clicking into the page gives it your keyboard (a chip says so); click anywhere outside it to walk again — Esc can't work there, because a cross-origin page's keys never reach cabn. Step back and it returns to the arch.
+
+Many sites refuse to be framed (`X-Frame-Options`, CSP `frame-ancestors`), and a browser gives the embedding page no reliable signal when that happens. So `cabn build` and `cabn serve` check each url once at build time (HEAD, falling back to GET; https-only redirects, at most 5; 5s budget; only headers are read) and record the verdict in `embeds.json` beside `world.json`. A blocked site never gets an iframe: its arch shows the title card and the side panel an "Open in browser" button. `--offline` (or `"embedCheck": false` in `cabn.json`) skips the check and assumes every url is framable; `convert()` itself never touches the network unless the host passes `embedNetwork`, and the backend never does (it converts untrusted uploads, so fetching their urls would be an SSRF vector). Engines from before `embeds.json` never request it and behave as before. The demo's `docs/threejs.md` (framable) and `docs/code-host.md` (github.com, blocked) show both cases.
+
 ### Running a file
 
 Press `R` (the wand) inside a file to start a run. The parchment shows the current line, that line's source text, and a running log; controls work both on-screen and by keyboard:
@@ -117,8 +121,10 @@ By default — everywhere, including this repo's own hosted demo — a run is a 
 ### `cabn serve` — running a file for real, locally only
 
 ```sh
-cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms]
+cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline]
 ```
+
+The host page is sent with `Content-Security-Policy: frame-src <the world's allowedEmbedOrigins>` (`frame-src 'none'` when it has none) and no other directive, so the only thing the browser will ever frame is what `cabn.json` allowlisted; scripts, styles and workers are left unrestricted because the page runs an inline token script and a bundled app a broader policy would have to enumerate. `--offline` skips the build-time framability check (see above).
 
 Converts `<dir>` into a world and serves it as a walkable game at `http://127.0.0.1:<port>/?token=<...>` — bound to `127.0.0.1` only, never configurable to any other host. On its own (no `--allow-exec`), it behaves exactly like the hosted demo: the wand tool still works, still only ever simulates.
 

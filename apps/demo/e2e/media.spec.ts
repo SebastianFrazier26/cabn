@@ -288,9 +288,11 @@ test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock a
 	// The sample world's one allowlisted url-preview embed (pyproject.toml ->
 	// example.com) can load when a walk passes its arch; nothing media-related
 	// may touch any other origin (no CDN for pdf.js, fonts, or wasm).
-	const allowedEmbed = "https://example.com";
+	const allowedEmbeds = ["https://example.com", "https://threejs.org"];
 	expect(
-		requests.filter((u) => ![origin, allowedEmbed].includes(new URL(u).origin)),
+		requests.filter(
+			(u) => ![origin, ...allowedEmbeds].includes(new URL(u).origin),
+		),
 	).toEqual([]);
 	expect(consoleErrors).toEqual([]);
 	expect(pageErrors).toEqual([]);
