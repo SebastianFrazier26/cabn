@@ -98,8 +98,8 @@ export const SealedPreviewSchema = z.strictObject({
 export type SealedPreview = z.infer<typeof SealedPreviewSchema>;
 
 // Named "Rich*" (not "PortalPreview*") to avoid colliding with manifest.ts's
-// existing PortalPreviewSchema — the small {lines,truncated} shape WorldScene
-// still reads for its in-arch panel — and to make clear this is the new,
+// existing PortalPreviewSchema — the small {lines,truncated} shape the engine
+// still falls back to for pre-M10 bundles — and to make clear this is the new,
 // separate `portal.richPreview` field, not a replacement for it.
 export const RichPortalPreviewSchema = z.discriminatedUnion("kind", [
 	CodePreviewSchema,

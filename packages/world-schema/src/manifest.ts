@@ -78,10 +78,11 @@ export const PortalSchema = z.strictObject({
 	 * markdown, an image asset, a text blurb, a live-embed url, or "sealed"
 	 * for binaries) — carries a cabn.json override's resolved result when one
 	 * applies. Optional, additive: absent on a manifest built before M10 (or
-	 * any hand-built one) rather than forcing a cabnVersion bump — PortalScene
-	 * and PortalEmbed (packages/engine/src/react) fall back to `preview.lines`
-	 * or a "no preview" placeholder when it's missing. `preview` above is
-	 * untouched and keeps serving WorldScene's small in-arch panel.
+	 * any hand-built one) rather than forcing a cabnVersion bump — the engine
+	 * (systems/archPreview.ts's effectiveRichPreview) falls back to
+	 * `preview.lines` as a code preview, or the sealed chest for a binary,
+	 * when it's missing. `preview` above stays for exactly that fallback and
+	 * for the spyglass/orb one-line summaries.
 	 */
 	richPreview: RichPortalPreviewSchema.optional(),
 	spawns: z.array(z.string()),
