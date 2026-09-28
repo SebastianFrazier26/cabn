@@ -1,7 +1,20 @@
 import type Phaser from "phaser";
 import { MONSTER_GHOST_KEY, monsterFrameKey } from "../assetPaths.js";
 import { monsterIdleAnim } from "../scenes/PreloadScene.js";
+import { resolveMonsterSpecies } from "../systems/monsterOrbit.js";
 import { fitSpriteToSize } from "./scale.js";
+
+/** The species whose art will actually be drawn for `species` — itself if its idle animation loaded, else shade, else ghost (see systems/monsterOrbit.ts's resolveMonsterSpecies). */
+export function renderedMonsterSpecies(
+	scene: Phaser.Scene,
+	species: string,
+): string {
+	return resolveMonsterSpecies(species, (s) =>
+		s === "ghost"
+			? scene.textures.exists(MONSTER_GHOST_KEY)
+			: scene.anims.exists(monsterIdleAnim(s)),
+	);
+}
 
 /** Ghost (M2) is a single static image with no idle animation — see assetPaths.ts's ANIMATED_MONSTER_SPECIES comment — so it's the one species that never gets `.play()`'d. */
 export function createMonsterSprite(
@@ -11,16 +24,17 @@ export function createMonsterSprite(
 	species: string,
 	targetPx: number,
 ): Phaser.GameObjects.Sprite {
+	const drawn = renderedMonsterSpecies(scene, species);
 	const sprite =
-		species === "ghost"
+		drawn === "ghost"
 			? scene.add.sprite(x, y, MONSTER_GHOST_KEY)
-			: scene.add.sprite(x, y, monsterFrameKey(species, 0));
+			: scene.add.sprite(x, y, monsterFrameKey(drawn, 0));
 	fitSpriteToSize(sprite, targetPx);
-	if (species !== "ghost") sprite.play(monsterIdleAnim(species));
+	if (drawn !== "ghost") sprite.play(monsterIdleAnim(drawn));
 	return sprite;
 }
 
-/** A gentle up/down hover — shared by every monster sprite in every scene, a tween rather than per-frame update() math since nothing else about the sprite needs per-frame attention. Randomized duration so a cluster of monsters doesn't bob in lockstep. */
+/** A gentle up/down hover — FileScene's in-file monsters (world monsters move via render/monsterOrbit.ts instead). Randomized duration so a cluster of monsters doesn't bob in lockstep. */
 export function addHoverBob(
 	scene: Phaser.Scene,
 	sprite: Phaser.GameObjects.Sprite,
