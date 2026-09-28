@@ -2,6 +2,7 @@ export * from "./assets.js";
 export * from "./cabnConfig.js";
 export * from "./chunk.js";
 export * from "./manifest.js";
+export * from "./media.js";
 export * from "./preview.js";
 export * from "./search-index.js";
 export * from "./shared.js";

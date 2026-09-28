@@ -6,6 +6,7 @@ import {
 	validateCabnConfig,
 } from "@cabn/world-schema";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
+import { type MediaBudget, mediaFormatForPath } from "./media.js";
 import { buildImagePreview } from "./richPreview.js";
 import type { FileSource, SourceEntry } from "./sources/types.js";
 
@@ -104,8 +105,33 @@ async function readOverrideBytes(
 
 export interface ResolvedOverride {
 	preview: RichPortalPreview;
-	/** Bundle-relative asset path -> bytes to merge into the WorldBundle (populated when the override copied an image). */
-	assets: [string, Uint8Array][];
+}
+
+/**
+ * Override images go through the same MediaBudget as every other shipped
+ * media file (magic-byte check, per-file cap, world budget). A src whose
+ * bytes aren't a supported raster image is the author's mistake and fails
+ * loudly; running out of budget is not, so it degrades like any other
+ * over-budget file — undefined here, which callers turn into a sealed chest
+ * (or a url card without its fallback picture).
+ */
+function admitOverrideImage(
+	overriddenPath: string,
+	fieldLabel: string,
+	src: string,
+	bytes: Uint8Array,
+	budget: MediaBudget,
+): string | undefined {
+	const admission = budget.admit(mediaFormatForPath(src) ?? "png", bytes, {
+		exactFormat: false,
+	});
+	if (admission.ok) return admission.assetPath;
+	if (admission.reason === "type-mismatch") {
+		throw new CabnConfigError(
+			`previews["${overriddenPath}"].${fieldLabel} "${src}" is not a PNG, JPEG, GIF, or WebP image (checked by its content, not its extension)`,
+		);
+	}
+	return undefined;
 }
 
 export async function resolveOverride(
@@ -113,10 +139,11 @@ export async function resolveOverride(
 	override: PreviewOverride,
 	entries: Map<string, SourceEntry>,
 	maxFileBytes: number,
+	budget: MediaBudget,
 ): Promise<ResolvedOverride> {
 	switch (override.kind) {
 		case "text":
-			return { preview: { kind: "text", text: override.text }, assets: [] };
+			return { preview: { kind: "text", text: override.text } };
 
 		case "image": {
 			const bytes = await readOverrideBytes(
@@ -126,8 +153,18 @@ export async function resolveOverride(
 				entries,
 				maxFileBytes,
 			);
-			const { preview, assetPath } = buildImagePreview(override.src, bytes);
-			return { preview, assets: [[assetPath, bytes]] };
+			const assetPath = admitOverrideImage(
+				overriddenPath,
+				"src",
+				override.src,
+				bytes,
+				budget,
+			);
+			return {
+				preview: assetPath
+					? buildImagePreview(assetPath, bytes)
+					: { kind: "sealed" },
+			};
 		}
 
 		case "markdown": {
@@ -140,12 +177,10 @@ export async function resolveOverride(
 			);
 			return {
 				preview: markdownToStructuredPreview(decoder.decode(bytes)),
-				assets: [],
 			};
 		}
 
 		case "url": {
-			const assets: [string, Uint8Array][] = [];
 			let fallbackImage: string | undefined;
 			if (override.fallbackImage) {
 				const bytes = await readOverrideBytes(
@@ -155,9 +190,13 @@ export async function resolveOverride(
 					entries,
 					maxFileBytes,
 				);
-				const built = buildImagePreview(override.fallbackImage, bytes);
-				assets.push([built.assetPath, bytes]);
-				fallbackImage = built.assetPath;
+				fallbackImage = admitOverrideImage(
+					overriddenPath,
+					"fallbackImage",
+					override.fallbackImage,
+					bytes,
+					budget,
+				);
 			}
 			return {
 				preview: {
@@ -166,7 +205,6 @@ export async function resolveOverride(
 					title: override.title,
 					fallbackImage,
 				},
-				assets,
 			};
 		}
 	}

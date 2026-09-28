@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { validateManifest } from "@cabn/world-schema";
 import type { FastifyInstance } from "fastify";
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
 import { buildMultipartBody } from "./helpers/multipart.js";
@@ -109,6 +109,41 @@ describe("POST /v1/worlds: upload handling", () => {
 			Buffer.from(entries["world.json"] as Uint8Array).toString("utf8"),
 		);
 		expect(() => validateManifest(manifest)).not.toThrow();
+	});
+
+	test("media ships within the backend's own caps even if cabn.json asks for more", async () => {
+		const png = (size: number) => {
+			const bytes = new Uint8Array(size).fill(7);
+			bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+			return bytes;
+		};
+		const zip = zipSync({
+			"cabn.json": new TextEncoder().encode(
+				JSON.stringify({
+					cabnConfigVersion: 1,
+					media: { maxFileBytes: 20 * 1024 * 1024 },
+				}),
+			),
+			"small.png": png(1024),
+			"big.png": png(600 * 1024),
+		});
+		const { body, contentType } = buildMultipartBody([
+			{ fieldName: "file", filename: "upload.zip", content: zip },
+		]);
+		const res = await post(body, contentType);
+		expect(res.statusCode).toBe(200);
+
+		const entries = unzipSync(res.rawPayload);
+		const media = JSON.parse(
+			Buffer.from(entries["media.json"] as Uint8Array).toString("utf8"),
+		);
+		expect(media.previews["big.png"]).toEqual({
+			kind: "sealed",
+			reason: "too-large",
+		});
+		const shipped = Object.keys(entries).filter((k) => k.startsWith("media/"));
+		expect(shipped).toHaveLength(1);
+		expect(entries[shipped[0] as string]?.length).toBe(1024);
 	});
 
 	test("400: no file field at all", async () => {
