@@ -24,6 +24,7 @@ import {
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import { createPetWorldAccess } from "../pets/worldAccess.js";
 import { type ArchOpening, ArchPreviews } from "../render/archPreviews.js";
 import {
 	type AtmosphereHandle,
@@ -54,6 +55,7 @@ import {
 	type PathSegment,
 } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
+import { PetCompanion } from "../render/petCompanion.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -280,6 +282,7 @@ export class WorldScene extends Phaser.Scene {
 	private returnTo: { shelfUrl: string } | undefined;
 	private shelfIndex: number | undefined;
 	private guideNpc: GuideNpc | null = null;
+	private pet: PetCompanion | null = null;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -420,6 +423,12 @@ export class WorldScene extends Phaser.Scene {
 		});
 		this.createPlayer(spawn);
 		this.setupInput();
+		this.pet = new PetCompanion(this, {
+			store: this.store,
+			reducedMotion: prefersReducedMotion(),
+			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
+		});
+		this.publishPetWorld();
 		this.setupCamera();
 		this.publishPortalIndex();
 		this.publishMonsterIndex();
@@ -456,7 +465,48 @@ export class WorldScene extends Phaser.Scene {
 			this.setFocusedPortal(null);
 			this.setNearWebPortal(null);
 			this.store.getState().setWorldMap(null);
+			this.store.getState().setPetWorld(null);
+			this.pet = null;
 		});
+	}
+
+	/** What the pet may read (pets/worldAccess.ts): effective text, save overrides included; files an undefeated magpie guards stay in the browser. */
+	private publishPetWorld(): void {
+		const magpieGuarded = (path: string): boolean =>
+			(this.portalMonsterIds.get(path) ?? []).some((id) => {
+				const monster = this.monstersById.get(id);
+				return (
+					monster?.species === "magpie" &&
+					!this.save.defeatedMonsterIds.includes(id)
+				);
+			});
+		this.store.getState().setPetWorld(
+			createPetWorldAccess({
+				worldBase: this.worldBase,
+				files: this.manifest.portals.map((p) => ({
+					path: p.file.path,
+					bytes: p.file.bytes,
+					kind: p.file.kind,
+				})),
+				loadedText: (path) => {
+					const portal = this.portalsById.get(path);
+					return portal
+						? this.effectiveChunkContents.get(portal.clusterId)?.[path]
+						: undefined;
+				},
+				savedOverride: (path) => this.save.fileOverrides[path]?.content,
+				chunkFor: (path) => {
+					const portal = this.portalsById.get(path);
+					return portal
+						? this.clustersById.get(portal.clusterId)?.chunk
+						: undefined;
+				},
+				withheld: (path) =>
+					magpieGuarded(path)
+						? "A magpie is guarding a leaked secret in this file, so it stays in the player's browser. Ask them to defeat the magpie (remove the secret) first."
+						: null,
+			}),
+		);
 	}
 
 	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
@@ -600,6 +650,7 @@ export class WorldScene extends Phaser.Scene {
 	private setupToolBusListeners(): void {
 		this.bus.on("tool:opener-use", this.onOpenerUse);
 		this.bus.on("tool:walk-to-portal", this.onWalkToPortal);
+		this.bus.on("pet:open-file", this.onPetOpenFile);
 		this.events.once(
 			Phaser.Scenes.Events.SHUTDOWN,
 			this.teardownToolBusListeners,
@@ -610,7 +661,37 @@ export class WorldScene extends Phaser.Scene {
 	private teardownToolBusListeners(): void {
 		this.bus.off("tool:opener-use", this.onOpenerUse);
 		this.bus.off("tool:walk-to-portal", this.onWalkToPortal);
+		this.bus.off("pet:open-file", this.onPetOpenFile);
+		this.bus.off("chunk:loaded", this.onPetChunkLoaded);
 	}
+
+	private petOpenPending: string | null = null;
+
+	/** The pet chat's "review in spellbook": opens the file straight from here (no walk), once its chunk is in. */
+	private onPetOpenFile = ({ portalId }: { portalId: string }): void => {
+		if (this.store.getState().mode !== "world") return;
+		const portal = this.portalsById.get(portalId);
+		if (!portal) return;
+		if (this.effectiveChunkContents.has(portal.clusterId)) {
+			this.enterPortal(portalId);
+			return;
+		}
+		this.petOpenPending = portalId;
+		this.bus.off("chunk:loaded", this.onPetChunkLoaded);
+		this.bus.on("chunk:loaded", this.onPetChunkLoaded);
+		const cluster = this.clustersById.get(portal.clusterId);
+		if (cluster && !this.chunkFetchesInFlight.has(cluster.id))
+			this.loadChunk(cluster);
+	};
+
+	private onPetChunkLoaded = ({ clusterId }: { clusterId: string }): void => {
+		const pending = this.petOpenPending;
+		const portal = pending ? this.portalsById.get(pending) : undefined;
+		if (!pending || !portal || portal.clusterId !== clusterId) return;
+		this.petOpenPending = null;
+		this.bus.off("chunk:loaded", this.onPetChunkLoaded);
+		if (this.store.getState().mode === "world") this.enterPortal(pending);
+	};
 
 	// Rides the same ClickWalker as click-to-move (was a position tween), so
 	// it gets the walk bob/facing and WASD cancels it; it only walks there —
@@ -1314,6 +1395,8 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		if (this.guideNpc) targets.push(this.guideNpc.interactable());
+		const pet = this.pet?.interactable();
+		if (pet) targets.push(pet);
 		return targets;
 	}
 
@@ -1409,7 +1492,7 @@ export class WorldScene extends Phaser.Scene {
 		}
 		// The dialogue box swallows its keys before Phaser sees them; this also
 		// holds still a movement key that was already down when it opened.
-		if (this.guideNpc?.isTalking()) {
+		if (this.guideNpc?.isTalking() || this.pet?.isTalking()) {
 			this.walker.cancel();
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 		} else {
@@ -1469,7 +1552,8 @@ export class WorldScene extends Phaser.Scene {
 		}
 		if (target.kind === "npc") {
 			this.pendingArrival = null;
-			this.guideNpc?.talk();
+			if (target.id === "pet") this.pet?.talk();
+			else this.guideNpc?.talk();
 			return;
 		}
 		if (target.kind !== "portal") {
@@ -1713,6 +1797,7 @@ export class WorldScene extends Phaser.Scene {
 		if (!Phaser.Input.Keyboard.JustDown(this.keys.enter)) return;
 		// A focused button (e.g. tabbed-to) gets this Enter natively too.
 		if (activeFocusOwner() === "control") return;
+		if (this.pet?.isTalking()) return;
 		this.interact();
 	}
 
@@ -1724,7 +1809,7 @@ export class WorldScene extends Phaser.Scene {
 		this.interact();
 	};
 
-	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the guide NPC, else the bonfire. */
+	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the guide NPC, else the bonfire, else the pet (which trails close by, so it only answers when nothing else is in reach). */
 	private interact(): void {
 		if (this.enterNearestPortalInRange()) return;
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
@@ -1734,8 +1819,9 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 		const root = this.rootCluster();
-		if (!root) return;
 		if (
+			root &&
+			this.returnTo &&
 			Phaser.Math.Distance.Between(
 				playerPos.x,
 				playerPos.y,
@@ -1744,6 +1830,11 @@ export class WorldScene extends Phaser.Scene {
 			) <= BONFIRE_INTERACT_RADIUS
 		) {
 			this.returnToShelf();
+			return;
+		}
+		if (this.pet?.inReach(playerPos)) {
+			this.walker.cancel();
+			this.pet.talk();
 		}
 	}
 

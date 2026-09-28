@@ -13,6 +13,7 @@ import { FileStatusLine } from "./FileStatusLine.js";
 import { GuideDialog } from "./GuideDialog.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { PetLayer } from "./PetLayer.js";
 import { PortalLivePage } from "./PortalLivePage.js";
 import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
@@ -101,6 +102,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />
 					<GuideDialog store={handle.store} />
+					<PetLayer store={handle.store} bus={handle.bus} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

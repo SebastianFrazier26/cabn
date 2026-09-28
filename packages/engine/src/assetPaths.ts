@@ -208,6 +208,22 @@ export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
 export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
 export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
 
+// AI pets (tools/asset-pipeline's pixelmaps/pets.ts): four frames (idle,
+// blink, walk A, walk B) on a 16x16 grid at cellSize 16, drawn at the
+// player's 0.125 scale. Optional, like the guide: a missing strip draws a
+// tinted spark instead.
+export const PET_FRAME_SIZE = 256;
+export const PET_SCALE = 0.125;
+export function petTextureKey(species: string): string {
+	return `pet-${species}`;
+}
+export function petStripPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_strip_soft.png`;
+}
+export function petPortraitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_portrait_soft.png`;
+}
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything

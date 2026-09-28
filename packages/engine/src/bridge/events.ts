@@ -58,6 +58,8 @@ export type CabnEvents = {
 	"run:step": Record<string, never>;
 	"run:stop": Record<string, never>;
 	"run:set-speed": { speed: 1 | 2 | 4 };
+	/** The pet chat's "review in spellbook" -> WorldScene: open this file (the chat then opens the spellbook on it). */
+	"pet:open-file": { portalId: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

@@ -6,6 +6,8 @@ import {
 	type Text,
 } from "@codemirror/state";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { PetProviderId } from "../pets/providers.js";
+import type { PetProposal, PetWorldAccess } from "../pets/tools.js";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
@@ -145,6 +147,29 @@ export interface CabnState {
 	guideNpc: GuideNpcSummary | null;
 	/** True while the guide's dialogue box (react/GuideDialog.tsx) is open — WorldScene holds the player still meanwhile. */
 	guideOpen: boolean;
+	/** The provider whose pet follows the player (react/PetLayer.tsx picks it; keys never live in the store — see pets/keyStore.ts). */
+	petProvider: PetProviderId | null;
+	petPanelOpen: boolean;
+	/** True while the pet's chat is open — WorldScene holds the player still, like the guide. */
+	petChatOpen: boolean;
+	/** The pet sprite in the current world (render/petCompanion.ts publishes it); null outside worlds. */
+	petNpc: { pos: Position } | null;
+	/** The current world's files as the pet may read them — WorldScene publishes it on create and clears it on shutdown. */
+	petWorld: PetWorldAccess | null;
+	petMessages: PetChatMessage[];
+	petProposals: PetProposal[];
+}
+
+export interface PetChatMessage {
+	id: string;
+	role: "player" | "pet";
+	text: string;
+	/** Files the pet read or proposed changes to for this answer. */
+	cited?: string[];
+	proposalIds?: string[];
+	/** A link the in-character error message ends with (billing/key console). */
+	link?: { href: string; label: string };
+	error?: boolean;
 }
 
 export interface GuideNpcSummary {
@@ -207,6 +232,16 @@ export interface CabnActions {
 	setNearWebPortal(portal: NearWebPortal | null): void;
 	setGuideNpc(guide: GuideNpcSummary | null): void;
 	setGuideOpen(open: boolean): void;
+	setPetProvider(provider: PetProviderId | null): void;
+	setPetPanelOpen(open: boolean): void;
+	setPetChatOpen(open: boolean): void;
+	setPetNpc(pet: { pos: Position } | null): void;
+	setPetWorld(world: PetWorldAccess | null): void;
+	addPetMessage(message: PetChatMessage): void;
+	addPetProposals(proposals: PetProposal[]): void;
+	setPetProposalStatus(id: string, status: PetProposal["status"]): void;
+	/** New provider, new world or "forget": the conversation starts over. */
+	clearPetConversation(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -243,6 +278,13 @@ const initialState: CabnState = {
 	nearWebPortal: null,
 	guideNpc: null,
 	guideOpen: false,
+	petProvider: null,
+	petPanelOpen: false,
+	petChatOpen: false,
+	petNpc: null,
+	petWorld: null,
+	petMessages: [],
+	petProposals: [],
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -276,6 +318,11 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				nearWebPortal: null,
 				guideNpc: null,
 				guideOpen: false,
+				petChatOpen: false,
+				petNpc: null,
+				petWorld: null,
+				petMessages: [],
+				petProposals: [],
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -388,5 +435,22 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
 		setGuideNpc: (guideNpc) => set({ guideNpc }),
 		setGuideOpen: (guideOpen) => set({ guideOpen }),
+		setPetProvider: (petProvider) => set({ petProvider }),
+		setPetPanelOpen: (petPanelOpen) => set({ petPanelOpen }),
+		setPetChatOpen: (petChatOpen) =>
+			set({ petChatOpen, mapOpen: petChatOpen ? false : get().mapOpen }),
+		setPetNpc: (petNpc) => set({ petNpc }),
+		setPetWorld: (petWorld) => set({ petWorld }),
+		addPetMessage: (message) =>
+			set({ petMessages: [...get().petMessages, message] }),
+		addPetProposals: (proposals) =>
+			set({ petProposals: [...get().petProposals, ...proposals] }),
+		setPetProposalStatus: (id, status) =>
+			set({
+				petProposals: get().petProposals.map((p) =>
+					p.id === id ? { ...p, status } : p,
+				),
+			}),
+		clearPetConversation: () => set({ petMessages: [], petProposals: [] }),
 	}));
 }
