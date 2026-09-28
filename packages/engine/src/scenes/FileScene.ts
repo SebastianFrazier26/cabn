@@ -1,11 +1,7 @@
 import type { Monster, PortalFile } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
-import {
-	ASSET_KEYS,
-	OPTIONAL_ASSET_KEYS,
-	PORTAL_ARCH_FRAME_SIZE,
-} from "../assetPaths.js";
+import { ASSET_KEYS, PORTAL_ARCH_FRAME_SIZE } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnMode, CabnStore } from "../bridge/store.js";
 import { attachGlow } from "../fx/GlowPipeline.js";
@@ -363,16 +359,29 @@ export class FileScene extends Phaser.Scene {
 		sprite.play(PORTAL_IDLE_ANIM);
 	}
 
+	/**
+	 * Round-2 playtest (2026-09-28): the character only belongs in the open
+	 * world. The physics body stays as an invisible reading cursor — camera
+	 * follow, WASD/click scrolling, nearestLineToPlayer and the monster/exit
+	 * proximity checks all still key off it — with a small gold caret in the
+	 * path lane standing in for the sprite so Enter-near-a-monster and the
+	 * exit arch still have a visible "you are here".
+	 */
 	private createPlayer(): void {
-		this.playerTextures = {
-			front: ASSET_KEYS.characterIdle,
-			// PreloadScene already loaded (or failed) this optional texture for
-			// the world/shelf; the file scroll just never used it before.
-			back: this.textures.exists(OPTIONAL_ASSET_KEYS.characterIdleBack)
-				? OPTIONAL_ASSET_KEYS.characterIdleBack
-				: null,
-		};
+		this.playerTextures = { front: ASSET_KEYS.characterIdle, back: null };
 		this.player = createPlayer(this, { x: PATH_X, y: 0 }, this.playerTextures);
+		this.player.sprite.setVisible(false);
+		const caret = this.add.graphics();
+		caret.fillStyle(PALETTE.gold, 1);
+		caret.lineStyle(2, PALETTE.ink, 1);
+		caret.beginPath();
+		caret.moveTo(-7, -7);
+		caret.lineTo(7, 0);
+		caret.lineTo(-7, 7);
+		caret.closePath();
+		caret.fillPath();
+		caret.strokePath();
+		this.player.body.add(caret);
 	}
 
 	// --- Monsters / battle loop -----------------------------------------
