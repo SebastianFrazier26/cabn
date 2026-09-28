@@ -102,7 +102,11 @@ export function UniversePicker({
 					<div>
 						<div
 							className="cabn-panel-title"
-							style={{ textAlign: "left", margin: 0 }}
+							style={{
+								textAlign: "left",
+								margin: 0,
+								color: "var(--cabn-text)",
+							}}
 						>
 							The Rift of Branches
 						</div>

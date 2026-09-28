@@ -181,6 +181,7 @@ export class Rift {
 				)
 			: null;
 		this.blend = targetBlend(opts.store.getState().timeOfDay);
+		opts.store.getState().setRiftPos({ ...pos });
 		scene.events.on(Phaser.Scenes.Events.UPDATE, this.onUpdate);
 		scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy);
 		opts.bus.on("universe:travel", this.onTravel);
@@ -263,6 +264,7 @@ export class Rift {
 		this.sprite.destroy();
 		this.glow?.sprite.destroy();
 		this.opts.store.getState().setUniverseOpen(false);
+		this.opts.store.getState().setRiftPos(null);
 	};
 }
 

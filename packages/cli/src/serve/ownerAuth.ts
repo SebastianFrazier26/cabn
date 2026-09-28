@@ -38,12 +38,14 @@ function header(req: IncomingMessage, name: string): string | undefined {
 }
 
 /**
- * Stricter than the server-wide loopback gate: Origin is required, not just
- * checked when present (every browser fetch/POST sends it, so a request
- * without one isn't the host page), a Sec-Fetch-Site other than
- * same-origin is refused, the token must match in constant time, and a body
- * must be declared JSON (a cross-site form can't send that content type
- * without a CORS preflight this server never answers).
+ * Stricter than the server-wide loopback gate. A write (any non-GET) must
+ * carry an Origin naming this server — browsers always send one on POST —
+ * where the server-wide gate only checks Origin when present. Browsers omit
+ * Origin on a same-origin GET, so a GET instead needs either that Origin or
+ * `Sec-Fetch-Site: same-origin`. Any other Sec-Fetch-Site is refused, the
+ * token must match in constant time, and a body must be declared JSON (a
+ * cross-site form can't send that content type without a CORS preflight
+ * this server never answers).
  */
 export function checkOwnerRequest(
 	req: IncomingMessage,
@@ -53,11 +55,13 @@ export function checkOwnerRequest(
 	if (!isLoopbackHost(req.headers.host, port))
 		return { ok: false, status: 403, message: "invalid host" };
 	const origin = header(req, "origin");
-	if (origin === undefined || !isAllowedOrigin(origin, port))
-		return { ok: false, status: 403, message: "invalid origin" };
 	const site = header(req, "sec-fetch-site");
 	if (site !== undefined && site !== "same-origin")
 		return { ok: false, status: 403, message: "cross-site request" };
+	if (origin !== undefined && !isAllowedOrigin(origin, port))
+		return { ok: false, status: 403, message: "invalid origin" };
+	if (origin === undefined && (req.method !== "GET" || site !== "same-origin"))
+		return { ok: false, status: 403, message: "missing origin" };
 	const token = header(req, OWNER_TOKEN_HEADER);
 	if (!token || !constantTimeEqual(token, session.token))
 		return { ok: false, status: 403, message: "invalid owner token" };

@@ -30,6 +30,7 @@ import {
 	type TreeEntry,
 } from "isomorphic-git";
 import { containsLeakedSecret } from "../annotate/leakedSecret.js";
+import { classify } from "../classify.js";
 import { shortHash } from "../hash.js";
 import { isIgnoredPath, isSecretPath } from "../walk.js";
 import { diffText } from "./diff.js";
@@ -353,12 +354,15 @@ class HistoryReader {
 		oid: string,
 		path: string,
 	): Promise<{ verdict: BlobVerdict; text?: string }> {
-		const cached = this.blobVerdicts.get(oid);
+		// Keyed with the path too: classify() reads the extension, so one blob can be text under one name and binary under another.
+		const key = `${oid}\0${path}`;
+		const cached = this.blobVerdicts.get(key);
 		if (cached && cached !== "ok") return { verdict: cached };
 		const bytes = await readBlobBytes(this.repo, oid);
 		let verdict: BlobVerdict = "ok";
 		if (bytes.length > this.opts.maxFileBytes) verdict = "too-large";
-		else if (looksBinary(bytes)) verdict = "binary";
+		else if (looksBinary(bytes) || classify(path, bytes).binary)
+			verdict = "binary";
 		const text = verdict === "ok" ? decodeText(bytes) : undefined;
 		if (
 			text !== undefined &&
@@ -367,7 +371,7 @@ class HistoryReader {
 				: false)
 		)
 			verdict = "sealed-secret";
-		this.blobVerdicts.set(oid, verdict);
+		this.blobVerdicts.set(key, verdict);
 		return verdict === "ok" ? { verdict, text } : { verdict };
 	}
 

@@ -196,12 +196,33 @@ describe("owner request gate", () => {
 		expect(res.status).toBe(status);
 	});
 
-	it("requires an Origin header at all", async () => {
+	it("a write without an Origin is refused, even claiming same-origin", async () => {
+		const h = await serveOwner();
+		const headers: Record<string, string> = ownerHeaders(h, {
+			"sec-fetch-site": "same-origin",
+		});
+		delete headers.origin;
+		const res = await raw(
+			h.port,
+			"POST",
+			"/owner/git/branch",
+			headers,
+			JSON.stringify({ name: "x" }),
+		);
+		expect(res.status).toBe(403);
+	});
+
+	it("a same-origin GET (browsers send no Origin) needs Sec-Fetch-Site: same-origin", async () => {
 		const h = await serveOwner();
 		const headers: Record<string, string> = ownerHeaders(h);
 		delete headers.origin;
-		const res = await raw(h.port, "GET", "/owner/git/status", headers);
-		expect(res.status).toBe(403);
+		expect(
+			(await raw(h.port, "GET", "/owner/git/status", headers)).status,
+		).toBe(403);
+		headers["sec-fetch-site"] = "same-origin";
+		expect(
+			(await raw(h.port, "GET", "/owner/git/status", headers)).status,
+		).toBe(200);
 	});
 
 	it("rejects a non-JSON body type (a plain cross-site form can't send JSON)", async () => {

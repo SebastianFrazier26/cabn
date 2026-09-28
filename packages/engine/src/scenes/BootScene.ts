@@ -47,6 +47,11 @@ export class BootScene extends Phaser.Scene {
 	}
 
 	preload(): void {
+		// Phaser's loader skips a key already in the cache, so without this a
+		// second world (another cabin, or a universe through the rift) would
+		// boot with the first world's manifest.
+		this.cache.json.remove("shelf-manifest");
+		this.cache.json.remove("world-manifest");
 		if ("shelfUrl" in this.target) {
 			this.load.json("shelf-manifest", this.target.shelfUrl);
 		} else {

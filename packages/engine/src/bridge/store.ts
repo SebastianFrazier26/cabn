@@ -155,6 +155,8 @@ export interface CabnState {
 	universeOpen: boolean;
 	/** The portal whose file history (the pensieve) is open, if any. */
 	pensievePortalId: string | null;
+	/** Where the rift stands (render/rift.ts publishes it) — the map draws it; null without one. */
+	riftPos: Position | null;
 }
 
 /** The world's git history, as the rift, map timeline and pensieve read it (WorldScene sets it from the bundle's history.json; null for a world without one). */
@@ -236,6 +238,7 @@ export interface CabnActions {
 	/** Opens only in world mode, with history loaded and nothing else modal. */
 	setUniverseOpen(open: boolean): void;
 	setPensievePortalId(portalId: string | null): void;
+	setRiftPos(pos: Position | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -275,6 +278,7 @@ const initialState: CabnState = {
 	git: null,
 	universeOpen: false,
 	pensievePortalId: null,
+	riftPos: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -311,6 +315,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				git: null,
 				universeOpen: false,
 				pensievePortalId: null,
+				riftPos: null,
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -436,5 +441,6 @@ export function createCabnStore(): StoreApi<CabnStore> {
 			});
 		},
 		setPensievePortalId: (pensievePortalId) => set({ pensievePortalId }),
+		setRiftPos: (riftPos) => set({ riftPos }),
 	}));
 }

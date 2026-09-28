@@ -184,6 +184,8 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 				"Walk up to an arch to peek at its file, then press Enter to step inside. Esc, or the arch at the top of a file, takes you back out.",
 				"This bonfire is the way home: press Enter beside it, or Esc nearby, to return to the shelf.",
 				"The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.",
+				"A world built from a git repository has a swirling rift near this bonfire. Its branches are alternate universes: step through to visit one, or read its tags and releases.",
+				`Press H at an arch (${alt}+H inside a file) for the pensieve, that file's history. The big map's timeline shows which files each commit changed.`,
 			],
 		},
 		{

@@ -118,6 +118,17 @@ Will-o'-wisps never fight: remove the `TODO` (or `FIXME`, `XXX`, `HACK`) and sav
 - **Web pages**: a world's author can point an arch at a real web page. Approach it and the same live page moves into the side preview, where you can interact with it. Sites that refuse framing show a title card and **Open in browser** instead. Only sites the author allowed can appear, and only over https.
 - **Sealed chests**: a file that's too big, looks like it holds a secret, or isn't safe to show (SVG, for example, can carry scripts) stays a sealed chest that shows its name, size and the reason.
 
+## Git history: universes, the pensieve and the timeline
+
+A world built from a git repository carries its recent history, and anyone visiting it can browse it.
+
+- **The rift.** A swirling violet rift stands near the bonfire (a violet diamond on the map). Walk up and press `Enter`, or click it. Its **Universes** tab lists the branches: the one the world was built from is the *main world*, and a few others are alternate universes you can **Travel** to. The world reloads as that branch, with a badge at the top naming it and a tint over everything in that universe's colour. **Return** brings you back. Branches that weren't prebuilt are listed as history only. **Tags & releases** shows the tags and the project's GitHub releases, with their notes and downloads (links open in a new tab).
+- **The pensieve.** Stand at an arch and press `H` (or the **Pensieve** button in the side preview); inside a file it's `Alt+H` (`Option+H` on macOS). It lists the commits that changed that file, newest first. Pick one to see its change: green rows with `+` were added, red rows with `-` removed. **Show the file at this commit** rebuilds the whole file as it was then. `Esc` closes it.
+- **The timeline.** In the big map (`M`), slide the timeline (or use ◀ ▶, or the arrow keys on the slider) through the branch's commits. Files the selected commit changed get a gold ring; changed files that aren't in this world are listed below.
+- **What's hidden.** Author emails never appear. Secret files (`.env`, keys) never appear from any commit, and a change that looks like it holds a password or key says *Withheld* instead of showing it. Very big or binary changes just say so.
+
+World authors can shrink or turn off what's included with a `history` block in `cabn.json` (below).
+
 ## For world authors: `cabn.json`
 
 A `cabn.json` at the root of a project changes how its world is built. Every field is optional except the version.
@@ -141,6 +152,7 @@ A `cabn.json` at the root of a project changes how its world is built. Every fie
 - **`media`** raises or lowers the caps on picture/audio/PDF bytes shipped in the world. The defaults are 5 MB per file and 50 MB per world; the ceiling is 25 MB / 250 MB.
 - **`guide`**: `false` hides Wren. Leave it out for the default: she appears in the **first world of a shelf**, meaning the first entry in `shelf.json`'s `worlds` list (the order `cabn shelf` was given the worlds in), and in any world opened on its own without a shelf, such as `cabn serve`. She never appears in the other worlds on a shelf.
 - **`embedCheck`**: `false` skips the build-time check for sites that refuse framing. `cabn build --offline` and `cabn serve --offline` also skip it; uploaded worlds are always converted offline.
+- **`history`** limits the git history a repository's world carries: `maxCommitsPerBranch` (default 200), `maxBranches` (20), `maxTags` (50), `maxUniverses` (3 prebuilt alternate branches), `maxReleases` (10), `maxDiffBytesPerFile` (64 KB), `maxTotalBytes` (4 MB) and `maxUniverseTotalBytes` (50 MB), each within fixed bounds; `"releases": false` skips GitHub releases and `"enabled": false` turns history off. `cabn build --no-history` does the same from the command line.
 - **`annotate`** adjusts code-smell thresholds. External ESLint JSON or SARIF results can be attached with repeatable `cabn build --findings <file>` flags.
 
 See [`packages/world-schema/README.md`](../packages/world-schema/README.md) for the full format.
@@ -170,6 +182,8 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - Walk up to an arch to peek at its file, then press Enter to step inside. Esc, or the arch at the top of a file, takes you back out.
 - This bonfire is the way home: press Enter beside it, or Esc nearby, to return to the shelf.
 - The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.
+- A world built from a git repository has a swirling rift near this bonfire. Its branches are alternate universes: step through to visit one, or read its tags and releases.
+- Press H at an arch (Alt/Option+H inside a file) for the pensieve, that file's history. The big map's timeline shows which files each commit changed.
 
 #### Tools
 

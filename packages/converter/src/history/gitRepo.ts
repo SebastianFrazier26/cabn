@@ -129,7 +129,7 @@ export async function subtreeAt(
 		const entry = (await readTreeEntries(repo, oid)).find(
 			(e) => e.path === segment,
 		);
-		if (!entry || entry.type !== "tree") return null;
+		if (entry?.type !== "tree") return null;
 		oid = entry.oid;
 	}
 	return oid;

@@ -210,7 +210,11 @@ function PensievePanel({
 					<div>
 						<div
 							className="cabn-panel-title"
-							style={{ textAlign: "left", margin: 0 }}
+							style={{
+								textAlign: "left",
+								margin: 0,
+								color: "var(--cabn-text)",
+							}}
 						>
 							Pensieve · {path}
 						</div>

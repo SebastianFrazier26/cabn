@@ -198,7 +198,8 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 						)}
 						<p style={{ padding: "0 12px", fontSize: 12 }}>
 							Gold: you · cyan squares: files · red: undefeated monsters ·
-							bright clearings: visited. Select a file to walk there.
+							violet diamond: the rift (git history) · bright clearings:
+							visited. Select a file to walk there.
 						</p>
 						<fieldset
 							aria-label="Map destinations"
@@ -262,7 +263,7 @@ function MapTimeline({
 					max={last}
 					value={step ?? last}
 					onChange={(e) => setStep(Number(e.target.value))}
-					style={{ flex: 1 }}
+					style={{ flex: 1, accentColor: "var(--cabn-accent-violet)" }}
 				/>
 				<button
 					type="button"
@@ -324,6 +325,7 @@ function MapDrawing({
 	highlight?: ReadonlySet<string>;
 }): React.ReactElement {
 	const player = useCabnStore(store, (s) => s.playerPos);
+	const rift = useCabnStore(store, (s) => s.riftPos);
 	const visited = useCabnStore(store, (s) => s.visitedClusterIds);
 	const defeated = useCabnStore(store, (s) => s.defeatedMonsterIds);
 	const width = large ? 720 : 200;
@@ -452,6 +454,22 @@ function MapDrawing({
 						</g>
 					);
 				})}
+			{rift &&
+				(() => {
+					const r = project(rift);
+					const size = large ? 8 : 4;
+					return (
+						<polygon
+							data-testid={large ? "map-rift" : undefined}
+							points={`${r.x},${r.y - size} ${r.x + size},${r.y} ${r.x},${r.y + size} ${r.x - size},${r.y}`}
+							fill="#8a6fd6"
+							stroke="#f1ecff"
+							strokeWidth={1}
+						>
+							<title>The rift of branches</title>
+						</polygon>
+					);
+				})()}
 			<circle
 				data-testid={large ? "map-player" : "minimap-player"}
 				cx={pos.x}

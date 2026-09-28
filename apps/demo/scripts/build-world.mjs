@@ -6,6 +6,7 @@ import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runBuild, runShelf } from "@cabn/cli";
+import { createSampleHistory, demoGithubFetch } from "./gen-git-fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const demoRoot = join(here, "..");
@@ -20,11 +21,19 @@ const assetsOutDir = join(demoRoot, "public", "assets");
 // shows external findings (shades, for rules with no built-in class) next to
 // the built-in annotators' monsters. It lives outside sample-project
 // so it isn't itself a portal.
+//
+// The sample world also carries git history (branches as universes, tags,
+// releases, file history) from a generated fixture repository — see
+// gen-git-fixture.mjs — with canned GitHub releases instead of a network
+// request. The notes vault has none: without `history: false` it would
+// otherwise stay history-less anyway (it isn't a repository root), but
+// saying so keeps the build from ever looking.
 const WORLDS = [
 	{
 		sourceDir: join(demoRoot, "sample-project"),
 		name: "sample",
 		findingsPaths: [join(demoRoot, "sample-findings.eslint.json")],
+		gitFixture: true,
 	},
 	{ sourceDir: join(demoRoot, "notes-vault"), name: "notes" },
 ];
@@ -54,13 +63,29 @@ async function main() {
 
 		if (shouldBuild(await pathExists(manifestPath), force)) {
 			if (force) await rm(outDir, { recursive: true, force: true });
-			const summary = await runBuild(world.sourceDir, {
-				outDir,
-				findingsPaths: world.findingsPaths,
-			});
+			const fixture = world.gitFixture
+				? await createSampleHistory(world.sourceDir)
+				: undefined;
+			let summary;
+			try {
+				summary = await runBuild(world.sourceDir, {
+					outDir,
+					findingsPaths: world.findingsPaths,
+					...(fixture
+						? { gitDir: fixture.gitdir, githubFetch: demoGithubFetch }
+						: { history: false }),
+				});
+			} finally {
+				await fixture?.cleanup();
+			}
+			const history = summary.history
+				? `, ${summary.history.commits} commits, universes: ${summary.history.universes.join(", ") || "none"}`
+				: "";
 			console.log(
-				`cabn demo: built "${world.name}" world -> ${summary.clusters} clusters, ${summary.portals} portals, ${summary.monsters} monsters (${summary.elapsedMs}ms)`,
+				`cabn demo: built "${world.name}" world -> ${summary.clusters} clusters, ${summary.portals} portals, ${summary.monsters} monsters${history} (${summary.elapsedMs}ms)`,
 			);
+			for (const warning of summary.warnings)
+				console.warn(`cabn demo: ${warning}`);
 		} else {
 			console.log(
 				`cabn demo: "${world.name}" world already built, skipping (pass --force to rebuild)`,

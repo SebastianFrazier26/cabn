@@ -124,7 +124,7 @@ By default — everywhere, including this repo's own hosted demo — a run is a 
 ### `cabn serve` — running a file for real, locally only
 
 ```sh
-cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline]
+cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline] [--owner] [--no-history] [--git-dir path]
 ```
 
 The host page is sent with `Content-Security-Policy: frame-src <the world's allowedEmbedOrigins>` (`frame-src 'none'` when it has none) and no other directive, so the only thing the browser will ever frame is what `cabn.json` allowlisted; scripts, styles and workers are left unrestricted because the page runs an inline token script and a bundled app a broader policy would have to enumerate. `--offline` skips the build-time framability check (see above).
@@ -188,6 +188,35 @@ cabn build ./my-project --findings eslint.json --findings codeql.sarif
 Edits, your position in the world, which clusters you've visited, your bag slots, and which monsters you've defeated persist to `localStorage` per converted world (keyed by its source + conversion time, so reconverting the same source starts a fresh save). An edited file gets a small ✎ marker on its portal arch in the world and in the spyglass panel, which also offers a "reset" action per edited file; the spyglass panel's "reset world…" button resets everything for the current world, monsters included. A corrupt or incompatible save is ignored (logged to the console) rather than breaking the game; a save from before M6 (no monster data at all) upgrades in place instead of being discarded.
 
 The top-left corner holds the one setting: time of day — `Auto` (follows your clock), `Day` or `Night`, persisted separately from any one world's save. The soft bloom+vignette glow on the world/shelf/file cameras is always on, and silently absent only where WebGL isn't available; a reduced-motion preference turns off ambient animation, not the (static) glow.
+
+### Git history: the multiverse
+
+When the directory you build is a git repository root (it has its own `.git`), the world also carries its recent history, readable by anyone visiting the hosted site:
+
+- **The rift.** A swirling rift stands near the bonfire. Its picker lists the branches as *universes*: the checked-out branch is the main world, and up to 3 other branches (most recently active first) are prebuilt as their own walkable worlds under `universes/<slug>/`. Travelling reloads the world as that branch's tree, with a universe badge at the top and a tint over the view in that universe's colour. Branches past the cap are listed as history only. The picker's second tab lists tags and the repo's GitHub releases (notes rendered as a safe markdown subset, never HTML; links open in a new tab with `noopener`).
+- **The pensieve.** Press `H` at an arch (`Alt`/`Option`+`H` inside a file, or the dock's button) for that file's timeline of commits on this universe's branch, each change's diff in the pixel theme (red/green rows with `+`/`-`, readable by day and night), and the file as it stood after any commit, rebuilt in the browser by undoing the newer diffs from the world's own copy.
+- **Map timeline.** The big map (`M`) gets a slider over the branch's commits; the files the selected commit changed are ringed in gold, and files it touched that aren't in this world are listed.
+
+What ships, and what never does:
+
+- History lives in `history.json` plus one small `history/commits/<oid>.json` diff file per commit — additive sidecars like `media.json`/`embeds.json`. `world.json` is unchanged, `CABN_VERSION` stays 1, and older engines never request these files. It's a precomputed JSON view rather than a git packfile: withheld blobs would break git's content hashes, and only the touched files' diffs are shipped, not whole blobs.
+- Per branch the last 200 commits, up to 20 branches and 50 tags, per-file diffs up to 64 KB, 4 MB of history in total (oldest diffs dropped first), and 50 MB for all universe worlds together. `cabn.json` adjusts each within fixed bounds: `"history": { "maxCommitsPerBranch": 50, "maxUniverses": 1, "maxTotalBytes": 1048576 }` (also `maxBranches`, `maxTags`, `maxReleases`, `maxDiffBytesPerFile`, `maxUniverseTotalBytes`, `releases: false`, `enabled: false`).
+- Author names only — **emails are never shipped**. Secret-pattern files (`.env`, `*.pem`, `id_rsa*`, ...) are never shipped from any commit. Every diff is withheld when either side trips the leaked-secret detector (strict mode, the magpie's patterns everywhere including tests), and so is any universe file, commit message or tag message that does. Paths the world ignores (`node_modules`, `dist`, ...) and paths in the current `.gitignore` never appear. Binary files show only that they changed.
+- There is no upward search: a folder that merely sits inside a larger repository (a monorepo, a home directory under version control) gets no history. `--git-dir <path>` points at a git directory explicitly; `--no-history` turns it off.
+- GitHub releases (and, with a `GITHUB_TOKEN`, packages) are fetched once at build time from the public API, only for a `github.com` remote. The token is only ever a request header, never written anywhere; `--offline` skips the request, and the backend never makes it (uploaded zips never get history at all, and `.git` entries in a zip are skipped before they count against its caps).
+- Linked git worktrees aren't supported (isomorphic-git doesn't follow `commondir`); build from the main checkout.
+
+The reading is done by [isomorphic-git](https://isomorphic-git.org/) (MIT, pinned 1.42.2) at build time. The browser never loads it: the precomputed view needs no git reader, which keeps ~80 KB gzipped of isomorphic-git out of the page; the history UI itself is about 12 KB gzipped.
+
+### `cabn serve --owner` — committing from the game
+
+```sh
+cabn serve ./my-repo --owner
+```
+
+With `--owner`, the page's rift gets an **Owner** tab that works on the real repository through isomorphic-git in the serve process: commit your saved in-game edits (pick the files, write a message), create a branch (optionally switching to it), and switch branches. **Nothing is ever pushed or fetched** — no remote operation exists in the code. The author comes from the repository's own git config (`user.name`/`user.email`); if it has none, the page asks. Owner mode is off by default and loopback-only; every owner request needs a per-session token (separate from the page token, only written into an owner-mode page), an exact `127.0.0.1`/`localhost` Host, an Origin naming this server on every write (browsers send no Origin on a same-origin GET, so the one read-only route accepts `Sec-Fetch-Site: same-origin` instead; any cross-site `Sec-Fetch-Site` is refused), `Content-Type: application/json` on writes, and a zod-validated body. Writes are confined to text files the world was converted from — no traversal, no symlink hops, nothing under `.git` — and refuse to overwrite a file that changed on disk since conversion, or to commit when other changes are already staged. Switching branches refuses a dirty working tree.
+
+Every owner action reconverts the world and reloads the page, which starts a fresh save slot. So edits that aren't part of the action are first set aside in an **in-browser stash** keyed by repository and branch: unticked files when committing, everything when switching (under the branch you're leaving) or creating a branch (under the new branch if you switch to it, like git carries uncommitted changes). The Owner tab offers the stash back whenever you're on its branch. If you have saved edits when you pick a branch to switch to, the page first says so and asks before stashing them.
 
 ## Backend API
 

@@ -43,7 +43,7 @@ export function UniverseBadge({
 			/>
 			<span>
 				Universe: <strong>{git.branch}</strong>
-				{git.universe ? "" : " (main)"}
+				{git.universe ? " · alternate universe" : " · main world"}
 			</span>
 		</div>
 	);
