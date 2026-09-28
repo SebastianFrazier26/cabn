@@ -97,11 +97,14 @@ export function bakeScenery(
 			CHUNK_SIZE_PX,
 			CHUNK_SIZE_PX,
 		);
+		// Batched for the same reason as pathBaker.ts's ribbon bake.
+		rt.beginDraw();
 		for (const item of list) {
 			const image = stampFor(item.kind);
 			image.setFlipX(item.flipX).setTint(item.tint);
-			rt.draw(image, item.x - originX, item.y - originY);
+			rt.batchDraw(image, item.x - originX, item.y - originY);
 		}
+		rt.endDraw();
 		rt.setDepth(depth);
 		chunks.push(rt);
 	}

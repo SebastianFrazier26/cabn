@@ -125,20 +125,25 @@ export function bakePathRibbons(
 	});
 
 	const edge = scene.make.image({ key: PATH_EDGE_DISC_KEY }, false);
-	for (const p of plan.edgeStamps) {
-		rt.draw(edge, p.x - bounds.minX, p.y - bounds.minY);
-	}
 	const bed = scene.make.image({ key: PATH_BED_DISC_KEY }, false);
-	for (const p of plan.bedStamps) {
-		rt.draw(bed, p.x - bounds.minX, p.y - bounds.minY);
-	}
 	const cobbleImages = Array.from({ length: PATH_COBBLE_COUNT }, (_, i) =>
 		scene.make.image({ key: pathCobbleKey(i) }, false),
 	);
+	// One open batch for every stamp: a plain rt.draw() per stamp binds and
+	// flushes the framebuffer each time, which for a few thousand stamps cost
+	// seconds of main-thread stall on scene create.
+	rt.beginDraw();
+	for (const p of plan.edgeStamps) {
+		rt.batchDraw(edge, p.x - bounds.minX, p.y - bounds.minY);
+	}
+	for (const p of plan.bedStamps) {
+		rt.batchDraw(bed, p.x - bounds.minX, p.y - bounds.minY);
+	}
 	for (const c of plan.cobbles) {
 		const image = cobbleImages[c.variant] ?? cobbleImages[0];
-		if (image) rt.draw(image, c.x - bounds.minX, c.y - bounds.minY);
+		if (image) rt.batchDraw(image, c.x - bounds.minX, c.y - bounds.minY);
 	}
+	rt.endDraw();
 	edge.destroy();
 	bed.destroy();
 	for (const image of cobbleImages) image.destroy();
