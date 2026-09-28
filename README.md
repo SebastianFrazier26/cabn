@@ -56,6 +56,8 @@ CI also runs `pnpm audit --audit-level=high` (fails only on high/critical findin
 
 ### Controls
 
+New to cabn? The player's guide, [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md), walks through moving, every tool and hotkey, the monsters, editing and previews, plus `cabn.json` for world authors. In the game, Wren (a guide standing by the first world's bonfire) gives the same tips: walk up to her and press `Enter`.
+
 - **Move**: WASD or arrow keys, everywhere (shelf, a world, inside a file) — or click the ground to walk there (a small gold sparkle marks the spot). Any movement key cancels a click-walk.
 - **Interact**: `Enter` — same key everywhere: at a shelf cabin -> that world, at a world portal -> the file, at the bonfire -> back to the shelf, at a file's top arch -> back to the world, next to a monster inside a file -> an encounter (see Monsters below). Clicking any of those (the cursor turns into a pointer over them) walks you there and interacts on arrival.
 - **Esc**: leave a world at the bonfire (back to the shelf), close a file (back to the world at the portal you entered), cancel a bag selection in progress, back out of an encounter banner before the quill opens, or close an open panel.
