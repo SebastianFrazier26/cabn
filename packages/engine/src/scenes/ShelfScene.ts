@@ -9,16 +9,16 @@ import {
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachTimeOfDayGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import {
+	type AtmosphereHandle,
+	attachAtmosphere,
+} from "../render/atmosphere.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
-import {
-	attachLightPools,
-	type LightPoolOptions,
-} from "../render/lightPools.js";
+import type { LightPoolOptions } from "../render/lightPools.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
@@ -97,7 +97,7 @@ export class ShelfScene extends Phaser.Scene {
 	private placedProps: PlacedProp[] = [];
 	private castleKeepPos = { x: 0, y: 0 };
 	private ambientEffects: { destroy(): void } | null = null;
-	private ambientLights: { destroy(): void } | null = null;
+	private atmosphere: AtmosphereHandle | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
@@ -153,16 +153,14 @@ export class ShelfScene extends Phaser.Scene {
 		this.setupCamera();
 		this.store.getState().setPlayerPos(spawn);
 
-		const unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
 		this.setupAmbientEffects(tower);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-			unsubscribeGlow();
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
 			this.ambientEffects = null;
-			this.ambientLights?.destroy();
-			this.ambientLights = null;
+			this.atmosphere?.destroy();
+			this.atmosphere = null;
 		});
 	}
 
@@ -182,9 +180,9 @@ export class ShelfScene extends Phaser.Scene {
 				{
 					x: pos.x,
 					y: pos.y,
-					radiusPx: 38,
+					radiusPx: 44,
 					color: PALETTE.gold,
-					alpha: 0.6,
+					alpha: 0.7,
 					flicker: true,
 				},
 			];
@@ -197,28 +195,24 @@ export class ShelfScene extends Phaser.Scene {
 			? {
 					x: tower.x,
 					y: tower.y,
-					radiusPx: 46,
+					radiusPx: 60,
 					color: PALETTE.gold,
-					alpha: 0.6,
+					alpha: 0.7,
 				}
 			: null;
 
+		this.atmosphere = attachAtmosphere(this, this.store, {
+			lights: [...propLights, ...(towerLight ? [towerLight] : [])],
+			reducedMotion,
+		});
+
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
-			this.ambientLights?.destroy();
-			const timeOfDay = this.store.getState().timeOfDay;
 			this.ambientEffects = attachWorldEffects(this, {
 				bounds: this.computeWorldBounds(),
-				timeOfDay,
+				timeOfDay: this.store.getState().timeOfDay,
 				reducedMotion,
 			});
-			this.ambientLights =
-				timeOfDay === "night"
-					? attachLightPools(this, [
-							...propLights,
-							...(towerLight ? [towerLight] : []),
-						])
-					: null;
 		};
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {

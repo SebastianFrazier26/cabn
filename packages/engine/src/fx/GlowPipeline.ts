@@ -4,10 +4,8 @@ import type { CabnStore } from "../bridge/store.js";
 import { firstPipeline } from "./firstPipeline.js";
 import {
 	clampGlowParams,
-	DAY_GLOW_PARAMS,
 	DEFAULT_GLOW_PARAMS,
 	type GlowParams,
-	NIGHT_GLOW_PARAMS,
 } from "./glowParams.js";
 import { GLOW_FRAG_SHADER } from "./glowShader.js";
 
@@ -117,59 +115,33 @@ export function syncGlow(
 /**
  * Every glow-bearing scene (World/Shelf/File) wants the same three lines —
  * sync once immediately, keep syncing when the store's `glowEnabled` toggle
- * changes, stop on shutdown — so this is the one place that logic lives
- * rather than copy-pasted into three scenes' create()/teardown pairs. Call
- * once from `create()` (after the camera exists) and call the returned
- * cleanup from the scene's own shutdown handler, same shape as every other
- * `store.subscribe` in this codebase.
+ * changes, stop on shutdown. `params` may be a getter: WorldScene/ShelfScene
+ * pass one reading the live day/night blend, because a value captured once at
+ * create() meant re-enabling glow at night re-applied whatever preset the
+ * scene had *started* with (usually day) — part of the 2026-09-28 "night
+ * doesn't really work" report.
  */
 export function attachGlowLifecycle(
 	scene: Phaser.Scene,
 	store: StoreApi<CabnStore>,
-	params: Partial<GlowParams> = {},
+	params: Partial<GlowParams> | (() => Partial<GlowParams>) = {},
 ): () => void {
 	const camera = scene.cameras.main;
-	syncGlow(scene.game, camera, store.getState().glowEnabled, params);
+	const resolve = typeof params === "function" ? params : () => params;
+	syncGlow(scene.game, camera, store.getState().glowEnabled, resolve());
 	return store.subscribe((state, prev) => {
 		if (state.glowEnabled === prev.glowEnabled) return;
-		syncGlow(scene.game, camera, state.glowEnabled, params);
+		syncGlow(scene.game, camera, state.glowEnabled, resolve());
 	});
 }
 
-/**
- * WorldScene/ShelfScene's call site: attachGlowLifecycle with whichever of
- * DAY_GLOW_PARAMS/NIGHT_GLOW_PARAMS matches store.timeOfDay right now, *and*
- * re-syncs live if timeOfDay changes mid-session (the settings override, or
- * "auto" crossing the clock boundary — see game.ts's periodic
- * refreshTimeOfDay) — attachGlowLifecycle itself only reacts to glowEnabled,
- * so this adds a second small subscription rather than complicating that
- * more general helper's signature for a day/night concern only these two
- * scenes have.
- */
-export function attachTimeOfDayGlow(
-	scene: Phaser.Scene,
-	store: StoreApi<CabnStore>,
-): () => void {
-	const paramsFor = (timeOfDay: CabnStore["timeOfDay"]): GlowParams =>
-		timeOfDay === "night" ? NIGHT_GLOW_PARAMS : DAY_GLOW_PARAMS;
-
-	const unsubscribeLifecycle = attachGlowLifecycle(
-		scene,
-		store,
-		paramsFor(store.getState().timeOfDay),
+/** Re-pushes params to an already-attached pipeline without attaching one — the per-frame path during a day/night cross-fade, which must never re-attach glow the player switched off. */
+export function updateGlowParams(
+	camera: Phaser.Cameras.Scene2D.Camera,
+	params: Partial<GlowParams>,
+): void {
+	const pipeline = firstPipeline(
+		camera.getPostPipeline(GLOW_PIPELINE_KEY) as GlowPipeline | GlowPipeline[],
 	);
-	const unsubscribeTimeOfDay = store.subscribe((state, prev) => {
-		if (state.timeOfDay === prev.timeOfDay) return;
-		syncGlow(
-			scene.game,
-			scene.cameras.main,
-			state.glowEnabled,
-			paramsFor(state.timeOfDay),
-		);
-	});
-
-	return () => {
-		unsubscribeLifecycle();
-		unsubscribeTimeOfDay();
-	};
+	pipeline?.configure(params);
 }

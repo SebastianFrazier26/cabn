@@ -18,16 +18,16 @@ import {
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachTimeOfDayGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import {
+	type AtmosphereHandle,
+	attachAtmosphere,
+} from "../render/atmosphere.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
-import {
-	attachLightPools,
-	type LightPoolOptions,
-} from "../render/lightPools.js";
+import type { LightPoolOptions } from "../render/lightPools.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
@@ -201,9 +201,8 @@ export class WorldScene extends Phaser.Scene {
 	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
 	private placedProps: PlacedProp[] = [];
 	private ambientEffects: { destroy(): void } | null = null;
-	private ambientLights: { destroy(): void } | null = null;
+	private atmosphere: AtmosphereHandle | null = null;
 	private unsubscribeBagSlots: (() => void) | null = null;
-	private unsubscribeGlow: (() => void) | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
@@ -281,21 +280,18 @@ export class WorldScene extends Phaser.Scene {
 		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
-		this.unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
 		this.setupAmbientEffects();
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-			this.unsubscribeGlow?.();
-			this.unsubscribeGlow = null;
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
 			this.ambientEffects = null;
-			this.ambientLights?.destroy();
-			this.ambientLights = null;
+			this.atmosphere?.destroy();
+			this.atmosphere = null;
 		});
 	}
 
-	/** Fireflies/motes/embers/smoke (fx/effects.ts) plus the lamp-post/cottage-window flicker — re-created (not just re-tinted) whenever timeOfDay changes, since fireflies-vs-motes is a swap, not a param tweak. */
+	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
 	private setupAmbientEffects(): void {
 		const reducedMotion = prefersReducedMotion();
 		const root =
@@ -310,54 +306,46 @@ export class WorldScene extends Phaser.Scene {
 			}
 		}
 
-		// M10b batch-3 review: night lighting read as "mostly whole-frame
-		// darkening" — real light pools at every lit prop plus a bigger,
-		// flickering one at the bonfire, night-only (rebuilt whenever
-		// timeOfDay flips, same as the fireflies/motes swap below).
-		const propLights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
+		const lights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
 			const pos = propLightWorldPos(prop);
 			if (!pos) return [];
 			return [
 				{
 					x: pos.x,
 					y: pos.y,
-					radiusPx: 38,
+					radiusPx: 44,
 					color: PALETTE.gold,
-					alpha: 0.6,
-					flicker: true,
+					alpha: 0.7,
+					flicker: prop.name === "lamp-post",
 				},
 			];
 		});
+		if (root) {
+			lights.push({
+				x: root.pos.x,
+				y: root.pos.y,
+				radiusPx: 120,
+				color: PALETTE.gold,
+				alpha: 0.75,
+				flicker: true,
+			});
+		}
+		this.atmosphere = attachAtmosphere(this, this.store, {
+			lights,
+			reducedMotion,
+		});
 
+		// Fireflies-vs-motes is a swap, not a fade — rebuilt on the toggle
+		// itself while the grade/lights cross-fade in render/atmosphere.ts.
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
-			this.ambientLights?.destroy();
-			const timeOfDay = this.store.getState().timeOfDay;
 			this.ambientEffects = attachWorldEffects(this, {
 				bounds: this.computeWorldBounds(),
-				timeOfDay,
+				timeOfDay: this.store.getState().timeOfDay,
 				bonfirePos: root?.pos,
 				chimneyPositions,
 				reducedMotion,
 			});
-			this.ambientLights =
-				timeOfDay === "night"
-					? attachLightPools(this, [
-							...propLights,
-							...(root
-								? [
-										{
-											x: root.pos.x,
-											y: root.pos.y,
-											radiusPx: 90,
-											color: PALETTE.gold,
-											alpha: 0.65,
-											flicker: true,
-										},
-									]
-								: []),
-						])
-					: null;
 		};
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {

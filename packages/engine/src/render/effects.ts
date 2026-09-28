@@ -23,7 +23,7 @@ export interface WorldEffectsHandle {
 }
 
 const AMBIENT_DEPTH = 6; // above the player (5) — fireflies/motes drift in front of everything
-const EMBER_DEPTH = 4.5; // above ground/props, below the player
+const EMBER_DEPTH = 5.7; // above the night grade (render/atmosphere.ts) so embers glow instead of being darkened with the scene
 const SMOKE_DEPTH = 4.5;
 
 function randomInBounds(bounds: EffectBounds) {

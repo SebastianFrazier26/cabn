@@ -17,9 +17,9 @@ export interface GlowParams {
 	vignetteStrength: number;
 	/** Fraction of the screen radius where the vignette starts fading in (0-1). */
 	vignetteRadius: number;
-	/** Per-channel multiplier applied to the whole frame before bloom/vignette — {1,1,1} is neutral. M10b batch 2's day/night color grading: a warm (r,g up; b down) tint by day, a cool blue-violet tint by night, applied here rather than re-tinting every sprite. */
+	/** Per-channel multiplier applied to the whole frame before bloom/vignette — {1,1,1} is neutral. Kept as a knob, but the day/night presets leave it neutral since 2026-09-28 — the grade moved to render/atmosphere.ts so it also works with glow off. */
 	tint: { r: number; g: number; b: number };
-	/** Overall brightness multiplier applied alongside tint — <1 darkens (night), 1 is neutral (day). */
+	/** Overall brightness multiplier applied alongside tint — <1 darkens. Neutral in both day/night presets for the same reason as tint. */
 	brightness: number;
 }
 
@@ -50,28 +50,47 @@ export const DEFAULT_GLOW_PARAMS: GlowParams = {
 	brightness: 1,
 };
 
-// M10b batch 2: "golden-hour warm by day, cool contrast at night" — see
-// WorldScene/ShelfScene's attachGlowLifecycle call sites, which pick one of
-// these two based on the resolved store.timeOfDay. DAY is DEFAULT_GLOW_PARAMS
-// plus a gentle warm tint; NIGHT lowers the bloom threshold (so lantern/
-// window/bonfire highlights — already bright, curated warm tones, see
-// props.ts — bloom into a glow that day's higher threshold mostly suppresses),
-// raises bloomIntensity/vignette for a cozier dark scene, cools the tint
-// toward blue-violet, and darkens the frame overall.
-export const DAY_GLOW_PARAMS: GlowParams = {
-	...DEFAULT_GLOW_PARAMS,
-	tint: { r: 1.05, g: 1.0, b: 0.9 },
-};
+// Day/night presets. Since 2026-09-28 the actual darkening/tinting lives in
+// render/atmosphere.ts's multiply grade layer, not here: the glow pipeline can
+// be switched off (and never attaches on a Canvas renderer), and night used to
+// vanish entirely whenever it was. These presets now only change what the
+// post-fx is good at — NIGHT lowers the bloom threshold so lanterns, windows
+// and the bonfire (the only bright pixels left once the grade has darkened
+// everything else) bloom, and deepens the vignette. tint/brightness stay
+// neutral so glow-on and glow-off nights read as the same darkness.
+export const DAY_GLOW_PARAMS: GlowParams = { ...DEFAULT_GLOW_PARAMS };
 
 export const NIGHT_GLOW_PARAMS: GlowParams = {
-	threshold: 0.55,
-	blurRadius: 3,
-	bloomIntensity: 0.5,
-	vignetteStrength: 0.32,
-	vignetteRadius: 0.6,
-	tint: { r: 0.78, g: 0.8, b: 1.05 },
-	brightness: 0.62,
+	threshold: 0.5,
+	blurRadius: 3.5,
+	bloomIntensity: 0.6,
+	vignetteStrength: 0.36,
+	vignetteRadius: 0.58,
+	tint: { r: 1, g: 1, b: 1 },
+	brightness: 1,
 };
+
+/** Field-wise lerp, used to cross-fade the day/night presets alongside the grade layer. */
+export function lerpGlowParams(
+	a: GlowParams,
+	b: GlowParams,
+	t: number,
+): GlowParams {
+	const mix = (x: number, y: number) => x + (y - x) * t;
+	return {
+		threshold: mix(a.threshold, b.threshold),
+		blurRadius: mix(a.blurRadius, b.blurRadius),
+		bloomIntensity: mix(a.bloomIntensity, b.bloomIntensity),
+		vignetteStrength: mix(a.vignetteStrength, b.vignetteStrength),
+		vignetteRadius: mix(a.vignetteRadius, b.vignetteRadius),
+		tint: {
+			r: mix(a.tint.r, b.tint.r),
+			g: mix(a.tint.g, b.tint.g),
+			b: mix(a.tint.b, b.tint.b),
+		},
+		brightness: mix(a.brightness, b.brightness),
+	};
+}
 
 function clamp(value: number, min: number, max: number): number {
 	if (Number.isNaN(value)) return min;
