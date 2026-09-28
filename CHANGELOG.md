@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-28 — Signs (`.seyn`)
+
+- New `.seyn` sign format ([`docs/SEYN.md`](docs/SEYN.md)): a title line, paragraphs, bullets, `*emphasis*`, and `[[links]]` to files, folders, other signs and `https://` pages. `parseSeyn` in `@cabn/world-schema` is the one parser for the converter, the engine and the owner editor; it never throws on malformed input.
+- The converter turns `.seyn` files into signs, not portals, and lists them in a new `signs.json` beside `world.json`. This follows the `media.json`/`monsters.json`/`embeds.json` compatibility pattern: older engines never request the file and show the world without signs, and `CABN_VERSION` is unchanged. Sign text is searchable with the orb.
+- In the world, a wooden signpost (new deterministic asset-pipeline sprite) stands beside each sign's arch or fountain. It is kept off arches, entry aprons, paths, props, the guide and other signs. Approaching shows a popup; `Enter` or a click opens the reader. Internal links walk to and highlight their target; web links open a new tab with `noopener noreferrer`. The demo's sample world has three example signs.
+- World owners can place, edit and delete signs from inside a local `cabn serve` page with a new sign item (`P`) that no other page ever gets. Saves go through a loopback-only owner API that checks the Host and a required Origin, needs a per-session token placed only in the page, accepts only schema-checked JSON and writes only `.seyn` files inside the served folder (no traversal, symlinks or shell). A save shows up live without a restart. `cabn serve --no-owner` serves read-only. The demo bundle check now also fails if the owner client ever reaches the hosted build.
+
 ## 2026-09-28 — Current-world map
 
 - Added a React/SVG minimap in the top-right and a larger map opened with M and closed with M or Esc. Both show folders, paths, files, player position, undefeated monster anchors and saved visited clearings. Selecting a file uses existing walk-to-portal navigation without entering it.
