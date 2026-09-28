@@ -36,6 +36,10 @@ export * from "./systems/execution/executionProvider.js";
 export * from "./systems/guideContent.js";
 export * from "./systems/insertText.js";
 export * from "./systems/lineWindow.js";
+export type {
+	OwnerSignSaveRequest,
+	OwnerSignsApi,
+} from "./systems/ownerSigns.js";
 export * from "./systems/runPlayback.js";
 export * from "./systems/save.js";
 export * from "./systems/search.js";

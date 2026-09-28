@@ -9,6 +9,9 @@ import {
 	parseEmbedIndex,
 	parseMediaIndex,
 	parseMonsterIndex,
+	parseSignIndex,
+	SIGN_INDEX_FILENAME,
+	type SignEntry,
 	validateManifest,
 	validateShelf,
 } from "@cabn/world-schema";
@@ -79,7 +82,8 @@ export class BootScene extends Phaser.Scene {
 			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
 			loadMonsterIndex(`${worldBase}${MONSTER_INDEX_FILENAME}`),
 			loadEmbedIndex(`${worldBase}${EMBED_INDEX_FILENAME}`),
-		]).then(([media, extraMonsters, embeds]) => {
+			loadSignIndex(`${worldBase}${SIGN_INDEX_FILENAME}`),
+		]).then(([media, extraMonsters, embeds, signs]) => {
 			if (!this.scene.isActive()) return;
 			// Merged here, once, so every scene and HUD piece downstream sees one
 			// `manifest.monsters` and never needs to know monsters.json exists.
@@ -91,6 +95,7 @@ export class BootScene extends Phaser.Scene {
 				media,
 				...(shelfIndex !== undefined ? { shelfIndex } : {}),
 				embeds,
+				signs,
 			});
 		});
 	}
@@ -133,5 +138,16 @@ async function loadEmbedIndex(url: string): Promise<Map<string, EmbedVerdict>> {
 		return parseEmbedIndex(await res.json());
 	} catch {
 		return new Map();
+	}
+}
+
+/** signs.json: same optional/advisory contract as media.json — any failure means a world without signs. */
+async function loadSignIndex(url: string): Promise<SignEntry[]> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return [];
+		return parseSignIndex(await res.json());
+	} catch {
+		return [];
 	}
 }

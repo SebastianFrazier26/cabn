@@ -1,4 +1,9 @@
-import type { FileKind, Position, Species } from "@cabn/world-schema";
+import type {
+	FileKind,
+	Position,
+	SignEntry,
+	Species,
+} from "@cabn/world-schema";
 import { isolateHistory } from "@codemirror/commands";
 import {
 	EditorSelection,
@@ -9,6 +14,7 @@ import { createStore, type StoreApi } from "zustand/vanilla";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
+import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 import {
 	resolveTimeOfDay,
@@ -145,6 +151,30 @@ export interface CabnState {
 	guideNpc: GuideNpcSummary | null;
 	/** True while the guide's dialogue box (react/GuideDialog.tsx) is open — WorldScene holds the player still meanwhile. */
 	guideOpen: boolean;
+	/** Every sign in the current world — signs.json at load, plus the owner's saves since. render/signposts.ts draws exactly this list. */
+	signs: SignEntry[];
+	/** The sign the player is standing at (small popup, react/SignPopup.tsx). */
+	focusedSignPath: string | null;
+	/** The sign open in the full reader (react/SignReader.tsx); the player holds still meanwhile. */
+	openSignPath: string | null;
+	/** Set only by a host page that passes CabnGame's `ownerSigns` (a local `cabn serve`); null in hosted builds and the demo, which then show no sign item and no edit controls. */
+	ownerSigns: OwnerSignsApi | null;
+	/** The owner picked the sign item and is choosing where the new sign stands. */
+	signPlacing: boolean;
+	/** The owner's sign editor (react/SignEditor.tsx), open while non-null. */
+	signDraft: SignDraft | null;
+	/** Folder path -> its (non-annex) cluster id, for resolving sign links to folders; render/signposts.ts fills it per world. */
+	folderClusters: Record<string, string>;
+}
+
+export interface SignDraft {
+	/** The sign being edited; null for a new one (the editor then asks for a file name). */
+	path: string | null;
+	near: { kind: "file" | "folder"; path: string };
+	offset: Position | null;
+	body: string;
+	/** Default file name offered for a new sign. */
+	suggestedPath: string;
 }
 
 export interface GuideNpcSummary {
@@ -207,6 +237,18 @@ export interface CabnActions {
 	setNearWebPortal(portal: NearWebPortal | null): void;
 	setGuideNpc(guide: GuideNpcSummary | null): void;
 	setGuideOpen(open: boolean): void;
+	/** A world's signs and its folder -> cluster map, together, at world start. */
+	setSigns(signs: SignEntry[], folderClusters?: Record<string, string>): void;
+	/** Adds or replaces (by path) one sign — the owner's save, applied live. */
+	upsertSign(sign: SignEntry): void;
+	removeSign(path: string): void;
+	setFocusedSign(path: string | null): void;
+	setOpenSign(path: string | null): void;
+	setOwnerSigns(api: OwnerSignsApi | null): void;
+	/** Ignored without the owner capability, or outside world mode. */
+	setSignPlacing(placing: boolean): void;
+	/** Ignored without the owner capability. Always ends placement. */
+	setSignDraft(draft: SignDraft | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -243,6 +285,13 @@ const initialState: CabnState = {
 	nearWebPortal: null,
 	guideNpc: null,
 	guideOpen: false,
+	signs: [],
+	focusedSignPath: null,
+	openSignPath: null,
+	ownerSigns: null,
+	signPlacing: false,
+	signDraft: null,
+	folderClusters: {},
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -256,7 +305,9 @@ export function createCabnStore(): StoreApi<CabnStore> {
 					mapOpen &&
 					get().worldMap !== null &&
 					get().mode === "world" &&
-					!get().guideOpen,
+					!get().guideOpen &&
+					get().openSignPath === null &&
+					get().signDraft === null,
 			}),
 		setVisitedClusterIds: (visitedClusterIds) => set({ visitedClusterIds }),
 		clearWorldContext: () =>
@@ -276,6 +327,12 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				nearWebPortal: null,
 				guideNpc: null,
 				guideOpen: false,
+				signs: [],
+				focusedSignPath: null,
+				openSignPath: null,
+				signPlacing: false,
+				signDraft: null,
+				folderClusters: {},
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -388,5 +445,36 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
 		setGuideNpc: (guideNpc) => set({ guideNpc }),
 		setGuideOpen: (guideOpen) => set({ guideOpen }),
+		setSigns: (signs, folderClusters) =>
+			set(folderClusters ? { signs, folderClusters } : { signs }),
+		upsertSign: (sign) =>
+			set((state) => ({
+				signs: [...state.signs.filter((s) => s.path !== sign.path), sign],
+			})),
+		removeSign: (path) =>
+			set((state) => ({
+				signs: state.signs.filter((s) => s.path !== path),
+				focusedSignPath:
+					state.focusedSignPath === path ? null : state.focusedSignPath,
+				openSignPath: state.openSignPath === path ? null : state.openSignPath,
+			})),
+		setFocusedSign: (focusedSignPath) => set({ focusedSignPath }),
+		setOpenSign: (openSignPath) => set({ openSignPath }),
+		setOwnerSigns: (ownerSigns) =>
+			set(
+				ownerSigns
+					? { ownerSigns }
+					: { ownerSigns, signPlacing: false, signDraft: null },
+			),
+		setSignPlacing: (signPlacing) =>
+			set({
+				signPlacing:
+					signPlacing && get().ownerSigns !== null && get().mode === "world",
+			}),
+		setSignDraft: (signDraft) =>
+			set({
+				signDraft: get().ownerSigns !== null ? signDraft : null,
+				signPlacing: false,
+			}),
 	}));
 }
