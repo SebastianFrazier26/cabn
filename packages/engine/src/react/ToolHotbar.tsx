@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import {
 	createDefaultToolRegistry,
 	type Tool,
@@ -13,6 +12,21 @@ import { useCabnStore } from "./useCabnStore.js";
 export interface ToolHotbarProps {
 	store: StoreApi<CabnStore>;
 	bus: CabnBus;
+}
+
+// Which tool's slot gets the mockup's gold-ring "selected" treatment — most
+// tools are momentary actions with no persistent "equipped" state, so this
+// only covers spyglass/orb (a real open/closed panel to reflect). quill/wand
+// have their own open states too (mode === "editor"/"run"), but the whole
+// hotbar is hidden in both of those modes (see the early return below), so
+// there's no slot left to ring; opener/bag have no open state at all.
+function isToolSelected(
+	toolId: string,
+	state: { spyglassOpen: boolean; searchOpen: boolean },
+): boolean {
+	if (toolId === "spyglass") return state.spyglassOpen;
+	if (toolId === "orb") return state.searchOpen;
+	return false;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -35,6 +49,8 @@ export function ToolHotbar({
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
 	const mode = useCabnStore(store, (s) => s.mode);
+	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
+	const searchOpen = useCabnStore(store, (s) => s.searchOpen);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -97,6 +113,7 @@ export function ToolHotbar({
 					key={tool.id}
 					tool={tool}
 					badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
+					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
@@ -107,10 +124,12 @@ export function ToolHotbar({
 function HotbarSlot({
 	tool,
 	badge,
+	selected,
 	onUse,
 }: {
 	tool: Tool;
 	badge: number | null;
+	selected: boolean;
 	onUse: () => void;
 }): React.ReactElement {
 	return (
@@ -118,62 +137,12 @@ function HotbarSlot({
 			type="button"
 			onClick={onUse}
 			title={`${tool.name} (${tool.hotkey})`}
-			style={{
-				position: "relative",
-				pointerEvents: "auto",
-				width: 48,
-				height: 48,
-				background: toCssColor(PALETTE.parchment),
-				border: `2px solid ${toCssColor(PALETTE.ink)}`,
-				borderRadius: 6,
-				display: "flex",
-				flexDirection: "column",
-				alignItems: "center",
-				justifyContent: "center",
-				cursor: "pointer",
-				padding: 2,
-			}}
+			className={`cabn-hotbar-slot${selected ? " selected" : ""}`}
+			style={{ pointerEvents: "auto" }}
 		>
-			<img
-				src={tool.icon}
-				alt={tool.name}
-				style={{
-					width: 26,
-					height: 26,
-					objectFit: "contain",
-					imageRendering: "pixelated",
-				}}
-			/>
-			<span
-				style={{
-					fontSize: 9,
-					lineHeight: 1,
-					color: toCssColor(PALETTE.ink),
-					fontFamily: '"Courier New", monospace',
-				}}
-			>
-				{tool.hotkey}
-			</span>
-			{badge !== null && (
-				<span
-					style={{
-						position: "absolute",
-						top: -6,
-						right: -6,
-						background: toCssColor(PALETTE.trail),
-						color: toCssColor(PALETTE.cream),
-						borderRadius: "50%",
-						width: 16,
-						height: 16,
-						fontSize: 10,
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-					}}
-				>
-					{badge}
-				</span>
-			)}
+			<img src={tool.icon} alt={tool.name} />
+			<span className="cabn-key">{tool.hotkey}</span>
+			{badge !== null && <span className="cabn-badge">{badge}</span>}
 		</button>
 	);
 }

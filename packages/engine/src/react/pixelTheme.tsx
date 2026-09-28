@@ -168,12 +168,19 @@ const PIXEL_THEME_CSS = `
 }
 
 /* ================= bag tray — open satchel interior ================= */
-.cabn-bag-frame { position: relative; overflow: hidden; }
+.cabn-bag-frame { position: relative; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .cabn-bag-frame::before {
 	content: ""; position: absolute; inset: 6px; border-radius: 8px; pointer-events: none;
 	background: radial-gradient(ellipse at 50% 0%, rgba(120,70,30,0.32), transparent 70%);
 	border: 2px dashed rgba(120,70,30,0.45);
 }
+.cabn-bag-slot {
+	position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 8px;
+	padding: 5px 10px; font-size: 11px; color: var(--cabn-text); max-width: 220px;
+}
+.cabn-bag-slot.filled { box-shadow: 0 0 0 2px var(--cabn-accent-yellow); }
+.cabn-bag-slot .cabn-x { opacity: 0.55; cursor: pointer; }
 
 /* ================= ribbon banners (encounter + victory) ================= */
 .cabn-ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 260px; padding: 10px 36px; }
