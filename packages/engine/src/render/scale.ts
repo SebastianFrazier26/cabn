@@ -50,16 +50,15 @@ export const WIZARD_TOWER_SCALE = 0.14;
 export const SHELF_CABIN_SCALE = WIZARD_TOWER_SCALE;
 export const WORLD_CABINET_SCALE = WIZARD_TOWER_SCALE;
 
-// castle-keep's pixel map is 32x44 (tools/asset-pipeline/src/world-art/
-// props.ts), cellSize 6 like every other prop -> raw 192x264. Every other
-// prop in this batch is deliberately unscaled (propPlacement.ts never calls
-// setScale — a scattered prop's apparent size comes entirely from its grid
-// dimensions), but the castle keep is a one-off landmark accent sitting
-// right next to the wizard tower, not a scattered prop, and batch 2 shipped
-// it unscaled anyway — bigger than the (correctly scaled) tower beside it,
-// the exact "centerpiece" the tower is supposed to be (M10b batch-3 review).
-// Targets 150px tall via fitSpriteToSize() below — a bit under the tower's
-// own 179px so it reads as a secondary structure.
+// Scatter props (tools/asset-pipeline/src/world-art/props.ts) are drawn
+// unscaled: since the 2026-09-28 art-density pass they're authored at the
+// same 2 screen px per fine cell as scenery, so their grid size *is* their
+// on-screen size (propPlacement.ts never calls setScale). The castle keep is
+// the one exception — a one-off landmark accent beside the wizard tower,
+// fitted to a target height via fitSpriteToSize() so it reads as a
+// secondary structure, a bit under the tower's own 179px. Its fine grid
+// (50x68, cellSize 2 -> 100x136 raw) is sized so that fit lands its cells
+// at ~2.2 screen px, the tower's own density.
 export const CASTLE_KEEP_TARGET_HEIGHT_PX = 150;
 
 // Each monster species' pixel map is a different native size (ouroboros is

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiSparklePath } from "../assetPaths.js";
+import { uiScreenPath, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import {
@@ -80,14 +80,7 @@ export function OrbSearch({
 	);
 
 	useEffect(() => {
-		if (!open) {
-			setQuery("");
-			return;
-		}
-		// Biome's a11y/noAutofocus rule wants intentional focus management, not
-		// an `autoFocus` prop — this is that: focus only when the modal actually
-		// opens, not on every mount.
-		inputRef.current?.focus();
+		if (!open) setQuery("");
 	}, [open]);
 
 	useEffect(() => {
@@ -106,6 +99,15 @@ export function OrbSearch({
 	useEffect(() => {
 		if (open) setPlayToken((token) => token + 1);
 	}, [open]);
+
+	// Biome's a11y/noAutofocus rule wants intentional focus management, not an
+	// `autoFocus` prop — this is that. Keyed on playToken too: the input lives
+	// inside the remounted (key={playToken}) ball, so focusing on `open` alone
+	// would land on the instance that remount immediately replaces.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: playToken is the remount signal, not read inside
+	useEffect(() => {
+		if (open) inputRef.current?.focus();
+	}, [open, playToken]);
 
 	const previewLineByPortalId = useMemo(
 		() => new Map(portals.map((p) => [p.id, p.previewLine] as const)),
@@ -174,66 +176,44 @@ export function OrbSearch({
 					}}
 				/>
 			))}
-			{/* The literal crystal ball: a glass sphere (cabn-crystal-ball) results
-			    swirl inside of, rising up on top of a plinth (cabn-crystal-plinth)
-			    that holds the search input — replacing the old flat rectangular
-			    panel per the M10 plan's "using the crystal ball should open a
-			    LITERAL crystal ball" feedback. */}
+			{/* The literal crystal ball (ui_screen_orb, tools/asset-pipeline's
+			    ui-screen-orb.ts): a pixel-art glass rim on a bronze stand, with
+			    the dark swirling glass (cabn-crystal-glass) showing through its
+			    transparent interior. Results sit in the art's inscribed
+			    rectangle (cabn-crystal-ball-content) and the input on the stand's
+			    plaque, so nothing ever clips at the sphere's round edge. */}
 			<div
-				style={{
-					position: "relative",
-					zIndex: 3,
-					display: "flex",
-					flexDirection: "column",
-					alignItems: "center",
-				}}
+				key={playToken}
+				className="cabn-crystal-ball"
+				style={{ position: "relative", zIndex: 3 }}
 			>
-				<div key={playToken} className="cabn-crystal-ball">
+				<div className="cabn-crystal-glass">
 					<div className="cabn-crystal-ball-mist" />
 					<div className="cabn-crystal-ball-mist two" />
-					<div className="cabn-crystal-ball-content">
-						{scope === "world" && loading && (
-							<Status text="loading the world's search index..." />
-						)}
-						{scope === "world" && error && (
-							<Status text={`search index failed to load: ${error}`} />
-						)}
-						{hits.length === 0 && query.trim() && !loading && (
-							<Status text="no matches" />
-						)}
-						{hits.length === 0 && !query.trim() && (
-							<Status text="speak a query to the ball..." />
-						)}
-						<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-							{hits.map((hit) => (
-								<SearchHitRow
-									key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
-									hit={hit}
-									onSelect={() => select(hit)}
-								/>
-							))}
-						</ul>
-					</div>
-					<div className="cabn-effect-burst play">
-						{OPEN_BURST_SPARKS.map((s, i) => (
-							// Fixed, static per-render burst layout, never reordered — index
-							// is a stable enough key.
-							<img
-								// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
-								key={i}
-								className="cabn-spark"
-								src={uiSparklePath(s.color)}
-								alt=""
-								style={
-									{
-										"--cabn-tx": `${s.tx}px`,
-										"--cabn-ty": `${s.ty}px`,
-										animationDelay: `${s.delayMs}ms`,
-									} as React.CSSProperties
-								}
+				</div>
+				<img className="cabn-tool-frame" src={uiScreenPath("orb")} alt="" />
+				<div className="cabn-crystal-ball-content">
+					{scope === "world" && loading && (
+						<Status text="loading the world's search index..." />
+					)}
+					{scope === "world" && error && (
+						<Status text={`search index failed to load: ${error}`} />
+					)}
+					{hits.length === 0 && query.trim() && !loading && (
+						<Status text="no matches" />
+					)}
+					{hits.length === 0 && !query.trim() && (
+						<Status text="speak a query to the ball..." />
+					)}
+					<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+						{hits.map((hit) => (
+							<SearchHitRow
+								key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
+								hit={hit}
+								onSelect={() => select(hit)}
 							/>
 						))}
-					</div>
+					</ul>
 				</div>
 				<div className="cabn-crystal-plinth">
 					<input
@@ -252,9 +232,29 @@ export function OrbSearch({
 							borderBottom: "2px dashed rgba(255,255,255,0.4)",
 							outline: "none",
 							color: "inherit",
-							padding: "4px 2px 8px",
+							padding: "2px 2px 4px",
 						}}
 					/>
+				</div>
+				<div className="cabn-effect-burst play">
+					{OPEN_BURST_SPARKS.map((s, i) => (
+						// Fixed, static per-render burst layout, never reordered — index
+						// is a stable enough key.
+						<img
+							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+							key={i}
+							className="cabn-spark"
+							src={uiSparklePath(s.color)}
+							alt=""
+							style={
+								{
+									"--cabn-tx": `${s.tx}px`,
+									"--cabn-ty": `${s.ty}px`,
+									animationDelay: `${s.delayMs}ms`,
+								} as React.CSSProperties
+							}
+						/>
+					))}
 				</div>
 			</div>
 		</div>
@@ -283,6 +283,7 @@ function SearchHitRow({
 			<button
 				type="button"
 				onClick={onSelect}
+				title={snippet ? `${title} — ${snippet}` : title}
 				style={{
 					width: "100%",
 					textAlign: "left",
@@ -300,9 +301,16 @@ function SearchHitRow({
 					gap: 2,
 				}}
 			>
-				<strong style={{ fontSize: 13 }}>{title}</strong>
+				<strong className="cabn-clip-line" style={{ fontSize: 13 }}>
+					{title}
+				</strong>
 				{snippet && (
-					<span style={{ fontSize: 11, opacity: 0.75 }}>{snippet}</span>
+					<span
+						className="cabn-clip-line"
+						style={{ fontSize: 11, opacity: 0.75 }}
+					>
+						{snippet}
+					</span>
 				)}
 			</button>
 		</li>

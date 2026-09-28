@@ -11,6 +11,12 @@ import { buildCrystalOrbIcon } from "./pixelmaps/ui-item-orb.js";
 import { buildQuillIcon } from "./pixelmaps/ui-item-quill.js";
 import { buildSpyglassIcon } from "./pixelmaps/ui-item-spyglass.js";
 import { buildWandIcon } from "./pixelmaps/ui-item-wand.js";
+import { buildOrbScreen } from "./pixelmaps/ui-screen-orb.js";
+import {
+	buildSatchelFlap,
+	buildSatchelScreen,
+} from "./pixelmaps/ui-screen-satchel.js";
+import { buildSpyglassScreen } from "./pixelmaps/ui-screen-spyglass.js";
 import { buildSparkle } from "./pixelmaps/ui-sparkle.js";
 import { soften } from "./soften.js";
 
@@ -22,7 +28,7 @@ const uiManifestPath = path.join(uiDir, "manifest.json");
 
 interface UiAsset {
 	map: PixelMap;
-	kind: "item-icon" | "particle";
+	kind: "item-icon" | "particle" | "tool-screen";
 	/** Upscale/soften only makes sense for the item icons — sparkles are used tiny and crisp. */
 	soften: boolean;
 }
@@ -38,6 +44,10 @@ function buildAssets(): UiAsset[] {
 		{ map: buildSparkle("violet"), kind: "particle", soften: false },
 		{ map: buildSparkle("cyan"), kind: "particle", soften: false },
 		{ map: buildSparkle("gold"), kind: "particle", soften: false },
+		{ map: buildOrbScreen(), kind: "tool-screen", soften: true },
+		{ map: buildSpyglassScreen(), kind: "tool-screen", soften: true },
+		{ map: buildSatchelScreen(), kind: "tool-screen", soften: true },
+		{ map: buildSatchelFlap(), kind: "tool-screen", soften: true },
 	];
 }
 
@@ -59,6 +69,20 @@ const CRISP_UPSCALE = 8; // sparkles especially are tiny (9x9) — need a big mu
 // keeps it a flat, readable disc instead.
 const SOFTEN_OVERRIDES: Record<string, Parameters<typeof soften>[1]> = {
 	ui_icon_spyglass: { bloomThreshold: 235, bloomStrength: 0.15 },
+};
+
+// The tool-screen frames are drawn 100+ cells a side and shown 1:1 as the
+// OrbSearch/SpyglassPanel/BagTray backgrounds (3 CSS px per cell), not
+// shrunk to hotbar size like the icons — the icons' cellSize 16 and grain
+// would make a 2000px-wide image whose speckle reads as noise at this size.
+const TOOL_SCREEN_SOFTEN: Parameters<typeof soften>[1] = {
+	cellSize: 3,
+	jitterStrength: 2,
+	grainStrength: 0,
+	bloomThreshold: 235,
+	bloomStrength: 0.15,
+	bloomRadiusPx: 4,
+	edgeFeatherPx: 1,
 };
 
 async function main() {
@@ -88,7 +112,12 @@ async function main() {
 			// wizard_tower/character_idle/ghost, so these icons land in the same
 			// "soft-rendered cottagecore" family as the existing originals rather
 			// than needing their own bespoke tuning.
-			const softImage = soften(image, SOFTEN_OVERRIDES[map.name]);
+			const softImage = soften(
+				image,
+				asset.kind === "tool-screen"
+					? TOOL_SCREEN_SOFTEN
+					: SOFTEN_OVERRIDES[map.name],
+			);
 			await writeRawRgbaPng(softImage, path.join(uiDir, softFile));
 			// The engine loads icons from placeholders/ (see engine
 			// assetPaths.ts's uiIconPath) — written here too so a regenerated

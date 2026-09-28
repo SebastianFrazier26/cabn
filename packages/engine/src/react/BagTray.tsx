@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiIconPath } from "../assetPaths.js";
+import { uiIconPath, uiScreenPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -59,74 +59,89 @@ export function BagTray({
 			}}
 		>
 			{bagOpen ? (
-				<div key="open" className="cabn-satchel-open">
-					<div className="cabn-satchel-flap" />
-					<div className="cabn-panel-title" style={{ margin: "0 0 6px" }}>
-						<span>Bag</span>
-					</div>
+				<div
+					key="open"
+					className="cabn-satchel-open"
+					style={{ backgroundImage: `url(${uiScreenPath("satchel")})` }}
+				>
 					<div
+						className="cabn-satchel-flap"
 						style={{
-							display: "flex",
-							flexWrap: "wrap",
-							gap: 8,
-							maxWidth: 320,
+							backgroundImage: `url(${uiScreenPath("satchel_flap")})`,
 						}}
-						title={
-							pasteEnabled
-								? "click a pouch to paste it at the cursor"
-								: "paste arrives with the quill"
-						}
-					>
-						{slots.map((slot) => {
-							const label = (
-								<>
-									{slot.sourcePortalId}:{slot.startLine + 1}
-									{slot.endLine !== slot.startLine
-										? `-${slot.endLine + 1}`
-										: ""}
-								</>
-							);
-							return (
-								<div key={slot.id} className="cabn-bag-pouch">
-									{pasteEnabled ? (
+					/>
+					{/* Laid out inside the art's stitched front panel (see
+					    pixelTheme.tsx's .cabn-satchel-content). */}
+					<div className="cabn-satchel-content">
+						{/* Close sits in the title row rather than under the pouches, so
+						    it stays visible inside the front panel however many
+						    slots there are. */}
+						<div className="cabn-satchel-title">
+							<span>Bag</span>
+							<button
+								type="button"
+								className="cabn-btn neutral"
+								onClick={() => store.getState().setBagOpen(false)}
+								style={{ padding: "3px 10px", fontSize: 11 }}
+							>
+								Close
+							</button>
+						</div>
+						<div
+							style={{
+								display: "flex",
+								flexWrap: "wrap",
+								gap: 8,
+							}}
+							title={
+								pasteEnabled
+									? "click a pouch to paste it at the cursor"
+									: "paste arrives with the quill"
+							}
+						>
+							{slots.map((slot) => {
+								const label = (
+									<>
+										{slot.sourcePortalId}:{slot.startLine + 1}
+										{slot.endLine !== slot.startLine
+											? `-${slot.endLine + 1}`
+											: ""}
+									</>
+								);
+								return (
+									<div key={slot.id} className="cabn-bag-pouch">
+										{pasteEnabled ? (
+											<button
+												type="button"
+												onClick={() =>
+													bus.emit("editor:paste-slot", { slotId: slot.id })
+												}
+												className="cabn-bag-pouch-label"
+											>
+												{label}
+											</button>
+										) : (
+											<span className="cabn-bag-pouch-label">{label}</span>
+										)}
 										<button
 											type="button"
-											onClick={() =>
-												bus.emit("editor:paste-slot", { slotId: slot.id })
-											}
-											className="cabn-bag-pouch-label"
+											className="cabn-x"
+											title="drop this slot"
+											onClick={() => store.getState().removeBagSlot(slot.id)}
+											style={{
+												background: "none",
+												border: "none",
+												cursor: "pointer",
+												color: "inherit",
+											}}
 										>
-											{label}
+											x
 										</button>
-									) : (
-										<span className="cabn-bag-pouch-label">{label}</span>
-									)}
-									<button
-										type="button"
-										className="cabn-x"
-										title="drop this slot"
-										onClick={() => store.getState().removeBagSlot(slot.id)}
-										style={{
-											background: "none",
-											border: "none",
-											cursor: "pointer",
-											color: "inherit",
-										}}
-									>
-										x
-									</button>
-								</div>
-							);
-						})}
+									</div>
+								);
+							})}
+						</div>
 					</div>
-					<button
-						type="button"
-						className="cabn-btn neutral"
-						onClick={() => store.getState().setBagOpen(false)}
-						style={{ marginTop: 10, padding: "5px 14px", fontSize: 11 }}
-					>
-						Close
-					</button>
 				</div>
 			) : (
 				<button

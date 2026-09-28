@@ -67,5 +67,37 @@
 		"height": 9,
 		"crispFile": "ui_sparkle_gold.png",
 		"crispUpscaledFile": "ui_sparkle_gold@8x.png"
+	},
+	"ui_screen_orb": {
+		"kind": "tool-screen",
+		"width": 144,
+		"height": 184,
+		"crispFile": "ui_screen_orb.png",
+		"crispUpscaledFile": "ui_screen_orb@8x.png",
+		"softFile": "ui_screen_orb_soft.png"
+	},
+	"ui_screen_spyglass": {
+		"kind": "tool-screen",
+		"width": 136,
+		"height": 136,
+		"crispFile": "ui_screen_spyglass.png",
+		"crispUpscaledFile": "ui_screen_spyglass@8x.png",
+		"softFile": "ui_screen_spyglass_soft.png"
+	},
+	"ui_screen_satchel": {
+		"kind": "tool-screen",
+		"width": 128,
+		"height": 116,
+		"crispFile": "ui_screen_satchel.png",
+		"crispUpscaledFile": "ui_screen_satchel@8x.png",
+		"softFile": "ui_screen_satchel_soft.png"
+	},
+	"ui_screen_satchel_flap": {
+		"kind": "tool-screen",
+		"width": 96,
+		"height": 30,
+		"crispFile": "ui_screen_satchel_flap.png",
+		"crispUpscaledFile": "ui_screen_satchel_flap@8x.png",
+		"softFile": "ui_screen_satchel_flap_soft.png"
 	}
 }
