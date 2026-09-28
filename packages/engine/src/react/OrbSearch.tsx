@@ -68,7 +68,8 @@ export function OrbSearch({
 	const open = useCabnStore(store, (s) => s.searchOpen);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const activeWorldBase = useCabnStore(store, (s) => s.activeWorldBase);
-	const activePortalContent = useCabnStore(store, (s) => s.activePortalContent);
+	const activeFileState = useCabnStore(store, (s) => s.activeFileState);
+	const activeFileDoc = activeFileState?.doc ?? null;
 	const portals = useCabnStore(store, (s) => s.portals);
 	const [query, setQuery] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +121,7 @@ export function OrbSearch({
 	const hits: SearchHit[] = useMemo(() => {
 		if (!query.trim()) return [];
 		if (scope === "file") {
-			return searchFileLines((activePortalContent ?? "").split("\n"), query);
+			return searchFileLines(activeFileDoc?.toJSON() ?? [], query);
 		}
 		if (!index) return [];
 		// minisearch's SearchResult only statically types id/terms/score/match —
@@ -133,7 +134,7 @@ export function OrbSearch({
 			name: r.name as string,
 		}));
 		return toWorldSearchHits(rawResults, previewLineByPortalId);
-	}, [query, scope, index, activePortalContent, previewLineByPortalId]);
+	}, [query, scope, index, activeFileDoc, previewLineByPortalId]);
 
 	if (!open) return null;
 

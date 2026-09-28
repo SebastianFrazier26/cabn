@@ -53,6 +53,10 @@ export function ToolHotbar({
 	const mode = useCabnStore(store, (s) => s.mode);
 	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
 	const searchOpen = useCabnStore(store, (s) => s.searchOpen);
+	const writing = useCabnStore(
+		store,
+		(s) => s.mode === "file" && s.activeFileState !== null,
+	);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -123,6 +127,7 @@ export function ToolHotbar({
 					badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
 					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
 					showLabel={mode === "file"}
+					writing={writing}
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
@@ -135,15 +140,19 @@ function HotbarSlot({
 	badge,
 	selected,
 	showLabel,
+	writing,
 	onUse,
 }: {
 	tool: Tool;
 	badge: number | null;
 	selected: boolean;
 	showLabel: boolean;
+	/** In a text file the page's caret takes plain letters and Enter, so the shortcuts become Alt chords (see systems/fileCaretKeys.ts). */
+	writing: boolean;
 	onUse: () => void;
 }): React.ReactElement {
 	const label = showLabel ? tool.label : undefined;
+	const hotkey = writing ? `Alt+${tool.hotkey}` : tool.hotkey;
 	return (
 		<button
 			type="button"
@@ -153,7 +162,7 @@ function HotbarSlot({
 				// next Enter meant for the world would re-click it as well.
 				event.currentTarget.blur();
 			}}
-			title={`${label ? `${label} — ` : ""}${tool.name} (${tool.hotkey})`}
+			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
 			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>

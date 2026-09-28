@@ -1,7 +1,14 @@
 import type { FileKind, Position, Species } from "@cabn/world-schema";
+import { isolateHistory } from "@codemirror/commands";
+import {
+	EditorSelection,
+	type EditorState,
+	type Text,
+} from "@codemirror/state";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
+import { createFileBufferState } from "../systems/fileBuffer.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 import {
 	resolveTimeOfDay,
@@ -87,6 +94,12 @@ export interface CabnState {
 	 * leak WorldScene's internal chunk cache shape into the store.
 	 */
 	activePortalContent: string | null;
+	/** The open text file's edit buffer (see systems/fileBuffer.ts) — null for binary/media files, which aren't editable, and outside file mode. `activePortalContent` stays the last *saved* text; this is what's on screen. */
+	activeFileState: EditorState | null;
+	/** The buffer's doc as of the last save (or entry) — dirty is `!activeFileState.doc.eq(this)`. */
+	activeFileSavedDoc: Text | null;
+	/** True while the "unsaved changes" prompt for leaving the file view is up. */
+	fileLeavePrompt: boolean;
 	/** The open portal's resolved preview (same one its arch shows) — lets the file view render media/tables without reaching back into WorldScene. Null outside file mode, or when the caller didn't supply one. */
 	activePortalPreview: DisplayPreview | null;
 	loadedChunks: string[];
@@ -143,10 +156,14 @@ export interface CabnActions {
 	setPortals(portals: PortalSummary[]): void;
 	addBagSlot(slot: BagSlot): void;
 	removeBagSlot(id: string): void;
-	/** Replaces the open file's content in place, e.g. after a quill save — does not change `mode` or `activePortalId`. */
+	/** The open file's saved content changed (a save, or a reset to pristine) — does not change `mode` or `activePortalId`. Marks the buffer saved; if the buffer's text differs (a reset) it's replaced by an undoable transaction. */
 	setActivePortalContent(content: string): void;
+	/** Every edit or caret move, from either the file view or the spellbook. */
+	setActiveFileState(state: EditorState): void;
+	setFileLeavePrompt(open: boolean): void;
+	/** `initialLine` (an encounter) moves the shared caret to that line first; omitted (the quill), the spellbook opens wherever the file view's caret is. */
 	openEditor(params: {
-		initialLine: number;
+		initialLine?: number;
 		language: string | undefined;
 	}): void;
 	/** Back to `mode: "file"` — the editor only ever opens on top of an already-open file, never standalone. */
@@ -178,6 +195,9 @@ const initialState: CabnState = {
 	activeClusterId: null,
 	activePortalId: null,
 	activePortalContent: null,
+	activeFileState: null,
+	activeFileSavedDoc: null,
+	fileLeavePrompt: false,
 	activePortalPreview: null,
 	loadedChunks: [],
 	playerPos: { x: 0, y: 0 },
@@ -203,18 +223,26 @@ export function createCabnStore(): StoreApi<CabnStore> {
 	return createStore<CabnStore>((set, get) => ({
 		...initialState,
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
-		enterPortal: (portalId, content, preview) =>
+		enterPortal: (portalId, content, preview) => {
+			const buffer = content === null ? null : createFileBufferState(content);
 			set({
 				mode: "file",
 				activePortalId: portalId,
 				activePortalContent: content,
+				activeFileState: buffer,
+				activeFileSavedDoc: buffer?.doc ?? null,
+				fileLeavePrompt: false,
 				activePortalPreview: preview ?? null,
-			}),
+			});
+		},
 		exitPortal: () =>
 			set({
 				mode: "world",
 				activePortalId: null,
 				activePortalContent: null,
+				activeFileState: null,
+				activeFileSavedDoc: null,
+				fileLeavePrompt: false,
 				activePortalPreview: null,
 			}),
 		setLoadedChunks: (loadedChunks) => set({ loadedChunks }),
@@ -226,14 +254,61 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setPortals: (portals) => set({ portals }),
 		addBagSlot: (slot) => set({ bagSlots: addBagSlot(get().bagSlots, slot) }),
 		removeBagSlot: (id) => set({ bagSlots: removeBagSlot(get().bagSlots, id) }),
-		setActivePortalContent: (activePortalContent) =>
-			set({ activePortalContent }),
-		openEditor: ({ initialLine, language }) =>
+		setActivePortalContent: (activePortalContent) => {
+			const buffer = get().activeFileState;
+			if (!buffer) {
+				set({ activePortalContent });
+				return;
+			}
+			if (buffer.doc.toString() === activePortalContent) {
+				set({ activePortalContent, activeFileSavedDoc: buffer.doc });
+				return;
+			}
+			const head = Math.min(
+				buffer.selection.main.head,
+				activePortalContent.length,
+			);
+			const next = buffer.update({
+				changes: {
+					from: 0,
+					to: buffer.doc.length,
+					insert: activePortalContent,
+				},
+				selection: { anchor: head },
+				// Its own undo step, never merged into typing just before it.
+				annotations: isolateHistory.of("full"),
+			}).state;
+			set({
+				activePortalContent,
+				activeFileState: next,
+				activeFileSavedDoc: next.doc,
+			});
+		},
+		setActiveFileState: (activeFileState) => set({ activeFileState }),
+		setFileLeavePrompt: (fileLeavePrompt) => set({ fileLeavePrompt }),
+		openEditor: ({ initialLine, language }) => {
+			const buffer = get().activeFileState;
+			let activeFileState = buffer;
+			if (buffer && initialLine !== undefined) {
+				const lineNumber = Math.min(
+					Math.max(initialLine + 1, 1),
+					buffer.doc.lines,
+				);
+				activeFileState = buffer.update({
+					selection: EditorSelection.cursor(buffer.doc.line(lineNumber).from),
+				}).state;
+			}
 			set({
 				mode: "editor",
-				editorInitialLine: initialLine,
+				editorInitialLine:
+					initialLine ??
+					(buffer
+						? buffer.doc.lineAt(buffer.selection.main.head).number - 1
+						: 0),
 				editorLanguage: language,
-			}),
+				activeFileState,
+			});
+		},
 		closeEditor: () => set({ mode: "file" }),
 		setMonsters: (monsters) => set({ monsters }),
 		setDefeatedMonsterIds: (defeatedMonsterIds) => set({ defeatedMonsterIds }),

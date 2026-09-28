@@ -3,7 +3,8 @@ import { activeFocusOwner } from "../systems/uiFocus.js";
 
 /**
  * Hands the whole keyboard to a focused text field (the orb's search input,
- * the spellbook's CodeMirror editor) and back again, checked once per game
+ * the spellbook's CodeMirror editor, the file view's caret textarea) and
+ * back again, checked once per game
  * step. Phaser's KeyboardManager listens on `window` and preventDefault()s
  * every key a scene has addKey()'d — so without this, typing "w" or "e" into
  * the search box was swallowed and walked the player instead, and Enter or

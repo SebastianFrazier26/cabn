@@ -250,6 +250,8 @@ export interface PointerInputOptions {
 	/** False while the scene shouldn't take clicks (a file open over the world, an editor, a transition in progress). */
 	enabled(): boolean;
 	onClick(target: ClickTarget): void;
+	/** Hover cursor over open ground (default: none) — FileScene's page wants an I-beam over its text. */
+	groundCursor?(point: Point): string;
 }
 
 export interface PointerInputHandle {
@@ -307,7 +309,11 @@ export function attachPointerInput(
 			worldPoint(pointer),
 			options.interactables(),
 		);
-		setCursor(target.kind === "interactable" ? "pointer" : "");
+		setCursor(
+			target.kind === "interactable"
+				? "pointer"
+				: (options.groundCursor?.(worldPoint(pointer)) ?? ""),
+		);
 	};
 
 	const clearCursor = (): void => setCursor("");

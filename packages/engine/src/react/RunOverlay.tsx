@@ -36,12 +36,15 @@ export function RunOverlay({
 }: RunOverlayProps): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
 	const run = useCabnStore(store, (s) => s.run);
-	const content = useCabnStore(store, (s) => s.activePortalContent);
+	// The buffer, not the saved text: the wand runs unsaved edits too.
+	const buffer = useCabnStore(store, (s) => s.activeFileState);
 
 	if (mode !== "run" || !run) return null;
 
-	const lines = content?.split("\n") ?? [];
-	const sourceLine = lines[run.currentLine - 1] ?? "";
+	const sourceLine =
+		buffer && run.currentLine >= 1 && run.currentLine <= buffer.doc.lines
+			? buffer.doc.line(run.currentLine).text
+			: "";
 
 	return (
 		<div
