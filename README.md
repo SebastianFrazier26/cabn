@@ -4,7 +4,7 @@ cabn turns any directory or zipfile into an explorable cottagecore game world �
 
 ## Status
 
-Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect), M3 (walkable engine + demo), the world-hierarchy redesign (shelf hub, per-world theming, bonfire spawn, in-arch previews), M4 (`FileScene`, enchanted markdown, the tool hotbar and orb search), M5 (the quill editor, bag paste, and save persistence), M6 (annotators, monster species, and fix-to-defeat battles), M7 (the wand tool's run parchment, a pluggable simulated/real execution provider, `cabn serve`, and a soft glow post-effect), and M8 (an authenticated converter backend, a manual npm release pipeline, and a headless-browser CI smoke test) have landed.
+Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect), M3 (walkable engine + demo), the world-hierarchy redesign (shelf hub, per-world theming, bonfire spawn, in-arch previews), M4 (`FileScene`, enchanted markdown, the tool hotbar and orb search), M5 (the quill editor, bag paste, and save persistence), M6 (annotators, monster species, and fix-to-defeat battles), M7 (the wand tool's run parchment, a pluggable simulated/real execution provider, `cabn serve`, and a soft glow post-effect), and M8 (an authenticated converter backend, a manual npm release pipeline, and a headless-browser CI smoke test) have landed. M10's portal-preview overrides (`cabn.json`, richer default previews, and the `PortalPreview`/`PortalEmbed` components) have landed for the data/schema/converter/component layer; wiring the richer preview into the in-world portal-arch rendering itself is a later phase.
 
 ## Monorepo map
 
@@ -68,6 +68,23 @@ CI also runs `pnpm audit --audit-level=high` (fails only on high/critical findin
   - **Wand** (`R`) — inside a file, starts a *run*: a parchment scroll unfurls over the bottom-right of the screen and a spark travels the file line by line, the camera easing along with it. By default this is always a simulated trace (`TraceProvider`, a heuristic that never executes a single line of your code); it's only ever a *real* run of a file's code when you're pointed at a `cabn serve --allow-exec` instance (see below).
 
 Inside a world, a portal arch shows a live preview in its opening as you approach. A file opens as a walkable parchment scroll (line-numbered, camera follows you down it); markdown files render "enchanted" — gold glowing headings, tinted bold/italic, pale-blue underlined links, boxed code spans, and leaf-dot list bullets.
+
+### Portal previews and `cabn.json`
+
+Every portal carries a richer default preview than the small in-arch panel: syntax-coloured code, a structured breakdown of a markdown file, a copied-in image, or a "sealed" notice for binaries (`@cabn/engine`'s `PortalPreview` component renders this, either as a compact overlay or an expanded view). A `cabn.json` at a world source's root can override specific files — point one at a different image/markdown file, a short text blurb, or a live embeddable webpage:
+
+```json
+{
+	"cabnConfigVersion": 1,
+	"previews": {
+		"README.md": { "kind": "image", "src": "assets/logo.png" },
+		"index.html": { "kind": "url", "url": "https://example.com/demo" }
+	},
+	"allowedEmbedOrigins": ["https://example.com"]
+}
+```
+
+A `url` override renders as a live sandboxed iframe (`PortalEmbed`) — see `packages/world-schema/README.md` for the override format and `packages/engine/README.md` for the component API and, importantly, the `Content-Security-Policy: frame-src` a hosting page must set for the embed to actually load (the sandbox attribute alone isn't enough; CSP is the browser's, not this app's, to relax).
 
 ### Running a file
 
