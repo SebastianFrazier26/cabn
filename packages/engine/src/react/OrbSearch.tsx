@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
+import { uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import {
 	navigationIntentForHit,
 	resolveSearchScope,
@@ -19,6 +19,42 @@ export interface OrbSearchProps {
 }
 
 const WORLD_SEARCH_OPTIONS = { prefix: true, fuzzy: 0.2 };
+
+// Ambient sparkles drifting in the mist backdrop (STYLE.md: "twice as many
+// sparkles at higher opacity" than v2) — purely decorative, positions/colors/
+// delays hand-picked the same way mockup.html's own are.
+const AMBIENT_SPARKLES: ReadonlyArray<{
+	color: "violet" | "cyan" | "gold";
+	top: string;
+	left: string;
+	width: number;
+	delayMs: number;
+}> = [
+	{ color: "violet", top: "15%", left: "12%", width: 22, delayMs: 0 },
+	{ color: "cyan", top: "70%", left: "20%", width: 18, delayMs: 400 },
+	{ color: "violet", top: "20%", left: "85%", width: 16, delayMs: 800 },
+	{ color: "cyan", top: "80%", left: "80%", width: 24, delayMs: 1200 },
+	{ color: "gold", top: "45%", left: "6%", width: 16, delayMs: 200 },
+	{ color: "gold", top: "10%", left: "55%", width: 14, delayMs: 600 },
+	{ color: "violet", top: "60%", left: "92%", width: 16, delayMs: 1000 },
+	{ color: "cyan", top: "90%", left: "45%", width: 14, delayMs: 1400 },
+];
+
+// Open-burst sparks radiating from the modal on mount — violet/cyan/gold, per
+// STYLE.md's orb color pairing.
+const OPEN_BURST_SPARKS: ReadonlyArray<{
+	color: "violet" | "cyan" | "gold";
+	tx: number;
+	ty: number;
+	delayMs: number;
+}> = [
+	{ color: "violet", tx: -90, ty: -50, delayMs: 0 },
+	{ color: "cyan", tx: 90, ty: -50, delayMs: 50 },
+	{ color: "gold", tx: 0, ty: -90, delayMs: 100 },
+	{ color: "violet", tx: -90, ty: 50, delayMs: 150 },
+	{ color: "cyan", tx: 90, ty: 50, delayMs: 200 },
+	{ color: "gold", tx: 0, ty: 90, delayMs: 250 },
+];
 
 /**
  * Crystal-orb search: fuzzy across the world's minisearch index while
@@ -63,6 +99,14 @@ export function OrbSearch({
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [open, store]);
 
+	// Remounting the burst element (key={playToken}) on every open is what
+	// retriggers its CSS animation — same "remount == retrigger" pattern
+	// RunOverlay's own unfurl animation already relies on.
+	const [playToken, setPlayToken] = useState(0);
+	useEffect(() => {
+		if (open) setPlayToken((token) => token + 1);
+	}, [open]);
+
 	const previewLineByPortalId = useMemo(
 		() => new Map(portals.map((p) => [p.id, p.previewLine] as const)),
 		[portals],
@@ -101,49 +145,63 @@ export function OrbSearch({
 			style={{
 				position: "absolute",
 				inset: 0,
-				background: "rgba(50, 34, 20, 0.6)",
+				background: "rgba(20, 16, 40, 0.6)",
 				display: "flex",
 				alignItems: "flex-start",
 				justifyContent: "center",
 				paddingTop: "12vh",
 				zIndex: 7,
+				pointerEvents: "auto",
+				overflow: "hidden",
 			}}
 		>
+			<div className="cabn-orb-mist" />
+			<div className="cabn-orb-mist two" />
+			{AMBIENT_SPARKLES.map((s, i) => (
+				// Fixed, static ambient layout, never reordered — index is a stable
+				// enough key, same reasoning as the open-burst lists below.
+				<img
+					// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+					key={i}
+					className="cabn-sparkle"
+					src={uiSparklePath(s.color)}
+					alt=""
+					style={{
+						top: s.top,
+						left: s.left,
+						width: s.width,
+						animationDelay: `${s.delayMs}ms`,
+					}}
+				/>
+			))}
 			<div
+				className="cabn-panel"
 				style={{
-					width: "min(520px, 90vw)",
-					background: toCssColor(PALETTE.parchment),
-					color: toCssColor(PALETTE.ink),
-					border: `3px solid ${toCssColor(PALETTE.ink)}`,
-					borderRadius: 8,
-					fontFamily: '"Courier New", monospace',
+					position: "relative",
+					zIndex: 3,
+					width: "min(520px, 100%)",
 					overflow: "hidden",
 				}}
 			>
-				<div
+				<input
+					ref={inputRef}
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder={
+						scope === "file" ? "search this file..." : "search the world..."
+					}
 					style={{
-						padding: "10px 14px",
-						borderBottom: `2px solid ${toCssColor(PALETTE.ink)}`,
+						width: "100%",
+						font: "inherit",
+						fontSize: 14,
+						background: "transparent",
+						border: "none",
+						borderBottom: "3px dashed var(--cabn-border-outer)",
+						outline: "none",
+						color: "inherit",
+						padding: "4px 2px 8px",
 					}}
-				>
-					<input
-						ref={inputRef}
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder={
-							scope === "file" ? "search this file..." : "search the world..."
-						}
-						style={{
-							width: "100%",
-							font: "inherit",
-							fontSize: 14,
-							background: "transparent",
-							border: "none",
-							outline: "none",
-							color: "inherit",
-						}}
-					/>
-				</div>
+				/>
 				<div style={{ maxHeight: "50vh", overflow: "auto" }}>
 					{scope === "world" && loading && (
 						<Status text="loading the world's search index..." />
@@ -163,6 +221,26 @@ export function OrbSearch({
 							/>
 						))}
 					</ul>
+				</div>
+				<div key={playToken} className="cabn-effect-burst play">
+					{OPEN_BURST_SPARKS.map((s, i) => (
+						// Fixed, static per-render burst layout, never reordered — index
+						// is a stable enough key.
+						<img
+							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+							key={i}
+							className="cabn-spark"
+							src={uiSparklePath(s.color)}
+							alt=""
+							style={
+								{
+									"--cabn-tx": `${s.tx}px`,
+									"--cabn-ty": `${s.ty}px`,
+									animationDelay: `${s.delayMs}ms`,
+								} as React.CSSProperties
+							}
+						/>
+					))}
 				</div>
 			</div>
 		</div>
@@ -196,8 +274,9 @@ function SearchHitRow({
 					textAlign: "left",
 					background: "none",
 					border: "none",
-					borderBottom: `1px solid ${toCssColor(PALETTE.trail)}`,
-					padding: "8px 14px",
+					borderBottom: "2px dotted rgba(59,47,107,0.25)",
+					font: "inherit",
+					padding: "8px 4px",
 					cursor: "pointer",
 					color: "inherit",
 					display: "flex",

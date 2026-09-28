@@ -1,9 +1,23 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
+import { uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import { useCabnStore } from "./useCabnStore.js";
+
+// The open-burst sparkle positions/colors for this panel — cyan/gold, per
+// STYLE.md's per-tool color pairings.
+const OPEN_BURST_SPARKS: ReadonlyArray<{
+	color: "cyan" | "gold";
+	tx: number;
+	ty: number;
+	delayMs: number;
+}> = [
+	{ color: "cyan", tx: -60, ty: -40, delayMs: 0 },
+	{ color: "cyan", tx: 60, ty: -30, delayMs: 60 },
+	{ color: "gold", tx: 0, ty: -70, delayMs: 120 },
+	{ color: "cyan", tx: -70, ty: 30, delayMs: 180 },
+];
 
 export interface SpyglassPanelProps {
 	store: StoreApi<CabnStore>;
@@ -29,33 +43,36 @@ export function SpyglassPanel({
 		[portals, activeClusterId],
 	);
 
+	// Remounting the burst element (key={playToken}) on every open is what
+	// retriggers its CSS animation — the same "remount == retrigger" pattern
+	// RunOverlay's own unfurl animation already relies on.
+	const [playToken, setPlayToken] = useState(0);
+	useEffect(() => {
+		if (open) setPlayToken((token) => token + 1);
+	}, [open]);
+
 	if (!open) return null;
 
 	return (
 		<div
+			className="cabn-panel cabn-spyglass-frame"
 			style={{
 				position: "absolute",
 				top: 16,
 				right: 16,
-				width: 260,
 				maxHeight: "60vh",
 				overflow: "auto",
-				background: toCssColor(PALETTE.parchment),
-				color: toCssColor(PALETTE.ink),
-				border: `2px solid ${toCssColor(PALETTE.ink)}`,
-				borderRadius: 6,
-				fontFamily: '"Courier New", monospace',
 				fontSize: 12,
 				zIndex: 6,
+				pointerEvents: "auto",
 			}}
 		>
 			<div
+				className="cabn-panel-title"
 				style={{
 					display: "flex",
 					justifyContent: "space-between",
-					padding: "6px 10px",
-					borderBottom: `2px solid ${toCssColor(PALETTE.ink)}`,
-					fontWeight: "bold",
+					margin: 0,
 				}}
 			>
 				<span>ls</span>
@@ -67,11 +84,13 @@ export function SpyglassPanel({
 						border: "none",
 						cursor: "pointer",
 						color: "inherit",
+						font: "inherit",
 					}}
 				>
 					x
 				</button>
 			</div>
+			<div className="cabn-panel-divider" />
 			{rows.length === 0 ? (
 				<div style={{ padding: 10, opacity: 0.7 }}>no portals nearby</div>
 			) : (
@@ -80,9 +99,11 @@ export function SpyglassPanel({
 						<li
 							key={portal.id}
 							style={{
+								position: "relative",
+								zIndex: 1,
 								display: "flex",
 								alignItems: "center",
-								borderBottom: `1px solid ${toCssColor(PALETTE.trail)}`,
+								borderBottom: "2px dotted var(--cabn-border-outer)",
 							}}
 						>
 							<button
@@ -96,7 +117,8 @@ export function SpyglassPanel({
 									textAlign: "left",
 									background: "none",
 									border: "none",
-									padding: "6px 10px",
+									font: "inherit",
+									padding: "6px 4px",
 									cursor: "pointer",
 									color: "inherit",
 									display: "flex",
@@ -109,7 +131,7 @@ export function SpyglassPanel({
 										<span
 											title="edited"
 											style={{
-												color: toCssColor(PALETTE.gold),
+												color: "var(--cabn-accent-yellow)",
 												marginRight: 4,
 											}}
 										>
@@ -118,7 +140,9 @@ export function SpyglassPanel({
 									)}
 									{portal.name}
 								</span>
-								<span style={{ opacity: 0.7 }}>
+								<span
+									style={{ opacity: 0.7, color: "var(--cabn-text-secondary)" }}
+								>
 									{portal.kind} · {formatBytes(portal.bytes)}
 								</span>
 							</button>
@@ -134,6 +158,7 @@ export function SpyglassPanel({
 										border: "none",
 										cursor: "pointer",
 										color: "inherit",
+										font: "inherit",
 										opacity: 0.6,
 										padding: "6px 8px",
 									}}
@@ -145,6 +170,26 @@ export function SpyglassPanel({
 					))}
 				</ul>
 			)}
+			<div key={playToken} className="cabn-effect-burst play">
+				{OPEN_BURST_SPARKS.map((s, i) => (
+					// Fixed, static per-render burst layout, never reordered — index is
+					// a stable enough key, same reasoning as RunOverlay's log.
+					<img
+						// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+						key={i}
+						className="cabn-spark"
+						src={uiSparklePath(s.color)}
+						alt=""
+						style={
+							{
+								"--cabn-tx": `${s.tx}px`,
+								"--cabn-ty": `${s.ty}px`,
+								animationDelay: `${s.delayMs}ms`,
+							} as React.CSSProperties
+						}
+					/>
+				))}
+			</div>
 		</div>
 	);
 }
