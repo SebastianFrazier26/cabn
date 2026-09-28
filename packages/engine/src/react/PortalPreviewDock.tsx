@@ -1,12 +1,13 @@
-import type { RichPortalPreview } from "@cabn/world-schema";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
+import type { UrlDisplayPreview } from "../systems/archPreview.js";
+import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import {
-	canOpenPortalLink,
-	openPortalLink,
-	shouldMountEmbed,
-} from "../systems/embedGuard.js";
+	type DockCandidateState,
+	shouldDockLivePage,
+} from "../systems/portalFx.js";
+import { LIVE_SLOT_ATTR } from "./PortalLivePage.js";
 import { PortalPreview } from "./PortalPreview.js";
 import { SPARK_COLORS, usePortalFxStyles } from "./portalFxStyles.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -22,11 +23,12 @@ export interface PortalPreviewDockProps {
  * (render/archPreviews.ts); this is the full, scrollable view — CodeMirror
  * for code, rendered markdown, the full image.
  *
- * A url preview gets a title card with an "Open in browser" button, not a
- * second iframe: by the time the dock opens, the live page is already
- * mounted over the arch itself (react/PortalLivePage.tsx, a wider radius),
- * and two frames of the same page would double the load for no gain. The
- * dock still carries the keyboard-reachable way to open the link.
+ * A url preview never gets a second iframe here. When the live page exists
+ * (PortalLivePage, mounted from a wider radius), the dock renders an empty
+ * slot and that same iframe moves over it at a readable size — one frame,
+ * one network load. When it can't exist (embeds.json says the site refuses
+ * framing, or the origin isn't allowlisted) the dock shows the fallback
+ * card. Either way it carries the keyboard-reachable "Open in browser".
  */
 export function PortalPreviewDock({
 	store,
@@ -36,11 +38,16 @@ export function PortalPreviewDock({
 	const mode = useCabnStore(store, (s) => s.mode);
 	const worldBase = useCabnStore(store, (s) => s.activeWorldBase);
 	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
+	const live = useCabnStore(store, (s) =>
+		shouldDockLivePage(s as DockCandidateState),
+	);
 
 	if (!focused || mode !== "world" || spyglassOpen || worldBase === null)
 		return null;
 
 	const { preview } = focused;
+	const liveWeb = preview.kind === "url" && live;
+	const compactWeb = preview.kind === "url" && !live && !preview.fallbackImage;
 
 	return (
 		<div
@@ -52,8 +59,16 @@ export function PortalPreviewDock({
 				right: 16,
 				top: "50%",
 				transform: "translateY(-50%)",
-				width: "min(440px, 42vw)",
-				height: "min(380px, 58vh)",
+				width: liveWeb ? "min(480px, 46vw)" : "min(440px, 42vw)",
+				// Tall for a docked page (it's a real, scrollable site); shrink-
+				// wrapped for a blocked site with no picture so the card isn't
+				// mostly empty space.
+				height: liveWeb
+					? "min(640px, 84vh)"
+					: compactWeb
+						? "auto"
+						: "min(380px, 58vh)",
+				maxHeight: "84vh",
 				display: "flex",
 				flexDirection: "column",
 				// PixelTheme's wrapper is click-through; the dock has a button and
@@ -64,10 +79,12 @@ export function PortalPreviewDock({
 			<div className="cabn-dock-open">
 				{preview.kind === "url" ? (
 					<WebPortalCard
+						portalId={focused.portalId}
 						preview={preview}
 						fileName={focused.fileName}
 						allowedEmbedOrigins={focused.allowedEmbedOrigins}
 						worldBase={worldBase}
+						live={live}
 					/>
 				) : (
 					<PortalPreview
@@ -120,34 +137,57 @@ function hostOf(url: string): string {
 }
 
 function WebPortalCard({
+	portalId,
 	preview,
 	fileName,
 	allowedEmbedOrigins,
 	worldBase,
+	live,
 }: {
-	preview: Extract<RichPortalPreview, { kind: "url" }>;
+	portalId: string;
+	preview: UrlDisplayPreview;
 	fileName: string;
 	allowedEmbedOrigins: readonly string[];
 	worldBase: string;
+	live: boolean;
 }): React.ReactElement {
 	const canOpen = canOpenPortalLink(preview.url, allowedEmbedOrigins);
-	const liveInArch = shouldMountEmbed(preview.url, allowedEmbedOrigins, true);
 	const shot = preview.fallbackImage
 		? resolveRelativeUrl(worldBase, preview.fallbackImage)
 		: undefined;
+	const hint = live
+		? "Scroll and click inside the page. Click anywhere outside it to walk again."
+		: preview.embedBlocked
+			? "This site doesn't allow itself to be shown inside other pages — open it in your browser instead."
+			: canOpen
+				? "This page can't be shown here — open it in your browser instead."
+				: "This page can't be shown or opened from this world.";
 	return (
-		<div className="cabn-panel cabn-web-card" data-testid="portal-web-card">
+		<div
+			className="cabn-panel cabn-web-card"
+			data-testid="portal-web-card"
+			data-live={String(live)}
+			data-blocked={String(Boolean(preview.embedBlocked))}
+		>
 			<div className="cabn-panel-title">{fileName}</div>
 			<div className="cabn-web-card-host">↗ {hostOf(preview.url)}</div>
 			<div className="cabn-web-card-title">{preview.title ?? preview.url}</div>
-			<div className="cabn-web-card-shot">
-				{shot && <img src={shot} alt="" />}
-			</div>
-			{liveInArch && (
-				<div className="cabn-web-card-hint">
-					The live page is showing in the arch — click it to open.
-				</div>
+			{live ? (
+				<div
+					className="cabn-web-live-slot"
+					data-testid="portal-web-live-slot"
+					{...{ [LIVE_SLOT_ATTR]: portalId }}
+				/>
+			) : (
+				shot && (
+					<div className="cabn-web-card-shot">
+						<img src={shot} alt="" />
+					</div>
+				)
 			)}
+			<div className="cabn-web-card-hint" data-testid="portal-web-hint">
+				{hint}
+			</div>
 			{canOpen && (
 				<button
 					type="button"

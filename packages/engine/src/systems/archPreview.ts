@@ -1,11 +1,13 @@
 import type {
 	AudioPreview,
+	EmbedVerdict,
 	MediaPreview,
 	MediaSealedReason,
 	PdfPreview,
 	Portal,
 	Position,
 	RichPortalPreview,
+	UrlPreview,
 } from "@cabn/world-schema";
 import { csvDelimiterForPath, isDelimitedTextPath, parseCsv } from "./csv.js";
 
@@ -33,9 +35,15 @@ export interface SealedDisplayPreview {
 	reason?: MediaSealedReason;
 }
 
-/** Everything an arch, the dock, or the file view can show — the bundle's richPreview kinds plus media.json's audio/PDF and the engine-derived table. */
+/** A url preview plus embeds.json's build-time verdict: `embedBlocked` (the reason) is set only when the site's headers refuse framing, and then no surface mounts an iframe for it. */
+export interface UrlDisplayPreview extends UrlPreview {
+	embedBlocked?: string;
+}
+
+/** Everything an arch, the dock, or the file view can show — the bundle's richPreview kinds plus media.json's audio/PDF, embeds.json's url verdict and the engine-derived table. */
 export type DisplayPreview =
-	| Exclude<RichPortalPreview, { kind: "sealed" }>
+	| Exclude<RichPortalPreview, { kind: "sealed" | "url" }>
+	| UrlDisplayPreview
 	| AudioPreview
 	| PdfPreview
 	| TablePreview
@@ -69,6 +77,10 @@ export function tableFromText(
  * previews are left alone: they're either a cabn.json override pointing
  * elsewhere or a rendering the engine can't cheaply redo from raw text.
  *
+ * `embed` is this portal's embeds.json verdict. It only applies while its
+ * url still matches the portal's url, so a stale or hand-edited entry can't
+ * block a different page.
+ *
  * A pre-M10 bundle has no `richPreview` at all: its `preview.lines` become a
  * code preview (coloured by `file.language` when known), and a binary file
  * with nothing to show becomes the sealed chest.
@@ -77,6 +89,7 @@ export function effectiveRichPreview(
 	portal: Pick<Portal, "file" | "preview" | "richPreview">,
 	overrideContent?: string,
 	media?: MediaPreview,
+	embed?: EmbedVerdict,
 ): DisplayPreview {
 	const sealed = (reason?: MediaSealedReason): SealedDisplayPreview => ({
 		kind: "sealed",
@@ -87,6 +100,13 @@ export function effectiveRichPreview(
 	if (media) return media.kind === "sealed" ? sealed(media.reason) : media;
 	const resolved = baseRichPreview(portal, overrideContent);
 	if (resolved.kind === "sealed") return sealed();
+	if (
+		resolved.kind === "url" &&
+		embed &&
+		!embed.framable &&
+		embed.url === resolved.url
+	)
+		return { ...resolved, embedBlocked: embed.detail ?? "refuses framing" };
 	if (resolved.kind === "code" && isDelimitedTextPath(portal.file.path)) {
 		const table = tableFromText(
 			overrideContent ?? resolved.lines.join("\n"),
@@ -799,7 +819,7 @@ function hostOf(url: string): string {
 }
 
 function layoutUrlCard(
-	preview: Extract<RichPortalPreview, { kind: "url" }>,
+	preview: UrlDisplayPreview,
 	width: number,
 	height: number,
 	grid: Grid,
@@ -833,8 +853,11 @@ function layoutUrlCard(
 		grid.charsPerLine(titleSize),
 	);
 	// With a fallback image the title gets at most 3 lines so the picture keeps
-	// most of the card; without one the title is the whole card.
-	const bottom = grid.inner.y + grid.inner.h;
+	// most of the card; without one the title is the whole card. A blocked
+	// site keeps its last line for the "opens in browser" note, since no live
+	// page will ever cover this card.
+	const bottom =
+		grid.inner.y + grid.inner.h - (preview.embedBlocked ? lh * 1.2 : 0);
 	const titleBudget = preview.fallbackImage
 		? 3
 		: Math.floor((bottom - y) / titleLh);
@@ -859,6 +882,17 @@ function layoutUrlCard(
 			h: Math.max(0, bottom - y),
 		};
 		if (box.h > 0) ops.push({ op: "image", asset: preview.fallbackImage, box });
+	}
+	if (preview.embedBlocked) {
+		ops.push(
+			captionOp(
+				"↗ opens in tab",
+				grid.inner.y + grid.inner.h - lh,
+				width,
+				grid,
+				m,
+			),
+		);
 	}
 	return ops;
 }

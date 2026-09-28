@@ -1,4 +1,5 @@
 import type {
+	EmbedVerdict,
 	MediaPreview,
 	ShelfManifest,
 	WorldManifest,
@@ -53,6 +54,7 @@ export type PreloadSceneData =
 			worldBase: string;
 			returnTo?: { shelfUrl: string };
 			media?: ReadonlyMap<string, MediaPreview>;
+			embeds?: ReadonlyMap<string, EmbedVerdict>;
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 

@@ -1,7 +1,8 @@
 /**
  * Who owns the keyboard right now, judged from the DOM's focused element:
- * - "text": a text field or editor (orb search input, CodeMirror). Every key
- *   belongs to it; the game must not see any of them.
+ * - "text": a text field or editor (orb search input, CodeMirror), or a
+ *   focused iframe (the docked live web page). Every key belongs to it; the
+ *   game must not see any of them.
  * - "control": a focused button/link. The game can keep walking on WASD, but
  *   Enter/Space also activate the control natively, so world interaction on
  *   Enter would double-fire.
@@ -36,6 +37,10 @@ export function classifyFocus(
 	if (el.isContentEditable) return "text";
 	const tag = (el.tagName ?? "").toUpperCase();
 	if (tag === "TEXTAREA" || tag === "SELECT") return "text";
+	// Keys typed while a cross-origin page has focus never reach this window,
+	// so a key held when focus moved in would miss its keyup; treating the
+	// frame as a text owner makes the focus gate reset held keys on the way in.
+	if (tag === "IFRAME") return "text";
 	if (tag === "INPUT") {
 		const type = (el.type ?? "text").toLowerCase();
 		return NON_TEXT_INPUT_TYPES.has(type) ? "control" : "text";

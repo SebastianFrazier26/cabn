@@ -1,5 +1,6 @@
 import type {
 	Cluster,
+	EmbedVerdict,
 	MediaPreview,
 	Monster,
 	Portal,
@@ -94,6 +95,7 @@ import {
 import {
 	openingRect,
 	pickNearWebPortal,
+	playerOccluderRect,
 	projectWorldRect,
 	rectsOverlap,
 	urlArchClickAction,
@@ -137,6 +139,8 @@ export interface WorldSceneData {
 	returnTo?: { shelfUrl: string };
 	/** The bundle's media.json entries (BootScene), keyed by portal id; empty for a bundle without one. */
 	media?: ReadonlyMap<string, MediaPreview>;
+	/** The bundle's embeds.json verdicts (BootScene); empty for a bundle without one. */
+	embeds?: ReadonlyMap<string, EmbedVerdict>;
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -240,6 +244,7 @@ export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
 	private worldBase = "";
 	private media: ReadonlyMap<string, MediaPreview> = new Map();
+	private embeds: ReadonlyMap<string, EmbedVerdict> = new Map();
 	private availability!: AssetAvailability;
 	private returnTo: { shelfUrl: string } | undefined;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
@@ -310,6 +315,7 @@ export class WorldScene extends Phaser.Scene {
 		this.manifest = data.manifest;
 		this.worldBase = data.worldBase;
 		this.media = data.media ?? new Map();
+		this.embeds = data.embeds ?? new Map();
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
@@ -926,6 +932,7 @@ export class WorldScene extends Phaser.Scene {
 			portal,
 			this.save.fileOverrides[portal.id]?.content,
 			this.media.get(portal.id),
+			this.embeds.get(portal.id),
 		);
 	}
 
@@ -1460,7 +1467,8 @@ export class WorldScene extends Phaser.Scene {
 		for (const portalId of inRange) {
 			const pos = this.portalWorldPos.get(portalId);
 			const portal = this.portalsById.get(portalId);
-			if (pos && portal && this.previewFor(portal).kind === "url")
+			const preview = portal ? this.previewFor(portal) : undefined;
+			if (pos && preview?.kind === "url" && !preview.embedBlocked)
 				webCandidates.push({ id: portalId, pos });
 		}
 		this.setNearWebPortal(
@@ -1517,12 +1525,10 @@ export class WorldScene extends Phaser.Scene {
 			},
 		);
 		const b = this.player.body.getBounds();
-		const occluded = rectsOverlap(world, {
-			x: b.x,
-			y: b.y,
-			w: b.width,
-			h: b.height,
-		});
+		const occluded = rectsOverlap(
+			world,
+			playerOccluderRect({ x: b.x, y: b.y, w: b.width, h: b.height }),
+		);
 		// Emitted every frame, not only on change: the React side mounts a
 		// frame or two after nearWebPortal is set and would otherwise never
 		// hear the rect of a camera that has already stopped moving. It skips

@@ -265,6 +265,20 @@ export function sameRect(a: Rect | null, b: Rect): boolean {
 	);
 }
 
+/**
+ * The part of the player sprite that dims the live mini-page when it
+ * overlaps the opening: the lower body only. The whole-sprite box used to
+ * catch the head brushing the bottom of the opening from a stand spot
+ * in front of the arch, dimming the page where players naturally stop.
+ * (At dock range the page moves into the dock anyway — PortalLivePage.)
+ */
+export const PLAYER_OCCLUDER_FRACTION = 0.45;
+
+export function playerOccluderRect(sprite: Rect): Rect {
+	const h = sprite.h * PLAYER_OCCLUDER_FRACTION;
+	return { x: sprite.x, y: sprite.y + sprite.h - h, w: sprite.w, h };
+}
+
 export interface WebPortalCandidate {
 	id: string;
 	pos: Position;
@@ -312,4 +326,58 @@ export const MINI_PAGE_VIRTUAL_WIDTH = 360;
 
 export function miniPageScale(openingCssWidth: number): number {
 	return openingCssWidth > 0 ? openingCssWidth / MINI_PAGE_VIRTUAL_WIDTH : 0;
+}
+
+/**
+ * Layout width of the live page once it moves into the dock. Wider than the
+ * arch thumbnail's phone width so most sites show their desktop-ish layout,
+ * but not a full 1024+: scaled into a ~460px dock that would shrink body
+ * text below ~8px. At 640 a 16px font lands around 11-12px.
+ */
+export const DOCK_PAGE_LAYOUT_WIDTH = 640;
+
+export function pageScale(cssWidth: number, layoutWidth: number): number {
+	return cssWidth > 0 && layoutWidth > 0 ? cssWidth / layoutWidth : 0;
+}
+
+/** The store slice deciding whether the live page belongs in the dock. */
+export interface DockCandidateState {
+	mode: string;
+	spyglassOpen: boolean;
+	focusedPortalPreview: {
+		portalId: string;
+		preview: { kind: string; embedBlocked?: string };
+	} | null;
+	nearWebPortal: { portalId: string } | null;
+}
+
+/**
+ * The live page moves into the dock exactly when the dock is showing that
+ * same url portal (PortalPreviewDock's own visibility rules: world mode,
+ * spyglass closed) and the site isn't known to refuse framing.
+ */
+export function shouldDockLivePage(s: DockCandidateState): boolean {
+	const focused = s.focusedPortalPreview;
+	return (
+		s.mode === "world" &&
+		!s.spyglassOpen &&
+		focused !== null &&
+		s.nearWebPortal !== null &&
+		focused.portalId === s.nearWebPortal.portalId &&
+		focused.preview.kind === "url" &&
+		!focused.preview.embedBlocked
+	);
+}
+
+/** A slot's client rect re-expressed relative to the live page's positioned parent (both from getBoundingClientRect). */
+export function liveSlotRect(
+	slot: { left: number; top: number; width: number; height: number },
+	parent: { left: number; top: number },
+): Rect {
+	return {
+		x: slot.left - parent.left,
+		y: slot.top - parent.top,
+		w: slot.width,
+		h: slot.height,
+	};
 }

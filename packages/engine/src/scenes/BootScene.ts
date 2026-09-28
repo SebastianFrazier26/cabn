@@ -1,6 +1,9 @@
 import {
+	EMBED_INDEX_FILENAME,
+	type EmbedVerdict,
 	MEDIA_INDEX_FILENAME,
 	type MediaPreview,
+	parseEmbedIndex,
 	parseMediaIndex,
 	validateManifest,
 	validateShelf,
@@ -63,9 +66,18 @@ export class BootScene extends Phaser.Scene {
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
 		const returnTo = this.target.returnTo;
-		loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`).then((media) => {
+		Promise.all([
+			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
+			loadEmbedIndex(`${worldBase}${EMBED_INDEX_FILENAME}`),
+		]).then(([media, embeds]) => {
 			if (!this.scene.isActive()) return;
-			this.scene.start("preload", { manifest, worldBase, returnTo, media });
+			this.scene.start("preload", {
+				manifest,
+				worldBase,
+				returnTo,
+				media,
+				embeds,
+			});
 		});
 	}
 }
@@ -83,6 +95,17 @@ async function loadMediaIndex(url: string): Promise<Map<string, MediaPreview>> {
 		const res = await fetch(url);
 		if (!res.ok) return new Map();
 		return parseMediaIndex(await res.json());
+	} catch {
+		return new Map();
+	}
+}
+
+/** embeds.json: same optional/advisory contract as media.json — any failure means "no verdicts", i.e. every url preview is tried as a live iframe as before. */
+async function loadEmbedIndex(url: string): Promise<Map<string, EmbedVerdict>> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return new Map();
+		return parseEmbedIndex(await res.json());
 	} catch {
 		return new Map();
 	}
