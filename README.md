@@ -85,6 +85,16 @@ Every portal carries a richer default preview than the small in-arch panel: synt
 }
 ```
 
+#### Media (images, audio, PDF, CSV)
+
+PNG/JPEG/GIF/WebP images, MP3/WAV/OGG audio and PDFs ship their bytes in the bundle as `media/<content hash>.<ext>`, fetched lazily by the engine (never inlined in `world.json` or chunks). Each file's type is checked by its magic bytes, not its extension; a mismatch stays a sealed chest. Caps: 5 MB per file and 50 MB per world by default, raisable in `cabn.json` up to 25 MB / 250 MB:
+
+```json
+{ "cabnConfigVersion": 1, "media": { "maxFileBytes": 10485760, "maxTotalBytes": 104857600 } }
+```
+
+A host can set lower ceilings that `cabn.json` can't exceed (`convert()`'s `mediaMaxFileBytes`/`mediaMaxTotalBytes`; the backend pins them to its own zip-entry and upload limits). Anything over a cap, over the world budget, secret-patterned, or SVG/xlsx (not previewed: SVG is a script-capable document) stays a sealed chest that shows its name, size and the reason. Audio gets a waveform decoded in the browser plus play/pause/seek; PDFs render page 1 in the arch and a paged viewer in the dock and file view via `pdfjs-dist` (lazy-loaded; the host serves the worker itself — pass `pdfWorkerUrl` to `CabnGame`); CSV/TSV files show as a table. Audio/PDF metadata lives in an optional `media.json` beside `world.json`, so engines from before it simply show those files sealed.
+
 A `url` override renders as a live sandboxed iframe (`PortalEmbed`) — see `packages/world-schema/README.md` for the override format and `packages/engine/README.md` for the component API and, importantly, the `Content-Security-Policy: frame-src` a hosting page must set for the embed to actually load (the sandbox attribute alone isn't enough; CSP is the browser's, not this app's, to relax).
 
 ### Running a file

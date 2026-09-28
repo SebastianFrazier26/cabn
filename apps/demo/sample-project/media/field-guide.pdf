@@ -1,0 +1,61 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 297] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 482 >>
+stream
+0.95 0.97 1 rg 0 0 420 297 re f
+0.23 0.18 0.42 RG 6 w 12 12 396 273 re S
+1 0.82 0.25 rg 330 220 m 350 240 l 370 220 l 350 200 l f
+0.13 0.1 0.24 rg
+BT /F1 26 Tf 36 236 Td (The Meadow Field Guide) Tj ET
+BT /F1 13 Tf 36 206 Td (A tiny sample PDF generated for the cabn demo.) Tj ET
+0.37 0.76 0.42 rg 36 60 110 90 re f
+0.94 0.37 0.63 rg 160 60 110 60 re f
+0.54 0.44 0.84 rg 284 60 100 120 re f
+0.13 0.1 0.24 rg
+BT /F1 11 Tf 36 40 Td (page 1 of 2  -  turn the page with the arrows) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 420 297] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 464 >>
+stream
+1 0.99 0.94 rg 0 0 420 297 re f
+0.13 0.1 0.24 rg
+BT /F1 20 Tf 36 250 Td (Common residents) Tj ET
+BT /F1 13 Tf 48 215 Td (- Tomato gnomes: shy, red, fond of trellises) Tj ET
+BT /F1 13 Tf 48 192 Td (- Basil sprites: aromatic, mostly harmless) Tj ET
+BT /F1 13 Tf 48 169 Td (- Squash golems: slow, heavy, very loyal) Tj ET
+0.31 0.82 0.85 rg 36 60 348 70 re f
+0.13 0.1 0.24 rg
+BT /F1 12 Tf 52 90 Td (Tip: sealed chests are files too large or too strange to open.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000780 00000 n 
+0000000906 00000 n 
+0000001421 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1518
+%%EOF

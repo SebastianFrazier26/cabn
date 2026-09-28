@@ -4,7 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 // package.json's "build"/"e2e" scripts and CLAUDE.md) — this is deliberately
 // not `vite dev`, so the smoke test exercises the same artifact the hosted
 // demo actually ships, not a dev-server-only code path.
-const PREVIEW_PORT = 4173;
+// Overridable so parallel checkouts (worktrees) can each run the suite
+// without fighting over one fixed port under --strictPort.
+const PREVIEW_PORT = Number(process.env.CABN_E2E_PORT ?? 4173);
 
 export default defineConfig({
 	testDir: "./e2e",

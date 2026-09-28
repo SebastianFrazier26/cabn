@@ -1,0 +1,26 @@
+week,gardener,crop,kg,note
+1,Bram,kale,4.2,
+2,Cleo,squash,7.9,
+3,Dov,bean,2.6,"first harvest, finally"
+4,Esme,carrot,6.3,
+5,Finn,basil,1.0,
+6,Ada,radish,4.7,
+7,Bram,pea,8.4,
+8,Cleo,tomato,3.1,
+9,Dov,kale,6.8,"aphids ""visited"" again"
+10,Esme,squash,1.5,
+11,Finn,bean,5.2,
+12,Ada,carrot,8.9,
+13,Bram,basil,3.6,
+14,Cleo,radish,7.3,"split into two beds:
+north, south"
+15,Dov,pea,2.0,
+16,Esme,tomato,5.7,
+17,Finn,kale,9.4,
+18,Ada,squash,4.1,
+19,Bram,bean,7.8,
+20,Cleo,carrot,2.5,
+21,Dov,basil,6.2,
+22,Esme,radish,0.9,
+23,Finn,pea,4.6,
+24,Ada,tomato,8.3,
