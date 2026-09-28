@@ -65,25 +65,45 @@ async function walkToward(
 	withinPx: number,
 	options: { maxMs?: number; burstMs?: number } = {},
 ): Promise<void> {
-	const maxMs = options.maxMs ?? 20_000;
-	const burstMs = options.burstMs ?? 150;
+	// Generous by default: CI's software-GL runner renders the full world at a
+	// small fraction of a dev machine's frame rate (2026-09-28: a 20s budget
+	// only covered ~60% of the shelf walk there after M10's heavier scene).
+	const maxMs = options.maxMs ?? 60_000;
+	const burstMs = options.burstMs ?? 100;
 	const deadline = Date.now() + maxMs;
+	// Keys stay held across polls and only change when the needed direction
+	// does — releasing every burst threw away frames on slow runners where a
+	// single burst spans only a couple of game updates.
+	let held: string[] = [];
+	const release = async () => {
+		for (const key of held) await page.keyboard.up(key);
+		held = [];
+	};
 
 	while (Date.now() < deadline) {
 		const pos = (await getStoreState(page))?.playerPos;
 		if (!pos) break;
 		const dx = target.x - pos.x;
 		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= withinPx) return;
+		if (Math.hypot(dx, dy) <= withinPx) {
+			await release();
+			return;
+		}
 
 		const keys: string[] = [];
 		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
 		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const key of keys) await page.keyboard.down(key);
+		for (const key of held) {
+			if (!keys.includes(key)) await page.keyboard.up(key);
+		}
+		for (const key of keys) {
+			if (!held.includes(key)) await page.keyboard.down(key);
+		}
+		held = keys;
 		await page.waitForTimeout(burstMs);
-		for (const key of keys) await page.keyboard.up(key);
 	}
 
+	await release();
 	throw new Error(
 		`walkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
 	);
