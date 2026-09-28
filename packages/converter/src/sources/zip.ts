@@ -76,6 +76,10 @@ function extractCapped(
 
 		const path = sanitizeZipPath(file.name);
 		if (!path || path.endsWith("/")) return; // malformed or zip-slip name
+		// walk() ignores .git anyway and zips never get history; skipping it
+		// here means an uploaded repo's object store is never inflated and
+		// can't eat the maxFiles/maxTotalBytes budget the real files need.
+		if (path.split("/").includes(".git")) return;
 
 		if (entries.length >= maxFiles || totalRetainedBytes >= maxTotalBytes) {
 			dropped++;

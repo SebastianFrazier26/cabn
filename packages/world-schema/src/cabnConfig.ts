@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HistoryConfigSchema } from "./history.js";
 import {
 	MEDIA_MAX_FILE_BYTES_LIMIT,
 	MEDIA_MAX_TOTAL_BYTES_LIMIT,
@@ -119,6 +120,8 @@ const CabnConfigShapeSchema = z.strictObject({
 	annotate: AnnotateConfigSchema.optional(),
 	/** false skips the converter's build-time framability check (no network request to any url preview); every url preview is then assumed framable. Optional and additive, same compat note as `media`. */
 	embedCheck: z.boolean().optional(),
+	/** Git history, alternate-branch universes and GitHub releases (see history.ts). Optional and additive, same compat note as `media`. */
+	history: HistoryConfigSchema.optional(),
 	// Room for future per-world options (e.g. a default biome override, a
 	// world-level title/description) without another version bump — add them
 	// as optional fields here, not by loosening this strictObject.

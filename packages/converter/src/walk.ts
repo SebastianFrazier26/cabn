@@ -38,6 +38,8 @@ export interface WalkOptions {
 	maxFileBytes?: number;
 	/** Read secret-pattern files' content normally instead of treating them as metadata-only. Default false. */
 	includeSecrets?: boolean;
+	/** Exact paths to treat as metadata-only regardless of name (git universes: blobs the leaked-secret detector flagged). Not affected by includeSecrets. */
+	sealedPaths?: ReadonlySet<string>;
 }
 
 export interface WalkedFile {
@@ -81,6 +83,14 @@ function isIgnored(path: string, patterns: readonly string[]): boolean {
 	return matchesAnySegment(path, patterns);
 }
 
+/** walk()'s own ignore rule (DEFAULT_IGNORES plus `extra`), for readers of other sources — git history must skip exactly what the world skips. */
+export function isIgnoredPath(
+	path: string,
+	extra: readonly string[] = [],
+): boolean {
+	return matchesAnySegment(path, [...DEFAULT_IGNORES, ...extra]);
+}
+
 function isSecretFile(path: string, patterns: readonly string[]): boolean {
 	const name = path.split("/").pop() ?? path;
 	return matchesAnySegment(name, patterns);
@@ -121,7 +131,9 @@ export async function walk(
 		totalBytes += entry.bytes;
 		const withinCap = entry.bytes <= maxFileBytes;
 		const isSecret =
-			!opts.includeSecrets && isSecretFile(entry.path, DEFAULT_SECRET_PATTERNS);
+			(!opts.includeSecrets &&
+				isSecretFile(entry.path, DEFAULT_SECRET_PATTERNS)) ||
+			(opts.sealedPaths?.has(entry.path) ?? false);
 		const content = withinCap && !isSecret ? await entry.read() : undefined;
 		files.push({ path: entry.path, bytes: entry.bytes, content });
 	}

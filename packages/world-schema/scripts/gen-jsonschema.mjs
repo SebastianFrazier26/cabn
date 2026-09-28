@@ -11,6 +11,8 @@ import { z } from "zod";
 import {
 	AssetsFileSchema,
 	CabnConfigSchema,
+	HistoryCommitDiffFileSchema,
+	HistoryIndexFileSchema,
 	MonsterIndexFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
@@ -29,6 +31,8 @@ const schemas = {
 	shelf: ShelfManifestSchema,
 	"cabn-config": CabnConfigSchema,
 	"monsters-index": MonsterIndexFileSchema,
+	"history-index": HistoryIndexFileSchema,
+	"history-commit-diff": HistoryCommitDiffFileSchema,
 };
 
 await mkdir(outDir, { recursive: true });

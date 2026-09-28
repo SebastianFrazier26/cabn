@@ -8,6 +8,7 @@ import {
 	type EmbedCheckEntry,
 	type EmbedIndexFile,
 	EmbedIndexFileSchema,
+	type HistoryConfig,
 	isWorldJsonErrorCode,
 	MEDIA_INDEX_FILENAME,
 	MEDIA_INDEX_VERSION,
@@ -19,6 +20,7 @@ import {
 	type MonsterIndexFile,
 	MonsterIndexFileSchema,
 	type RichPortalPreview,
+	resolveHistoryCaps,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
 	validateManifest,
@@ -37,6 +39,13 @@ import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
 import { fnv1a } from "./hash.js";
+import { buildGitHistory } from "./history/gitHistory.js";
+import type { GithubNetwork } from "./history/githubReleases.js";
+import {
+	type GitHistoryInput,
+	GitTreeSource,
+	openGitRepo,
+} from "./history/gitRepo.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
 	isImageFormat,
@@ -77,6 +86,7 @@ async function resolveMediaFile(
 	entries: Map<string, SourceEntry>,
 	budget: MediaBudget,
 	includeSecrets: boolean | undefined,
+	sealedPaths: ReadonlySet<string> | undefined,
 ): Promise<MediaOutcome> {
 	const sealed = (
 		reason: Extract<MediaPreview, { kind: "sealed" }>["reason"],
@@ -87,7 +97,11 @@ async function resolveMediaFile(
 	if (isUnsupportedMediaPath(file.path)) return sealed("unsupported");
 	const claimed = mediaFormatForPath(file.path);
 	if (!claimed) return sealed("unsupported");
-	if (isSecretPath(file.path, includeSecrets)) return sealed("unread");
+	if (
+		isSecretPath(file.path, includeSecrets) ||
+		(sealedPaths?.has(file.path) ?? false)
+	)
+		return sealed("unread");
 	if (!budget.fitsFileCap(file.bytes)) return sealed("too-large");
 
 	let bytes = file.content;
@@ -165,6 +179,18 @@ export interface ConvertOptions {
 	 * `embedCheck: false` forces offline even when this is set.
 	 */
 	embedNetwork?: EmbedCheckNetwork;
+	/** Exact paths to ship metadata-only (see WalkOptions.sealedPaths) — set for git universes. */
+	sealedPaths?: ReadonlySet<string>;
+	/**
+	 * Git history: history.json, per-commit diffs, alternate branches as
+	 * universes/<slug>/ worlds, and (with `github`) the repo's GitHub
+	 * releases. Needs a git-capable fs, so only the CLI passes it; the
+	 * backend converts uploads without it (and walk() skips `.git` anyway).
+	 * `github` absent means no network request.
+	 */
+	git?: GitHistoryInput & { github?: GithubNetwork };
+	/** Non-fatal notes for the host to print (e.g. why a repository's history was skipped). */
+	onWarning?: (message: string) => void;
 }
 
 export type WorldBundle = Map<string, Uint8Array | string>;
@@ -189,6 +215,7 @@ export async function convert(
 		maxFiles: opts.maxFiles ?? DEFAULT_MAX_FILES,
 		maxFileBytes,
 		includeSecrets: opts.includeSecrets,
+		sealedPaths: opts.sealedPaths,
 	});
 
 	if (cabnConfig) {
@@ -274,6 +301,7 @@ export async function convert(
 				sourceEntries,
 				mediaBudget,
 				opts.includeSecrets,
+				opts.sealedPaths,
 			);
 			richPreview = outcome.richPreview;
 			if (outcome.media) mediaPreviews.set(file.path, outcome.media);
@@ -401,7 +429,104 @@ export async function convert(
 		bundle.set(assetPath, bytes);
 	}
 
+	if (opts.git && cabnConfig?.history?.enabled !== false) {
+		await addGitHistory(bundle, opts, {
+			config: cabnConfig?.history,
+			ignore: [...(opts.ignore ?? []), CABN_CONFIG_FILENAME],
+			maxFileBytes,
+			worldFiles: walked.files,
+		});
+	}
+
 	return bundle;
+}
+
+function bundleBytes(bundle: WorldBundle): number {
+	let total = 0;
+	for (const value of bundle.values())
+		total += typeof value === "string" ? value.length : value.byteLength;
+	return total;
+}
+
+async function addGitHistory(
+	bundle: WorldBundle,
+	opts: ConvertOptions,
+	ctx: {
+		config: HistoryConfig | undefined;
+		ignore: string[];
+		maxFileBytes: number;
+		worldFiles: readonly { path: string; content?: Uint8Array }[];
+	},
+): Promise<void> {
+	const git = opts.git;
+	if (!git) return;
+	const warn = opts.onWarning ?? (() => {});
+	const opened = await openGitRepo(git);
+	if (!opened.ok) {
+		if (opened.reason !== "not a git repository root")
+			warn(`git history skipped: ${opened.reason}`);
+		return;
+	}
+	const caps = resolveHistoryCaps(ctx.config);
+	let history: Awaited<ReturnType<typeof buildGitHistory>>;
+	try {
+		history = await buildGitHistory(opened.repo, {
+			caps,
+			ignore: ctx.ignore,
+			maxFileBytes: ctx.maxFileBytes,
+			worldFiles: ctx.worldFiles,
+			github: git.github,
+			releasesDisabled: ctx.config?.releases === false,
+		});
+	} catch (err) {
+		// isomorphic-git can't read every repository layout (linked worktrees'
+		// shared object store, for one) — a world without history beats no world.
+		warn(`git history skipped: ${(err as Error).message}`);
+		return;
+	}
+	if (!history) return;
+
+	const outcome = new Map<string, "built" | "over-budget" | "failed">();
+	let universeBytes = 0;
+	for (const universe of history.universes) {
+		const source = new GitTreeSource(opened.repo, universe.treeOid, {
+			ignore: ctx.ignore,
+			maxFileBytes: ctx.maxFileBytes,
+		});
+		let world: WorldBundle;
+		try {
+			world = await convert(source, {
+				name: opts.name,
+				// Distinct source per universe: its own save slot and its own theme seed (sky/tint).
+				source: `${opts.source}#${universe.branch}`,
+				ignore: opts.ignore,
+				maxFiles: opts.maxFiles,
+				maxFileBytes: opts.maxFileBytes,
+				maxFilesPerCluster: opts.maxFilesPerCluster,
+				now: opts.now,
+				mediaMaxFileBytes: opts.mediaMaxFileBytes,
+				mediaMaxTotalBytes: opts.mediaMaxTotalBytes,
+				embedNetwork: opts.embedNetwork,
+				sealedPaths: source.sealedPaths,
+			});
+		} catch (err) {
+			warn(
+				`universe "${universe.branch}" not built: ${(err as Error).message}`,
+			);
+			outcome.set(universe.branch, "failed");
+			continue;
+		}
+		const size = bundleBytes(world);
+		if (universeBytes + size > caps.maxUniverseTotalBytes) {
+			outcome.set(universe.branch, "over-budget");
+			continue;
+		}
+		universeBytes += size;
+		outcome.set(universe.branch, "built");
+		for (const [key, value] of world)
+			bundle.set(`universes/${universe.slug}/${key}`, value);
+	}
+	for (const [key, value] of history.finalize(outcome)) bundle.set(key, value);
 }
 
 /** Always written (like media.json) so its presence says "this converter knew about embed checks"; offline entries carry basis "offline" so a reader can tell "assumed" from "checked". */

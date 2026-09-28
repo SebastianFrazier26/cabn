@@ -126,6 +126,58 @@
 		},
 		"embedCheck": {
 			"type": "boolean"
+		},
+		"history": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"maxCommitsPerBranch": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 1000
+				},
+				"maxBranches": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 100
+				},
+				"maxTags": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 500
+				},
+				"maxUniverses": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 8
+				},
+				"maxReleases": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				},
+				"maxDiffBytesPerFile": {
+					"type": "integer",
+					"minimum": 1024,
+					"maximum": 524288
+				},
+				"maxTotalBytes": {
+					"type": "integer",
+					"minimum": 65536,
+					"maximum": 33554432
+				},
+				"maxUniverseTotalBytes": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 262144000
+				},
+				"releases": {
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
 		}
 	},
 	"required": ["cabnConfigVersion", "previews", "allowedEmbedOrigins"],

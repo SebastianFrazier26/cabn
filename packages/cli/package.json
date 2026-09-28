@@ -40,6 +40,7 @@
 		"@cabn/engine": "workspace:*",
 		"@cabn/world-schema": "workspace:*",
 		"esbuild": "^0.27.0",
+		"isomorphic-git": "1.42.2",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0"
 	},
