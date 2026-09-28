@@ -4,6 +4,13 @@
 export const CABIN_SCALE = 0.5;
 export const CABINET_SCALE = 0.375;
 export const PORTAL_SCALE = 0.375;
+/**
+ * World file portals only (FileScene's exit arch keeps PORTAL_SCALE): 2x the
+ * old 96px arch, so its opening (~93x127px) is big enough to hold a readable
+ * literal preview of the file — M10 playtest: "portals should be larger and
+ * show a literal preview of the document" (2026-09-28).
+ */
+export const WORLD_PORTAL_SCALE = PORTAL_SCALE * 2;
 
 // bonfire's pixel map is 32x32 (tools/asset-pipeline/src/pixelmaps/bonfire.ts),
 // rendered at soften()'s default cellSize (16) into a 512x512 raw sprite —

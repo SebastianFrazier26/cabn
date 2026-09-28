@@ -3,6 +3,7 @@ import type {
 	Monster,
 	Portal,
 	Position,
+	RichPortalPreview,
 	WorldChunk,
 	WorldManifest,
 } from "@cabn/world-schema";
@@ -19,6 +20,7 @@ import {
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import { ArchPreviews } from "../render/archPreviews.js";
 import {
 	type AtmosphereHandle,
 	attachAtmosphere,
@@ -54,8 +56,8 @@ import {
 	BONFIRE_SCALE,
 	CABINET_SCALE,
 	MONSTER_HOVER_SIZE,
-	PORTAL_SCALE,
 	WORLD_CABINET_SCALE,
+	WORLD_PORTAL_SCALE,
 } from "../render/scale.js";
 import {
 	attachSky,
@@ -63,6 +65,7 @@ import {
 	dressEdges,
 	type EdgeDressing,
 } from "../render/worldDressing.js";
+import { effectiveRichPreview } from "../systems/archPreview.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
 import { prefersReducedMotion } from "../systems/glowSettings.js";
@@ -70,7 +73,6 @@ import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
-import { clampPreviewLines } from "../systems/previewText.js";
 import {
 	applyOverridesToChunk,
 	clearSave,
@@ -105,22 +107,25 @@ export interface WorldSceneData {
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
-const PORTAL_APPROACH_RADIUS = 80;
-const PORTAL_ENTER_RADIUS = 46;
+// Approach/enter radii scale with the 2x arch (WORLD_PORTAL_SCALE). Focus —
+// the expanded preview dock, and a url portal's live embed — is tighter than
+// approach so merely walking past an arch doesn't pop a panel open.
+const PORTAL_APPROACH_RADIUS = 150;
+const PORTAL_FOCUS_RADIUS = 100;
+const PORTAL_ENTER_RADIUS = 70;
 const RETURN_TO_SHELF_RADIUS = 140;
 const MAX_LOADED_CHUNKS = 8;
 const WORLD_MARGIN = 500;
-const PREVIEW_LINE_CHARS = 26;
-const PREVIEW_MAX_LINES = 7;
-
-// The arch opening isn't the sprite's full bounding box — these are eyeballed
-// fractions of the portal sprite's display size, not measured from the
-// source PNG's alpha channel, so treat them as "close enough for gameplay",
-// not exact stone geometry.
-const ARCH_OPENING_WIDTH_RATIO = 0.5;
-const ARCH_OPENING_HEIGHT_RATIO = 0.4;
-const ARCH_OPENING_Y_OFFSET_RATIO = -0.08;
-const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE;
+// Measured from portal_arch_strip_soft.png's alpha channel (2026-09-28): the
+// transparent opening spans x 68-192 and y 86-256 of each 256px frame, i.e.
+// it runs to the frame's bottom edge, well below the sprite's centre. Inset a
+// couple of pixels so the preview tucks under the stone rather than past it.
+const ARCH_OPENING_WIDTH_RATIO = 0.47;
+const ARCH_OPENING_HEIGHT_RATIO = 0.65;
+const ARCH_OPENING_Y_OFFSET_RATIO = 0.17;
+const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * WORLD_PORTAL_SCALE;
+/** Just above the arch sprite (3) so the preview covers the opening's idle sparkles, below monsters (4) and the player (5). */
+const ARCH_PREVIEW_DEPTH = 3.05;
 
 // M10b batch 3: the old radius formula (90 + min(count,40)*4, capping out at
 // 250px for a 40-portal cluster) put arches 39px apart at that cap — well
@@ -132,8 +137,14 @@ const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE;
 // packages/converter/src/layout.ts's estimatedClearingRadius(), which needs
 // the same shape to keep whole *clusters* from crowding each other — see
 // that file's own comment on why it's a duplication, not an import.
-const ARCH_RING_SPACING = PORTAL_ARCH_DISPLAY_SIZE * 1.2;
-const PORTAL_RING_MIN_RADIUS = 100;
+//
+// 2026-09-28 (2x arches): spacing is now 1.0x the frame, not 1.2x — the frame
+// has ~11% transparent margin each side (visible stone is ~200/256 of it), so
+// 1.0x still leaves a ~40px gap between neighbouring arches without doubling
+// every busy clearing's radius. The minimum radius grew so a 192px-tall arch
+// at the top/bottom of a small ring clears the cabinet/bonfire at the centre.
+const ARCH_RING_SPACING = PORTAL_ARCH_DISPLAY_SIZE;
+const PORTAL_RING_MIN_RADIUS = 180;
 /** Room beyond the outermost portal ring for the prop-framing annulus + the flower-ring edge marking — this is what actually grows a clearing to fit its own content, rather than a flat per-file increment. */
 const CLEARING_OUTER_MARGIN = 90;
 
@@ -160,11 +171,11 @@ const PROPS_PER_CLUSTER = 4;
 const PROP_ANNULUS_INNER_FRAC = 0.68;
 /** How much of the per-world theme tint reaches the world-cabinet sprite (see systems/theme.ts's subtleTint) — low enough that the wood still reads as wood, not full-strength-tint noise. */
 const CABINET_TINT_STRENGTH = 0.35;
-// 58 = PORTAL_ARCH_DISPLAY_SIZE (96) / 2 + a 10px margin — batch 1 excluded
-// only 44px around a portal, less than the arch's own half-width, so a prop
-// could still land partway inside the sprite (the "arches and props overlap"
-// bug flagged in review).
-const PORTAL_EXCLUSION_RADIUS = 58;
+// Half the arch's display size + a 10px margin — batch 1 excluded only 44px
+// around a portal, less than the arch's own half-width, so a prop could
+// still land partway inside the sprite (the "arches and props overlap" bug
+// flagged in review).
+const PORTAL_EXCLUSION_RADIUS = PORTAL_ARCH_DISPLAY_SIZE / 2 + 10;
 const SPAWN_EXCLUSION_RADIUS = 56;
 // Batch 1 never excluded the cluster center itself — cabinet/bonfire always
 // sit exactly there, so a prop or decal could land directly on top of one.
@@ -233,9 +244,8 @@ export class WorldScene extends Phaser.Scene {
 		esc: Phaser.Input.Keyboard.Key;
 	};
 
-	private previewPanel!: Phaser.GameObjects.Container;
-	private previewText!: Phaser.GameObjects.Text;
-	private previewMaskShape!: Phaser.GameObjects.Graphics;
+	private archPreviews: ArchPreviews | null = null;
+	private focusedPortalId: string | null = null;
 	private portalsInRange = new Set<string>();
 
 	/** One theme per world (see drawClusters' doc comment) — computed once in create() so drawGround's ground-tint overlay and drawClusters' cabinet/bonfire tint always agree. */
@@ -292,7 +302,6 @@ export class WorldScene extends Phaser.Scene {
 		this.drawEditedMarkers();
 		this.drawMonsters();
 		this.createPlayer(spawn);
-		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
 		this.publishPortalIndex();
@@ -311,6 +320,9 @@ export class WorldScene extends Phaser.Scene {
 			this.sky = null;
 			this.edgeDressing?.destroy();
 			this.edgeDressing = null;
+			this.archPreviews?.destroy();
+			this.archPreviews = null;
+			this.setFocusedPortal(null);
 		});
 	}
 
@@ -354,6 +366,19 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
+		// Each arch's preview is its own faint light source — without this the
+		// night grade darkens the in-arch text to illegible. Cool and dim so the
+		// additive glow doesn't wash the preview out; the grade hole (see
+		// render/atmosphere.ts) is what actually keeps it readable.
+		for (const pos of this.portalWorldPos.values()) {
+			lights.push({
+				x: pos.x,
+				y: pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO,
+				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.32,
+				color: PALETTE.paleGhostBlue,
+				alpha: 0.08,
+			});
+		}
 		this.atmosphere = attachAtmosphere(this, this.store, {
 			lights,
 			reducedMotion,
@@ -770,6 +795,16 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private drawPortals(): void {
+		this.archPreviews = new ArchPreviews(
+			this,
+			{
+				width: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO,
+				height: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO,
+				offsetY: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO,
+			},
+			ARCH_PREVIEW_DEPTH,
+			this.worldBase,
+		);
 		for (const cluster of this.manifest.clusters) {
 			cluster.portalIds.forEach((portalId) => {
 				const pos = this.portalWorldPos.get(portalId);
@@ -780,11 +815,53 @@ export class WorldScene extends Phaser.Scene {
 					pos.y,
 					ASSET_KEYS.portalArchStrip,
 				);
-				sprite.setScale(PORTAL_SCALE).setDepth(3);
+				sprite.setScale(WORLD_PORTAL_SCALE).setDepth(3);
 				sprite.play(PORTAL_IDLE_ANIM);
 				this.portalSprites.set(portalId, sprite);
+				const portal = this.portalsById.get(portalId);
+				if (portal)
+					this.archPreviews?.add({
+						id: portalId,
+						pos,
+						preview: this.previewFor(portal),
+					});
 			});
 		}
+	}
+
+	private previewFor(portal: Portal): RichPortalPreview {
+		return effectiveRichPreview(
+			portal,
+			this.save.fileOverrides[portal.id]?.content,
+		);
+	}
+
+	/** Repaints an arch (and the dock, if it's the focused one) after its save state changed. */
+	private refreshPortalPreview(portalId: string): void {
+		const portal = this.portalsById.get(portalId);
+		if (!portal) return;
+		this.archPreviews?.setPreview(portalId, this.previewFor(portal));
+		if (this.focusedPortalId === portalId) {
+			this.focusedPortalId = null;
+			this.setFocusedPortal(portalId);
+		}
+	}
+
+	private setFocusedPortal(portalId: string | null): void {
+		if (portalId === this.focusedPortalId) return;
+		this.focusedPortalId = portalId;
+		const portal = portalId ? this.portalsById.get(portalId) : undefined;
+		this.store.getState().setFocusedPortalPreview(
+			portal
+				? {
+						portalId: portal.id,
+						fileName: portal.file.name,
+						path: portal.file.path,
+						preview: this.previewFor(portal),
+						allowedEmbedOrigins: this.manifest.allowedEmbedOrigins,
+					}
+				: null,
+		);
 	}
 
 	private drawEditedMarkers(): void {
@@ -800,7 +877,9 @@ export class WorldScene extends Phaser.Scene {
 		if (this.editedMarkers.has(portalId)) return;
 		const pos = this.portalWorldPos.get(portalId);
 		if (!pos) return;
-		const offset = PORTAL_ARCH_DISPLAY_SIZE * 0.22;
+		// Up on the capstone's right shoulder — the old 0.22 offset now lands
+		// inside the (much larger) preview-filled opening.
+		const offset = PORTAL_ARCH_DISPLAY_SIZE * 0.3;
 		const marker = this.add
 			.text(pos.x + offset, pos.y - offset, "✎", {
 				fontFamily: '"Courier New", monospace',
@@ -945,47 +1024,6 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setPlayerPos(spawn);
 	}
 
-	// Renders the preview INSIDE the portal arch's opening (parchment backing,
-	// masked to the interior) instead of a floating panel above the sprite —
-	// only one instance is needed since only the closest in-range portal ever
-	// shows a preview at a time (see handlePortalApproach).
-	private createArchPreview(): void {
-		const width = PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO;
-		const height = PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO;
-
-		const bg = this.add.graphics();
-		bg.fillStyle(PALETTE.parchment, 0.92);
-		bg.fillRoundedRect(-width / 2, -height / 2, width, height, 4);
-
-		this.previewText = this.add.text(-width / 2 + 4, -height / 2 + 3, "", {
-			fontFamily: '"Courier New", monospace',
-			fontSize: "7px",
-			color: toCssColor(PALETTE.ink),
-			wordWrap: { width: width - 8 },
-		});
-
-		this.previewPanel = this.add
-			.container(0, 0, [bg, this.previewText])
-			.setDepth(4);
-
-		// A geometry mask's shape is positioned in world space independently of
-		// the object it masks — this graphics object is never added to the
-		// display list (this.make, not this.add), only used as mask geometry,
-		// and must be re-positioned in lockstep with previewPanel every frame.
-		this.previewMaskShape = this.make.graphics(undefined, false);
-		this.previewMaskShape.fillStyle(0xffffff);
-		this.previewMaskShape.fillRoundedRect(
-			-width / 2,
-			-height / 2,
-			width,
-			height,
-			4,
-		);
-		this.previewPanel.setMask(this.previewMaskShape.createGeometryMask());
-
-		this.previewPanel.setVisible(false).setAlpha(0);
-	}
-
 	private setupInput(): void {
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("WorldScene requires keyboard input");
@@ -1051,7 +1089,7 @@ export class WorldScene extends Phaser.Scene {
 		this.cameras.main.startFollow(this.player.body, true, 0.1, 0.1);
 	}
 
-	update(_time: number, delta: number): void {
+	update(time: number, delta: number): void {
 		// Covers "file" and the new "editor" mode alike — both mean FileScene (or
 		// its overlay) owns input right now, not just the one this scene used to
 		// know about (in practice this scene is asleep whenever either is true,
@@ -1064,6 +1102,12 @@ export class WorldScene extends Phaser.Scene {
 		this.handleMovement(delta);
 		this.handleChunkLoading();
 		this.handlePortalApproach();
+		const view = this.cameras.main.worldView;
+		this.archPreviews?.update(
+			time,
+			{ x: this.player.body.x, y: this.player.body.y },
+			{ x: view.x, y: view.y, w: view.width, h: view.height },
+		);
 		this.handlePortalEnter();
 		this.handleReturnToShelf();
 	}
@@ -1190,14 +1234,9 @@ export class WorldScene extends Phaser.Scene {
 			this.bus.emit("portal:approach", { portalId });
 		}
 
-		if (inRange.size === 0) {
-			this.previewPanel.setVisible(false).setAlpha(0);
-			return;
-		}
-
-		// Closest in-range portal wins the preview when more than one is close.
+		// Closest in-range portal within focus radius gets the expanded dock.
 		let closestId: string | null = null;
-		let closestDist = Number.POSITIVE_INFINITY;
+		let closestDist = PORTAL_FOCUS_RADIUS;
 		for (const portalId of inRange) {
 			const pos = this.portalWorldPos.get(portalId);
 			if (!pos) continue;
@@ -1207,44 +1246,12 @@ export class WorldScene extends Phaser.Scene {
 				pos.x,
 				pos.y,
 			);
-			if (dist < closestDist) {
+			if (dist <= closestDist) {
 				closestDist = dist;
 				closestId = portalId;
 			}
 		}
-		if (!closestId) return;
-
-		const portal = this.portalsById.get(closestId);
-		const pos = this.portalWorldPos.get(closestId);
-		if (!portal || !pos) return;
-
-		const clamped = clampPreviewLines(
-			previewSourceLines(
-				portal.id,
-				portal.preview.lines,
-				this.save.fileOverrides,
-			),
-			PREVIEW_LINE_CHARS,
-			PREVIEW_MAX_LINES,
-		);
-		this.previewText.setText(
-			clamped.lines.length > 0 ? clamped.lines.join("\n") : "(no preview)",
-		);
-
-		const archX = pos.x;
-		const archY =
-			pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO;
-		this.previewPanel.setPosition(archX, archY);
-		this.previewMaskShape.setPosition(archX, archY);
-
-		// Fades in over the outer half of the approach radius rather than
-		// snapping on, so it reads as "coming into focus inside the arch".
-		const fade = Phaser.Math.Clamp(
-			1 - closestDist / PORTAL_APPROACH_RADIUS,
-			0,
-			1,
-		);
-		this.previewPanel.setVisible(true).setAlpha(fade);
+		this.setFocusedPortal(closestId);
 	}
 
 	private handlePortalEnter(): void {
@@ -1416,6 +1423,7 @@ export class WorldScene extends Phaser.Scene {
 		if (portal) this.refreshEffectiveChunk(portal.clusterId);
 		this.drawEditedMarker(portalId);
 		this.publishPortalIndex();
+		this.refreshPortalPreview(portalId);
 	};
 
 	private onResetFileEdits = ({ portalId }: { portalId: string }): void => {
@@ -1423,6 +1431,7 @@ export class WorldScene extends Phaser.Scene {
 		persistSave(this.save);
 		this.removeEditedMarker(portalId);
 		this.publishPortalIndex();
+		this.refreshPortalPreview(portalId);
 
 		const portal = this.portalsById.get(portalId);
 		if (!portal) return;
@@ -1454,7 +1463,10 @@ export class WorldScene extends Phaser.Scene {
 		clearSave(this.worldId);
 		for (const clusterId of this.chunkContents.keys())
 			this.refreshEffectiveChunk(clusterId);
-		for (const portalId of resetPortalIds) this.removeEditedMarker(portalId);
+		for (const portalId of resetPortalIds) {
+			this.removeEditedMarker(portalId);
+			this.refreshPortalPreview(portalId);
+		}
 		for (const monsterId of revivedMonsterIds) {
 			const monster = this.monstersById.get(monsterId);
 			if (!monster) continue;
