@@ -1,0 +1,63 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"signsVersion": {
+			"type": "number",
+			"const": 1
+		},
+		"signs": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"path": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 512
+					},
+					"source": {
+						"type": "string",
+						"maxLength": 16384
+					},
+					"anchor": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "portal"
+									},
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["kind", "id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "cluster"
+									},
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["kind", "id"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"required": ["path", "source", "anchor"],
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["signsVersion", "signs"],
+	"additionalProperties": false
+}

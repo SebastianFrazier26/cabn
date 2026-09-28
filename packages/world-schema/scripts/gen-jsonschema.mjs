@@ -14,6 +14,7 @@ import {
 	MonsterIndexFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
+	SignIndexFileSchema,
 	WorldChunkSchema,
 	WorldManifestSchema,
 } from "../dist/index.js";
@@ -29,6 +30,7 @@ const schemas = {
 	shelf: ShelfManifestSchema,
 	"cabn-config": CabnConfigSchema,
 	"monsters-index": MonsterIndexFileSchema,
+	"signs-index": SignIndexFileSchema,
 };
 
 await mkdir(outDir, { recursive: true });
