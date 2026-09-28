@@ -193,6 +193,22 @@ export function uiIconPath(name: UiIconName): string {
 	return `${ASSET_BASE}/placeholders/ui_icon_${name}_soft.png`;
 }
 
+// Art-density pass (2026-09-28): pixel-art frames for the literal tool
+// screens (crystal ball, spyglass lens, open satchel + its flap) from
+// tools/asset-pipeline's ui-screen-*.ts — plain <img>/CSS assets like the
+// icons above, laid out 1:1 at 3 CSS px per art cell.
+export const UI_SCREEN_NAMES = [
+	"orb",
+	"spyglass",
+	"satchel",
+	"satchel_flap",
+] as const;
+export type UiScreenName = (typeof UI_SCREEN_NAMES)[number];
+
+export function uiScreenPath(name: UiScreenName): string {
+	return `${ASSET_BASE}/placeholders/ui_screen_${name}_soft.png`;
+}
+
 export const UI_SPARKLE_COLORS = ["cyan", "gold", "violet"] as const;
 export type UiSparkleColor = (typeof UI_SPARKLE_COLORS)[number];
 

@@ -7,6 +7,19 @@ import { buildCrystalOrbIcon } from "../src/pixelmaps/ui-item-orb.js";
 import { buildQuillIcon } from "../src/pixelmaps/ui-item-quill.js";
 import { buildSpyglassIcon } from "../src/pixelmaps/ui-item-spyglass.js";
 import { buildWandIcon } from "../src/pixelmaps/ui-item-wand.js";
+import {
+	buildOrbScreen,
+	ORB_CONTENT_RECT,
+} from "../src/pixelmaps/ui-screen-orb.js";
+import {
+	buildSatchelFlap,
+	buildSatchelScreen,
+	SATCHEL_CONTENT_RECT,
+} from "../src/pixelmaps/ui-screen-satchel.js";
+import {
+	buildSpyglassScreen,
+	SPYGLASS_CONTENT_RECT,
+} from "../src/pixelmaps/ui-screen-spyglass.js";
 import { buildSparkle } from "../src/pixelmaps/ui-sparkle.js";
 
 // 36 flat RGB stand-ins — enough indices for every legend used below without
@@ -101,6 +114,53 @@ describe("buildSpyglassIcon and buildQuillIcon", () => {
 			// neither end is the full-width block a broken taper would produce.
 			expect(nearEnd).toBeLessThan(map.width);
 			expect(nearStart).toBeLessThan(map.width);
+		}
+	});
+});
+
+// The screens reach further into the palette (periwinkle, 37) than the icons.
+const FULL_PALETTE: RGB[] = Array.from({ length: 66 }, (_, i) => ({
+	r: i,
+	g: i,
+	b: i,
+}));
+
+describe("tool-screen frames", () => {
+	const screens = [
+		[buildOrbScreen, ORB_CONTENT_RECT],
+		[buildSpyglassScreen, SPYGLASS_CONTENT_RECT],
+	] as const;
+
+	test.each(screens)(
+		"content rect sits entirely in the transparent glass, so text never clips at the rim",
+		(build, rect) => {
+			const map = build();
+			for (let y = rect.y; y < rect.y + rect.height; y++) {
+				for (let x = rect.x; x < rect.x + rect.width; x++) {
+					expect(map.rows[y]?.[x]).toBe(".");
+				}
+			}
+		},
+	);
+
+	test.each([
+		buildOrbScreen,
+		buildSpyglassScreen,
+		buildSatchelScreen,
+		buildSatchelFlap,
+	])("renders and is deterministic", (build) => {
+		const map = build();
+		expect(() => renderPixelMap(map, FULL_PALETTE)).not.toThrow();
+		expect(build()).toEqual(map);
+	});
+
+	test("satchel content rect lies inside its stitched front panel", () => {
+		const map = buildSatchelScreen();
+		const r = SATCHEL_CONTENT_RECT;
+		for (let y = r.y; y < r.y + r.height; y++) {
+			for (let x = r.x; x < r.x + r.width; x++) {
+				expect(map.rows[y]?.[x]).not.toBe(".");
+			}
 		}
 	});
 });

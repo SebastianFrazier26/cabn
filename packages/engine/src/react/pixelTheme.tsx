@@ -187,18 +187,27 @@ const PIXEL_THEME_CSS = `
 }
 
 /* ================= spyglass — round lens, brass rim ================= */
-/* The rim: a literal brass ring (radial gradient standing in for a
-   metal bevel — no photographic texture, per the flat-pixel-RPG mandate)
-   sized to fit a circular lens inside it, not a rectangular frame. */
+/* Shared by the three literal tool screens: their pixel-art frame
+   (ui_screen_*.png, 3 CSS px per art cell) laid over the live content, never
+   intercepting its clicks. */
+.cabn-tool-frame {
+	position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4;
+	pointer-events: none; image-rendering: pixelated;
+}
+/* One-line text that ellipsizes instead of running past a round frame. */
+.cabn-clip-line { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The frame box is the 136x136-cell ui_screen_spyglass art; percentages
+   below are its cell coordinates (lens circle centre 58,58, radius 49;
+   content rect 19,29 78x58 — the lens's inscribed rectangle, see
+   tools/asset-pipeline's ui-screen-spyglass.ts). */
 .cabn-spyglass-frame {
-	position: relative; width: 300px; height: 300px; border-radius: 50%; padding: 14px;
-	display: flex; align-items: center; justify-content: center;
-	background: radial-gradient(circle at 35% 30%, #e6c98a 0%, #b8903f 45%, #6b4d1e 85%);
-	box-shadow: 0 0 0 4px var(--cabn-border-outer), 5px 5px 0 rgba(0,0,0,0.25), inset 0 0 0 3px rgba(255,255,255,0.35);
+	position: relative; width: min(408px, 80vw); aspect-ratio: 1;
+	filter: drop-shadow(5px 5px 0 rgba(0,0,0,0.25));
 }
 .cabn-spyglass-frame::after {
-	content: ""; position: absolute; inset: 6%; border-radius: 50%; pointer-events: none; z-index: 3;
-	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.45) 50%, transparent 65%);
+	content: ""; position: absolute; left: 6.62%; top: 6.62%; width: 72.06%; height: 72.06%;
+	border-radius: 50%; pointer-events: none; z-index: 3;
+	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.3) 50%, transparent 65%);
 }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-spyglass-frame::after { animation: cabn-sheen 2.6s linear infinite; }
@@ -207,10 +216,14 @@ const PIXEL_THEME_CSS = `
    .cabn-panel's rectangular border-radius/padding/box-shadow, keeps its
    background/color/font tokens. */
 .cabn-spyglass-lens {
-	width: 100%; height: 100%; border-radius: 50%; border: none; padding: 26px 22px;
-	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), inset 0 0 28px rgba(0,0,0,0.3);
-	display: flex; flex-direction: column; overflow: hidden;
-	clip-path: circle(50% at 50% 50%);
+	position: absolute; left: 6.62%; top: 6.62%; width: 72.06%; height: 72.06%;
+	border-radius: 50%; border: none; padding: 0;
+	box-shadow: inset 0 0 28px rgba(0,0,0,0.3);
+	overflow: hidden; clip-path: circle(50% at 50% 50%);
+}
+.cabn-spyglass-content {
+	position: absolute; left: 10.2%; top: 20.41%; width: 79.59%; height: 59.18%;
+	z-index: 1; display: flex; flex-direction: column;
 }
 @keyframes cabn-iris-open {
 	0% { clip-path: circle(0% at 50% 50%); }
@@ -254,15 +267,23 @@ const PIXEL_THEME_CSS = `
 	.cabn-orb-mist.two { animation: cabn-swirl 14s linear infinite reverse; }
 }
 
-/* The literal ball itself: a glass sphere (not a rectangular panel) results
-   swirl inside of, on top of a plinth holding the search input. Fixed light
-   text/dividers regardless of day/night — the glass interior is always dark,
-   same reasoning as the ribbon banners' always-white text. */
+/* The literal ball itself: the 144x184-cell ui_screen_orb art (glass rim,
+   bronze stand, plum plaque) over a dark swirling glass disc that shows
+   through the art's transparent interior. Percentages are art cell
+   coordinates (glass centre 72,71, radius 63; results in the inscribed rect
+   22,33 100x76; input on the plaque 30,155 84x15 — see tools/asset-
+   pipeline's ui-screen-orb.ts). Fixed light text regardless of day/night —
+   the glass interior is always dark, same reasoning as the ribbon banners'
+   always-white text. */
 .cabn-crystal-ball {
-	position: relative; width: min(420px, 86vw); height: min(420px, 86vw); border-radius: 50%;
-	background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.06) 26%, rgba(58,35,95,0.6) 62%, rgba(18,10,36,0.92) 100%);
-	box-shadow: 0 0 46px 12px rgba(138,111,214,0.5), inset 0 0 46px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.22);
-	overflow: hidden; display: flex; color: #f3edff;
+	position: relative; width: min(432px, 88vw, calc((88vh - 60px) * 0.7826)); aspect-ratio: 144 / 184;
+	color: #f3edff;
+}
+.cabn-crystal-glass {
+	position: absolute; left: 6.25%; top: 4.35%; width: 87.5%; height: 68.48%; border-radius: 50%;
+	background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.05) 26%, rgba(58,35,95,0.72) 62%, rgba(18,10,36,0.94) 100%);
+	box-shadow: 0 0 46px 12px rgba(138,111,214,0.5), inset 0 0 46px rgba(0,0,0,0.45);
+	overflow: hidden;
 }
 .cabn-crystal-ball-mist {
 	position: absolute; inset: 10%; border-radius: 50%;
@@ -275,17 +296,16 @@ const PIXEL_THEME_CSS = `
 	.cabn-crystal-ball-mist.two { animation: cabn-swirl 12s linear infinite reverse; }
 }
 .cabn-crystal-ball-content {
-	position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column;
-	padding: 40px 34px 18px; overflow: auto; font-size: 13px;
+	position: absolute; left: 15.28%; top: 17.93%; width: 69.44%; height: 41.3%; z-index: 5;
+	display: flex; flex-direction: column; overflow: auto; font-size: 13px;
+	text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
 .cabn-crystal-plinth {
-	margin-top: -20px; width: min(280px, 70vw); padding: 16px 20px 10px; color: #f3edff;
-	background: linear-gradient(180deg, #574aa8, #2c2560);
-	clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
-	box-shadow: 0 6px 0 rgba(0,0,0,0.3);
+	position: absolute; left: 20.83%; top: 84.24%; width: 58.33%; height: 8.15%; z-index: 5;
+	display: flex; align-items: center; color: #f3edff;
 }
 @keyframes cabn-ball-rise {
-	0% { transform: translateY(36px) scale(0.82); opacity: 0; box-shadow: 0 0 0 0 rgba(138,111,214,0), inset 0 0 46px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.22); }
+	0% { transform: translateY(36px) scale(0.82); opacity: 0; }
 	70% { opacity: 1; }
 	100% { transform: translateY(0) scale(1); opacity: 1; }
 }
@@ -311,32 +331,46 @@ const PIXEL_THEME_CSS = `
 	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
 	font-family: var(--cabn-font-display);
 }
+/* The 128x116-cell ui_screen_satchel art is the whole open bag (body, side
+   pouches, the flap already folded back); the animated .cabn-satchel-flap is
+   the flap's outer face swinging up off the mouth, hidden once it passes
+   edge-on. Percentages are art cell coordinates (flap hinge 16,30 96x30;
+   content inside the stitched front panel 22,38 84x66 — see tools/asset-
+   pipeline's ui-screen-satchel.ts). */
 .cabn-satchel-open {
-	position: relative; perspective: 420px; padding: 18px 16px 14px;
-	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-radius: 4px 14px 14px 14px;
-	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), 5px 5px 0 rgba(0,0,0,0.22);
+	position: relative; perspective: 420px; width: min(384px, 86vw); aspect-ratio: 128 / 116;
+	background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated;
+	filter: drop-shadow(5px 5px 0 rgba(0,0,0,0.22));
 	transform-origin: bottom left;
 }
 .cabn-satchel-flap {
-	position: absolute; top: -24px; left: 12px; width: 76px; height: 30px;
-	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-bottom: none;
-	border-radius: 16px 16px 0 0; transform-origin: bottom center; transform-style: preserve-3d;
+	position: absolute; left: 12.5%; top: 25.86%; width: 75%; height: 25.86%; z-index: 2;
+	background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated;
+	transform-origin: top center; backface-visibility: hidden; transform: rotateX(-180deg);
+}
+.cabn-satchel-content {
+	position: absolute; left: 17.19%; top: 32.76%; width: 65.63%; height: 56.9%; z-index: 1;
+	overflow: auto; padding: 2px;
+}
+.cabn-satchel-title {
+	display: flex; align-items: center; justify-content: space-between; gap: 8px;
+	margin: 0 0 6px; font-family: var(--cabn-font-display); font-size: 13px;
+	color: #fff4dc; text-shadow: 0 2px 0 rgba(50,34,20,0.8);
 }
 @keyframes cabn-satchel-pop { 0% { transform: scale(0.85) translateY(10px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
-@keyframes cabn-flap-open { 0% { transform: rotateX(0deg); } 100% { transform: rotateX(-125deg); } }
+@keyframes cabn-flap-open { 0% { transform: rotateX(0deg); } 100% { transform: rotateX(-180deg); } }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-satchel-open { animation: cabn-satchel-pop 260ms ease-out; }
-	.cabn-satchel-flap { animation: cabn-flap-open 320ms ease-out 60ms both; }
+	.cabn-satchel-flap { animation: cabn-flap-open 380ms ease-in 120ms both; }
 }
 @media (prefers-reduced-motion: reduce) {
 	.cabn-satchel-open { animation: cabn-fade-in 180ms ease-out; }
-	.cabn-satchel-flap { transform: rotateX(-125deg); }
 }
 /* Each grabbed slot as a physical drawstring pouch, not a plain row. */
 .cabn-bag-pouch {
 	position: relative; display: flex; align-items: center; gap: 6px;
 	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 6px 6px 14px 14px;
-	padding: 9px 10px 6px; font-size: 11px; color: var(--cabn-text); max-width: 220px;
+	padding: 9px 10px 6px; font-size: 11px; color: var(--cabn-text); max-width: 100%; min-width: 0;
 }
 .cabn-bag-pouch::before {
 	content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
