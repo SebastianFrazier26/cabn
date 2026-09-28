@@ -19,7 +19,14 @@ export { RunOverlay } from "./react/RunOverlay.js";
 export { SettingsCorner } from "./react/SettingsCorner.js";
 export { SpyglassPanel } from "./react/SpyglassPanel.js";
 export { ToolHotbar } from "./react/ToolHotbar.js";
+export { configureMedia, type MediaConfig } from "./render/mediaSources.js";
+export type {
+	DisplayPreview,
+	SealedDisplayPreview,
+	TablePreview,
+} from "./systems/archPreview.js";
 export * from "./systems/bag.js";
+export * from "./systems/csv.js";
 export * from "./systems/embedGuard.js";
 export * from "./systems/enchantMd.js";
 export * from "./systems/execution/executionProvider.js";

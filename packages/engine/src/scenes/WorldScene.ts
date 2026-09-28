@@ -1,9 +1,9 @@
 import type {
 	Cluster,
+	MediaPreview,
 	Monster,
 	Portal,
 	Position,
-	RichPortalPreview,
 	WorldChunk,
 	WorldManifest,
 } from "@cabn/world-schema";
@@ -73,7 +73,10 @@ import {
 	dressEdges,
 	type EdgeDressing,
 } from "../render/worldDressing.js";
-import { effectiveRichPreview } from "../systems/archPreview.js";
+import {
+	type DisplayPreview,
+	effectiveRichPreview,
+} from "../systems/archPreview.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	type ClickTarget,
@@ -118,6 +121,8 @@ export interface WorldSceneData {
 	availability: AssetAvailability;
 	/** Set when this world was entered from the shelf — lets Escape at spawn go back. */
 	returnTo?: { shelfUrl: string };
+	/** The bundle's media.json entries (BootScene), keyed by portal id; empty for a bundle without one. */
+	media?: ReadonlyMap<string, MediaPreview>;
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -218,6 +223,7 @@ const GROUND_THEME_TINT_ALPHA = 0.12;
 export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
 	private worldBase = "";
+	private media: ReadonlyMap<string, MediaPreview> = new Map();
 	private availability!: AssetAvailability;
 	private returnTo: { shelfUrl: string } | undefined;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
@@ -284,6 +290,7 @@ export class WorldScene extends Phaser.Scene {
 	init(data: WorldSceneData): void {
 		this.manifest = data.manifest;
 		this.worldBase = data.worldBase;
+		this.media = data.media ?? new Map();
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
@@ -844,10 +851,11 @@ export class WorldScene extends Phaser.Scene {
 		}
 	}
 
-	private previewFor(portal: Portal): RichPortalPreview {
+	private previewFor(portal: Portal): DisplayPreview {
 		return effectiveRichPreview(
 			portal,
 			this.save.fileOverrides[portal.id]?.content,
+			this.media.get(portal.id),
 		);
 	}
 
@@ -1433,7 +1441,7 @@ export class WorldScene extends Phaser.Scene {
 			this.effectiveChunkContents.get(portal.clusterId)?.[portal.file.path] ??
 			null;
 
-		this.store.getState().enterPortal(target, content);
+		this.store.getState().enterPortal(target, content, this.previewFor(portal));
 		this.bus.emit("portal:enter", { portalId: target });
 
 		// Binary/unreadable files (content === null) keep the M3 fallback: mode

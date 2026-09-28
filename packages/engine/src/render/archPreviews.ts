@@ -1,16 +1,20 @@
-import type { Position, RichPortalPreview } from "@cabn/world-schema";
+import type { Position } from "@cabn/world-schema";
 import Phaser from "phaser";
 import { PALETTE, toCssColor } from "../palette.js";
 import {
 	type ArchColorRole,
 	type ArchDrawOp,
 	DEFAULT_ARCH_METRICS,
+	type DisplayPreview,
+	type DisplayPreviewKind,
 	fitContain,
 	isInView,
 	layoutArchPreview,
 	type Rect,
 	selectDetailPortals,
 } from "../systems/archPreview.js";
+import { waveformBars } from "../systems/waveform.js";
+import { loadPdfFirstPage, loadPeaks } from "./mediaSources.js";
 import { resolveRelativeUrl } from "./resolveUrl.js";
 
 /**
@@ -50,6 +54,12 @@ const COLORS: Record<ArchColorRole, string> = {
 	chestWood: "#9a5b2c",
 	chestDark: "#4a2a14",
 	chestGold: toCssColor(PALETTE.gold),
+	audioBg: "#241c3a",
+	wave: "#7fe6f0",
+	pdfBg: "#3a3346",
+	tableBg: toCssColor(PALETTE.parchment),
+	tableHeaderBg: "#e8d6a8",
+	tableRule: "#cdbb8f",
 };
 
 const FONT_FAMILY = '"Courier New", monospace';
@@ -71,7 +81,7 @@ export interface ArchOpening {
 export interface ArchPreviewTarget {
 	id: string;
 	pos: Position;
-	preview: RichPortalPreview;
+	preview: DisplayPreview;
 }
 
 interface Entry {
@@ -86,11 +96,21 @@ type ImageState =
 	| { status: "ready"; img: HTMLImageElement }
 	| { status: "failed" };
 
+type MediaState<T> =
+	| { status: "loading" }
+	| { status: "ready"; value: T }
+	| { status: "failed" };
+
 let instanceSeq = 0;
 
 export class ArchPreviews {
 	private readonly entries = new Map<string, Entry>();
 	private readonly images = new Map<string, ImageState>();
+	/** Decoded waveform peaks / rendered PDF first pages, keyed by asset — see mediaSources.ts. */
+	private readonly media = new Map<
+		string,
+		MediaState<number[] | HTMLCanvasElement>
+	>();
 	/** Most-recently-wanted last. */
 	private lru: string[] = [];
 	private wanted: string[] = [];
@@ -123,7 +143,7 @@ export class ArchPreviews {
 	}
 
 	/** A quill edit (or reset) changed what this portal shows — repaint it on the next tick it's detailed. */
-	setPreview(id: string, preview: RichPortalPreview): void {
+	setPreview(id: string, preview: DisplayPreview): void {
 		const entry = this.entries.get(id);
 		if (!entry) return;
 		entry.target = { ...entry.target, preview };
@@ -271,8 +291,67 @@ export class ArchPreviews {
 					}
 					break;
 				}
+				case "waveform":
+				case "pdfPage":
+					this.executeMedia(ctx, op);
+					break;
 			}
 		}
+	}
+
+	private executeMedia(
+		ctx: CanvasRenderingContext2D,
+		op: Extract<ArchDrawOp, { op: "waveform" | "pdfPage" }>,
+	): void {
+		const state = this.requestMedia(op.asset, op.op, op.box.w);
+		if (state.status === "loading") {
+			ctx.fillStyle = COLORS.muted;
+			ctx.font = `${DEFAULT_ARCH_METRICS.fontPx}px ${FONT_FAMILY}`;
+			ctx.fillText("…", op.box.x + op.box.w / 2 - 3, op.box.y + op.box.h / 2);
+			return;
+		}
+		if (state.status === "failed") return;
+		const value = state.value;
+		if (Array.isArray(value)) {
+			ctx.fillStyle = COLORS.wave;
+			for (const bar of waveformBars(value, op.box, 2, 1))
+				ctx.fillRect(bar.x, bar.y, bar.w, bar.h);
+		} else {
+			const fit = fitContain(value.width, value.height, op.box);
+			ctx.imageSmoothingEnabled = true;
+			ctx.drawImage(value, fit.x, fit.y, fit.w, fit.h);
+		}
+	}
+
+	private requestMedia(
+		asset: string,
+		kind: "waveform" | "pdfPage",
+		boxWidth: number,
+	): MediaState<number[] | HTMLCanvasElement> {
+		const existing = this.media.get(asset);
+		if (existing) return existing;
+		const url = resolveRelativeUrl(this.worldBase, asset);
+		const pending: Promise<number[] | HTMLCanvasElement> =
+			kind === "waveform"
+				? loadPeaks(url)
+				: loadPdfFirstPage(url, Math.round(boxWidth * TEXTURE_SCALE));
+		const state: MediaState<number[] | HTMLCanvasElement> = {
+			status: "loading",
+		};
+		this.media.set(asset, state);
+		pending.then(
+			(value) => {
+				if (this.destroyed) return;
+				this.media.set(asset, { status: "ready", value });
+				this.markDirtyUsing(asset);
+			},
+			() => {
+				if (this.destroyed) return;
+				this.media.set(asset, { status: "failed" });
+				this.markDirtyUsing(asset);
+			},
+		);
+		return state;
 	}
 
 	/** Plain HTMLImageElement, not Phaser's loader — this is a one-off draw source for a canvas, not a texture the scene keeps, and the loader's queue belongs to scene preload. */
@@ -301,13 +380,14 @@ export class ArchPreviews {
 		for (const entry of this.entries.values()) {
 			const p = entry.target.preview;
 			const uses =
-				(p.kind === "image" && p.asset === asset) ||
+				((p.kind === "image" || p.kind === "audio" || p.kind === "pdf") &&
+					p.asset === asset) ||
 				(p.kind === "url" && p.fallbackImage === asset);
 			if (uses && entry.detailKey) entry.dirty = true;
 		}
 	}
 
-	private placeholderKey(kind: RichPortalPreview["kind"]): string {
+	private placeholderKey(kind: DisplayPreviewKind): string {
 		const key = `cabn-arch-placeholder-${kind}`;
 		if (this.scene.textures.exists(key)) return key;
 		const w = Math.round(this.opening.width);
@@ -330,7 +410,7 @@ export class ArchPreviews {
 }
 
 const PLACEHOLDER_STYLE: Record<
-	RichPortalPreview["kind"],
+	DisplayPreviewKind,
 	{ bg: ArchColorRole; fg: ArchColorRole; glyph: string }
 > = {
 	code: { bg: "codeBg", fg: "keyword", glyph: "{}" },
@@ -339,4 +419,7 @@ const PLACEHOLDER_STYLE: Record<
 	text: { bg: "parchmentBg", fg: "ink", glyph: "¶" },
 	url: { bg: "urlBg", fg: "keyword", glyph: "↗" },
 	sealed: { bg: "sealedBg", fg: "chestGold", glyph: "▤" },
+	audio: { bg: "audioBg", fg: "wave", glyph: "♪" },
+	pdf: { bg: "pdfBg", fg: "cream", glyph: "▯" },
+	table: { bg: "tableBg", fg: "heading", glyph: "▦" },
 };

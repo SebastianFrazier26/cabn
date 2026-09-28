@@ -4,6 +4,7 @@ import {
 	type CabnGameTarget,
 	createCabnGame,
 } from "../game.js";
+import { configureMedia } from "../render/mediaSources.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
@@ -30,6 +31,13 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	 * CabnGame itself never calls this for anything internal.
 	 */
 	onGameReady?: (handle: CabnGameHandle | null) => void;
+	/**
+	 * Where the host serves pdf.js's worker (pdfjs-dist/build/pdf.worker.min.mjs,
+	 * same exact version as the engine's). Required for PDF previews — cabn
+	 * never fetches it from a CDN; without it PDFs show a "viewer unavailable"
+	 * notice. A Vite host can pass `import url from "pdfjs-dist/build/pdf.worker.min.mjs?url"`.
+	 */
+	pdfWorkerUrl?: string;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -42,7 +50,11 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady } = props;
+	const { onGameReady, pdfWorkerUrl } = props;
+
+	useEffect(() => {
+		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
+	}, [pdfWorkerUrl]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: onGameReady is deliberately excluded — an inline arrow-function prop (the common case) is a fresh reference every render and would re-create the whole game each time.
 	useEffect(() => {

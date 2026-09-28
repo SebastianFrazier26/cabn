@@ -54,6 +54,7 @@
 		"@lezer/highlight": "1.2.3",
 		"minisearch": "7.2.0",
 		"mitt": "^3.0.1",
+		"pdfjs-dist": "6.3.289",
 		"phaser": "^3.90.0",
 		"zod": "^4.6.5",
 		"zustand": "^5.0.15"

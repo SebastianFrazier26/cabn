@@ -1,4 +1,13 @@
-import type { Portal, Position, RichPortalPreview } from "@cabn/world-schema";
+import type {
+	AudioPreview,
+	MediaPreview,
+	MediaSealedReason,
+	PdfPreview,
+	Portal,
+	Position,
+	RichPortalPreview,
+} from "@cabn/world-schema";
+import { csvDelimiterForPath, isDelimitedTextPath, parseCsv } from "./csv.js";
 
 /**
  * Pure half of the in-arch literal preview (render/archPreviews.ts owns the
@@ -9,8 +18,51 @@ import type { Portal, Position, RichPortalPreview } from "@cabn/world-schema";
 
 const CODE_FALLBACK_MAX_LINES = 40;
 
+/** A CSV/TSV portal's first rows, parsed engine-side from its (text) code preview — no bundle field needed. */
+export interface TablePreview {
+	kind: "table";
+	rows: string[][];
+	truncated: boolean;
+}
+
+/** The sealed chest, carrying what it's allowed to say about the file: its name, size, and why it stayed sealed. */
+export interface SealedDisplayPreview {
+	kind: "sealed";
+	name?: string;
+	bytes?: number;
+	reason?: MediaSealedReason;
+}
+
+/** Everything an arch, the dock, or the file view can show — the bundle's richPreview kinds plus media.json's audio/PDF and the engine-derived table. */
+export type DisplayPreview =
+	| Exclude<RichPortalPreview, { kind: "sealed" }>
+	| AudioPreview
+	| PdfPreview
+	| TablePreview
+	| SealedDisplayPreview;
+
+export type DisplayPreviewKind = DisplayPreview["kind"];
+
+export const TABLE_PREVIEW_MAX_ROWS = 40;
+
+export function tableFromText(
+	text: string,
+	path: string,
+	maxRows = TABLE_PREVIEW_MAX_ROWS,
+): TablePreview {
+	const { rows, truncated } = parseCsv(text, {
+		delimiter: csvDelimiterForPath(path),
+		maxRows,
+	});
+	return { kind: "table", rows, truncated };
+}
+
 /**
  * The preview a portal actually shows, in-arch and in the expanded dock.
+ * `media` is this portal's media.json entry, when the bundle has one — it
+ * wins over world.json's richPreview (which is a sealed chest for audio/PDF,
+ * kept for engines that predate media.json).
+ *
  * `overrideContent` is a saved quill edit (save.fileOverrides) — it replaces
  * the converter's snapshot for code/text previews, since those are literal
  * file content and would otherwise show stale text. Image/markdown/url/sealed
@@ -22,6 +74,33 @@ const CODE_FALLBACK_MAX_LINES = 40;
  * with nothing to show becomes the sealed chest.
  */
 export function effectiveRichPreview(
+	portal: Pick<Portal, "file" | "preview" | "richPreview">,
+	overrideContent?: string,
+	media?: MediaPreview,
+): DisplayPreview {
+	const sealed = (reason?: MediaSealedReason): SealedDisplayPreview => ({
+		kind: "sealed",
+		name: portal.file.name,
+		bytes: portal.file.bytes,
+		...(reason ? { reason } : {}),
+	});
+	if (media) return media.kind === "sealed" ? sealed(media.reason) : media;
+	const resolved = baseRichPreview(portal, overrideContent);
+	if (resolved.kind === "sealed") return sealed();
+	if (resolved.kind === "code" && isDelimitedTextPath(portal.file.path)) {
+		const table = tableFromText(
+			overrideContent ?? resolved.lines.join("\n"),
+			portal.file.path,
+		);
+		return {
+			...table,
+			truncated: table.truncated || (!overrideContent && resolved.truncated),
+		};
+	}
+	return resolved;
+}
+
+function baseRichPreview(
 	portal: Pick<Portal, "file" | "preview" | "richPreview">,
 	overrideContent?: string,
 ): RichPortalPreview {
@@ -297,7 +376,13 @@ export type ArchColorRole =
 	| "muted"
 	| "chestWood"
 	| "chestDark"
-	| "chestGold";
+	| "chestGold"
+	| "audioBg"
+	| "wave"
+	| "pdfBg"
+	| "tableBg"
+	| "tableHeaderBg"
+	| "tableRule";
 
 export type ArchDrawOp =
 	| { op: "fill"; rect: Rect; color: ArchColorRole }
@@ -311,7 +396,11 @@ export type ArchDrawOp =
 			bold: boolean;
 	  }
 	/** Painter contain-fits the loaded image into `box` (natural size is only known once it loads). */
-	| { op: "image"; asset: string; box: Rect };
+	| { op: "image"; asset: string; box: Rect }
+	/** Painter decodes the audio (WebAudio, in the browser) and draws its peaks as waveformBars into `box`. */
+	| { op: "waveform"; asset: string; box: Rect }
+	/** Painter renders page 1 via lazily-loaded pdf.js and contain-fits it into `box`. */
+	| { op: "pdfPage"; asset: string; box: Rect };
 
 export interface ArchLayoutMetrics {
 	/** Body text size in px at texture resolution. */
@@ -357,7 +446,7 @@ function makeGrid(width: number, height: number, m: ArchLayoutMetrics): Grid {
  * testable; the painter just executes ops.
  */
 export function layoutArchPreview(
-	preview: RichPortalPreview,
+	preview: DisplayPreview,
 	width: number,
 	height: number,
 	metrics: ArchLayoutMetrics = DEFAULT_ARCH_METRICS,
@@ -511,9 +600,194 @@ export function layoutArchPreview(
 			];
 		case "url":
 			return layoutUrlCard(preview, width, height, grid, metrics);
+		case "audio":
+			return layoutAudio(preview, width, height, grid, metrics);
+		case "pdf":
+			return layoutPdf(preview, width, height, grid, metrics);
+		case "table":
+			return layoutTable(preview, width, height, grid, metrics);
 		case "sealed":
-			return layoutSealed(width, height, grid, metrics);
+			return layoutSealed(preview, width, height, grid, metrics);
 	}
+}
+
+export function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const SEALED_REASON_TEXT: Record<MediaSealedReason, string> = {
+	"too-large": "too large",
+	budget: "over world budget",
+	"type-mismatch": "type mismatch",
+	unsupported: "no viewer",
+	unread: "not read",
+};
+
+export function sealedReasonText(reason: MediaSealedReason): string {
+	return SEALED_REASON_TEXT[reason];
+}
+
+function captionOp(
+	text: string,
+	y: number,
+	width: number,
+	grid: Grid,
+	m: ArchLayoutMetrics,
+	color: ArchColorRole = "muted",
+): ArchDrawOp {
+	const shown = truncateToChars(text, grid.charsPerLine(m.fontPx));
+	return {
+		op: "text",
+		x: (width - shown.length * m.fontPx * m.charWidthRatio) / 2,
+		y,
+		text: shown,
+		color,
+		sizePx: m.fontPx,
+		bold: false,
+	};
+}
+
+function layoutAudio(
+	preview: AudioPreview,
+	width: number,
+	height: number,
+	grid: Grid,
+	m: ArchLayoutMetrics,
+): ArchDrawOp[] {
+	const lh = grid.lineHeight(m.fontPx);
+	const ops: ArchDrawOp[] = [
+		{ op: "fill", rect: { x: 0, y: 0, w: width, h: height }, color: "audioBg" },
+		captionOp(
+			`♪ ${preview.format.toUpperCase()} · ${formatBytes(preview.bytes)}`,
+			grid.inner.y,
+			width,
+			grid,
+			m,
+			"keyword",
+		),
+	];
+	const box = {
+		x: grid.inner.x,
+		y: grid.inner.y + lh * 1.4,
+		w: grid.inner.w,
+		h: Math.max(0, grid.inner.h - lh * 1.4),
+	};
+	if (box.h > 0) ops.push({ op: "waveform", asset: preview.asset, box });
+	return ops;
+}
+
+function layoutPdf(
+	preview: PdfPreview,
+	width: number,
+	height: number,
+	grid: Grid,
+	m: ArchLayoutMetrics,
+): ArchDrawOp[] {
+	const lh = grid.lineHeight(m.fontPx);
+	const bottom = grid.inner.y + grid.inner.h;
+	const box = {
+		x: grid.inner.x,
+		y: grid.inner.y,
+		w: grid.inner.w,
+		h: Math.max(0, grid.inner.h - lh * 1.2),
+	};
+	const ops: ArchDrawOp[] = [
+		{ op: "fill", rect: { x: 0, y: 0, w: width, h: height }, color: "pdfBg" },
+	];
+	if (box.h > 0) ops.push({ op: "pdfPage", asset: preview.asset, box });
+	ops.push(
+		captionOp(
+			`PDF · ${formatBytes(preview.bytes)}`,
+			bottom - lh,
+			width,
+			grid,
+			m,
+		),
+	);
+	return ops;
+}
+
+/**
+ * Column widths (in characters) for a monospace table `chars` wide: each
+ * column's natural width (longest visible cell, capped) plus a 1-char gap,
+ * shrunk proportionally — never below 3 — when the natural total overflows.
+ * Columns that still don't fit are dropped from the right.
+ */
+export function tableColumnChars(
+	rows: readonly (readonly string[])[],
+	chars: number,
+	maxNatural = 14,
+): number[] {
+	const cols = rows.reduce((n, r) => Math.max(n, r.length), 0);
+	const natural = Array.from({ length: cols }, (_, c) =>
+		Math.min(maxNatural, Math.max(1, ...rows.map((r) => (r[c] ?? "").length))),
+	);
+	const gaps = Math.max(0, cols - 1);
+	const total = natural.reduce((a, b) => a + b, 0) + gaps;
+	if (total <= chars) return natural;
+	const room = Math.max(0, chars - gaps);
+	const scale = room / Math.max(1, total - gaps);
+	const out: number[] = [];
+	let used = 0;
+	for (const n of natural) {
+		const w = Math.max(3, Math.floor(n * scale));
+		if (used + w > chars) break;
+		out.push(w);
+		used += w + 1;
+	}
+	return out;
+}
+
+function layoutTable(
+	preview: TablePreview,
+	width: number,
+	height: number,
+	grid: Grid,
+	m: ArchLayoutMetrics,
+): ArchDrawOp[] {
+	const body = m.fontPx;
+	const lh = grid.lineHeight(body) + 1;
+	const charW = body * m.charWidthRatio;
+	const ops: ArchDrawOp[] = [
+		{ op: "fill", rect: { x: 0, y: 0, w: width, h: height }, color: "tableBg" },
+	];
+	const maxRows = Math.max(0, Math.floor(grid.inner.h / lh));
+	const rows = preview.rows.slice(0, maxRows);
+	const widths = tableColumnChars(rows, grid.charsPerLine(body));
+	rows.forEach((row, r) => {
+		const y = grid.inner.y + r * lh;
+		if (r === 0) {
+			ops.push({
+				op: "fill",
+				rect: { x: 0, y: y - 1, w: width, h: lh },
+				color: "tableHeaderBg",
+			});
+		} else {
+			ops.push({
+				op: "fill",
+				rect: { x: grid.inner.x, y: y - 1, w: grid.inner.w, h: 1 },
+				color: "tableRule",
+			});
+		}
+		let col = 0;
+		widths.forEach((w, c) => {
+			const cell = row[c] ?? "";
+			if (cell)
+				ops.push({
+					op: "text",
+					x: grid.inner.x + col * charW,
+					y,
+					text: truncateToChars(cell, w),
+					color: r === 0 ? "heading" : "ink",
+					sizePx: body,
+					bold: r === 0,
+				});
+			col += w + 1;
+		});
+	});
+	return ops;
 }
 
 function hostOf(url: string): string {
@@ -603,6 +877,7 @@ const CHEST_PIXELS = [
 ];
 
 function layoutSealed(
+	preview: SealedDisplayPreview,
 	width: number,
 	height: number,
 	grid: Grid,
@@ -622,7 +897,17 @@ function layoutSealed(
 		Math.floor(Math.min(grid.inner.w / cols, grid.inner.h / 2 / rows)),
 	);
 	const ox = Math.round((width - cols * cell) / 2);
-	const oy = Math.round(height / 2 - (rows * cell) / 2 - m.fontPx);
+	const captionLines =
+		1 +
+		(preview.name ? 1 : 0) +
+		(preview.bytes !== undefined ? 1 : 0) +
+		(preview.reason ? 1 : 0);
+	const oy =
+		captionLines === 1
+			? Math.round(height / 2 - (rows * cell) / 2 - m.fontPx)
+			: Math.round(
+					(height - rows * cell - captionLines * grid.lineHeight(m.fontPx)) / 2,
+				);
 	const roles: Record<string, ArchColorRole> = {
 		w: "chestWood",
 		d: "chestDark",
@@ -639,16 +924,21 @@ function layoutSealed(
 				});
 		}
 	});
-	const label = "sealed";
-	ops.push({
-		op: "text",
-		x: (width - label.length * m.fontPx * m.charWidthRatio) / 2,
-		y: oy + rows * cell + m.fontPx * 0.6,
-		text: label,
-		color: "muted",
-		sizePx: m.fontPx,
-		bold: false,
-	});
+	const lh = grid.lineHeight(m.fontPx);
+	const captions: { text: string; color: ArchColorRole }[] = [
+		{ text: "sealed", color: "muted" },
+	];
+	if (preview.name) captions.push({ text: preview.name, color: "cream" });
+	if (preview.bytes !== undefined)
+		captions.push({ text: formatBytes(preview.bytes), color: "muted" });
+	if (preview.reason)
+		captions.push({ text: sealedReasonText(preview.reason), color: "keyword" });
+	let y = oy + rows * cell + m.fontPx * 0.6;
+	for (const caption of captions) {
+		if (y + lh > height) break;
+		ops.push(captionOp(caption.text, y, width, grid, m, caption.color));
+		y += lh;
+	}
 	return ops;
 }
 

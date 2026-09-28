@@ -31,7 +31,7 @@ import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json" }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs" }));
 `;
 }
 

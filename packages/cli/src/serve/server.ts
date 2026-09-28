@@ -6,6 +6,7 @@ import {
 	type Server,
 	type ServerResponse,
 } from "node:http";
+import { createRequire } from "node:module";
 import { basename, extname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { convert, DirSource, type WorldBundle } from "@cabn/converter";
@@ -63,11 +64,37 @@ const REPO_ASSETS_DIR = resolvePath(
 	"../../../../../assets/generated",
 );
 
+// pdf.js's worker, resolved through @cabn/engine (whose exact-pinned
+// pdfjs-dist it must match) and served from this same loopback origin — the
+// host page never loads it from a CDN.
+export const PDF_WORKER_ROUTE = "/pdfjs/pdf.worker.min.mjs";
+function resolvePdfWorkerPath(): string | undefined {
+	try {
+		const enginePath = fileURLToPath(import.meta.resolve("@cabn/engine"));
+		return createRequire(enginePath).resolve(
+			"pdfjs-dist/build/pdf.worker.min.mjs",
+		);
+	} catch {
+		return undefined;
+	}
+}
+
+const MEDIA_CONTENT_TYPES: Record<string, string> = {
+	".jpg": "image/jpeg",
+	".gif": "image/gif",
+	".mp3": "audio/mpeg",
+	".wav": "audio/wav",
+	".ogg": "audio/ogg",
+	".pdf": "application/pdf",
+};
+
 function contentTypeFor(path: string): string {
 	const ext = extname(path).toLowerCase();
 	if (ext === ".json") return "application/json; charset=utf-8";
 	if (ext === ".webp") return "image/webp";
 	if (ext === ".png") return "image/png";
+	const media = MEDIA_CONTENT_TYPES[ext];
+	if (media) return media;
 	if (ext === ".js" || ext === ".mjs") return "text/javascript; charset=utf-8";
 	if (ext === ".html") return "text/html; charset=utf-8";
 	return "application/octet-stream";
@@ -297,6 +324,14 @@ async function handleRequest(
 	if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
 		await serveRepoAsset(res, url.pathname.slice("/assets/".length));
 		return;
+	}
+	if (req.method === "GET" && url.pathname === PDF_WORKER_ROUTE) {
+		const workerPath = resolvePdfWorkerPath();
+		if (workerPath) {
+			res.writeHead(200, { "content-type": contentTypeFor(workerPath) });
+			res.end(await readFile(workerPath));
+			return;
+		}
 	}
 	// Registered only when --allow-exec was passed at all — with it absent,
 	// this falls through to the generic 404 below exactly as if the route

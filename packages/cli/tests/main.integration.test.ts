@@ -40,6 +40,7 @@ test("cabn build <fixture> -o <outDir> via the built binary", async () => {
 	expect(entries.sort()).toEqual([
 		"assets.json",
 		"chunks",
+		"media.json",
 		"search-index.json",
 		"world.json",
 	]);

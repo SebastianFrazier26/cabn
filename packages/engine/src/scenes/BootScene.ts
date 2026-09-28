@@ -1,4 +1,10 @@
-import { validateManifest, validateShelf } from "@cabn/world-schema";
+import {
+	MEDIA_INDEX_FILENAME,
+	type MediaPreview,
+	parseMediaIndex,
+	validateManifest,
+	validateShelf,
+} from "@cabn/world-schema";
 import Phaser from "phaser";
 
 export type BootSceneData =
@@ -56,10 +62,28 @@ export class BootScene extends Phaser.Scene {
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
-		this.scene.start("preload", {
-			manifest,
-			worldBase,
-			returnTo: this.target.returnTo,
+		const returnTo = this.target.returnTo;
+		loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`).then((media) => {
+			if (!this.scene.isActive()) return;
+			this.scene.start("preload", { manifest, worldBase, returnTo, media });
 		});
+	}
+}
+
+/**
+ * media.json is optional (bundles from before it existed don't have one) and
+ * advisory (a portal without an entry just shows world.json's preview), so
+ * every failure here — 404, an HTML fallback page, bad JSON, a future
+ * version — resolves to "no media" rather than failing the world load.
+ * Plain fetch, not the Phaser loader, for the same reason: a loader error
+ * would be treated as a broken boot.
+ */
+async function loadMediaIndex(url: string): Promise<Map<string, MediaPreview>> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return new Map();
+		return parseMediaIndex(await res.json());
+	} catch {
+		return new Map();
 	}
 }

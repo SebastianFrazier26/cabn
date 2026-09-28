@@ -1,10 +1,6 @@
-import type {
-	FileKind,
-	Position,
-	RichPortalPreview,
-	Species,
-} from "@cabn/world-schema";
+import type { FileKind, Position, Species } from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 import {
@@ -57,7 +53,7 @@ export interface FocusedPortalPreview {
 	fileName: string;
 	path: string;
 	/** Already resolved via systems/archPreview.ts's effectiveRichPreview — the same preview the arch itself paints, legacy fallback and quill edits included. */
-	preview: RichPortalPreview;
+	preview: DisplayPreview;
 	/** The manifest's own list, re-checked by embedGuard at render time. */
 	allowedEmbedOrigins: readonly string[];
 }
@@ -74,6 +70,8 @@ export interface CabnState {
 	 * leak WorldScene's internal chunk cache shape into the store.
 	 */
 	activePortalContent: string | null;
+	/** The open portal's resolved preview (same one its arch shows) — lets the file view render media/tables without reaching back into WorldScene. Null outside file mode, or when the caller didn't supply one. */
+	activePortalPreview: DisplayPreview | null;
 	loadedChunks: string[];
 	playerPos: Position;
 	searchOpen: boolean;
@@ -112,7 +110,11 @@ export interface CabnState {
 
 export interface CabnActions {
 	setActiveCluster(clusterId: string | null): void;
-	enterPortal(portalId: string, content: string | null): void;
+	enterPortal(
+		portalId: string,
+		content: string | null,
+		preview?: DisplayPreview,
+	): void;
 	exitPortal(): void;
 	setLoadedChunks(clusterIds: string[]): void;
 	setPlayerPos(pos: Position): void;
@@ -157,6 +159,7 @@ const initialState: CabnState = {
 	activeClusterId: null,
 	activePortalId: null,
 	activePortalContent: null,
+	activePortalPreview: null,
 	loadedChunks: [],
 	playerPos: { x: 0, y: 0 },
 	searchOpen: false,
@@ -180,14 +183,20 @@ export function createCabnStore(): StoreApi<CabnStore> {
 	return createStore<CabnStore>((set, get) => ({
 		...initialState,
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
-		enterPortal: (portalId, content) =>
+		enterPortal: (portalId, content, preview) =>
 			set({
 				mode: "file",
 				activePortalId: portalId,
 				activePortalContent: content,
+				activePortalPreview: preview ?? null,
 			}),
 		exitPortal: () =>
-			set({ mode: "world", activePortalId: null, activePortalContent: null }),
+			set({
+				mode: "world",
+				activePortalId: null,
+				activePortalContent: null,
+				activePortalPreview: null,
+			}),
 		setLoadedChunks: (loadedChunks) => set({ loadedChunks }),
 		setPlayerPos: (playerPos) => set({ playerPos }),
 		setSearchOpen: (searchOpen) => set({ searchOpen }),
