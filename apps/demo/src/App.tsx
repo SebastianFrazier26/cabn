@@ -16,9 +16,15 @@ const SHELF_URL = "/worlds/shelf.json";
 // what the smoke test exercises.
 function exposeTestHookIfRequested(handle: CabnGameHandle | null): void {
 	if (new URLSearchParams(window.location.search).get("e2e") !== "1") return;
-	const w = window as unknown as { __cabnStore: unknown; __cabnBus: unknown };
+	const w = window as unknown as {
+		__cabnStore: unknown;
+		__cabnBus: unknown;
+		__cabnGame: unknown;
+	};
 	w.__cabnStore = handle?.store ?? undefined;
 	w.__cabnBus = handle?.bus ?? undefined;
+	// The file-caret e2e reads FileScene's camera to click an exact character.
+	w.__cabnGame = handle?.game ?? undefined;
 }
 
 export function App(): React.ReactElement {
@@ -46,7 +52,8 @@ export function App(): React.ReactElement {
 				<h1 style={{ margin: 0, fontSize: 18 }}>cabn</h1>
 				<span style={{ opacity: 0.8, fontSize: 13 }}>
 					walk the shelf of worlds — WASD/arrows or click to move, Enter or
-					click to go in (cabin, portal) or out (bonfire), Esc to leave a file
+					click to go in (cabin, portal) or out (bonfire); inside a file click
+					and type to edit, Esc to leave
 				</span>
 			</header>
 			<div style={{ flex: 1, minHeight: 0 }}>
