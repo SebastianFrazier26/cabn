@@ -1,7 +1,11 @@
 import {
 	MEDIA_INDEX_FILENAME,
 	type MediaPreview,
+	MONSTER_INDEX_FILENAME,
+	type Monster,
+	mergeMonsterIndex,
 	parseMediaIndex,
+	parseMonsterIndex,
 	validateManifest,
 	validateShelf,
 } from "@cabn/world-schema";
@@ -57,14 +61,20 @@ export class BootScene extends Phaser.Scene {
 		}
 
 		const raw = this.cache.json.get("world-manifest");
-		const manifest = validateManifest(raw);
+		const baseManifest = validateManifest(raw);
 		const worldBase = this.target.worldUrl.slice(
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
 		const returnTo = this.target.returnTo;
-		loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`).then((media) => {
+		Promise.all([
+			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
+			loadMonsterIndex(`${worldBase}${MONSTER_INDEX_FILENAME}`),
+		]).then(([media, extraMonsters]) => {
 			if (!this.scene.isActive()) return;
+			// Merged here, once, so every scene and HUD piece downstream sees one
+			// `manifest.monsters` and never needs to know monsters.json exists.
+			const manifest = mergeMonsterIndex(baseManifest, extraMonsters);
 			this.scene.start("preload", { manifest, worldBase, returnTo, media });
 		});
 	}
@@ -85,5 +95,16 @@ async function loadMediaIndex(url: string): Promise<Map<string, MediaPreview>> {
 		return parseMediaIndex(await res.json());
 	} catch {
 		return new Map();
+	}
+}
+
+/** Same contract as loadMediaIndex: optional, advisory, never fails the load. */
+async function loadMonsterIndex(url: string): Promise<Monster[]> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return [];
+		return parseMonsterIndex(await res.json());
+	} catch {
+		return [];
 	}
 }

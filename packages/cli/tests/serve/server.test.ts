@@ -125,6 +125,12 @@ describe("startServe — no --allow-exec", () => {
 		expect(media.status).toBe(200);
 		expect((await media.json()).mediaVersion).toBe(1);
 
+		const monsters = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/monsters.json`,
+		);
+		expect(monsters.status).toBe(200);
+		expect((await monsters.json()).monstersVersion).toBe(1);
+
 		const worker = await fetch(
 			`http://127.0.0.1:${handle?.port}/pdfjs/pdf.worker.min.mjs`,
 		);

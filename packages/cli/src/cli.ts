@@ -12,6 +12,7 @@ async function build(rest: string[]): Promise<number> {
 			options: {
 				out: { type: "string", short: "o" },
 				"include-secrets": { type: "boolean" },
+				findings: { type: "string", multiple: true },
 			},
 			allowPositionals: true,
 		});
@@ -24,11 +25,18 @@ async function build(rest: string[]): Promise<number> {
 		const summary = await runBuild(input, {
 			outDir: values.out,
 			includeSecrets: values["include-secrets"],
+			findingsPaths: values.findings,
 		});
 		console.log(`Built world at ${summary.outDir}`);
 		console.log(
-			`${summary.clusters} clusters, ${summary.portals} portals, ${summary.bytes} bytes in ${summary.elapsedMs}ms`,
+			`${summary.clusters} clusters, ${summary.portals} portals, ${summary.monsters} monsters, ${summary.bytes} bytes in ${summary.elapsedMs}ms`,
 		);
+		if (summary.findings) {
+			const { ingested, attached, dropped } = summary.findings;
+			console.log(
+				`Findings: ${attached} of ${ingested} became monsters (${dropped} dropped: path not in this world, duplicate of a built-in monster, or over a cap)`,
+			);
+		}
 		if (summary.truncated) {
 			console.warn(
 				`Warning: partial world — ${summary.skippedFiles} file(s) were dropped by the converter's caps (maxFiles/archive limits).`,

@@ -8,6 +8,11 @@ const SPECIES_DISPLAY_NAME: Record<Species, string> = {
 	gremlin: "Gremlin",
 	ouroboros: "Ouroboros",
 	"will-o-wisp": "Will-o'-Wisp",
+	imp: "Hex Imp",
+	magpie: "Magpie",
+	skeleton: "Skeleton",
+	bramble: "Bramble",
+	shade: "Shade",
 };
 
 export function speciesDisplayName(species: Species): string {
