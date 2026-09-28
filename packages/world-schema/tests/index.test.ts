@@ -61,6 +61,16 @@ describe("validateManifest", () => {
 		expect(manifest.clusters[0]?.id).toBe("root");
 	});
 
+	test("defaults allowedEmbedOrigins to empty when absent (pre-M10 manifest)", () => {
+		const manifest = validateManifest(validManifest());
+		expect(manifest.allowedEmbedOrigins).toEqual([]);
+	});
+
+	test("leaves richPreview undefined when absent (pre-M10 manifest)", () => {
+		const manifest = validateManifest(validManifest());
+		expect(manifest.portals[0]?.richPreview).toBeUndefined();
+	});
+
 	test("rejects a manifest with the wrong cabnVersion literal", () => {
 		const bad = { ...validManifest(), cabnVersion: 2 };
 		expect(() => validateManifest(bad)).toThrow(WorldManifestValidationError);
@@ -75,6 +85,58 @@ describe("validateManifest", () => {
 	test("rejects a preview line over 120 chars", () => {
 		const bad = validManifest();
 		bad.portals[0].preview.lines = ["x".repeat(121)];
+		expect(() => validateManifest(bad)).toThrow();
+	});
+
+	test("accepts every richPreview kind", () => {
+		const kinds: unknown[] = [
+			{ kind: "code", lines: ["a"], truncated: false },
+			{
+				kind: "markdown",
+				nodes: [{ type: "heading", level: 1, text: "Hi" }],
+				truncated: false,
+			},
+			{ kind: "image", asset: "assets/previews/a.png", bytes: 10 },
+			{ kind: "text", text: "a short blurb" },
+			{ kind: "url", url: "https://example.com/embed" },
+			{ kind: "sealed" },
+		];
+		for (const richPreview of kinds) {
+			const manifest = validManifest();
+			// biome-ignore lint/suspicious/noExplicitAny: exercising every union member against a fixed portal shape
+			(manifest.portals[0] as any).richPreview = richPreview;
+			expect(() => validateManifest(manifest)).not.toThrow();
+		}
+	});
+
+	test("rejects a richPreview with an unrecognized kind", () => {
+		const bad = validManifest();
+		// biome-ignore lint/suspicious/noExplicitAny: deliberately malformed input for the test
+		(bad.portals[0] as any).richPreview = {
+			kind: "video",
+			url: "https://example.com/x",
+		};
+		expect(() => validateManifest(bad)).toThrow();
+	});
+
+	test("rejects a richPreview url that isn't https", () => {
+		const bad = validManifest();
+		// biome-ignore lint/suspicious/noExplicitAny: deliberately malformed input for the test
+		(bad.portals[0] as any).richPreview = {
+			kind: "url",
+			url: "http://example.com",
+		};
+		expect(() => validateManifest(bad)).toThrow();
+	});
+
+	test("rejects a richPreview code line over 200 chars", () => {
+		const bad = validManifest();
+		// biome-ignore lint/suspicious/noExplicitAny: deliberately malformed input for the test
+		(bad.portals[0] as any).richPreview = {
+			kind: "code",
+			lines: ["x".repeat(201)],
+			truncated: false,
+		};
 		expect(() => validateManifest(bad)).toThrow();
 	});
 

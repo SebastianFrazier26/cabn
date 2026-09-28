@@ -1,8 +1,10 @@
 import { iso, z } from "zod";
+import { RichPortalPreviewSchema } from "./preview.js";
 import {
 	BiomeSchema,
 	ErrorCodeSchema,
 	FileKindSchema,
+	HttpsOriginSchema,
 	PathKindSchema,
 	PositionSchema,
 	SpeciesSchema,
@@ -71,6 +73,17 @@ export const PortalSchema = z.strictObject({
 	clusterId: z.string(),
 	file: PortalFileSchema,
 	preview: PortalPreviewSchema,
+	/**
+	 * M10's richer literal-preview payload (code w/ language, structured
+	 * markdown, an image asset, a text blurb, a live-embed url, or "sealed"
+	 * for binaries) — carries a cabn.json override's resolved result when one
+	 * applies. Optional, additive: absent on a manifest built before M10 (or
+	 * any hand-built one) rather than forcing a cabnVersion bump — PortalScene
+	 * and PortalEmbed (packages/engine/src/react) fall back to `preview.lines`
+	 * or a "no preview" placeholder when it's missing. `preview` above is
+	 * untouched and keeps serving WorldScene's small in-arch panel.
+	 */
+	richPreview: RichPortalPreviewSchema.optional(),
 	spawns: z.array(z.string()),
 });
 export type Portal = z.infer<typeof PortalSchema>;
@@ -108,6 +121,14 @@ const WorldManifestShapeSchema = z.strictObject({
 	// Empty until M6's annotators run, but the shape ships now so downstream
 	// consumers (engine, cli inspect) never need a schema migration for it.
 	monsters: z.array(MonsterSchema),
+	/**
+	 * cabn.json's allowedEmbedOrigins, carried through to the bundle so the
+	 * engine's PortalEmbed can re-check a url preview's origin at runtime
+	 * against the manifest it actually loaded, not just trust that the
+	 * converter validated cabn.json correctly at build time. Defaults to
+	 * empty — additive, like richPreview above, not a version bump.
+	 */
+	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
 });
 
 // Cross-reference checks catch a corrupted/hand-edited world (dangling
