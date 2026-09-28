@@ -59,6 +59,25 @@ export const PLACEHOLDERS = [
 	"bramble_idle1_soft.png",
 	"shade_idle0_soft.png",
 	"shade_idle1_soft.png",
+	// Battle frames (assetPaths.ts BATTLE_FX_MONSTER_SPECIES): hit + 3 defeat.
+	...[
+		"ghost",
+		"rot_sprite",
+		"warded_mimic",
+		"gremlin",
+		"ouroboros",
+		"will_o_wisp",
+		"imp",
+		"magpie",
+		"skeleton",
+		"bramble",
+		"shade",
+	].flatMap((slug) => [
+		`${slug}_hit_soft.png`,
+		`${slug}_defeat0_soft.png`,
+		`${slug}_defeat1_soft.png`,
+		`${slug}_defeat2_soft.png`,
+	]),
 ];
 
 async function copyInto(subdir, files) {

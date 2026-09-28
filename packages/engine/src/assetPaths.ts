@@ -79,6 +79,37 @@ export const ANIMATED_MONSTER_SPECIES = [
 	"shade",
 ] as const;
 
+// Battle frames (2026-09-28): one hit flash + a three-frame defeat poof per
+// species, ghost included, derived from each idle0 by tools/asset-pipeline's
+// monster-fx.ts at the idle frame's exact size. Optional: FileScene falls
+// back to its old tween-only shrug/fade when a species' frames didn't load.
+export const MONSTER_DEFEAT_FRAME_COUNT = 3;
+
+export const BATTLE_FX_MONSTER_SPECIES = [
+	"ghost",
+	...ANIMATED_MONSTER_SPECIES,
+] as const;
+
+function monsterSlug(species: string): string {
+	return MONSTER_FILE_SLUG[species] ?? species;
+}
+
+export function monsterHitKey(species: string): string {
+	return `monster-${species}-hit`;
+}
+
+export function monsterHitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_hit_soft.png`;
+}
+
+export function monsterDefeatKey(species: string, frame: number): string {
+	return `monster-${species}-defeat${frame}`;
+}
+
+export function monsterDefeatPath(species: string, frame: number): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_defeat${frame}_soft.png`;
+}
+
 function bonfireFrameKey(index: number): string {
 	return `bonfire-frame-${index}`;
 }

@@ -25,7 +25,12 @@ import {
 	type PointerInputHandle,
 } from "../render/clickWalker.js";
 import { dashedLine } from "../render/dashedLine.js";
-import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
+import {
+	addHoverBob,
+	createMonsterSprite,
+	playMonsterDefeat,
+	playMonsterHit,
+} from "../render/monsterSprite.js";
 import { MONSTER_FILE_SIZE, PORTAL_SCALE } from "../render/scale.js";
 import { checkMonsterFixed } from "../systems/battle.js";
 import {
@@ -671,7 +676,7 @@ export class FileScene extends Phaser.Scene {
 			(m) => m.id === this.encounterMonsterId,
 		);
 		if (stillEncountered) {
-			this.shrugMonster(stillEncountered);
+			this.shrugMonster(stillEncountered, true);
 			this.bus.emit("battle:hint", {
 				message: "Still something wrong here — check the error and try again.",
 			});
@@ -689,15 +694,17 @@ export class FileScene extends Phaser.Scene {
 			const isActiveEncounter = monster.id === this.encounterMonsterId;
 			this.spawnVictorySparkles(sprite.x, sprite.y);
 			if (isActiveEncounter) this.showVictoryText(sprite.x, sprite.y);
-			this.tweens.add({
-				targets: sprite,
-				alpha: 0,
-				scaleX: sprite.scaleX * 1.5,
-				scaleY: sprite.scaleY * 1.5,
-				duration: 500,
-				ease: "Cubic.easeOut",
-				onComplete: () => sprite.destroy(),
-			});
+			if (!playMonsterDefeat(this, sprite)) {
+				this.tweens.add({
+					targets: sprite,
+					alpha: 0,
+					scaleX: sprite.scaleX * 1.5,
+					scaleY: sprite.scaleY * 1.5,
+					duration: 500,
+					ease: "Cubic.easeOut",
+					onComplete: () => sprite.destroy(),
+				});
+			}
 		}
 		this.bus.emit("monster:defeated", { monsterId: monster.id });
 	}
@@ -740,9 +747,11 @@ export class FileScene extends Phaser.Scene {
 		});
 	}
 
-	private shrugMonster(monster: Monster): void {
+	/** `hit`: a save that didn't fix it still landed a blow, so the hit frame flashes; a run the monster blocks only gets the shrug. */
+	private shrugMonster(monster: Monster, hit = false): void {
 		const sprite = this.monsterSprites.get(monster.id);
 		if (!sprite) return;
+		if (hit) playMonsterHit(this, sprite);
 		const baseX = sprite.x;
 		this.tweens.add({
 			targets: sprite,
