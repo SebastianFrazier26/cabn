@@ -4,6 +4,7 @@ import type { StoreApi } from "zustand/vanilla";
 import { ASSET_KEYS } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnMode, CabnStore } from "../bridge/store.js";
+import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
@@ -22,12 +23,20 @@ import {
 	type MdSegment,
 	type MdSegmentStyle,
 } from "../systems/enchantMd.js";
+import { getActiveExecutionProvider } from "../systems/execution/executionProvider.js";
 import {
 	computeLineWindow,
 	type LineWindow,
 	lineWindowsEqual,
 } from "../systems/lineWindow.js";
 import { isWithinRadius } from "../systems/portalApproach.js";
+import {
+	createIdleRunPlaybackState,
+	currentStep,
+	type RunPlaybackState,
+	type RunSpeed,
+	runPlaybackReducer,
+} from "../systems/runPlayback.js";
 import {
 	extendSelection,
 	type LineSelection,
@@ -73,6 +82,11 @@ const MONSTER_X = PATH_X + 50;
 const MONSTER_APPROACH_RADIUS = 90;
 const MONSTER_ENTER_RADIUS = 42;
 const ENCOUNTER_BANNER_MS = 1400;
+
+// The run "spark" travels the same path the player normally walks, one line
+// at a time — sharing PATH_X reads as "the same road", not a separate lane.
+const RUN_SPARK_X = PATH_X;
+const RUN_SPARK_RADIUS = 6;
 
 function headingFontSize(level: number): number {
 	if (level <= 1) return 20;
@@ -137,6 +151,16 @@ export class FileScene extends Phaser.Scene {
 	private selection: LineSelection | null = null;
 	private highlightGraphic: Phaser.GameObjects.Graphics | null = null;
 	private unsubscribeMode: (() => void) | null = null;
+	private unsubscribeGlow: (() => void) | null = null;
+
+	/** Non-null only while a run is in progress — this scene owns the actual state machine (see runPlayback.ts); the store only ever gets a read-only snapshot (RunOverlayState) republished from it. */
+	private runState: RunPlaybackState | null = null;
+	private runSpark: Phaser.GameObjects.Arc | null = null;
+	private runHighlight: Phaser.GameObjects.Graphics | null = null;
+	/** Lines already checked for a blocking monster this run — BLOCK is a one-shot trigger per arrival at a line, not something that re-fires every tick while paused there. */
+	private runBlockedAtLine: number | null = null;
+	/** Bumped on every wand press and on stop — a provider's `run()` promise resolving with a stale id (superseded, or the run was already stopped) is ignored instead of unexpectedly starting/restarting playback. */
+	private runRequestId = 0;
 
 	private monsters: Monster[] = [];
 	private worldFiles = new Set<string>();
@@ -153,6 +177,13 @@ export class FileScene extends Phaser.Scene {
 		e: Phaser.Input.Keyboard.Key;
 		esc: Phaser.Input.Keyboard.Key;
 		shift: Phaser.Input.Keyboard.Key;
+	};
+	private runKeys!: {
+		space: Phaser.Input.Keyboard.Key;
+		n: Phaser.Input.Keyboard.Key;
+		one: Phaser.Input.Keyboard.Key;
+		two: Phaser.Input.Keyboard.Key;
+		four: Phaser.Input.Keyboard.Key;
 	};
 
 	constructor() {
@@ -187,11 +218,18 @@ export class FileScene extends Phaser.Scene {
 		this.createPlayer();
 		this.setupInput();
 		this.setupCamera();
+		this.unsubscribeGlow = attachGlowLifecycle(this, this.store);
 		// mitt's on/off take no context arg — the on*/handler fields below are
 		// arrow class fields (auto-bound, stable reference) specifically for this.
 		this.bus.on("tool:jump-to-line", this.onJumpToLine);
 		this.bus.on("tool:bag-use", this.onBagUse);
 		this.bus.on("tool:quill-use", this.onQuillUse);
+		this.bus.on("tool:wand-use", this.onWandUse);
+		this.bus.on("run:play", this.onRunPlay);
+		this.bus.on("run:pause", this.onRunPause);
+		this.bus.on("run:step", this.onRunStep);
+		this.bus.on("run:stop", this.onRunStop);
+		this.bus.on("run:set-speed", this.onRunSetSpeed);
 		this.bus.on("editor:save", this.onEditorSave);
 		this.bus.on("file:content-reset", this.onFileContentReset);
 		// Not a bus event: closing the editor is a store.closeEditor() call from
@@ -213,10 +251,29 @@ export class FileScene extends Phaser.Scene {
 		this.bus.off("tool:jump-to-line", this.onJumpToLine);
 		this.bus.off("tool:bag-use", this.onBagUse);
 		this.bus.off("tool:quill-use", this.onQuillUse);
+		this.bus.off("tool:wand-use", this.onWandUse);
+		this.bus.off("run:play", this.onRunPlay);
+		this.bus.off("run:pause", this.onRunPause);
+		this.bus.off("run:step", this.onRunStep);
+		this.bus.off("run:stop", this.onRunStop);
+		this.bus.off("run:set-speed", this.onRunSetSpeed);
 		this.bus.off("editor:save", this.onEditorSave);
 		this.bus.off("file:content-reset", this.onFileContentReset);
 		this.unsubscribeMode?.();
 		this.unsubscribeMode = null;
+		this.unsubscribeGlow?.();
+		this.unsubscribeGlow = null;
+		// A run in progress at shutdown: drop the state and any run-only game
+		// objects, but don't touch camera follow — the scene (and its camera)
+		// are being torn down regardless. Bumping runRequestId means a
+		// still-in-flight ExecutionProvider.run() resolving after this point is
+		// a no-op (see onWandUse) instead of touching a destroyed scene.
+		this.runRequestId++;
+		this.runSpark?.destroy();
+		this.runSpark = null;
+		this.runHighlight?.destroy();
+		this.runHighlight = null;
+		this.runState = null;
 		// Editor could still be "open" (mode === "editor") at shutdown if the
 		// player left mid-edit some other way than Esc — make sure the keyboard
 		// plugin doesn't stay disabled for whatever scene starts next.
@@ -532,6 +589,13 @@ export class FileScene extends Phaser.Scene {
 			esc: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
 			shift: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
 		};
+		this.runKeys = {
+			space: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
+			n: kb.addKey(Phaser.Input.Keyboard.KeyCodes.N),
+			one: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+			two: kb.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+			four: kb.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
+		};
 	}
 
 	private setupCamera(): void {
@@ -566,6 +630,11 @@ export class FileScene extends Phaser.Scene {
 			if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
 				this.store.getState().endEncounter();
 			}
+			return;
+		}
+		if (mode === "run") {
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			this.updateRun(delta);
 			return;
 		}
 		if (this.selection === null) {
@@ -644,6 +713,191 @@ export class FileScene extends Phaser.Scene {
 			initialLine: this.nearestLineToPlayer(),
 			language: this.file.language,
 		});
+	};
+
+	// --- Run / parchment playback ----------------------------------------
+	//
+	// TraceProvider (the default, and the only provider a hosted build ever
+	// includes — see systems/trace/) is called directly here rather than
+	// through a provider interface: LocalRunProvider is a separate,
+	// build-time-gated code path (cabn serve's own engine wiring), not a
+	// runtime strategy this scene picks between. Wiring both through one
+	// interface would mean the dead-code-eliminated branch still had to be
+	// *referenced* from code every hosted build ships.
+
+	/**
+	 * Wand hotkey: asks the active ExecutionProvider (TraceProvider unless a
+	 * `cabn serve --allow-exec` host page installed LocalRunProvider — see
+	 * systems/execution/) for this file's steps, then starts a run. A no-op
+	 * mid-selection (same guard as quill) or if there's nothing to trace (e.g.
+	 * an empty file). `requestId` guards against a real run's network round
+	 * trip resolving after the player has already stopped it (or left the
+	 * file) — a stale response must never silently restart playback.
+	 */
+	private onWandUse = (): void => {
+		if (this.selection !== null) return;
+		if (this.store.getState().mode !== "file") return;
+		const requestId = ++this.runRequestId;
+		getActiveExecutionProvider()
+			.run({
+				content: this.lines.join("\n"),
+				language: this.file.language,
+				filePath: this.file.path,
+			})
+			.then((steps) => {
+				if (requestId !== this.runRequestId) return; // superseded/stopped
+				if (steps.length === 0) return;
+				this.runState = runPlaybackReducer(createIdleRunPlaybackState(), {
+					type: "START",
+					steps,
+				});
+				this.runBlockedAtLine = null;
+				this.createRunVisuals();
+				this.store.getState().startRun(this.buildRunSnapshot());
+				const step = currentStep(this.runState);
+				if (step) this.onRunLineArrived(step.line);
+			})
+			.catch((err: unknown) => {
+				console.error("cabn: run failed", err);
+			});
+	};
+
+	private createRunVisuals(): void {
+		this.runSpark = this.add
+			.circle(RUN_SPARK_X, 0, RUN_SPARK_RADIUS, PALETTE.gold)
+			.setDepth(5);
+		this.tweens.add({
+			targets: this.runSpark,
+			alpha: 0.5,
+			duration: 400,
+			yoyo: true,
+			repeat: -1,
+		});
+		this.runHighlight = this.add.graphics().setDepth(1.5);
+		this.cameras.main.stopFollow();
+		this.cameras.main.startFollow(this.runSpark, true, 0.08, 0.12);
+	}
+
+	private teardownRunVisuals(): void {
+		this.runSpark?.destroy();
+		this.runSpark = null;
+		this.runHighlight?.destroy();
+		this.runHighlight = null;
+		this.cameras.main.stopFollow();
+		this.cameras.main.startFollow(this.player.body, true, 0.1, 0.15);
+	}
+
+	private buildRunSnapshot() {
+		const state = this.runState;
+		const step = state ? currentStep(state) : undefined;
+		return {
+			totalSteps: state?.steps.length ?? 0,
+			index: state?.index ?? 0,
+			currentLine: step?.line ?? 0,
+			status: state?.status ?? ("done" as const),
+			speed: state?.speed ?? (1 as const),
+			log: state?.log ?? [],
+			blockedMessage: state?.blockedMessage,
+			approximateLines: false,
+		};
+	}
+
+	/** Moves the spark + highlight band to `line` (the camera eases there for free — it's following the spark with a lerp) and pauses the run in place if a monster is standing on it. One-shot per line via runBlockedAtLine, so pressing on past a block doesn't immediately re-trigger it. */
+	private onRunLineArrived(line: number): void {
+		const y = line * LINE_HEIGHT;
+		this.runSpark?.setPosition(RUN_SPARK_X, y);
+		this.runHighlight?.clear();
+		this.runHighlight?.fillStyle(PALETTE.gold, 0.22);
+		this.runHighlight?.fillRect(
+			SCROLL_MIN_X,
+			y - LINE_HEIGHT / 2,
+			SCROLL_MAX_X - SCROLL_MIN_X,
+			LINE_HEIGHT,
+		);
+
+		if (this.runBlockedAtLine === line) return;
+		const blocker = this.monsters.find((m) => m.error.loc?.line === line);
+		if (!blocker || !this.runState || this.runState.status === "done") return;
+		this.runBlockedAtLine = line;
+		this.runState = runPlaybackReducer(this.runState, {
+			type: "BLOCK",
+			message: `A ${blocker.species} blocks the way!`,
+		});
+		this.shrugMonster(blocker);
+	}
+
+	private updateRun(delta: number): void {
+		if (!this.runState) return;
+		const before = currentStep(this.runState)?.line;
+		this.runState = runPlaybackReducer(this.runState, {
+			type: "TICK",
+			deltaMs: delta,
+		});
+		const after = currentStep(this.runState);
+		if (after && after.line !== before) this.onRunLineArrived(after.line);
+
+		if (Phaser.Input.Keyboard.JustDown(this.runKeys.space)) {
+			this.runState = runPlaybackReducer(this.runState, {
+				type: this.runState.status === "playing" ? "PAUSE" : "PLAY",
+			});
+		}
+		if (Phaser.Input.Keyboard.JustDown(this.runKeys.n)) this.dispatchRunStep();
+		if (Phaser.Input.Keyboard.JustDown(this.runKeys.one))
+			this.dispatchRunSpeed(1);
+		if (Phaser.Input.Keyboard.JustDown(this.runKeys.two))
+			this.dispatchRunSpeed(2);
+		if (Phaser.Input.Keyboard.JustDown(this.runKeys.four))
+			this.dispatchRunSpeed(4);
+		if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) this.onRunStop();
+
+		this.store.getState().setRun(this.buildRunSnapshot());
+	}
+
+	private dispatchRunStep(): void {
+		if (!this.runState) return;
+		const before = currentStep(this.runState)?.line;
+		this.runState = runPlaybackReducer(this.runState, { type: "STEP" });
+		const after = currentStep(this.runState);
+		if (after && after.line !== before) this.onRunLineArrived(after.line);
+	}
+
+	private dispatchRunSpeed(speed: RunSpeed): void {
+		if (!this.runState) return;
+		this.runState = runPlaybackReducer(this.runState, {
+			type: "SET_SPEED",
+			speed,
+		});
+	}
+
+	/** RunOverlay's own buttons dispatch these same bus events the keyboard shortcuts do — one code path either way. */
+	private onRunPlay = (): void => {
+		if (!this.runState) return;
+		this.runState = runPlaybackReducer(this.runState, { type: "PLAY" });
+		this.store.getState().setRun(this.buildRunSnapshot());
+	};
+
+	private onRunPause = (): void => {
+		if (!this.runState) return;
+		this.runState = runPlaybackReducer(this.runState, { type: "PAUSE" });
+		this.store.getState().setRun(this.buildRunSnapshot());
+	};
+
+	private onRunStep = (): void => {
+		this.dispatchRunStep();
+		this.store.getState().setRun(this.buildRunSnapshot());
+	};
+
+	private onRunSetSpeed = ({ speed }: { speed: RunSpeed }): void => {
+		this.dispatchRunSpeed(speed);
+		this.store.getState().setRun(this.buildRunSnapshot());
+	};
+
+	private onRunStop = (): void => {
+		this.runRequestId++;
+		this.teardownRunVisuals();
+		this.runState = null;
+		this.runBlockedAtLine = null;
+		this.store.getState().stopRun();
 	};
 
 	/** EditorOverlay's Ctrl/Cmd-S — this scene's own lines/store copy is the source of truth for "what the file currently says", so both get updated here (WorldScene separately persists the override and redraws the arch marker in its own bus listener). */

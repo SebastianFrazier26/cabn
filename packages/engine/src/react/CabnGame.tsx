@@ -10,6 +10,7 @@ import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { RunOverlay } from "./RunOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
@@ -60,6 +61,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			{handle && <MonsterCounter store={handle.store} />}
 			{handle && <EncounterBanner store={handle.store} />}
 			{handle && <EditorOverlay store={handle.store} bus={handle.bus} />}
+			{handle && <RunOverlay store={handle.store} bus={handle.bus} />}
 		</div>
 	);
 }

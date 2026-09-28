@@ -129,7 +129,7 @@ describe("ToolRegistry", () => {
 });
 
 describe("createDefaultTools / createDefaultToolRegistry", () => {
-	it("ships opener (E), spyglass (L), orb (F), bag (B), and quill (Q)", () => {
+	it("ships opener (E), spyglass (L), orb (F), bag (B), quill (Q), and wand (R)", () => {
 		const tools = createDefaultTools();
 		expect(tools.map((t) => t.id)).toEqual([
 			"opener",
@@ -137,8 +137,9 @@ describe("createDefaultTools / createDefaultToolRegistry", () => {
 			"orb",
 			"bag",
 			"quill",
+			"wand",
 		]);
-		expect(tools.map((t) => t.hotkey)).toEqual(["E", "L", "F", "B", "Q"]);
+		expect(tools.map((t) => t.hotkey)).toEqual(["E", "L", "F", "B", "Q", "R"]);
 	});
 
 	it("builds a registry where every default tool is dispatchable", () => {

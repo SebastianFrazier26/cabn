@@ -4,6 +4,7 @@ import type { StoreApi } from "zustand/vanilla";
 import { ASSET_KEYS, OPTIONAL_ASSET_KEYS } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
 import {
@@ -96,6 +97,9 @@ export class ShelfScene extends Phaser.Scene {
 
 		this.setupCamera();
 		this.store.getState().setPlayerPos({ x: 0, y: 0 });
+
+		const unsubscribeGlow = attachGlowLifecycle(this, this.store);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribeGlow);
 	}
 
 	private layoutCabins(): void {

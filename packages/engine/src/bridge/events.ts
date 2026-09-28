@@ -42,6 +42,14 @@ export type CabnEvents = {
 	"monster:defeated": { monsterId: string };
 	/** FileScene, after a save during an encounter that didn't fix the encountered monster -> EditorOverlay: a small transient toast (the editor stays open, the shrug animation plays behind it). */
 	"battle:hint": { message: string };
+	/** Hotbar R press -> FileScene: start a run of the currently-open file with the active ExecutionProvider (TraceProvider by default). */
+	"tool:wand-use": Record<string, never>;
+	/** RunOverlay's controls (Space/N/1-2-4/Esc, or their on-screen buttons) -> FileScene, which owns the actual runPlayback state machine. */
+	"run:play": Record<string, never>;
+	"run:pause": Record<string, never>;
+	"run:step": Record<string, never>;
+	"run:stop": Record<string, never>;
+	"run:set-speed": { speed: 1 | 2 | 4 };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

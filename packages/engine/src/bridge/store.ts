@@ -1,8 +1,22 @@
 import type { FileKind, Position, Species } from "@cabn/world-schema";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
+import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 
-export type CabnMode = "world" | "file" | "editor" | "encounter";
+export type CabnMode = "world" | "file" | "editor" | "encounter" | "run";
+
+/** The parchment overlay's own read of FileScene's runPlayback state — a snapshot, same "React never touches Phaser-owned state directly" shape as PortalSummary/MonsterSummary above. FileScene owns the actual `RunPlaybackState` and republishes one of these on every tick. */
+export interface RunOverlayState {
+	totalSteps: number;
+	index: number;
+	currentLine: number;
+	status: RunStatus;
+	speed: RunSpeed;
+	log: string[];
+	blockedMessage?: string;
+	/** True for a LocalRunProvider run of JS/TS source (no real line tracing available — see cabn serve's docs) — the overlay labels line numbers "approximate" instead of implying exact stepping. Always false for TraceProvider (the default, and only provider in a hosted build). */
+	approximateLines: boolean;
+}
 
 /** Flat, per-monster summary WorldScene fills once at create() — same shape/reasoning as PortalSummary below (the HUD counter and FileScene's encounter banner read this instead of holding their own copy of the manifest). */
 export interface MonsterSummary {
@@ -57,6 +71,10 @@ export interface CabnState {
 	defeatedMonsterIds: string[];
 	/** Which monster the current encounter banner/quill session is about — only meaningful while `mode === "encounter"` or an editor session that started from one. */
 	activeMonsterId: string | null;
+	/** The glow post-fx toggle (SettingsCorner) — a store field, not scene-local, because every scene's camera needs to react to it and the setting must survive a scene swap (world -> file -> world). game.ts seeds this from glowSettings.ts (persisted choice, else prefers-reduced-motion) before any scene reads it. */
+	glowEnabled: boolean;
+	/** Non-null only while `mode === "run"` — the parchment overlay's entire view of an in-progress run. */
+	run: RunOverlayState | null;
 }
 
 export interface CabnActions {
@@ -85,6 +103,13 @@ export interface CabnActions {
 	startEncounter(monsterId: string): void;
 	/** Back to `mode: "file"` with no active monster — either the player cancelled the banner (Esc) or a battle just resolved (win or shrug) and its animation finished. */
 	endEncounter(): void;
+	setGlowEnabled(enabled: boolean): void;
+	/** The wand tool starting a run — sets `mode: "run"` and the overlay's initial snapshot in one go. */
+	startRun(run: RunOverlayState): void;
+	/** FileScene's per-tick republish while a run is in progress — never touches `mode`. */
+	setRun(run: RunOverlayState): void;
+	/** Esc, or a run reaching "done" and the player closing the parchment — back to `mode: "file"`. */
+	stopRun(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -106,6 +131,8 @@ const initialState: CabnState = {
 	monsters: [],
 	defeatedMonsterIds: [],
 	activeMonsterId: null,
+	glowEnabled: true,
+	run: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -142,5 +169,9 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		startEncounter: (monsterId) =>
 			set({ mode: "encounter", activeMonsterId: monsterId }),
 		endEncounter: () => set({ mode: "file", activeMonsterId: null }),
+		setGlowEnabled: (glowEnabled) => set({ glowEnabled }),
+		startRun: (run) => set({ mode: "run", run }),
+		setRun: (run) => set({ run }),
+		stopRun: () => set({ mode: "file", run: null }),
 	}));
 }

@@ -130,4 +130,60 @@ describe("createCabnStore", () => {
 		expect(state.defeatedMonsterIds).toEqual(["monster:abc"]);
 		expect(state.mode).toBe("world");
 	});
+
+	it("startRun switches to run mode and stores the overlay snapshot", () => {
+		const run = {
+			totalSteps: 3,
+			index: 0,
+			currentLine: 1,
+			status: "playing" as const,
+			speed: 1 as const,
+			log: ["line 1: import"],
+			approximateLines: false,
+		};
+		store.getState().startRun(run);
+		const state = store.getState();
+		expect(state.mode).toBe("run");
+		expect(state.run).toEqual(run);
+	});
+
+	it("setRun replaces the snapshot without touching mode", () => {
+		const run = {
+			totalSteps: 3,
+			index: 0,
+			currentLine: 1,
+			status: "playing" as const,
+			speed: 1 as const,
+			log: [],
+			approximateLines: false,
+		};
+		store.getState().startRun(run);
+		store.getState().setRun({ ...run, index: 1, currentLine: 2 });
+		const state = store.getState();
+		expect(state.mode).toBe("run");
+		expect(state.run?.index).toBe(1);
+	});
+
+	it("stopRun returns to file mode and clears the run snapshot", () => {
+		store.getState().startRun({
+			totalSteps: 1,
+			index: 0,
+			currentLine: 1,
+			status: "done" as const,
+			speed: 1 as const,
+			log: [],
+			approximateLines: false,
+		});
+		store.getState().stopRun();
+		const state = store.getState();
+		expect(state.mode).toBe("file");
+		expect(state.run).toBeNull();
+	});
+
+	it("setGlowEnabled updates only that field", () => {
+		expect(store.getState().glowEnabled).toBe(true);
+		store.getState().setGlowEnabled(false);
+		expect(store.getState().glowEnabled).toBe(false);
+		expect(store.getState().mode).toBe("world");
+	});
 });

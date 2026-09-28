@@ -3,6 +3,7 @@ import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import { persistGlowEnabled } from "../systems/glowSettings.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface SettingsCornerProps {
@@ -22,12 +23,45 @@ export function SettingsCorner({
 	bus,
 }: SettingsCornerProps): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
+	const glowEnabled = useCabnStore(store, (s) => s.glowEnabled);
 	const [confirming, setConfirming] = useState(false);
 
 	if (mode === "editor") return null;
 
 	return (
-		<div style={{ position: "absolute", top: 16, left: 16, zIndex: 6 }}>
+		<div
+			style={{
+				position: "absolute",
+				top: 16,
+				left: 16,
+				zIndex: 6,
+				display: "flex",
+				alignItems: "flex-start",
+				gap: 8,
+			}}
+		>
+			<button
+				type="button"
+				title="toggle glow"
+				onClick={() => {
+					const next = !glowEnabled;
+					store.getState().setGlowEnabled(next);
+					persistGlowEnabled(next);
+				}}
+				style={{
+					height: 32,
+					borderRadius: 16,
+					border: `2px solid ${toCssColor(PALETTE.ink)}`,
+					background: toCssColor(PALETTE.parchment),
+					color: toCssColor(PALETTE.ink),
+					cursor: "pointer",
+					fontFamily: '"Courier New", monospace',
+					fontSize: 11,
+					padding: "0 10px",
+				}}
+			>
+				Glow: {glowEnabled ? "on" : "off"}
+			</button>
 			{confirming ? (
 				<div
 					style={{
