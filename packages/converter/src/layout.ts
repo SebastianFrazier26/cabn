@@ -16,7 +16,12 @@ export interface LayoutPosition {
 // multi-depth world to reach an inner cluster took too long at the original
 // scale. Jitter is halved in lockstep with the ring radius so it stays the
 // same fraction of ring spacing instead of overlapping neighboring rings.
-const RING_RADIUS_PER_DEPTH = 450;
+// 2026-09-28: back up to 600 with the 2x world portal arches — a weight-1
+// clearing's estimatedClearingRadius() is now 270px, so a parent/child pair
+// needs 600px (2x270 + CLEARING_GAP_PX) and a 450px ring had separateClusters()
+// shoving every depth-1 cluster off its ring. Walks are ~33% longer in px,
+// but everything along them is drawn 2x larger, so they read about the same.
+const RING_RADIUS_PER_DEPTH = 600;
 const JITTER_RANGE = 60;
 
 // mulberry32 — small seeded PRNG. Determinism (same tree -> same layout every
@@ -106,9 +111,9 @@ function place(
 // WorldScene calls cluster.portalIds.length) — deliberately duplicated
 // rather than imported, same as that file's own mulberry32 duplication note:
 // converter has no other reason to depend on the engine package.
-const ARCH_DISPLAY_SIZE_PX = 96; // PORTAL_ARCH_FRAME_SIZE (256) * PORTAL_SCALE (0.375), render/scale.ts
-const ARCH_RING_SPACING_PX = ARCH_DISPLAY_SIZE_PX * 1.2;
-const PORTAL_RING_MIN_RADIUS_PX = 100;
+const ARCH_DISPLAY_SIZE_PX = 192; // PORTAL_ARCH_FRAME_SIZE (256) * WORLD_PORTAL_SCALE (0.75), render/scale.ts
+const ARCH_RING_SPACING_PX = ARCH_DISPLAY_SIZE_PX; // 1.0x since the 2x arches, see WorldScene.ts
+const PORTAL_RING_MIN_RADIUS_PX = 180;
 const CLEARING_OUTER_MARGIN_PX = 90;
 const CLEARING_GAP_PX = 60; // visible gap between two clearings' *edges*, not just their centers
 

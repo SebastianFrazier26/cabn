@@ -31,7 +31,7 @@ describe("computeLayout", () => {
 		expect([...a.entries()]).toEqual([...b.entries()]);
 	});
 
-	test("depth-1 nodes sit on the 450px ring", () => {
+	test("depth-1 nodes sit on the 600px ring", () => {
 		const positions = computeLayout(sampleTree());
 		for (const id of ["root--src", "root--docs"]) {
 			const pos = positions.get(id);
@@ -39,16 +39,16 @@ describe("computeLayout", () => {
 			const radius = Math.hypot(pos.x, pos.y);
 			// Jitter is +/-60px in each axis, so distance from the ring can move
 			// by up to ~85px (sqrt(60^2+60^2)); assert it stayed in that band.
-			expect(Math.abs(radius - 450)).toBeLessThan(85);
+			expect(Math.abs(radius - 600)).toBeLessThan(85);
 		}
 	});
 
-	test("depth-2 nodes sit on the 900px ring", () => {
+	test("depth-2 nodes sit on the 1200px ring", () => {
 		const positions = computeLayout(sampleTree());
 		const pos = positions.get("root--src--utils");
 		if (!pos) throw new Error("expected a position for root--src--utils");
 		const radius = Math.hypot(pos.x, pos.y);
-		expect(Math.abs(radius - 900)).toBeLessThan(85);
+		expect(Math.abs(radius - 1200)).toBeLessThan(85);
 	});
 
 	test("matches a recorded snapshot for a fixed tree", () => {
@@ -88,9 +88,9 @@ describe("computeLayout", () => {
 	}
 
 	test("keeps many equal-weight siblings from crowding closer than the minimum separation", () => {
-		// 24 equal (weight-1) siblings on the depth-1 ring (450px) divide the
-		// circle into 15deg slices, only ~118px apart at that radius — well
-		// under the ~440px two weight-1 clusters now require (2x
+		// 24 equal (weight-1) siblings on the depth-1 ring (600px) divide the
+		// circle into 15deg slices, only ~157px apart at that radius — well
+		// under the ~600px two weight-1 clusters now require (2x
 		// estimatedClearingRadius(1) + the fixed gap) before this fix existed.
 		// A fixed-pass pairwise relaxation converges toward that minimum
 		// asymptotically (each pass closes half the *remaining* deficit, and
