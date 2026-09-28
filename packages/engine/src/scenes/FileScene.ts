@@ -1,23 +1,40 @@
 import type { Monster, PortalFile } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
-import { ASSET_KEYS } from "../assetPaths.js";
+import {
+	ASSET_KEYS,
+	OPTIONAL_ASSET_KEYS,
+	PORTAL_ARCH_FRAME_SIZE,
+} from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnMode, CabnStore } from "../bridge/store.js";
-import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
+import { attachGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import {
+	attachPointerInput,
+	BOUNDS_INSET_PX,
+	ClickWalker,
+	drivePlayer,
+	type PointerInputHandle,
+	physicsBounds,
+} from "../render/clickWalker.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import {
 	createMovementKeys,
 	createPlayer,
+	DEFAULT_PLAYER_SPEED,
 	type MovementKeys,
 	type PlayerHandle,
 	type PlayerTextures,
-	updatePlayerMovement,
 } from "../render/playerController.js";
 import { MONSTER_FILE_SIZE, PORTAL_SCALE } from "../render/scale.js";
 import { checkMonsterFixed } from "../systems/battle.js";
+import {
+	type ClickTarget,
+	clampToBounds,
+	type Interactable,
+} from "../systems/clickWalk.js";
 import {
 	enchantMdLine,
 	type MdSegment,
@@ -30,6 +47,7 @@ import {
 	lineWindowsEqual,
 } from "../systems/lineWindow.js";
 import { isWithinRadius } from "../systems/portalApproach.js";
+import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	createIdleRunPlaybackState,
 	currentStep,
@@ -43,6 +61,7 @@ import {
 	selectionRange,
 	startSelection,
 } from "../systems/selection.js";
+import { activeFocusOwner } from "../systems/uiFocus.js";
 import { PORTAL_IDLE_ANIM } from "./PreloadScene.js";
 
 export interface FileSceneData {
@@ -72,6 +91,9 @@ const SCROLL_MAX_X = 760;
 const BUFFER_LINES = 20;
 const EXIT_MARGIN = 160;
 const EXIT_ENTER_RADIUS = 70;
+/** Click-walk stop distances — each inside its Enter radius (EXIT_ENTER_RADIUS, MONSTER_ENTER_RADIUS) so arrival lands where Enter would work. */
+const EXIT_ARRIVE_RADIUS = 40;
+const MONSTER_ARRIVE_RADIUS = 30;
 const BASE_FONT_SIZE = 13;
 const CODE_BOX_PAD_X = 3;
 
@@ -151,7 +173,6 @@ export class FileScene extends Phaser.Scene {
 	private selection: LineSelection | null = null;
 	private highlightGraphic: Phaser.GameObjects.Graphics | null = null;
 	private unsubscribeMode: (() => void) | null = null;
-	private unsubscribeGlow: (() => void) | null = null;
 
 	/** Non-null only while a run is in progress — this scene owns the actual state machine (see runPlayback.ts); the store only ever gets a read-only snapshot (RunOverlayState) republished from it. */
 	private runState: RunPlaybackState | null = null;
@@ -174,10 +195,13 @@ export class FileScene extends Phaser.Scene {
 
 	private keys!: {
 		enter: Phaser.Input.Keyboard.Key;
-		e: Phaser.Input.Keyboard.Key;
 		esc: Phaser.Input.Keyboard.Key;
 		shift: Phaser.Input.Keyboard.Key;
 	};
+	private walker!: ClickWalker;
+	private pointerInput!: PointerInputHandle;
+	/** Set once exitToWorld() runs — see its comment. */
+	private exiting = false;
 	private runKeys!: {
 		space: Phaser.Input.Keyboard.Key;
 		n: Phaser.Input.Keyboard.Key;
@@ -207,6 +231,7 @@ export class FileScene extends Phaser.Scene {
 		this.monsterBobTweens = new Map();
 		this.monstersInRange = new Set();
 		this.encounterMonsterId = null;
+		this.exiting = false;
 	}
 
 	create(): void {
@@ -218,7 +243,7 @@ export class FileScene extends Phaser.Scene {
 		this.createPlayer();
 		this.setupInput();
 		this.setupCamera();
-		this.unsubscribeGlow = attachGlowLifecycle(this, this.store);
+		attachGlow(this);
 		// mitt's on/off take no context arg — the on*/handler fields below are
 		// arrow class fields (auto-bound, stable reference) specifically for this.
 		this.bus.on("tool:jump-to-line", this.onJumpToLine);
@@ -232,6 +257,7 @@ export class FileScene extends Phaser.Scene {
 		this.bus.on("run:set-speed", this.onRunSetSpeed);
 		this.bus.on("editor:save", this.onEditorSave);
 		this.bus.on("file:content-reset", this.onFileContentReset);
+		this.bus.on("tool:opener-use", this.onOpenerUse);
 		// Not a bus event: closing the editor is a store.closeEditor() call from
 		// EditorOverlay, which only touches `mode` — a subscription is the one
 		// thing that reacts uniformly no matter which code path changed it.
@@ -259,10 +285,9 @@ export class FileScene extends Phaser.Scene {
 		this.bus.off("run:set-speed", this.onRunSetSpeed);
 		this.bus.off("editor:save", this.onEditorSave);
 		this.bus.off("file:content-reset", this.onFileContentReset);
+		this.bus.off("tool:opener-use", this.onOpenerUse);
 		this.unsubscribeMode?.();
 		this.unsubscribeMode = null;
-		this.unsubscribeGlow?.();
-		this.unsubscribeGlow = null;
 		// A run in progress at shutdown: drop the state and any run-only game
 		// objects, but don't touch camera follow — the scene (and its camera)
 		// are being torn down regardless. Bumping runRequestId means a
@@ -339,7 +364,14 @@ export class FileScene extends Phaser.Scene {
 	}
 
 	private createPlayer(): void {
-		this.playerTextures = { front: ASSET_KEYS.characterIdle, back: null };
+		this.playerTextures = {
+			front: ASSET_KEYS.characterIdle,
+			// PreloadScene already loaded (or failed) this optional texture for
+			// the world/shelf; the file scroll just never used it before.
+			back: this.textures.exists(OPTIONAL_ASSET_KEYS.characterIdleBack)
+				? OPTIONAL_ASSET_KEYS.characterIdleBack
+				: null,
+		};
 		this.player = createPlayer(this, { x: PATH_X, y: 0 }, this.playerTextures);
 	}
 
@@ -420,7 +452,7 @@ export class FileScene extends Phaser.Scene {
 		this.monsterTooltip.setVisible(true);
 	}
 
-	/** E near a monster (not while selecting bag text) starts an encounter: a short banner, then the quill opens at the monster's loc. Wisps are excluded outright — they're cosmetic, never encounterable (see class doc above the field). */
+	/** Enter near a monster (not while selecting bag text) starts an encounter: a short banner, then the quill opens at the monster's loc. Wisps are excluded outright — they're cosmetic, never encounterable (see class doc above the field). */
 	private handleMonsterEncounterKey(activationPressed: boolean): void {
 		if (!activationPressed) return;
 		if (this.selection !== null) return;
@@ -585,7 +617,6 @@ export class FileScene extends Phaser.Scene {
 		this.movementKeys = createMovementKeys(this);
 		this.keys = {
 			enter: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
-			e: kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
 			esc: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
 			shift: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
 		};
@@ -596,7 +627,73 @@ export class FileScene extends Phaser.Scene {
 			two: kb.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
 			four: kb.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
 		};
+		this.walker = new ClickWalker(this, prefersReducedMotion());
+		this.pointerInput = attachPointerInput(this, {
+			interactables: () => this.clickInteractables(),
+			enabled: () =>
+				this.store.getState().mode === "file" && this.selection === null,
+			onClick: this.onClick,
+		});
 	}
+
+	private clickInteractables(): Interactable[] {
+		const targets: Interactable[] = [
+			{
+				id: "exit",
+				kind: "exit",
+				pos: this.exitPortalPos,
+				hitRadius: (PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE) / 2,
+				arriveRadius: EXIT_ARRIVE_RADIUS,
+			},
+		];
+		for (const monster of this.monsters) {
+			if (monster.species === "will-o-wisp") continue; // cosmetic, never encounterable
+			targets.push({
+				id: monster.id,
+				kind: "monster",
+				pos: this.monsterPos(monster),
+				hitRadius: (MONSTER_FILE_SIZE[monster.species] ?? 20) / 2 + 8,
+				arriveRadius: MONSTER_ARRIVE_RADIUS,
+				// A monster's click area overlaps the text it stands beside; it
+				// wins that overlap, and there are no other interactables near it.
+				priority: 1,
+			});
+		}
+		return targets;
+	}
+
+	private onClick = (target: ClickTarget): void => {
+		const from = { x: this.player.body.x, y: this.player.body.y };
+		if (target.kind === "ground") {
+			this.walker.walkTo(
+				clampToBounds(target.point, physicsBounds(this), BOUNDS_INSET_PX),
+				{ from, speed: DEFAULT_PLAYER_SPEED },
+			);
+			return;
+		}
+		this.walker.walkTo(target.target.pos, {
+			from,
+			speed: DEFAULT_PLAYER_SPEED,
+			target: target.target,
+		});
+	};
+
+	private onArrive(target: Interactable): void {
+		if (target.kind === "exit") {
+			this.exitToWorld();
+			return;
+		}
+		if (target.kind !== "monster" || this.selection !== null) return;
+		const monster = this.monsters.find((m) => m.id === target.id);
+		if (monster) this.startEncounterFor(monster);
+	}
+
+	/** Hotbar opener — only while this file is the one being walked (mode "file"); same as pressing Enter here. */
+	private onOpenerUse = (): void => {
+		if (this.store.getState().mode !== "file") return;
+		this.handleExit(true);
+		if (!this.exiting) this.handleMonsterEncounterKey(true);
+	};
 
 	private setupCamera(): void {
 		const minY = -EXIT_MARGIN - 100;
@@ -618,6 +715,7 @@ export class FileScene extends Phaser.Scene {
 
 	update(_time: number, delta: number): void {
 		const mode = this.store.getState().mode;
+		if (mode !== "file") this.walker.cancel();
 		if (mode === "editor") {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			return;
@@ -637,24 +735,32 @@ export class FileScene extends Phaser.Scene {
 			this.updateRun(delta);
 			return;
 		}
+		let arrivedAt: Interactable | null = null;
 		if (this.selection === null) {
-			updatePlayerMovement(
+			({ arrivedAt } = drivePlayer(
 				this.player,
 				this.movementKeys,
+				this.walker,
 				delta,
 				this.playerTextures,
-			);
+			));
 		} else {
+			this.walker.cancel();
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			this.handleSelectionExtend();
 		}
+		// A focused button (e.g. tabbed-to) gets this Enter natively too.
 		const activationPressed =
-			Phaser.Input.Keyboard.JustDown(this.keys.enter) ||
-			Phaser.Input.Keyboard.JustDown(this.keys.e);
+			Phaser.Input.Keyboard.JustDown(this.keys.enter) &&
+			activeFocusOwner() !== "control";
 		this.handleExit(activationPressed);
+		if (this.exiting) return;
 		this.handleMonsterApproach();
 		this.handleMonsterEncounterKey(activationPressed);
+		if (arrivedAt) this.onArrive(arrivedAt);
+		if (this.exiting) return;
 		this.renderVisibleWindow();
+		this.pointerInput.refreshHover();
 	}
 
 	private nearestLineToPlayer(): number {
@@ -951,6 +1057,7 @@ export class FileScene extends Phaser.Scene {
 			0,
 			Math.max(this.lines.length - 1, 0),
 		);
+		this.walker.cancel();
 		this.player.body.setPosition(PATH_X, clamped * LINE_HEIGHT);
 
 		this.highlightGraphic?.destroy();
@@ -970,7 +1077,7 @@ export class FileScene extends Phaser.Scene {
 	};
 
 	/**
-	 * `activationPressed` (Enter/E) is read once in update() and threaded
+	 * `activationPressed` (Enter) is read once in update() and threaded
 	 * through here and handleMonsterEncounterKey() rather than each calling
 	 * `Phaser.Input.Keyboard.JustDown` again — JustDown() clears the key's
 	 * internal "just pressed" flag on the first read each frame, so a second
@@ -993,6 +1100,12 @@ export class FileScene extends Phaser.Scene {
 	}
 
 	private exitToWorld(): void {
+		// scene.stop() is queued until the end of this step, so a click-walk
+		// arriving at the arch in the same frame as an Enter press would
+		// otherwise exit (and wake the world) twice.
+		if (this.exiting) return;
+		this.exiting = true;
+		this.walker.cancel();
 		this.store.getState().exitPortal();
 		this.scene.stop();
 		this.scene.wake(this.returnSceneKey);

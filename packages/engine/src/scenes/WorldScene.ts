@@ -23,6 +23,14 @@ import {
 	type AtmosphereHandle,
 	attachAtmosphere,
 } from "../render/atmosphere.js";
+import {
+	attachPointerInput,
+	BOUNDS_INSET_PX,
+	ClickWalker,
+	drivePlayer,
+	type PointerInputHandle,
+	physicsBounds,
+} from "../render/clickWalker.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
@@ -38,10 +46,10 @@ import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
 	createMovementKeys,
 	createPlayer,
+	DEFAULT_PLAYER_SPEED,
 	type MovementKeys,
 	type PlayerHandle,
 	type PlayerTextures,
-	updatePlayerMovement,
 } from "../render/playerController.js";
 import {
 	type PlacedProp,
@@ -64,13 +72,18 @@ import {
 	type EdgeDressing,
 } from "../render/worldDressing.js";
 import { touchChunk } from "../systems/chunkCache.js";
+import {
+	type ClickTarget,
+	clampToBounds,
+	type Interactable,
+} from "../systems/clickWalk.js";
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
-import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
 import { clampPreviewLines } from "../systems/previewText.js";
+import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	applyOverridesToChunk,
 	clearSave,
@@ -90,6 +103,7 @@ import {
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
 import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
+import { activeFocusOwner } from "../systems/uiFocus.js";
 import {
 	type AssetAvailability,
 	BONFIRE_IDLE_ANIM,
@@ -108,6 +122,14 @@ const CLUSTER_LOAD_RADIUS = 260;
 const PORTAL_APPROACH_RADIUS = 80;
 const PORTAL_ENTER_RADIUS = 46;
 const RETURN_TO_SHELF_RADIUS = 140;
+/** Enter at the bonfire (with no portal in reach) returns to the shelf, same as Esc there — tighter than RETURN_TO_SHELF_RADIUS so it only fires when you're plainly standing at the fire, not at a portal on its ring. */
+const BONFIRE_INTERACT_RADIUS = 90;
+/** Where a click-walk to a portal stops (and enters) — inside PORTAL_ENTER_RADIUS so arrival always lands within Enter's reach. */
+const PORTAL_ARRIVE_RATIO = 0.6;
+/** Spyglass/orb "walk me there" — brisker than a normal walk, a summoned walk should read as brisk, not a full retrace. */
+const SUMMONED_WALK_SPEED = 320;
+/** How long a click-walk that arrived at a portal waits for that cluster's chunk fetch before giving up (entering needs the file's content). */
+const ARRIVAL_CHUNK_WAIT_MS = 3000;
 const MAX_LOADED_CHUNKS = 8;
 const WORLD_MARGIN = 500;
 const PREVIEW_LINE_CHARS = 26;
@@ -229,9 +251,13 @@ export class WorldScene extends Phaser.Scene {
 
 	private keys!: {
 		enter: Phaser.Input.Keyboard.Key;
-		e: Phaser.Input.Keyboard.Key;
 		esc: Phaser.Input.Keyboard.Key;
 	};
+	private walker!: ClickWalker;
+	private pointerInput!: PointerInputHandle;
+	/** A click-walk arrived at this interactable; handled in update() once portal approach state is current. */
+	private pendingArrival: { target: Interactable; waitedMs: number } | null =
+		null;
 
 	private previewPanel!: Phaser.GameObjects.Container;
 	private previewText!: Phaser.GameObjects.Text;
@@ -240,9 +266,6 @@ export class WorldScene extends Phaser.Scene {
 
 	/** One theme per world (see drawClusters' doc comment) — computed once in create() so drawGround's ground-tint overlay and drawClusters' cabinet/bonfire tint always agree. */
 	private theme!: Theme;
-
-	/** Non-null while a tool-triggered auto-walk (spyglass/orb result click) is in flight — suppresses WASD so it doesn't fight the tween. */
-	private autoWalkTween: Phaser.Tweens.Tween | null = null;
 
 	constructor() {
 		super({ key: "world", active: false });
@@ -253,6 +276,10 @@ export class WorldScene extends Phaser.Scene {
 		this.worldBase = data.worldBase;
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
+		// Phaser reuses the scene instance across scene.start(), so a flag set
+		// by the last visit's return-to-shelf would otherwise still be true.
+		this.returningToShelf = false;
+		this.pendingArrival = null;
 		this.store = this.registry.get("store");
 		this.bus = this.registry.get("bus");
 	}
@@ -415,7 +442,7 @@ export class WorldScene extends Phaser.Scene {
 	// fields specifically so `this` is already bound and the same function
 	// reference can be handed to both on() and off().
 	private setupToolBusListeners(): void {
-		this.bus.on("tool:opener-use", this.enterNearestPortalInRange);
+		this.bus.on("tool:opener-use", this.onOpenerUse);
 		this.bus.on("tool:walk-to-portal", this.onWalkToPortal);
 		this.events.once(
 			Phaser.Scenes.Events.SHUTDOWN,
@@ -425,32 +452,20 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private teardownToolBusListeners(): void {
-		this.bus.off("tool:opener-use", this.enterNearestPortalInRange);
+		this.bus.off("tool:opener-use", this.onOpenerUse);
 		this.bus.off("tool:walk-to-portal", this.onWalkToPortal);
 	}
 
+	// Rides the same ClickWalker as click-to-move (was a position tween), so
+	// it gets the walk bob/facing and WASD cancels it; it only walks there —
+	// entering stays the player's call.
 	private onWalkToPortal = ({ portalId }: { portalId: string }): void => {
 		const target = this.portalWorldPos.get(portalId);
 		if (!target) return;
-
-		this.autoWalkTween?.stop();
-		const from = { x: this.player.body.x, y: this.player.body.y };
-		const dist = Phaser.Math.Distance.Between(
-			from.x,
-			from.y,
-			target.x,
-			target.y,
-		);
-		const speed = 320; // px/s, faster than WASD walk speed — a summoned walk should read as brisk, not a full retrace
-		this.autoWalkTween = this.tweens.add({
-			targets: this.player.body,
-			x: target.x,
-			y: target.y,
-			duration: Math.max(dist / speed, 0.1) * 1000,
-			ease: "Sine.easeInOut",
-			onComplete: () => {
-				this.autoWalkTween = null;
-			},
+		this.walker.walkTo(target, {
+			from: { x: this.player.body.x, y: this.player.body.y },
+			speed: SUMMONED_WALK_SPEED,
+			showMarker: false,
 		});
 	};
 
@@ -992,10 +1007,75 @@ export class WorldScene extends Phaser.Scene {
 		this.movementKeys = createMovementKeys(this);
 		this.keys = {
 			enter: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
-			e: kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
 			esc: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
 		};
+		this.walker = new ClickWalker(this, prefersReducedMotion());
+		this.pointerInput = attachPointerInput(this, {
+			interactables: () => this.clickInteractables(),
+			enabled: () =>
+				this.store.getState().mode === "world" && !this.returningToShelf,
+			onClick: this.onClick,
+		});
 	}
+
+	private rootCluster(): Cluster | undefined {
+		return (
+			this.manifest.clusters.find((c) => c.path === ".") ??
+			this.manifest.clusters[0]
+		);
+	}
+
+	private bonfireDisplayWidth(): number {
+		return this.availability.bonfire
+			? BONFIRE_RAW_SIZE_PX * BONFIRE_SCALE
+			: PORTAL_ARCH_FRAME_SIZE * BONFIRE_SCALE;
+	}
+
+	/** Hit areas derive from the same size constants the arches/bonfire are drawn with, not from the sprites, so they follow any change to how a portal is drawn. Monsters and cabinets aren't interactable in the world (see drawMonsters) — clicking them just walks there. */
+	private clickInteractables(): Interactable[] {
+		const targets: Interactable[] = [];
+		for (const [portalId, pos] of this.portalWorldPos) {
+			targets.push({
+				id: portalId,
+				kind: "portal",
+				pos,
+				hitRadius: PORTAL_ARCH_DISPLAY_SIZE / 2,
+				arriveRadius: PORTAL_ENTER_RADIUS * PORTAL_ARRIVE_RATIO,
+			});
+		}
+		const root = this.rootCluster();
+		if (root && this.returnTo) {
+			const half = this.bonfireDisplayWidth() / 2;
+			targets.push({
+				id: root.id,
+				kind: "bonfire",
+				pos: root.pos,
+				hitRadius: half,
+				arriveRadius: Math.min(
+					half + BONFIRE_SPAWN_CLEARANCE,
+					BONFIRE_INTERACT_RADIUS,
+				),
+			});
+		}
+		return targets;
+	}
+
+	private onClick = (target: ClickTarget): void => {
+		this.pendingArrival = null;
+		const from = { x: this.player.body.x, y: this.player.body.y };
+		if (target.kind === "ground") {
+			this.walker.walkTo(
+				clampToBounds(target.point, physicsBounds(this), BOUNDS_INSET_PX),
+				{ from, speed: DEFAULT_PLAYER_SPEED },
+			);
+			return;
+		}
+		this.walker.walkTo(target.target.pos, {
+			from,
+			speed: DEFAULT_PLAYER_SPEED,
+			target: target.target,
+		});
+	};
 
 	/** One shared bounds calc for the camera, the ground field bake, and the path bake — the three used to each compute a slightly different box, which is exactly how a field baked for one area and a camera clamped to another used to leave a sliver of void at the edge. */
 	private computeWorldBounds(): {
@@ -1064,25 +1144,64 @@ export class WorldScene extends Phaser.Scene {
 		this.handleMovement(delta);
 		this.handleChunkLoading();
 		this.handlePortalApproach();
+		this.handleArrival(delta);
 		this.handlePortalEnter();
 		this.handleReturnToShelf();
+		this.pointerInput.refreshHover();
 	}
 
 	private handleMovement(delta: number): void {
-		if (this.autoWalkTween) {
-			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
-			this.store
-				.getState()
-				.setPlayerPos({ x: this.player.body.x, y: this.player.body.y });
-			return;
-		}
-		const { pos } = updatePlayerMovement(
+		const { pos, arrivedAt } = drivePlayer(
 			this.player,
 			this.movementKeys,
+			this.walker,
 			delta,
 			this.playerTextures,
 		);
+		if (arrivedAt) this.pendingArrival = { target: arrivedAt, waitedMs: 0 };
+		else if (this.walker.walking) this.pendingArrival = null;
 		this.store.getState().setPlayerPos(pos);
+	}
+
+	/** Interacts with whatever a click-walk just arrived at — the same outcome Enter would have there. A portal whose chunk is still loading waits a moment rather than opening as "no preview". */
+	private handleArrival(delta: number): void {
+		const pending = this.pendingArrival;
+		if (!pending) return;
+		const { target } = pending;
+		// Walked off (WASD) while waiting on a chunk — the arrival no longer counts.
+		if (
+			Phaser.Math.Distance.Between(
+				this.player.body.x,
+				this.player.body.y,
+				target.pos.x,
+				target.pos.y,
+			) >
+			target.arriveRadius + 2
+		) {
+			this.pendingArrival = null;
+			return;
+		}
+		if (target.kind === "bonfire") {
+			this.pendingArrival = null;
+			this.returnToShelf();
+			return;
+		}
+		if (target.kind !== "portal") {
+			this.pendingArrival = null;
+			return;
+		}
+		const portal = this.portalsById.get(target.id);
+		if (
+			portal &&
+			!this.effectiveChunkContents.has(portal.clusterId) &&
+			this.chunkFetchesInFlight.has(portal.clusterId) &&
+			pending.waitedMs < ARRIVAL_CHUNK_WAIT_MS
+		) {
+			pending.waitedMs += delta;
+			return;
+		}
+		this.pendingArrival = null;
+		this.enterPortal(target.id);
 	}
 
 	private nearestClusterInRange(): Cluster | null {
@@ -1248,20 +1367,40 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private handlePortalEnter(): void {
-		const pressed =
-			Phaser.Input.Keyboard.JustDown(this.keys.enter) ||
-			Phaser.Input.Keyboard.JustDown(this.keys.e);
-		if (!pressed) return;
-		this.enterNearestPortalInRange();
+		if (!Phaser.Input.Keyboard.JustDown(this.keys.enter)) return;
+		// A focused button (e.g. tabbed-to) gets this Enter natively too.
+		if (activeFocusOwner() === "control") return;
+		this.interact();
 	}
 
-	// Shared by the direct E/Enter key check above (frame-polled, for input
-	// latency) and the "tool:opener-use" bus listener (fired when the opener
-	// tool is dispatched some other way, e.g. a hotbar click) — one path, two
-	// triggers, see systems/tools.ts.
-	private enterNearestPortalInRange = (): void => {
+	// mitt still delivers this while the scene sleeps underneath FileScene —
+	// without the mode check, the hotbar's opener clicked inside a file
+	// re-entered the portal the player had walked in through.
+	private onOpenerUse = (): void => {
+		if (this.store.getState().mode !== "world") return;
+		this.interact();
+	};
+
+	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the bonfire. */
+	private interact(): void {
+		if (this.enterNearestPortalInRange()) return;
+		const root = this.rootCluster();
+		if (!root) return;
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
-		let target: string | null = null;
+		if (
+			Phaser.Math.Distance.Between(
+				playerPos.x,
+				playerPos.y,
+				root.pos.x,
+				root.pos.y,
+			) <= BONFIRE_INTERACT_RADIUS
+		) {
+			this.returnToShelf();
+		}
+	}
+
+	private enterNearestPortalInRange(): boolean {
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		for (const portalId of this.portalsInRange) {
 			const pos = this.portalWorldPos.get(portalId);
 			if (!pos) continue;
@@ -1269,14 +1408,17 @@ export class WorldScene extends Phaser.Scene {
 				Phaser.Math.Distance.Between(playerPos.x, playerPos.y, pos.x, pos.y) <=
 				PORTAL_ENTER_RADIUS
 			) {
-				target = portalId;
-				break;
+				this.enterPortal(portalId);
+				return true;
 			}
 		}
-		if (!target) return;
+		return false;
+	}
 
+	private enterPortal(target: string): void {
 		const portal = this.portalsById.get(target);
 		if (!portal) return;
+		this.walker.cancel();
 		// effectiveChunkContents (pristine + any saved override), not
 		// chunkContents directly — a portal with a quill edit always opens to
 		// the edited text, here and everywhere else that reads file content.
@@ -1310,7 +1452,7 @@ export class WorldScene extends Phaser.Scene {
 				worldFiles: [...this.worldFiles],
 			});
 		}
-	};
+	}
 
 	private persistPlayerPos(): void {
 		this.save = withPlayerPosition(this.save, "world", {
@@ -1323,9 +1465,9 @@ export class WorldScene extends Phaser.Scene {
 	// The bonfire at world spawn doubles as the way back — Esc only returns to
 	// the shelf near it, not from anywhere in the world, so it reads as a
 	// deliberate portal-back rather than a global hotkey that fights the file
-	// overlay's own Esc-to-close.
+	// overlay's own Esc-to-close. Enter (or clicking the bonfire) at the fire
+	// does the same, via interact().
 	private handleReturnToShelf(): void {
-		if (!this.returnTo || this.returningToShelf) return;
 		if (!Phaser.Input.Keyboard.JustDown(this.keys.esc)) return;
 
 		const spawn = this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
@@ -1336,8 +1478,13 @@ export class WorldScene extends Phaser.Scene {
 		) {
 			return;
 		}
+		this.returnToShelf();
+	}
 
+	private returnToShelf(): void {
+		if (!this.returnTo || this.returningToShelf) return;
 		this.returningToShelf = true;
+		this.walker.cancel();
 		this.persistPlayerPos();
 		const shelfUrl = this.returnTo.shelfUrl;
 		this.bus.emit("world:return-to-shelf", { shelfUrl });

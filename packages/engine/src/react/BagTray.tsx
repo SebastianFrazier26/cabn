@@ -32,10 +32,13 @@ export function BagTray({
 	useEffect(() => {
 		if (!bagOpen) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") store.getState().setBagOpen(false);
+			if (event.key !== "Escape") return;
+			// Same capture + preventDefault as SpyglassPanel's Esc.
+			event.preventDefault();
+			store.getState().setBagOpen(false);
 		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [bagOpen, store]);
 
 	if (slots.length === 0) return null;

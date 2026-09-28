@@ -14,7 +14,7 @@ export interface WorldEffectsOptions {
 	timeOfDay: TimeOfDay;
 	bonfirePos?: { x: number; y: number };
 	chimneyPositions?: readonly { x: number; y: number }[];
-	/** Skips motion (or substitutes a static equivalent) per effect — see each create* function's own comment for which it does. Injectable so tests don't need a real `window.matchMedia`; scene call sites pass `prefersReducedMotion()` from systems/glowSettings.ts. */
+	/** Skips motion (or substitutes a static equivalent) per effect — see each create* function's own comment for which it does. Injectable so tests don't need a real `window.matchMedia`; scene call sites pass `prefersReducedMotion()` from systems/reducedMotion.ts. */
 	reducedMotion: boolean;
 }
 

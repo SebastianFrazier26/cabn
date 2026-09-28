@@ -180,13 +180,6 @@ describe("createCabnStore", () => {
 		expect(state.run).toBeNull();
 	});
 
-	it("setGlowEnabled updates only that field", () => {
-		expect(store.getState().glowEnabled).toBe(true);
-		store.getState().setGlowEnabled(false);
-		expect(store.getState().glowEnabled).toBe(false);
-		expect(store.getState().mode).toBe("world");
-	});
-
 	it("starts with an auto time-of-day override", () => {
 		expect(store.getState().timeOfDayOverride).toBe("auto");
 	});

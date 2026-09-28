@@ -74,7 +74,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />
 					<BagTray store={handle.store} bus={handle.bus} />
-					<SettingsCorner store={handle.store} bus={handle.bus} />
+					<SettingsCorner store={handle.store} />
 					<MonsterCounter store={handle.store} />
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />

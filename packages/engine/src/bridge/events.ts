@@ -24,7 +24,7 @@ export type CabnEvents = {
 	"tool:jump-to-line": { line: number };
 	/** Hotbar B press -> FileScene: start a selection at the nearest line, or confirm one already in progress. */
 	"tool:bag-use": Record<string, never>;
-	/** Registry-mediated opener activation (e.g. a hotbar click) -> WorldScene: same effect as pressing E. */
+	/** The hotbar's opener slot -> whichever of World/Shelf/File is active: same as pressing Enter there (each scene's Enter key and click-to-interact arrival call the same interact method directly). Listeners must check they're the active scene — mitt still delivers to a sleeping WorldScene underneath FileScene. */
 	"tool:opener-use": Record<string, never>;
 	/** Hotbar Q press -> FileScene: open the quill/editor overlay, cursor at the line nearest the player. */
 	"tool:quill-use": Record<string, never>;
@@ -34,7 +34,7 @@ export type CabnEvents = {
 	"editor:paste-slot": { slotId: string };
 	/** SpyglassPanel's per-file "reset" button -> WorldScene: drop that portal's saved override. */
 	"tool:reset-file-edits": { portalId: string };
-	/** SettingsCorner's "reset world" button -> WorldScene: drop every saved override/position/visited-cluster/bag-slot for this world. */
+	/** SpyglassPanel's "reset world" button -> WorldScene: drop every saved override/position/visited-cluster/bag-slot for this world. */
 	"tool:reset-world": Record<string, never>;
 	/** WorldScene -> FileScene, answering tool:reset-file-edits when the reset portal is the one currently open: swap the live view back to pristine content. */
 	"file:content-reset": { portalId: string; content: string };

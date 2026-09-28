@@ -85,8 +85,6 @@ export interface CabnState {
 	defeatedMonsterIds: string[];
 	/** Which monster the current encounter banner/quill session is about — only meaningful while `mode === "encounter"` or an editor session that started from one. */
 	activeMonsterId: string | null;
-	/** The glow post-fx toggle (SettingsCorner) — a store field, not scene-local, because every scene's camera needs to react to it and the setting must survive a scene swap (world -> file -> world). game.ts seeds this from glowSettings.ts (persisted choice, else prefers-reduced-motion) before any scene reads it. */
-	glowEnabled: boolean;
 	/** Non-null only while `mode === "run"` — the parchment overlay's entire view of an in-progress run. */
 	run: RunOverlayState | null;
 	/** The player's choice (SettingsCorner) — "auto" derives from the local clock (see systems/timeOfDay.ts), "day"/"night" pin it. game.ts seeds this from timeOfDaySettings.ts (persisted choice, else "auto") before any scene reads it. */
@@ -122,7 +120,6 @@ export interface CabnActions {
 	startEncounter(monsterId: string): void;
 	/** Back to `mode: "file"` with no active monster — either the player cancelled the banner (Esc) or a battle just resolved (win or shrug) and its animation finished. */
 	endEncounter(): void;
-	setGlowEnabled(enabled: boolean): void;
 	/** The wand tool starting a run — sets `mode: "run"` and the overlay's initial snapshot in one go. */
 	startRun(run: RunOverlayState): void;
 	/** FileScene's per-tick republish while a run is in progress — never touches `mode`. */
@@ -155,7 +152,6 @@ const initialState: CabnState = {
 	monsters: [],
 	defeatedMonsterIds: [],
 	activeMonsterId: null,
-	glowEnabled: true,
 	run: null,
 	timeOfDayOverride: "auto",
 	timeOfDay: "day",
@@ -196,7 +192,6 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		startEncounter: (monsterId) =>
 			set({ mode: "encounter", activeMonsterId: monsterId }),
 		endEncounter: () => set({ mode: "file", activeMonsterId: null }),
-		setGlowEnabled: (glowEnabled) => set({ glowEnabled }),
 		startRun: (run) => set({ mode: "run", run }),
 		setRun: (run) => set({ run }),
 		stopRun: () => set({ mode: "file", run: null }),

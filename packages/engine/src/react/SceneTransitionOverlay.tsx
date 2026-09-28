@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { prefersReducedMotion } from "../systems/glowSettings.js";
+import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	ENCOUNTER_FLASH_MS,
 	ENCOUNTER_REVEAL_MS,

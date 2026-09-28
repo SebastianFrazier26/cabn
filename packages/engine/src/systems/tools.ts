@@ -13,7 +13,7 @@ export interface Tool {
 	name: string;
 	/** Asset path (React <img src>) for the hotbar slot icon. */
 	icon: string;
-	/** Display + lookup key, e.g. "E", "L", "Cmd/Ctrl+F". */
+	/** Display + lookup key, e.g. "Enter", "L", "Cmd/Ctrl+F". */
 	hotkey: string;
 	onUse(ctx: ToolContext): void;
 }
@@ -76,10 +76,12 @@ export function createDefaultTools(): Tool[] {
 			id: "opener",
 			name: "Opener",
 			icon: uiIconPath("key"),
-			hotkey: "E",
-			// WorldScene polls its own E key directly for frame-accurate movement
-			// feel and subscribes to this event too, so a hotbar click behaves
-			// identically to pressing E without duplicating the enter-portal logic.
+			hotkey: "Enter",
+			// Each scene polls its own Enter key directly for frame-accurate feel
+			// and subscribes to this event too, so a hotbar click behaves
+			// identically to pressing Enter without duplicating the interact logic.
+			// (Was E until 2026-09-28's playtest: "the keybinds are strange and
+			// should switch to enter".)
 			onUse: (ctx) => ctx.bus.emit("tool:opener-use", {}),
 		},
 		{

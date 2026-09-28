@@ -21,7 +21,6 @@ export * from "./systems/bag.js";
 export * from "./systems/embedGuard.js";
 export * from "./systems/enchantMd.js";
 export * from "./systems/execution/executionProvider.js";
-export * from "./systems/glowSettings.js";
 export * from "./systems/insertText.js";
 export * from "./systems/lineWindow.js";
 export * from "./systems/runPlayback.js";

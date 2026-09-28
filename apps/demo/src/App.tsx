@@ -41,8 +41,8 @@ export function App(): React.ReactElement {
 			>
 				<h1 style={{ margin: 0, fontSize: 18 }}>cabn</h1>
 				<span style={{ opacity: 0.8, fontSize: 13 }}>
-					walk the shelf of worlds — WASD/arrows to move, E to enter a cabin or
-					a portal arch, Esc to leave a world (at the bonfire) or a file
+					walk the shelf of worlds — WASD/arrows or click to move, Enter or
+					click to go in (cabin, portal) or out (bonfire), Esc to leave a file
 				</span>
 			</header>
 			<div style={{ flex: 1, minHeight: 0 }}>
