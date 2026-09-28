@@ -1,7 +1,23 @@
 {
 	"name": "@cabn/converter",
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "Converts a directory or zipfile into a validated cabn world bundle: walk, classify, layout, cluster/annex split, search index, and error annotation into monsters.",
+	"keywords": [
+		"cabn",
+		"converter",
+		"zip"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/converter"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/converter#readme",
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -13,7 +29,9 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.json",

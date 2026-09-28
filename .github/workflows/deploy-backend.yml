@@ -1,0 +1,59 @@
+name: Deploy Backend
+
+# Push-to-main keeps the deployed backend in sync with what's merged;
+# workflow_dispatch lets it be re-run on demand (e.g. after adding the
+# Railway secret for the first time). Either way, the job below no-ops
+# cleanly until RAILWAY_TOKEN exists — see README's "Deploying the backend".
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "packages/world-schema/**"
+      - "packages/converter/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # An env-check step, not a bare `if: secrets.RAILWAY_TOKEN != ''` on
+      # every later step — this exits neutral with a clear message instead of
+      # every subsequent step just silently vanishing from the run log.
+      - name: Check for RAILWAY_TOKEN
+        id: check
+        run: |
+          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+            echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying the backend' section to add it."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.check.outputs.configured == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: steps.check.outputs.configured == 'true'
+      - run: pnpm --filter @cabn/world-schema --filter @cabn/converter build
+        if: steps.check.outputs.configured == 'true'
+      - run: pnpm --filter @cabn/backend build
+        if: steps.check.outputs.configured == 'true'
+      - run: pnpm --filter @cabn/backend test
+        if: steps.check.outputs.configured == 'true'
+      - name: Install Railway CLI
+        if: steps.check.outputs.configured == 'true'
+        run: npm install -g @railway/cli
+      - name: Deploy to Railway
+        if: steps.check.outputs.configured == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service cabn-backend

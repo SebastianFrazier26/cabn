@@ -4,7 +4,7 @@ cabn turns any directory or zipfile into an explorable cottagecore game world �
 
 ## Status
 
-Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect), M3 (walkable engine + demo), the world-hierarchy redesign (shelf hub, per-world theming, bonfire spawn, in-arch previews), M4 (`FileScene`, enchanted markdown, the tool hotbar and orb search), M5 (the quill editor, bag paste, and save persistence), M6 (annotators, monster species, and fix-to-defeat battles), and M7 (the wand tool's run parchment, a pluggable simulated/real execution provider, `cabn serve`, and a soft glow post-effect) have landed.
+Under active reboot. The original Rust prototype is parked on the `rust-prototype` branch; this branch rebuilds cabn as a TypeScript pnpm monorepo. M1 (world schema, converter, CLI build/inspect), M3 (walkable engine + demo), the world-hierarchy redesign (shelf hub, per-world theming, bonfire spawn, in-arch previews), M4 (`FileScene`, enchanted markdown, the tool hotbar and orb search), M5 (the quill editor, bag paste, and save persistence), M6 (annotators, monster species, and fix-to-defeat battles), M7 (the wand tool's run parchment, a pluggable simulated/real execution provider, `cabn serve`, and a soft glow post-effect), and M8 (an authenticated converter backend, a manual npm release pipeline, and a headless-browser CI smoke test) have landed.
 
 ## Monorepo map
 
@@ -14,8 +14,8 @@ Under active reboot. The original Rust prototype is parked on the `rust-prototyp
 | `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index, error annotation -> monsters); `buildShelf()`: many worlds -> a shelf manifest |
 | `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf/file scenes, a zustand+mitt React bridge (`CabnGame` and its HUD: `ToolHotbar`, `SpyglassPanel`, `OrbSearch`, `BagTray`, `EditorOverlay`, `SettingsCorner`, `FileOverlay`, `MonsterCounter`, `EncounterBanner`, `RunOverlay`), walkable world with lazy chunk loading, in-arch portal previews, a shelf hub listing every converted world, a walkable parchment-scroll file view with enchanted markdown, a CodeMirror-backed quill editor with bag paste, monster sprites (hovering near portals/paths in the world, standing beside their line in a file) with a walk-into-and-`E` fix-to-defeat battle loop, localStorage-backed save persistence (file edits, player position, visited clusters, bag slots, defeated monsters), a pluggable `ExecutionProvider` (`TraceProvider` heuristic by default and always in a hosted build; `LocalRunProvider`, real execution, only reachable via `@cabn/engine/local-exec` from a `cabn serve --allow-exec` host page) driving the wand tool's run parchment, and a soft bloom+vignette glow post-effect (toggleable, on by default) |
 | `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec]` |
-| `apps/backend` | `@cabn/backend` | Upload/convert API service (Fastify planned) |
-| `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf |
+| `apps/backend` | `@cabn/backend` | Authenticated Fastify upload/convert API — `POST /v1/worlds` (zip in, world bundle zip out) and `GET /healthz` |
+| `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf; also home to the Playwright browser smoke test (`e2e/`) |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
 | `assets/source` | — | Source art (icons, sprites) |
 | `assets/generated` | — | Palette, soft-rendered originals, and placeholder sprites consumed by `@cabn/engine`/`@cabn/demo` |
@@ -40,6 +40,19 @@ pnpm -F @cabn/demo dev
 ```
 
 First run converts `apps/demo/sample-project/` and `apps/demo/notes-vault/` into two world bundles (`apps/demo/public/worlds/{sample,notes}/`), writes a `shelf.json` listing both, and copies sprites into `apps/demo/public/assets/` — all gitignored, regenerated on demand (`pnpm -F @cabn/demo build:world`, or add `-- --force` to rebuild worlds that already exist). Then open the printed local URL.
+
+### Browser smoke test
+
+`apps/demo/e2e/smoke.spec.ts` (Playwright) builds/serves the production bundle and checks it in a real browser: no console/page errors, the Phaser canvas actually renders (pixel-variance check, not just "canvas exists"), and walking into a cabin from the shelf loads a world. It's the CI job that's caught bugs the other tests never would — two, so far, that only showed up outside jsdom.
+
+```sh
+pnpm -F @cabn/demo build   # produces the dist/ the smoke test previews
+pnpm -F @cabn/demo e2e
+```
+
+CI installs its own matching Chromium (`playwright install --with-deps chromium`) — never run that on this machine. Locally, if the Chromium `@playwright/test` expects doesn't match what's already cached at `~/Library/Caches/ms-playwright/`, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a cached build instead of installing a new one.
+
+CI also runs `pnpm audit --audit-level=high` (fails only on high/critical findings in the resolved tree) — see `pnpm audit` output for whatever's currently flagged; a low-severity, dev-tooling-only finding at the time of writing doesn't gate the build.
 
 ### Controls
 
@@ -107,6 +120,53 @@ A monster hovers near its file's portal arch in the world (or, for an ouroboros 
 Edits, your position in the world, which clusters you've visited, your bag slots, and which monsters you've defeated persist to `localStorage` per converted world (keyed by its source + conversion time, so reconverting the same source starts a fresh save). An edited file gets a small ✎ marker on its portal arch in the world and in the spyglass panel, which also offers a "reset" action per edited file; a settings button in the top-left corner (hidden while the editor is open) resets everything for the current world, monsters included. A corrupt or incompatible save is ignored (logged to the console) rather than breaking the game; a save from before M6 (no monster data at all) upgrades in place instead of being discarded.
 
 The same top-left corner also has a "Glow: on/off" toggle for the soft bloom+vignette post-effect on the world/shelf/file cameras — on by default (off automatically if your platform requests reduced motion, or if WebGL isn't available), persisted separately from any one world's save.
+
+## Backend API
+
+`apps/backend` (`@cabn/backend`) is a Fastify service wrapping `@cabn/converter`: `POST /v1/worlds` takes a single-file multipart zip upload and returns the converted world bundle as a zip (`world.json`, `chunks/*.json`, `search-index.json`, `assets.json`); `GET /healthz` returns `{ok: true, version}` unauthenticated. Nothing is persisted — the upload is converted in memory and discarded once the response is sent.
+
+```sh
+pnpm -F @cabn/backend dev     # tsx watch src/server.ts
+pnpm -F @cabn/backend test    # vitest run
+pnpm -F @cabn/backend build   # tsc -> dist/
+pnpm -F @cabn/backend start   # node dist/server.js
+```
+
+**Auth.** Every request to `POST /v1/worlds` needs `Authorization: Bearer <key>`. The server only ever holds SHA-256 hashes of valid keys (`CABN_API_KEY_SHA256`, comma-separated hex), never plaintext — generate one with:
+
+```sh
+pnpm -F @cabn/backend keygen
+```
+
+This prints a new key once (`cabn_...`) and its SHA-256 hash; put the key wherever the uploading client reads its secret from, and the hash in `CABN_API_KEY_SHA256`. With `NODE_ENV=production` and no hashes configured, the server refuses to start at all (fail fast, not fail open); in development it starts, but `POST /v1/worlds` answers `503` for every request instead of accepting anything unauthenticated.
+
+**Abuse limits.** Upload size is capped (`MAX_UPLOAD_BYTES`, default 25MB) and enforced by `@fastify/multipart`'s own streaming limit (413 on overflow, not after fully buffering); exactly one file is accepted (400 otherwise) and it must actually be a zip — checked by its `PK\x03\x04` magic bytes, not filename or declared content-type (415 otherwise). The converter's own caps (max files, max total/per-file bytes) are always applied, and secret-pattern files (`.env`, `*.pem`, ...) are never read, same defaults as everywhere else in cabn. `@fastify/rate-limit` enforces two independent limits — per IP and per (hashed) API key — so neither a key leak nor a single noisy IP alone can exhaust the other's budget. Requests time out after `REQUEST_TIMEOUT_MS` (default 30s). CORS is closed by default; set `CORS_ORIGINS` (comma-separated) to allow specific origins. The Fastify logger redacts `Authorization` headers unconditionally — a key is never written to a log.
+
+See `.env.example` for every variable this service reads, and `apps/backend/Dockerfile` for the production container (multi-stage, `pnpm deploy --prod`, non-root, listens on `PORT`).
+
+**Deploying behind a proxy** (Railway or similar): set `CABN_TRUST_PROXY=true` so `request.ip` (which both rate limits and CORS logic key off) reflects the real client via `X-Forwarded-For`, not the proxy's own address.
+
+## Releasing
+
+The four publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo`, and `tools/asset-pipeline` are private and never published. Publishing is **always a manual, human-triggered action** — `.github/workflows/release.yml` only runs on `workflow_dispatch`, never on push.
+
+Add a changeset for a user-facing change to any of the four packages:
+
+```sh
+pnpm changeset
+```
+
+Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC) — there is no `NPM_TOKEN` secret in this repo at all. One-time setup:
+
+1. Create the `cabn` org on npmjs.com (name confirmed free at the time of writing — the npm CLI can't create orgs, this is a manual web step).
+2. For each of the four packages, add a Trusted Publisher on npmjs.com pointing at `SebastianFrazier26/cabn`, workflow file `release.yml`. **Verify against npm's current docs whether a package must already exist on the registry before a Trusted Publisher can be attached to it** — this wasn't confirmed against live docs while writing this. If so, the very first `0.1.0` publish of each package needs one manual, one-time `pnpm -r publish --access public` from a maintainer's machine (with 2FA), after which the Trusted Publisher takes over for every release after.
+3. Run the "Release" workflow from the Actions tab (`workflow_dispatch`). It installs, builds, tests, then runs `changeset publish` with npm provenance enabled.
+
+## Deploying the backend
+
+`.github/workflows/deploy-backend.yml` deploys `apps/backend` to [Railway](https://railway.app) via the Railway CLI. It runs on push to `main` (paths touching the backend or its dependencies) and via `workflow_dispatch`, but the deploy step itself is a no-op — it builds and tests, then skips the actual `railway up` — until a `RAILWAY_TOKEN` repository secret exists.
+
+To wire it up: create a Railway project and service (e.g. `cabn-backend`), generate a Railway API token, add it as the `RAILWAY_TOKEN` secret in this repo's GitHub settings, and set the backend's env vars (see `.env.example` and the Backend API section above) on the Railway service itself — `CABN_API_KEY_SHA256` and `NODE_ENV=production` at minimum, plus `CABN_TRUST_PROXY=true`.
 
 ## License
 

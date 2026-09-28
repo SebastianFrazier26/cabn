@@ -1,7 +1,23 @@
 {
 	"name": "@cabn/engine",
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "Phaser 3 + zustand + mitt game engine that renders a cabn world bundle as a walkable game, with a React bridge (CabnGame) and HUD components.",
+	"keywords": [
+		"cabn",
+		"phaser",
+		"game-engine"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/engine"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/engine#readme",
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -13,7 +29,9 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
