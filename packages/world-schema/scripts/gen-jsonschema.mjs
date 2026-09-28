@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
 	AssetsFileSchema,
+	CabnConfigSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
 	WorldChunkSchema,
@@ -25,6 +26,7 @@ const schemas = {
 	"search-index": SearchIndexFileSchema,
 	assets: AssetsFileSchema,
 	shelf: ShelfManifestSchema,
+	"cabn-config": CabnConfigSchema,
 };
 
 await mkdir(outDir, { recursive: true });
