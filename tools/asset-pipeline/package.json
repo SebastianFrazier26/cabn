@@ -19,7 +19,8 @@
 		"preview": "tsx src/preview-page.ts",
 		"ui": "tsx src/ui-frames.ts",
 		"guide": "tsx src/guide-npc.ts",
-		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run portal-variants && pnpm run bonfire && pnpm run composite && pnpm run world-art && pnpm run guide && pnpm run preview"
+		"pets": "tsx src/pets.ts",
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run portal-variants && pnpm run bonfire && pnpm run composite && pnpm run world-art && pnpm run guide && pnpm run pets && pnpm run preview"
 	},
 	"dependencies": {
 		"gifenc": "^1.0.3",
