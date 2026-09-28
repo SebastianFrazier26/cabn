@@ -6,6 +6,7 @@ export * from "./cabnConfig.js";
 export * from "./classify.js";
 export * from "./cluster.js";
 export * from "./convert.js";
+export * from "./embedCheck.js";
 export * from "./imageDimensions.js";
 export * from "./layout.js";
 export * from "./markdownPreview.js";

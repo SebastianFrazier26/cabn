@@ -7,7 +7,21 @@
 			"kind": "url",
 			"url": "https://example.com/",
 			"title": "Project website (example.com, a live web portal)"
+		},
+		"docs/threejs.md": {
+			"kind": "url",
+			"url": "https://threejs.org/",
+			"title": "three.js (a rich site that allows framing)"
+		},
+		"docs/code-host.md": {
+			"kind": "url",
+			"url": "https://github.com/",
+			"title": "GitHub (refuses framing, opens in your browser)"
 		}
 	},
-	"allowedEmbedOrigins": ["https://example.com"]
+	"allowedEmbedOrigins": [
+		"https://example.com",
+		"https://threejs.org",
+		"https://github.com"
+	]
 }

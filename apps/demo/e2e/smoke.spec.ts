@@ -11,6 +11,7 @@ interface CabnStoreSnapshot {
 	mode: string;
 	activeWorldBase: string | null;
 	playerPos: { x: number; y: number };
+	monsters: { species: string }[];
 }
 
 // window.__cabnStore only exists when the page is loaded with ?e2e=1 — see
@@ -174,6 +175,30 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 			timeout: 10_000,
 		})
 		.not.toBeNull();
+
+	// The sample world's newer species ship in monsters.json, not world.json;
+	// seeing them in the store proves BootScene fetched and merged it.
+	await expect
+		.poll(
+			async () =>
+				new Set((await getStoreState(page))?.monsters.map((m) => m.species)),
+			{ timeout: 10_000 },
+		)
+		.toEqual(
+			new Set([
+				"ghost",
+				"rot-sprite",
+				"warded-mimic",
+				"gremlin",
+				"ouroboros",
+				"will-o-wisp",
+				"imp",
+				"magpie",
+				"skeleton",
+				"bramble",
+				"shade",
+			]),
+		);
 
 	// Allowlist nothing — a real favicon is committed (apps/demo/public/
 	// favicon.webp) specifically so this can stay a hard zero rather than

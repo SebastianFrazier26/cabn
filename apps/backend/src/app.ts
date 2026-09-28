@@ -216,6 +216,13 @@ export function buildApp(
 						// response than the upload itself was allowed to carry.
 						mediaMaxFileBytes: DEFAULT_MAX_FILE_BYTES,
 						mediaMaxTotalBytes: config.maxUploadBytes,
+						// Always offline: the embed check fetches whatever urls the
+						// upload's cabn.json names, which would let any API caller
+						// aim this server's network position at internal hosts
+						// (SSRF) or use it as a request proxy. Url previews in
+						// uploaded worlds are recorded as assumed framable and the
+						// engine falls back to its load timeout for them.
+						embedNetwork: undefined,
 					});
 
 					const files: Record<string, Uint8Array> = {};

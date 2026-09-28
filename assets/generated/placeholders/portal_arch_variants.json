@@ -1,0 +1,106 @@
+{
+	"frameSize": 256,
+	"cols": 5,
+	"variants": [
+		{
+			"id": "readme",
+			"frame": 0,
+			"label": "README / docs"
+		},
+		{
+			"id": "markdown",
+			"frame": 1,
+			"label": "Markdown"
+		},
+		{
+			"id": "python",
+			"frame": 2,
+			"label": "Python"
+		},
+		{
+			"id": "javascript",
+			"frame": 3,
+			"label": "JavaScript"
+		},
+		{
+			"id": "typescript",
+			"frame": 4,
+			"label": "TypeScript"
+		},
+		{
+			"id": "csharp",
+			"frame": 5,
+			"label": "C#"
+		},
+		{
+			"id": "ruby",
+			"frame": 6,
+			"label": "Ruby"
+		},
+		{
+			"id": "rust",
+			"frame": 7,
+			"label": "Rust"
+		},
+		{
+			"id": "go",
+			"frame": 8,
+			"label": "Go"
+		},
+		{
+			"id": "jvm",
+			"frame": 9,
+			"label": "Java / Kotlin / Scala"
+		},
+		{
+			"id": "cfamily",
+			"frame": 10,
+			"label": "C / C++"
+		},
+		{
+			"id": "shell",
+			"frame": 11,
+			"label": "Shell / scripts"
+		},
+		{
+			"id": "config",
+			"frame": 12,
+			"label": "Config / data"
+		},
+		{
+			"id": "web",
+			"frame": 13,
+			"label": "HTML / CSS"
+		},
+		{
+			"id": "image",
+			"frame": 14,
+			"label": "Image"
+		},
+		{
+			"id": "audio",
+			"frame": 15,
+			"label": "Audio"
+		},
+		{
+			"id": "pdf",
+			"frame": 16,
+			"label": "PDF"
+		},
+		{
+			"id": "table",
+			"frame": 17,
+			"label": "Spreadsheet / CSV"
+		},
+		{
+			"id": "url",
+			"frame": 18,
+			"label": "Website / url"
+		},
+		{
+			"id": "sealed",
+			"frame": 19,
+			"label": "Sealed / binary"
+		}
+	]
+}

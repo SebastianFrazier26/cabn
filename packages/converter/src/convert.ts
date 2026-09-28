@@ -3,11 +3,21 @@ import {
 	AssetsFileSchema,
 	CABN_VERSION,
 	type ChunkFile,
+	EMBED_INDEX_FILENAME,
+	EMBED_INDEX_VERSION,
+	type EmbedCheckEntry,
+	type EmbedIndexFile,
+	EmbedIndexFileSchema,
+	isWorldJsonErrorCode,
 	MEDIA_INDEX_FILENAME,
 	MEDIA_INDEX_VERSION,
 	type MediaIndexFile,
 	MediaIndexFileSchema,
 	type MediaPreview,
+	MONSTER_INDEX_FILENAME,
+	MONSTER_INDEX_VERSION,
+	type MonsterIndexFile,
+	MonsterIndexFileSchema,
 	type RichPortalPreview,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
@@ -16,6 +26,7 @@ import {
 	WorldChunkSchema,
 	type WorldManifest,
 } from "@cabn/world-schema";
+import type { ExternalFinding } from "./annotate/externalFindings.js";
 import { type AnnotateFileInput, annotateWorld } from "./annotate/run.js";
 import {
 	checkOverrideTargetsExist,
@@ -24,6 +35,7 @@ import {
 } from "./cabnConfig.js";
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
+import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
 import { fnv1a } from "./hash.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
@@ -134,6 +146,25 @@ export interface ConvertOptions {
 	mediaMaxFileBytes?: number;
 	/** Host ceiling on all shipped media bytes, same precedence as mediaMaxFileBytes. */
 	mediaMaxTotalBytes?: number;
+	/**
+	 * Findings from an external linter/scanner run (`fromSarif`/`fromEslintJson`/
+	 * `parseFindingsFile`), turned into monsters alongside the built-in
+	 * annotators'. A convert-time input, not a cabn.json field: results are
+	 * produced per run by CI, not authored into the source tree, and an
+	 * uploaded zip shouldn't be able to inject arbitrary monster text.
+	 */
+	findings?: readonly ExternalFinding[];
+	/** The directory the external tool ran in, for resolving the absolute paths in its output. Defaults to `source`. */
+	findingsRoot?: string;
+	/**
+	 * Enables the build-time framability check for url previews (see
+	 * embedCheck.ts): one request per distinct url through this injected
+	 * fetch. Absent means offline — convert() itself never touches the
+	 * network, so a host that converts untrusted uploads (apps/backend) can't
+	 * be turned into a request proxy by a cabn.json. cabn.json's
+	 * `embedCheck: false` forces offline even when this is set.
+	 */
+	embedNetwork?: EmbedCheckNetwork;
 }
 
 export type WorldBundle = Map<string, Uint8Array | string>;
@@ -277,14 +308,24 @@ export async function convert(
 		}
 	}
 
-	const { monsters, spawnsByPortalId } = annotateWorld(
-		annotateInputs,
-		fileClusterId,
-		paths,
+	const annotated = annotateWorld(annotateInputs, fileClusterId, paths, {
+		annotate: cabnConfig?.annotate,
+		findings: opts.findings,
+		findingsRoot: opts.findingsRoot ?? opts.source,
+	});
+	// Split by what an older engine can parse: see world-schema's monsters.ts.
+	const monsters = annotated.monsters.filter((m) =>
+		isWorldJsonErrorCode(m.error.code),
 	);
+	const extendedMonsters = annotated.monsters.filter(
+		(m) => !isWorldJsonErrorCode(m.error.code),
+	);
+	const worldJsonIds = new Set(monsters.map((m) => m.id));
 	for (const portal of portals) {
-		const spawns = spawnsByPortalId.get(portal.id);
-		if (spawns) portal.spawns = spawns;
+		const spawns = annotated.spawnsByPortalId
+			.get(portal.id)
+			?.filter((id) => worldJsonIds.has(id));
+		if (spawns?.length) portal.spawns = spawns;
 	}
 
 	const manifest: WorldManifest = {
@@ -306,6 +347,7 @@ export async function convert(
 		portals,
 		monsters,
 		allowedEmbedOrigins: cabnConfig?.allowedEmbedOrigins ?? [],
+		...(cabnConfig?.guide !== undefined ? { guide: cabnConfig.guide } : {}),
 	};
 	validateManifest(manifest);
 
@@ -325,6 +367,18 @@ export async function convert(
 	bundle.set("search-index.json", JSON.stringify(searchIndex, null, 2));
 	bundle.set("assets.json", JSON.stringify(assets, null, 2));
 
+	bundle.set(
+		EMBED_INDEX_FILENAME,
+		JSON.stringify(
+			await buildEmbedIndex(
+				portals,
+				cabnConfig?.embedCheck === false ? undefined : opts.embedNetwork,
+			),
+			null,
+			2,
+		),
+	);
+
 	// Always written, even empty, so an engine that reads media.json can
 	// fetch it unconditionally for any bundle this converter produced.
 	const mediaIndex: MediaIndexFile = {
@@ -334,9 +388,48 @@ export async function convert(
 	};
 	MediaIndexFileSchema.parse(mediaIndex);
 	bundle.set(MEDIA_INDEX_FILENAME, JSON.stringify(mediaIndex, null, 2));
+	// Always written, like media.json, so an engine can fetch it
+	// unconditionally for any bundle this converter produced.
+	const monsterIndex: MonsterIndexFile = {
+		monstersVersion: MONSTER_INDEX_VERSION,
+		monsters: extendedMonsters,
+		...(annotated.findings ? { findings: annotated.findings } : {}),
+	};
+	MonsterIndexFileSchema.parse(monsterIndex);
+	bundle.set(MONSTER_INDEX_FILENAME, JSON.stringify(monsterIndex, null, 2));
 	for (const [assetPath, bytes] of mediaBudget.assets()) {
 		bundle.set(assetPath, bytes);
 	}
 
 	return bundle;
+}
+
+/** Always written (like media.json) so its presence says "this converter knew about embed checks"; offline entries carry basis "offline" so a reader can tell "assumed" from "checked". */
+async function buildEmbedIndex(
+	portals: WorldManifest["portals"],
+	net: EmbedCheckNetwork | undefined,
+): Promise<EmbedIndexFile> {
+	const urlByPortal = new Map<string, string>();
+	for (const portal of portals) {
+		if (portal.richPreview?.kind === "url")
+			urlByPortal.set(portal.id, portal.richPreview.url);
+	}
+	const verdicts = net
+		? await checkEmbedUrls(urlByPortal.values(), net)
+		: new Map<string, EmbedCheckEntry>();
+	// Map + fromEntries, not bracket assignment — same "__proto__" filename
+	// hazard as the chunk maps above.
+	const entries = new Map<string, EmbedCheckEntry>();
+	for (const [portalId, url] of urlByPortal) {
+		entries.set(
+			portalId,
+			verdicts.get(url) ?? { url, framable: true, basis: "offline" },
+		);
+	}
+	const index: EmbedIndexFile = {
+		embedsVersion: EMBED_INDEX_VERSION,
+		mode: net ? "network" : "offline",
+		entries: Object.fromEntries(entries),
+	};
+	return EmbedIndexFileSchema.parse(index);
 }

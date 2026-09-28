@@ -24,6 +24,13 @@ export const ASSET_PATHS = {
 export const PORTAL_ARCH_FRAME_SIZE = 256;
 export const PORTAL_ARCH_FRAME_COUNT = 6;
 
+// Portal-type overlays (2026-09-28): one static 256px frame per
+// systems/archVariant.ts ARCH_VARIANTS entry, 5 per row, stacked over the
+// animated base strip — tools/asset-pipeline's portal-variants.ts. Optional:
+// without it every arch stays the plain generic one.
+export const PORTAL_VARIANT_SHEET_KEY = "portal-arch-variants";
+export const PORTAL_VARIANT_SHEET_PATH = `${ASSET_BASE}/placeholders/portal_arch_variants_soft.png`;
+
 export const BONFIRE_FRAME_COUNT = 4;
 
 // M6 monster sprites. Ghost (M2) is a single static image — no idle animation
@@ -184,6 +191,22 @@ export const WORLD_FOUNTAIN_GEM_PATH = `${ASSET_BASE}/placeholders/prop_world_fo
 // shape as WORLD_FOUNTAIN_KEY: ShelfScene keeps the old cabin if this fails.
 export const SHELF_CABIN_KEY = "shelf-cabin";
 export const SHELF_CABIN_PATH = `${ASSET_BASE}/placeholders/prop_shelf_cabin_soft.png`;
+
+// The guide NPC (tools/asset-pipeline's pixelmaps/guide-npc.ts): three idle
+// frames on the player's own 24x32 grid at soften's cellSize 16, so she's
+// drawn at the player's 0.125 scale and stands exactly as tall. The bubble is
+// the same density; the portrait is a React <img> in the dialogue box, not a
+// Phaser texture. Optional: without the strip WorldScene draws a tinted
+// player sprite in her place.
+export const GUIDE_NPC_KEY = "npc-guide";
+export const GUIDE_NPC_PATH = `${ASSET_BASE}/placeholders/npc_guide_strip_soft.png`;
+export const GUIDE_NPC_FRAME_WIDTH = 384;
+export const GUIDE_NPC_FRAME_HEIGHT = 512;
+export const GUIDE_NPC_SCALE = 0.125;
+export const GUIDE_NPC_IDLE_ANIM = "npc-guide-idle";
+export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
+export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
+export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
 
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient

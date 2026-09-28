@@ -268,6 +268,35 @@ describe("convert(): cabn.json integration", () => {
 		);
 	});
 
+	test("guide flows through to the manifest only when cabn.json sets it", async () => {
+		const withGuide = await makeWorld({
+			"cabn.json": JSON.stringify({ cabnConfigVersion: 1, guide: false }),
+			"a.md": "# a",
+		});
+		const withoutGuide = await makeWorld({
+			"cabn.json": JSON.stringify({ cabnConfigVersion: 1 }),
+			"a.md": "# a",
+		});
+		const off = parseBundleEntry<WorldManifest>(
+			await convert(new DirSource(withGuide), {
+				name: "w",
+				source: withGuide,
+				now: FIXED_NOW,
+			}),
+			"world.json",
+		);
+		const unset = parseBundleEntry<WorldManifest>(
+			await convert(new DirSource(withoutGuide), {
+				name: "w",
+				source: withoutGuide,
+				now: FIXED_NOW,
+			}),
+			"world.json",
+		);
+		expect(off.guide).toBe(false);
+		expect("guide" in unset).toBe(false);
+	});
+
 	test("a url override is attached and allowedEmbedOrigins flows through to the manifest", async () => {
 		const root = await makeWorld({
 			"cabn.json": JSON.stringify({

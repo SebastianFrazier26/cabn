@@ -20,6 +20,16 @@ describe("validateCabnConfig", () => {
 		expect(() => validateCabnConfig(baseConfig())).not.toThrow();
 	});
 
+	test("accepts an optional boolean guide flag and rejects anything else", () => {
+		expect(validateCabnConfig({ ...baseConfig(), guide: false }).guide).toBe(
+			false,
+		);
+		expect(validateCabnConfig(baseConfig()).guide).toBeUndefined();
+		expect(() => validateCabnConfig({ ...baseConfig(), guide: "no" })).toThrow(
+			CabnConfigValidationError,
+		);
+	});
+
 	test("accepts an image override", () => {
 		const config = {
 			...baseConfig(),

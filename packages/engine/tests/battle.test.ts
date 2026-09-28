@@ -158,7 +158,14 @@ describe("annotateFileLive", () => {
 			worldFiles,
 		);
 		const codes = results.map((r) => r.code).sort();
-		expect(codes).toEqual(["IoError", "NullTypeError", "WispNote"]);
+		// DeadCode x2: `helper` and `x` are never used (M10 skeletons).
+		expect(codes).toEqual([
+			"DeadCode",
+			"DeadCode",
+			"IoError",
+			"NullTypeError",
+			"WispNote",
+		]);
 	});
 
 	it("returns no results for a clean file", () => {

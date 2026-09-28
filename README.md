@@ -12,7 +12,7 @@ Under active reboot. The original Rust prototype is parked on the `rust-prototyp
 | --- | --- | --- |
 | `packages/world-schema` | `@cabn/world-schema` | Zod schemas + types for the world bundle (`world.json`, chunks, search index, assets), plus `validateManifest` |
 | `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index, error annotation -> monsters); `buildShelf()`: many worlds -> a shelf manifest |
-| `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf/file scenes, a zustand+mitt React bridge (`CabnGame` and its HUD: `ToolHotbar`, `SpyglassPanel`, `OrbSearch`, `BagTray`, `EditorOverlay`, `SettingsCorner`, `FileOverlay`, `MonsterCounter`, `EncounterBanner`, `RunOverlay`), walkable world with lazy chunk loading, in-arch portal previews, a shelf hub listing every converted world, a walkable parchment-scroll file view with enchanted markdown, a CodeMirror-backed quill editor with bag paste, monster sprites (hovering near portals/paths in the world, standing beside their line in a file) with a walk-into-and-`Enter` fix-to-defeat battle loop, localStorage-backed save persistence (file edits, player position, visited clusters, bag slots, defeated monsters), a pluggable `ExecutionProvider` (`TraceProvider` heuristic by default and always in a hosted build; `LocalRunProvider`, real execution, only reachable via `@cabn/engine/local-exec` from a `cabn serve --allow-exec` host page) driving the wand tool's run parchment, and a soft bloom+vignette glow post-effect (always on where WebGL is available) |
+| `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf/file scenes, a zustand+mitt React bridge (`CabnGame` and its HUD: `ToolHotbar`, `SpyglassPanel`, `OrbSearch`, `BagTray`, `EditorOverlay`, `SettingsCorner`, `FileOverlay`, `MonsterCounter`, `EncounterBanner`, `RunOverlay`), walkable world with lazy chunk loading, in-arch portal previews, a shelf hub listing every converted world, a parchment file view you edit in place with a real text caret (shared buffer, undo history and save path with the quill) and enchanted markdown, a CodeMirror-backed quill editor with bag paste, monster sprites (hovering near portals/paths in the world, standing beside their line in a file) with a click-or-`Alt`+`Enter` fix-to-defeat battle loop, localStorage-backed save persistence (file edits, player position, visited clusters, bag slots, defeated monsters), a pluggable `ExecutionProvider` (`TraceProvider` heuristic by default and always in a hosted build; `LocalRunProvider`, real execution, only reachable via `@cabn/engine/local-exec` from a `cabn serve --allow-exec` host page) driving the wand tool's run parchment, and a soft bloom+vignette glow post-effect (always on where WebGL is available) |
 | `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec]` |
 | `apps/backend` | `@cabn/backend` | Authenticated Fastify upload/convert API — `POST /v1/worlds` (zip in, world bundle zip out) and `GET /healthz` |
 | `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf; also home to the Playwright browser smoke test (`e2e/`) |
@@ -56,19 +56,22 @@ CI also runs `pnpm audit --audit-level=high` (fails only on high/critical findin
 
 ### Controls
 
-- **Move**: WASD or arrow keys, everywhere (shelf, a world, inside a file) — or click the ground to walk there (a small gold sparkle marks the spot). Any movement key cancels a click-walk.
-- **Interact**: `Enter` — same key everywhere: at a shelf cabin -> that world, at a world portal -> the file, at the bonfire -> back to the shelf, at a file's top arch -> back to the world, next to a monster inside a file -> an encounter (see Monsters below). Clicking any of those (the cursor turns into a pointer over them) walks you there and interacts on arrival.
-- **Esc**: leave a world at the bonfire (back to the shelf), close a file (back to the world at the portal you entered), cancel a bag selection in progress, back out of an encounter banner before the quill opens, or close an open panel.
-- While a text field has focus (the orb's search box, the quill editor) every key goes to it, never to the game — `Enter` in the orb's search box picks the top result.
+New to cabn? The player's guide, [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md), walks through moving, every tool and hotkey, the monsters, editing and previews, plus `cabn.json` for world authors. In the game, Wren (a guide standing by the first world's bonfire) gives the same tips: walk up to her and press `Enter`.
+
+- **Move**: WASD or arrow keys on the shelf and in a world — or click the ground to walk there (a small gold sparkle marks the spot). Any movement key cancels a click-walk.
+- **Interact**: `Enter` — at a shelf cabin -> that world, at a world portal -> the file, at the bonfire -> back to the shelf. Clicking any of those (the cursor turns into a pointer over them) walks you there and interacts on arrival.
+- **Inside a text file you write on the page directly.** Click puts a real text caret at that character (the pointer is an I-beam over the text); arrows move it by character and line, `Home`/`End` to the line's indent/start and end, `Alt`+arrows (`Ctrl`+arrows off macOS) by word, `Cmd`+arrows (`Ctrl`+`Home`/`End`) to line/document ends, `Shift` with any of them (or a drag, or a double click on a word) selects. Typing, `Backspace`/`Delete`, `Tab`/`Shift`+`Tab`, paste and cut edit the file in place; `Enter` inserts a newline (keeping the indent). `Cmd`/`Ctrl`-`Z` undoes, `Cmd`/`Ctrl`-`Shift`-`Z` (or `Ctrl`-`Y`) redoes, `Cmd`/`Ctrl`-`S` saves — the same save as the quill's (it persists in the browser and re-checks the file's monsters). The status line at the top shows the path, `Ln`/`Col` and saved/unsaved. Because letters and `Enter` now type, the file view's tool shortcuts are `Alt` chords: `Alt`+`Enter` fights the monster within two lines of the caret, `Alt`+`Q` quill, `Alt`+`B` bag, `Alt`+`R` wand, `Alt`+`F` orb, `Alt`+`L` spyglass (`Alt`+`1`-`5` pastes a bag slot). Clicking a monster or the top arch acts on it at once. Binary/media files and sealed chests aren't editable.
+- **Esc**: leave a world at the bonfire (back to the shelf), close a file (back to the world at the portal you entered — with unsaved edits it first asks Save & leave / Discard / Keep writing; with a selection, the first Esc just clears it), back out of an encounter banner before the quill opens, or close an open panel.
+- While a text field has focus (the orb's search box, the quill editor, the file view's caret) every key goes to it, never to the game — `Enter` in the orb's search box picks the top result.
 - **Tool hotbar** (bottom of screen, click a slot or use its hotkey):
-  - **Opener** (`Enter`) — the interact behavior above, also reachable as a tool.
+  - **Opener** (`Enter`; `Alt`+`Enter` inside a file) — the interact behavior above, also reachable as a tool.
   - **Spyglass** (`L`) — lists the portals in whatever cluster you're standing in (name, kind, size); click one to auto-walk there.
   - **Orb** (`F`, or `Cmd`/`Ctrl`-`F` which also blocks the browser's own find) — fuzzy search the whole world by name/path/content while walking around, or search just the open file's lines while inside one; picking a result auto-walks to it (world) or jumps/highlights the line (file).
-  - **Bag** (`B`) — inside a file, starts a line selection at your current line (shift + up/down to extend), and a second `B` grabs it into a bag slot (shown bottom-left, capped at 5).
-  - **Quill** (`Q`) — inside a file, opens the editor overlay with the caret on the line nearest you. `Ctrl`/`Cmd`-`S` saves; `Esc` closes (asks first if there are unsaved changes). While it's open, the bag tray's slots become paste buttons (or use `Alt`+`1`-`5`) that insert that slot's text at the cursor.
-  - **Wand** (`R`) — inside a file, starts a *run*: a parchment scroll unfurls over the bottom-right of the screen and a spark travels the file line by line, the camera easing along with it. By default this is always a simulated trace (`TraceProvider`, a heuristic that never executes a single line of your code); it's only ever a *real* run of a file's code when you're pointed at a `cabn serve --allow-exec` instance (see below).
+  - **Bag** (`Alt`+`B` inside a file) — grabs the caret's selection, or its whole line if nothing is selected, into a bag slot (shown bottom-left, capped at 5).
+  - **Quill** (`Alt`+`Q` inside a file) — opens the spellbook, the full-tools editor, on the same document the page shows: same caret, same unsaved edits, same undo history. `Ctrl`/`Cmd`-`S` saves; `Esc` goes back to the page with any unsaved edits kept (leaving the file is what asks about them). While it's open, the bag tray's slots become paste buttons (or use `Alt`+`1`-`5`) that insert that slot's text at the cursor.
+  - **Wand** (`Alt`+`R` inside a file) — starts a *run* of the page as it currently reads, unsaved edits included: a parchment scroll unfurls over the bottom-right of the screen and a spark travels the file line by line, the camera easing along with it. By default this is always a simulated trace (`TraceProvider`, a heuristic that never executes a single line of your code); it's only ever a *real* run of a file's code when you're pointed at a `cabn serve --allow-exec` instance (see below).
 
-Inside a world, a portal arch shows a live preview in its opening as you approach. A file opens as a walkable parchment scroll (line-numbered, camera follows you down it); markdown files render "enchanted" — gold glowing headings, tinted bold/italic, pale-blue underlined links, boxed code spans, and leaf-dot list bullets.
+Inside a world, a portal arch shows a live preview in its opening as you approach. A file opens as a parchment page you write on (line-numbered, the camera follows the caret; the mouse wheel scrolls freely until the caret moves again); markdown files render "enchanted" — gold glowing headings, tinted bold/italic, pale-blue underlined links, boxed code spans, and leaf-dot list bullets — except on the caret's (or selection's) lines, which show their raw source while you edit them.
 
 ### Portal previews and `cabn.json`
 
@@ -99,9 +102,13 @@ A `url` override renders as a live sandboxed iframe (`PortalEmbed`) — see `pac
 
 In the world, walking up to a url arch lays that live page over the arch's opening (one at a time, unmounted when you walk away); clicking the page in the arch, or the side panel's "Open in browser" button, opens it in a new tab. Only origins in `allowedEmbedOrigins` are framed or opened. The demo's `docs/website.md` is such a web portal, pointed at `https://example.com/`.
 
+Walk right up to a url arch (the side panel's range) and that same live page moves out of the arch into the side panel at a readable size (laid out 640px wide), where you can scroll it and click links inside it; it's one iframe throughout, moved with CSS rather than re-mounted, so the page isn't loaded twice. Clicking into the page gives it your keyboard (a chip says so); click anywhere outside it to walk again — Esc can't work there, because a cross-origin page's keys never reach cabn. Step back and it returns to the arch.
+
+Many sites refuse to be framed (`X-Frame-Options`, CSP `frame-ancestors`), and a browser gives the embedding page no reliable signal when that happens. So `cabn build` and `cabn serve` check each url once at build time (HEAD, falling back to GET; https-only redirects, at most 5; 5s budget; only headers are read) and record the verdict in `embeds.json` beside `world.json`. A blocked site never gets an iframe: its arch shows the title card and the side panel an "Open in browser" button. `--offline` (or `"embedCheck": false` in `cabn.json`) skips the check and assumes every url is framable; `convert()` itself never touches the network unless the host passes `embedNetwork`, and the backend never does (it converts untrusted uploads, so fetching their urls would be an SSRF vector). Engines from before `embeds.json` never request it and behave as before. The demo's `docs/threejs.md` (framable) and `docs/code-host.md` (github.com, blocked) show both cases.
+
 ### Running a file
 
-Press `R` (the wand) inside a file to start a run. The parchment shows the current line, that line's source text, and a running log; controls work both on-screen and by keyboard:
+Press `Alt`+`R` (the wand) inside a file to start a run. The parchment shows the current line, that line's source text, and a running log; controls work both on-screen and by keyboard:
 
 | Control | Keyboard | What it does |
 | --- | --- | --- |
@@ -117,8 +124,10 @@ By default — everywhere, including this repo's own hosted demo — a run is a 
 ### `cabn serve` — running a file for real, locally only
 
 ```sh
-cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms]
+cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline]
 ```
+
+The host page is sent with `Content-Security-Policy: frame-src <the world's allowedEmbedOrigins>` (`frame-src 'none'` when it has none) and no other directive, so the only thing the browser will ever frame is what `cabn.json` allowlisted; scripts, styles and workers are left unrestricted because the page runs an inline token script and a bundled app a broader policy would have to enumerate. `--offline` skips the build-time framability check (see above).
 
 Converts `<dir>` into a world and serves it as a walkable game at `http://127.0.0.1:<port>/?token=<...>` — bound to `127.0.0.1` only, never configurable to any other host. On its own (no `--allow-exec`), it behaves exactly like the hosted demo: the wand tool still works, still only ever simulates.
 
@@ -132,18 +141,47 @@ will print a loud warning banner and the URL to open.
 
 ### Monsters
 
-Every error a world's files have gets annotated at conversion time and spawns a monster, one species per error code:
+Every error a world's files have gets annotated at conversion time and spawns a monster, one species per error code. Tier is severity, from 0 (cosmetic) to 3. When a file has two or more real bugs, each of them goes up one tier.
 
-| Species | Error code | What it means |
-| --- | --- | --- |
-| Ghost | `NullTypeError` | A relative import or markdown link that doesn't resolve to any file in this world |
-| Rot-sprite | `Corrupted` | Invalid JSON, or a markdown frontmatter block that opens with `---` and never closes |
-| Warded Mimic | `InvalidMode` | The file contains an invalid/undecodable byte (shows up as the Unicode replacement character, U+FFFD) |
-| Gremlin | `IoError` | An unclosed, mismatched, or unexpected bracket, or an unterminated string literal |
-| Ouroboros | `OuroborosError` | A circular import between two or more files |
-| Will-o'-Wisp | `WispNote` | A `TODO`/`FIXME`/`XXX`/`HACK` left in a comment — cosmetic, tier 0, never an encounter |
+| Species | Error code | Tier | What it means |
+| --- | --- | --- | --- |
+| Ghost | `NullTypeError` | 1 | A relative import or markdown link that doesn't resolve to any file in this world |
+| Rot-sprite | `Corrupted` | 1 | Invalid JSON, or a markdown frontmatter block that opens with `---` and never closes |
+| Warded Mimic | `InvalidMode` | 1 | The file contains an invalid/undecodable byte (shows up as the Unicode replacement character, U+FFFD) |
+| Gremlin | `IoError` | 1 | An unclosed, mismatched, or unexpected bracket, or an unterminated string literal |
+| Ouroboros | `OuroborosError` | 1 | A circular import between two or more files |
+| Will-o'-Wisp | `WispNote` | 0 | A `TODO`/`FIXME`/`XXX`/`HACK` left in a comment — cosmetic, never an encounter |
+| Hex Imp | `SyntaxError` | 2 | A real parse error, from the same Lezer grammars the editor uses (JS/JSX, Python, CSS, HTML). TypeScript isn't covered, because that grammar flags too much valid TS; TS files still get gremlins. A file that has a gremlin gets no imps, so one mistake is one monster |
+| Magpie | `LeakedSecret` | 3 | A hard-coded credential: an AWS/GitHub/Anthropic/OpenAI/Slack/Stripe/Google key, a PEM private key, a database URL with a password in it, or a random-looking string assigned to a secret-ish name. The message shows only the key's prefix and length, never the value |
+| Skeleton | `DeadCode` | 1 | An unused import, an unused variable or function (JS/TS locals and module-private names, Python function locals), or code after `return`/`throw`/`raise`/`break`/`continue` |
+| Bramble | `CodeSmell` | 1 | A function over 80 lines, control flow nested more than 4 deep, a copy-pasted block of 6+ lines, or a debug leftover (`debugger`, `breakpoint()`, and `console.log`/`print` outside scripts, tests and CLIs). Change the limits in `cabn.json`: `"annotate": { "maxFunctionLines": 120, "maxNestingDepth": 5 }` |
+| Shade | `UnknownBug` | 1 | A finding from an external tool (`cabn build --findings`) that doesn't fit any built-in class |
 
-A monster hovers near its file's portal arch in the world (or, for an ouroboros whose cycle crosses clusters, at the midpoint of the path between them — cosmetic only, not fightable there) and stands beside its line inside the file. Walking into one and pressing `Enter` (or clicking it) starts an encounter: a short banner names the monster and shows the error, then the quill opens on the offending line. Saving re-checks every monster still open in that file, not just the one you're fighting — fix the underlying problem and it dies (a fade, a few sparkles, and "Fixed!"); the fix doesn't take and it shrugs off the hit with a shake and a hint, editor still open so you can try again. A wisp never triggers an encounter at all — removing its `TODO` and saving is enough to make it vanish. The HUD's bottom-left counter tracks how many bugs remain in the world you're in.
+A monster hovers near its file's portal arch in the world (or, for an ouroboros whose cycle crosses clusters, at the midpoint of the path between them — cosmetic only, not fightable there) and stands beside its line inside the file. Clicking one, or pressing `Alt`+`Enter` with the caret within two lines of it (plain `Enter` types a newline in the file view), starts an encounter: a short banner names the monster and shows the error, then the quill opens on the offending line. Saving re-checks every monster still open in that file, not just the one you're fighting — fix the underlying problem and it dies (a fade, a few sparkles, and "Fixed!"); the fix doesn't take and it shrugs off the hit with a shake and a hint, editor still open so you can try again. A wisp never triggers an encounter at all — removing its `TODO` and saving is enough to make it vanish. The HUD's bottom-left counter tracks how many bugs remain in the world you're in.
+
+A false alarm costs more than a missed bug in a game about fixing real bugs, so the newer annotators hold back:
+
+- The dead-code check counts a name as used if the word appears anywhere else in the file, comments and strings included. It never guesses at scopes.
+- The imp ignores known gaps in the grammars (constructs that are valid but that the grammar still marks as errors). A test runs the imp and dead-code checks over this repo's own source and expects zero hits.
+- The secret check skips placeholders (`your-key-here`, `example`, `xxxx`, `${VAR}`, strings with too little variety). Its generic "secret-ish name" pattern doesn't run in tests or in `.example`/`.sample` files.
+- The debug-print check skips scripts, tests, CLIs and server entry points.
+
+The five newer species (imp through shade) are stored in a separate `monsters.json` next to `world.json`. Older engines read `world.json` strictly and would reject an unknown species. With this split they load new worlds fine and just don't show these monsters. `world.json` itself is unchanged and `CABN_VERSION` stays 1.
+
+#### External findings (`--findings`)
+
+```sh
+eslint . --format json > eslint.json
+cabn build ./my-project --findings eslint.json --findings codeql.sarif
+```
+
+`--findings` can be given more than once. It takes `eslint --format json` output or any SARIF 2.1.0 file (CodeQL, Semgrep, Ruff, secret scanners, ...), and the file is validated before anything is used.
+
+- **Mapping**: each finding becomes the closest built-in monster, going by rule id and tags. For example, `no-unused-vars`/`F401` becomes a skeleton, `complexity`/`no-console` a bramble, a parse error an imp, a secret-scanner or CWE-798 rule a magpie, and `import/no-unresolved` a ghost. Anything else becomes a shade.
+- **Matching**: paths are matched relative to the directory being built. A finding for a path that isn't in the world is dropped. So is one on the same line and in the same class as a built-in monster.
+- **Secrets**: a secret finding never copies the scanner's message, because scanners often quote the value.
+- **Defeating**: the browser can't re-run the tool, so an external monster dies once the exact line it flagged changes.
+- **Why a CLI flag**: findings come from a CI run, not from the source tree, so they aren't a `cabn.json` field. That also means an uploaded zip can't inject monsters.
 
 ### Saving
 

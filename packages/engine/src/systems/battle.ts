@@ -2,11 +2,18 @@ import {
 	type Annotator,
 	bracketBalance,
 	brokenImport,
+	checkExternalFindingFixed,
+	codeSmell,
+	deadCode,
 	type ErrorAnnotation,
+	EXTERNAL_RULE_PREFIX,
 	encodingIssue,
 	extractRelativeRefs,
+	leakedSecret,
 	parseFailure,
 	resolveRelativeRefTarget,
+	smellOptionsFromRule,
+	syntaxError,
 	todoMarker,
 } from "@cabn/converter/browser";
 import type { ErrorCode, PortalFile } from "@cabn/world-schema";
@@ -21,6 +28,10 @@ const PER_FILE_ANNOTATOR_BY_CODE: Partial<Record<ErrorCode, Annotator>> = {
 	IoError: bracketBalance,
 	InvalidMode: encodingIssue,
 	WispNote: todoMarker,
+	SyntaxError: syntaxError,
+	LeakedSecret: leakedSecret,
+	DeadCode: deadCode,
+	CodeSmell: codeSmell,
 };
 
 const CIRCULAR_IMPORT_RULE_PREFIX = "circular-import:";
@@ -55,6 +66,11 @@ export function checkMonsterFixed(
 	content: string,
 	worldFiles: ReadonlySet<string>,
 ): boolean {
+	// External-tool findings (any code, including UnknownBug) can't be re-run
+	// in the browser; they die when the line they flagged changes.
+	if (monster.rule.startsWith(EXTERNAL_RULE_PREFIX)) {
+		return checkExternalFindingFixed(monster.rule, content);
+	}
 	if (monster.code === "OuroborosError") {
 		if (!monster.rule.startsWith(CIRCULAR_IMPORT_RULE_PREFIX)) return true;
 		const members = new Set(
@@ -70,7 +86,13 @@ export function checkMonsterFixed(
 
 	const annotator = PER_FILE_ANNOTATOR_BY_CODE[monster.code];
 	if (!annotator) return true; // no re-check for an unrecognized code — never leaves the player permanently stuck
-	const results = annotator({ file, content, worldFiles });
+	// A CodeSmell rule carries the threshold it was judged by (a world's
+	// cabn.json may have changed the default), so re-judge with that one.
+	const options =
+		monster.code === "CodeSmell"
+			? smellOptionsFromRule(monster.rule)
+			: undefined;
+	const results = annotator({ file, content, worldFiles, options });
 	return !results.some((r) => r.rule === monster.rule);
 }
 

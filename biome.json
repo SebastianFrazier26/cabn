@@ -9,6 +9,7 @@
 		"includes": [
 			"**",
 			"!packages/converter/test/fixtures/broken-world",
+			"!packages/converter/test/fixtures/taxonomy-world",
 			"!apps/demo/sample-project"
 		]
 	},

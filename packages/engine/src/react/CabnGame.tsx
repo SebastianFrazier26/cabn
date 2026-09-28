@@ -9,6 +9,8 @@ import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
+import { FileStatusLine } from "./FileStatusLine.js";
+import { GuideDialog } from "./GuideDialog.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { PortalLivePage } from "./PortalLivePage.js";
@@ -86,6 +88,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					{/* First, so every HUD panel after it stacks above this in-world layer. */}
 					<PortalLivePage store={handle.store} bus={handle.bus} />
 					<FileOverlay store={handle.store} />
+					<FileStatusLine store={handle.store} bus={handle.bus} />
 					<PortalPreviewDock store={handle.store} />
 					<ToolHotbar store={handle.store} bus={handle.bus} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
@@ -95,6 +98,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<MonsterCounter store={handle.store} />
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />
+					<GuideDialog store={handle.store} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

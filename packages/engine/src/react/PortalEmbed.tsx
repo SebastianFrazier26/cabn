@@ -129,6 +129,14 @@ export function PortalEmbed({
 		// inside the frame, and a host that refuses to be framed often still
 		// fires `load` on the resulting blank/error document — a timeout is the
 		// honest, standard-practice heuristic here, not a precise success signal.
+		// It does NOT catch X-Frame-Options/frame-ancestors refusals: Chrome
+		// loads its own error page into the frame and fires `load` promptly,
+		// which clears this timeout. There's no reliable cross-origin signal
+		// for that case (no error event, contentDocument is null either way,
+		// frame-ancestors violations are reported to the framed site, not
+		// here), so it's decided at build time instead — embeds.json, see
+		// converter/embedCheck.ts — and a known-blocked site never reaches
+		// this component.
 		const timeout = setTimeout(() => setFailed(true), loadTimeoutMs);
 		timeoutRef.current = timeout;
 		return () => clearTimeout(timeout);

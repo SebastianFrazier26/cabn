@@ -1,11 +1,14 @@
 import type { PortalFile } from "@cabn/world-schema";
 import {
 	defaultKeymap,
-	history,
 	historyKeymap,
 	indentWithTab,
 } from "@codemirror/commands";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import {
+	EditorSelection,
+	type EditorState,
+	type Extension,
+} from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
@@ -24,6 +27,12 @@ import {
 	wordAt,
 } from "../systems/editorRename.js";
 import { getActiveExecutionProvider } from "../systems/execution/executionProvider.js";
+import {
+	createFileBufferState,
+	isActiveFileDirty,
+	saveActiveFile,
+	spellbookCompartment,
+} from "../systems/fileBuffer.js";
 import { insertTextAt } from "../systems/insertText.js";
 import {
 	createIdleRunPlaybackState,
@@ -194,10 +203,15 @@ export function EditorOverlay({
 	const portalIdRef = useRef(portalId);
 	portalIdRef.current = portalId;
 
-	const [dirty, setDirty] = useState(false);
-	const dirtyRef = useRef(dirty);
-	dirtyRef.current = dirty;
-	const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+	// The document is the store's shared file buffer (systems/fileBuffer.ts),
+	// not a copy: the view is built from it on open, every transaction is
+	// published back, and closing leaves unsaved edits in place for the file
+	// view's inline caret — so closing no longer asks to discard (leaving the
+	// file does).
+	const dirty = useCabnStore(store, isActiveFileDirty);
+	/** The state this view last published to the store — anything else arriving there (a reset to pristine) is pushed into the view. */
+	const publishedRef = useRef<EditorState | null>(null);
+	const bookExtensionsRef = useRef<Extension>([]);
 	const [battleHint, setBattleHint] = useState<string | null>(null);
 	// Remounting the book (key={playToken}) on every open is what retriggers
 	// its CSS open animation — same "remount == retrigger" pattern every other
@@ -250,14 +264,15 @@ export function EditorOverlay({
 	useEffect(() => {
 		if (!isOpen || !hostRef.current || !portalId) return;
 
-		const { activePortalContent, editorInitialLine, editorLanguage } =
+		const openedPortalId = portalId;
+		const { activePortalContent, activeFileState, editorLanguage } =
 			store.getState();
-		const content = activePortalContent ?? "";
+		const shared =
+			activeFileState ?? createFileBufferState(activePortalContent ?? "");
+		const content = shared.doc.toString();
 		let cancelled = false;
 		let debounce: ReturnType<typeof setTimeout> | undefined;
 
-		setDirty(false);
-		setConfirmingDiscard(false);
 		setPlayToken((token) => token + 1);
 		setLocalRun(IDLE_RUN);
 		setDialog(null);
@@ -267,47 +282,48 @@ export function EditorOverlay({
 		loadLanguageExtension(editorLanguage).then((languageExtension) => {
 			if (cancelled || !hostRef.current) return;
 
-			const state = EditorState.create({
-				doc: content,
-				extensions: [
-					spellbookToolExtensions(
-						editorLanguage,
-						languageExtension !== null,
-						content,
-						{
-							onTool: (id) => handleToolRef.current(id),
-							onNote: setToolHint,
-						},
-					),
-					keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-					history(),
-					pixelEditorExtensions,
-					...(languageExtension ? [languageExtension] : []),
-					EditorView.updateListener.of((update) => {
-						if (!update.docChanged) return;
-						// Rename's preview holds document offsets; any edit makes them stale.
-						if (dialogRef.current?.kind === "rename") setDialog(null);
-						setDirty(true);
-						clearTimeout(debounce);
-						const nextContent = update.state.doc.toString();
-						debounce = setTimeout(
-							() => recomputeErrors(nextContent),
-							LIVE_ANNOTATE_DEBOUNCE_MS,
-						);
-					}),
-				],
-			});
+			const bookExtensions: Extension = [
+				spellbookToolExtensions(
+					editorLanguage,
+					languageExtension !== null,
+					content,
+					{
+						onTool: (id) => handleToolRef.current(id),
+						onNote: setToolHint,
+					},
+				),
+				keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+				pixelEditorExtensions,
+				...(languageExtension ? [languageExtension] : []),
+				EditorView.updateListener.of((update) => {
+					if (update.docChanged || update.selectionSet) {
+						publishedRef.current = update.state;
+						store.getState().setActiveFileState(update.state);
+					}
+					if (!update.docChanged) return;
+					// Rename's preview holds document offsets; any edit makes them stale.
+					if (dialogRef.current?.kind === "rename") setDialog(null);
+					clearTimeout(debounce);
+					const nextContent = update.state.doc.toString();
+					debounce = setTimeout(
+						() => recomputeErrors(nextContent),
+						LIVE_ANNOTATE_DEBOUNCE_MS,
+					);
+				}),
+			];
+			bookExtensionsRef.current = bookExtensions;
+			// Re-read: the language pack loads async, and the buffer may have moved on.
+			const latest = store.getState().activeFileState ?? shared;
+			const state = latest.update({
+				effects: spellbookCompartment.reconfigure(bookExtensions),
+			}).state;
+			publishedRef.current = state;
+			store.getState().setActiveFileState(state);
 			const view = new EditorView({ state, parent: hostRef.current });
-
-			const totalLines = view.state.doc.lines;
-			const lineNumber = Math.min(
-				Math.max(editorInitialLine + 1, 1),
-				totalLines,
-			);
-			const caretPos = view.state.doc.line(lineNumber).from;
 			view.dispatch({
-				selection: { anchor: caretPos },
-				scrollIntoView: true,
+				effects: EditorView.scrollIntoView(state.selection.main.head, {
+					y: "center",
+				}),
 			});
 			view.focus();
 
@@ -317,32 +333,59 @@ export function EditorOverlay({
 		return () => {
 			cancelled = true;
 			clearTimeout(debounce);
-			viewRef.current?.destroy();
+			// Detached first, so the store->view sync below ignores this write.
+			const view = viewRef.current;
+			const published = publishedRef.current;
 			viewRef.current = null;
+			publishedRef.current = null;
+			const s = store.getState();
+			if (
+				view &&
+				s.activePortalId === openedPortalId &&
+				s.activeFileState === published
+			) {
+				s.setActiveFileState(
+					view.state.update({ effects: spellbookCompartment.reconfigure([]) })
+						.state,
+				);
+			}
+			view?.destroy();
 		};
 		// Only remounts on open/close (and if the store somehow hands us a
 		// different portal while already open, which never happens today —
 		// entering a new file always goes through closeEditor() first).
 	}, [isOpen, portalId, store.getState, recomputeErrors]);
 
-	// Stable across renders (refs, not the reactive `dirty`/`portalId` state)
-	// so these can sit in effect dependency arrays without re-attaching their
-	// listeners on every keystroke.
+	// A buffer change that didn't come from this view — the spyglass's
+	// "reset this file" swapping in pristine text — replaces the view's state
+	// so the two never diverge.
+	useEffect(() => {
+		if (!isOpen) return;
+		return store.subscribe((s) => {
+			const view = viewRef.current;
+			const next = s.activeFileState;
+			if (!view || !next || next === publishedRef.current) return;
+			const state = next.update({
+				effects: spellbookCompartment.reconfigure(bookExtensionsRef.current),
+			}).state;
+			publishedRef.current = state;
+			view.setState(state);
+			s.setActiveFileState(state);
+			recomputeErrors(state.doc.toString());
+		});
+	}, [isOpen, store, recomputeErrors]);
+
+	// Stable across renders (refs, not reactive state) so these can sit in
+	// effect dependency arrays without re-attaching their listeners on every
+	// keystroke.
 	const handleSave = useCallback(() => {
 		const view = viewRef.current;
-		const currentPortalId = portalIdRef.current;
-		if (!view || !currentPortalId) return;
-		const content = view.state.doc.toString();
-		bus.emit("editor:save", { portalId: currentPortalId, content });
-		setDirty(false);
-		recomputeErrors(content);
-	}, [bus, recomputeErrors]);
+		if (!view) return;
+		saveActiveFile(store, bus);
+		recomputeErrors(view.state.doc.toString());
+	}, [store, bus, recomputeErrors]);
 
 	const requestClose = useCallback(() => {
-		if (dirtyRef.current) {
-			setConfirmingDiscard(true);
-			return;
-		}
 		store.getState().closeEditor();
 	}, [store]);
 
@@ -592,8 +635,6 @@ export function EditorOverlay({
 			if (event.key === "Escape") {
 				if (dialogRef.current) {
 					closeDialog();
-				} else if (confirmingDiscard) {
-					setConfirmingDiscard(false); // second Esc backs out of the confirm, not a second discard
 				} else {
 					requestClose();
 				}
@@ -615,15 +656,7 @@ export function EditorOverlay({
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [
-		isOpen,
-		confirmingDiscard,
-		requestClose,
-		pasteSlotById,
-		handleTool,
-		closeDialog,
-		isMac,
-	]);
+	}, [isOpen, requestClose, pasteSlotById, handleTool, closeDialog, isMac]);
 
 	if (!isOpen) return null;
 
@@ -844,8 +877,8 @@ export function EditorOverlay({
 			</div>
 			<div className="cabn-spellbook-controls">
 				<span className="cabn-spellbook-status">
-					{status.summary} · Esc close · Alt+1-5 paste bag slot · hover a tool
-					for its shortcut
+					{status.summary} · Esc back to the page (edits kept) · Alt+1-5 paste
+					bag slot · hover a tool for its shortcut
 				</span>
 				<div style={{ display: "flex", gap: 10 }}>
 					<button
@@ -872,49 +905,6 @@ export function EditorOverlay({
 					}}
 				>
 					{battleHint}
-				</div>
-			)}
-			{confirmingDiscard && (
-				<div
-					style={{
-						position: "absolute",
-						inset: 0,
-						background: "rgba(20, 16, 40, 0.55)",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-						pointerEvents: "auto",
-					}}
-				>
-					<div
-						className="cabn-panel"
-						style={{
-							display: "flex",
-							flexDirection: "column",
-							gap: 12,
-							alignItems: "center",
-						}}
-					>
-						<span>Discard unsaved changes?</span>
-						<div style={{ display: "flex", gap: 10 }}>
-							<button
-								type="button"
-								className="cabn-btn cancel"
-								onClick={() => store.getState().closeEditor()}
-								style={{ padding: "6px 14px" }}
-							>
-								Discard
-							</button>
-							<button
-								type="button"
-								className="cabn-btn neutral"
-								onClick={() => setConfirmingDiscard(false)}
-								style={{ padding: "6px 14px" }}
-							>
-								Cancel
-							</button>
-						</div>
-					</div>
 				</div>
 			)}
 		</div>

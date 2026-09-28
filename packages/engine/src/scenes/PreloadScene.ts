@@ -1,4 +1,5 @@
 import type {
+	EmbedVerdict,
 	MediaPreview,
 	ShelfManifest,
 	WorldManifest,
@@ -29,6 +30,8 @@ import {
 	PATH_STAMP_COUNT,
 	PORTAL_ARCH_FRAME_COUNT,
 	PORTAL_ARCH_FRAME_SIZE,
+	PORTAL_VARIANT_SHEET_KEY,
+	PORTAL_VARIANT_SHEET_PATH,
 	PROP_NAMES,
 	pathStampKey,
 	pathStampPath,
@@ -46,6 +49,7 @@ import {
 	WORLD_FOUNTAIN_KEY,
 	WORLD_FOUNTAIN_PATH,
 } from "../assetPaths.js";
+import { preloadGuideNpcAssets } from "../render/guideNpc.js";
 
 export type PreloadSceneData =
 	| {
@@ -53,6 +57,8 @@ export type PreloadSceneData =
 			worldBase: string;
 			returnTo?: { shelfUrl: string };
 			media?: ReadonlyMap<string, MediaPreview>;
+			shelfIndex?: number;
+			embeds?: ReadonlyMap<string, EmbedVerdict>;
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 
@@ -74,6 +80,8 @@ export interface AssetAvailability {
 	shelfCabin: boolean;
 	/** All of the M10 atmosphere keys (assetPaths.ts#atmosphereAssetEntries) — edge scenery, skyline, sky ornaments, path-ribbon pieces. */
 	atmosphereArt: boolean;
+	/** The portal-type overlay sheet — without it every world arch is the generic one. */
+	portalVariants: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -111,6 +119,10 @@ export class PreloadScene extends Phaser.Scene {
 				frameHeight: PORTAL_ARCH_FRAME_SIZE,
 			},
 		);
+		this.load.spritesheet(PORTAL_VARIANT_SHEET_KEY, PORTAL_VARIANT_SHEET_PATH, {
+			frameWidth: PORTAL_ARCH_FRAME_SIZE,
+			frameHeight: PORTAL_ARCH_FRAME_SIZE,
+		});
 
 		this.load.image(
 			OPTIONAL_ASSET_KEYS.wizardTower,
@@ -166,6 +178,7 @@ export class PreloadScene extends Phaser.Scene {
 		});
 		this.load.image(WORLD_FOUNTAIN_GEM_KEY, WORLD_FOUNTAIN_GEM_PATH);
 		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
+		preloadGuideNpcAssets(this.load);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 		for (const [key, path] of atmosphereAssetEntries()) {
 			this.load.image(key, path);
@@ -262,6 +275,7 @@ export class PreloadScene extends Phaser.Scene {
 			atmosphereArt:
 				worldArtAvailable &&
 				atmosphereAssetEntries().every(([key]) => this.loaded(key)),
+			portalVariants: this.loaded(PORTAL_VARIANT_SHEET_KEY),
 		};
 
 		if ("shelfManifest" in this.target) {

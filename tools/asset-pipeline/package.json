@@ -12,12 +12,14 @@
 		"placeholders": "tsx src/gen-placeholders.ts",
 		"soften": "tsx src/soften.ts",
 		"animate": "tsx src/portal-animation.ts",
+		"portal-variants": "tsx src/portal-variants.ts",
 		"bonfire": "tsx src/bonfire-animation.ts",
 		"composite": "tsx src/portal-composite.ts",
 		"world-art": "tsx src/gen-world-art.ts",
 		"preview": "tsx src/preview-page.ts",
 		"ui": "tsx src/ui-frames.ts",
-		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run bonfire && pnpm run composite && pnpm run world-art && pnpm run preview"
+		"guide": "tsx src/guide-npc.ts",
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run portal-variants && pnpm run bonfire && pnpm run composite && pnpm run world-art && pnpm run guide && pnpm run preview"
 	},
 	"dependencies": {
 		"gifenc": "^1.0.3",

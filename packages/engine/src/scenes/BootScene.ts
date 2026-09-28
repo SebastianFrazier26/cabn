@@ -1,14 +1,26 @@
 import {
+	EMBED_INDEX_FILENAME,
+	type EmbedVerdict,
 	MEDIA_INDEX_FILENAME,
 	type MediaPreview,
+	MONSTER_INDEX_FILENAME,
+	type Monster,
+	mergeMonsterIndex,
+	parseEmbedIndex,
 	parseMediaIndex,
+	parseMonsterIndex,
 	validateManifest,
 	validateShelf,
 } from "@cabn/world-schema";
 import Phaser from "phaser";
 
 export type BootSceneData =
-	| { worldUrl: string; returnTo?: { shelfUrl: string } }
+	| {
+			worldUrl: string;
+			returnTo?: { shelfUrl: string };
+			/** This world's position in shelf.json's `worlds` (ShelfScene sets it); absent when a host boots a world directly. */
+			shelfIndex?: number;
+	  }
 	| { shelfUrl: string };
 
 /**
@@ -57,15 +69,29 @@ export class BootScene extends Phaser.Scene {
 		}
 
 		const raw = this.cache.json.get("world-manifest");
-		const manifest = validateManifest(raw);
+		const baseManifest = validateManifest(raw);
 		const worldBase = this.target.worldUrl.slice(
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
-		const returnTo = this.target.returnTo;
-		loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`).then((media) => {
+		const { returnTo, shelfIndex } = this.target;
+		Promise.all([
+			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
+			loadMonsterIndex(`${worldBase}${MONSTER_INDEX_FILENAME}`),
+			loadEmbedIndex(`${worldBase}${EMBED_INDEX_FILENAME}`),
+		]).then(([media, extraMonsters, embeds]) => {
 			if (!this.scene.isActive()) return;
-			this.scene.start("preload", { manifest, worldBase, returnTo, media });
+			// Merged here, once, so every scene and HUD piece downstream sees one
+			// `manifest.monsters` and never needs to know monsters.json exists.
+			const manifest = mergeMonsterIndex(baseManifest, extraMonsters);
+			this.scene.start("preload", {
+				manifest,
+				worldBase,
+				returnTo,
+				media,
+				...(shelfIndex !== undefined ? { shelfIndex } : {}),
+				embeds,
+			});
 		});
 	}
 }
@@ -83,6 +109,28 @@ async function loadMediaIndex(url: string): Promise<Map<string, MediaPreview>> {
 		const res = await fetch(url);
 		if (!res.ok) return new Map();
 		return parseMediaIndex(await res.json());
+	} catch {
+		return new Map();
+	}
+}
+
+/** Same contract as loadMediaIndex: optional, advisory, never fails the load. */
+async function loadMonsterIndex(url: string): Promise<Monster[]> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return [];
+		return parseMonsterIndex(await res.json());
+	} catch {
+		return [];
+	}
+}
+
+/** embeds.json: same optional/advisory contract as media.json — any failure means "no verdicts", i.e. every url preview is tried as a live iframe as before. */
+async function loadEmbedIndex(url: string): Promise<Map<string, EmbedVerdict>> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return new Map();
+		return parseEmbedIndex(await res.json());
 	} catch {
 		return new Map();
 	}

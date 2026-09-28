@@ -36,6 +36,8 @@ export type CabnEvents = {
 	"tool:quill-use": Record<string, never>;
 	/** EditorOverlay (Ctrl/Cmd-S) -> FileScene: the open file's full text changed; FileScene re-splits its lines and reports the edit to WorldScene for persistence + the arch marker. */
 	"editor:save": { portalId: string; content: string };
+	/** FileStatusLine's unsaved-changes prompt -> FileScene: leave the file, saving first or discarding the buffer. */
+	"file:leave": { save: boolean };
 	/** BagTray click while the editor is open -> EditorOverlay: paste this slot's text at the caret. */
 	"editor:paste-slot": { slotId: string };
 	/** SpyglassPanel's per-file "reset" button -> WorldScene: drop that portal's saved override. */

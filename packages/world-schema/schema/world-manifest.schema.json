@@ -438,7 +438,12 @@
 							"warded-mimic",
 							"gremlin",
 							"ouroboros",
-							"will-o-wisp"
+							"will-o-wisp",
+							"imp",
+							"magpie",
+							"skeleton",
+							"bramble",
+							"shade"
 						]
 					},
 					"error": {
@@ -452,7 +457,12 @@
 									"InvalidMode",
 									"IoError",
 									"OuroborosError",
-									"WispNote"
+									"WispNote",
+									"SyntaxError",
+									"LeakedSecret",
+									"DeadCode",
+									"CodeSmell",
+									"UnknownBug"
 								]
 							},
 							"rule": {
@@ -498,6 +508,9 @@
 			"items": {
 				"type": "string"
 			}
+		},
+		"guide": {
+			"type": "boolean"
 		}
 	},
 	"required": [

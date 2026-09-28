@@ -738,6 +738,9 @@ export class ShelfScene extends Phaser.Scene {
 				this.scene.start("boot", {
 					worldUrl,
 					returnTo: { shelfUrl: this.shelfUrl },
+					shelfIndex: this.shelfManifest.worlds.findIndex(
+						(w) => w.id === cabin.world.id,
+					),
 				});
 			},
 		);

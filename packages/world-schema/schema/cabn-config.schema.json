@@ -88,6 +88,44 @@
 			"items": {
 				"type": "string"
 			}
+		},
+		"media": {
+			"type": "object",
+			"properties": {
+				"maxFileBytes": {
+					"type": "integer",
+					"exclusiveMinimum": 0,
+					"maximum": 26214400
+				},
+				"maxTotalBytes": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 262144000
+				}
+			},
+			"additionalProperties": false
+		},
+		"guide": {
+			"type": "boolean"
+		},
+		"annotate": {
+			"type": "object",
+			"properties": {
+				"maxFunctionLines": {
+					"type": "integer",
+					"minimum": 10,
+					"maximum": 2000
+				},
+				"maxNestingDepth": {
+					"type": "integer",
+					"minimum": 2,
+					"maximum": 20
+				}
+			},
+			"additionalProperties": false
+		},
+		"embedCheck": {
+			"type": "boolean"
 		}
 	},
 	"required": ["cabnConfigVersion", "previews", "allowedEmbedOrigins"],

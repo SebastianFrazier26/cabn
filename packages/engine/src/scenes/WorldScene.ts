@@ -1,5 +1,6 @@
 import type {
 	Cluster,
+	EmbedVerdict,
 	MediaPreview,
 	Monster,
 	Portal,
@@ -15,6 +16,7 @@ import {
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
+	PORTAL_VARIANT_SHEET_KEY,
 	WORLD_FOUNTAIN_GEM_KEY,
 	WORLD_FOUNTAIN_IDLE_ANIM,
 	WORLD_FOUNTAIN_KEY,
@@ -39,6 +41,7 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
+import { GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { MonsterOrbits } from "../render/monsterOrbit.js";
 import {
@@ -83,6 +86,12 @@ import {
 	type DisplayPreview,
 	effectiveRichPreview,
 } from "../systems/archPreview.js";
+import {
+	ARCH_VARIANT_GLOW,
+	type ArchVariant,
+	archVariantFor,
+	archVariantFrame,
+} from "../systems/archVariant.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	type ClickTarget,
@@ -99,6 +108,7 @@ import {
 import {
 	openingRect,
 	pickNearWebPortal,
+	playerOccluderRect,
 	projectWorldRect,
 	rectsOverlap,
 	urlArchClickAction,
@@ -120,6 +130,7 @@ import {
 	withBagSlots,
 	withDefeatedMonster,
 	withFileOverride,
+	withGuideTalked,
 	withoutFileOverride,
 	withPlayerPosition,
 	withVisitedCluster,
@@ -142,6 +153,10 @@ export interface WorldSceneData {
 	returnTo?: { shelfUrl: string };
 	/** The bundle's media.json entries (BootScene), keyed by portal id; empty for a bundle without one. */
 	media?: ReadonlyMap<string, MediaPreview>;
+	/** See BootSceneData — decides whether this is the shelf's first world, the one the guide NPC stands in. */
+	shelfIndex?: number;
+	/** The bundle's embeds.json verdicts (BootScene); empty for a bundle without one. */
+	embeds?: ReadonlyMap<string, EmbedVerdict>;
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -170,6 +185,10 @@ const ARCH_OPENING_WIDTH_RATIO = 0.47;
 const ARCH_OPENING_HEIGHT_RATIO = 0.65;
 const ARCH_OPENING_Y_OFFSET_RATIO = 0.17;
 const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * WORLD_PORTAL_SCALE;
+/** Keystone plaque centre (portal-variants.ts PLAQUE: grid rows 5-11 of 48, centred on the frame's middle row). */
+const ARCH_PLAQUE_Y_OFFSET_RATIO = (8.5 - 24) / 48;
+/** Portal-type trim overlay, between the arch (3) and its preview. */
+const ARCH_VARIANT_DEPTH = 3.01;
 /** Just above the arch sprite (3) so the preview covers the opening's idle sparkles, below monsters (4) and the player (5). */
 const ARCH_PREVIEW_DEPTH = 3.05;
 /** Motes/glow/sheen over the preview, still below monsters (4) and the player (5). */
@@ -255,8 +274,11 @@ export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
 	private worldBase = "";
 	private media: ReadonlyMap<string, MediaPreview> = new Map();
+	private embeds: ReadonlyMap<string, EmbedVerdict> = new Map();
 	private availability!: AssetAvailability;
 	private returnTo: { shelfUrl: string } | undefined;
+	private shelfIndex: number | undefined;
+	private guideNpc: GuideNpc | null = null;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -267,6 +289,8 @@ export class WorldScene extends Phaser.Scene {
 	private portalWorldPos = new Map<string, Position>();
 	private portalRingRadii = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	private portalVariantOverlays = new Map<string, Phaser.GameObjects.Image>();
+	private portalVariants = new Map<string, ArchVariant>();
 	private portalPathById = new Map<string, string>();
 	private worldFiles = new Set<string>();
 
@@ -325,8 +349,10 @@ export class WorldScene extends Phaser.Scene {
 		this.manifest = data.manifest;
 		this.worldBase = data.worldBase;
 		this.media = data.media ?? new Map();
+		this.embeds = data.embeds ?? new Map();
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
+		this.shelfIndex = data.shelfIndex;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
 		// by the last visit's return-to-shelf would otherwise still be true.
 		this.returningToShelf = false;
@@ -373,6 +399,20 @@ export class WorldScene extends Phaser.Scene {
 			front: MONSTER_DEPTH,
 		});
 		this.drawMonsters();
+		this.guideNpc = GuideNpc.spawn(this, {
+			manifest: this.manifest,
+			shelfIndex: this.shelfIndex,
+			store: this.store,
+			spawn: this.defaultSpawnPos(),
+			portalPositions: this.portalWorldPos.values(),
+			bonfireWidth: this.bonfireDisplayWidth(),
+			reducedMotion: prefersReducedMotion(),
+			talked: () => this.save.guideTalked === true,
+			markTalked: () => {
+				this.save = withGuideTalked(this.save);
+				persistSave(this.save);
+			},
+		});
 		this.createPlayer(spawn);
 		this.setupInput();
 		this.setupCamera();
@@ -399,7 +439,12 @@ export class WorldScene extends Phaser.Scene {
 			this.monsterOrbits?.destroy();
 			this.monsterOrbits = null;
 			this.monsterSprites.clear();
-			this.cameras.main.off(
+			this.portalVariantOverlays.clear();
+			this.portalVariants.clear();
+			// Phaser's CameraManager shuts down first (it subscribed when the
+			// scene started, before create()) and clears `main` — without the
+			// `?.` every return to the shelf threw here and froze the game.
+			this.cameras.main?.off(
 				Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE,
 				this.projectWebPortal,
 			);
@@ -471,6 +516,19 @@ export class WorldScene extends Phaser.Scene {
 				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.32,
 				color: PALETTE.paleGhostBlue,
 				alpha: 0.08,
+			});
+		}
+		// The keystone plaque is what tells arch types apart, and the grade
+		// otherwise swallows it — a small light in the variant's rune colour.
+		for (const [portalId, variant] of this.portalVariants) {
+			const pos = this.portalWorldPos.get(portalId);
+			if (!pos || variant === "generic") continue;
+			lights.push({
+				x: pos.x,
+				y: pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_PLAQUE_Y_OFFSET_RATIO,
+				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.12,
+				color: ARCH_VARIANT_GLOW[variant],
+				alpha: 0.35,
 			});
 		}
 		this.atmosphere = attachAtmosphere(this, this.store, {
@@ -933,14 +991,42 @@ export class WorldScene extends Phaser.Scene {
 				sprite.play(PORTAL_IDLE_ANIM);
 				this.portalSprites.set(portalId, sprite);
 				const portal = this.portalsById.get(portalId);
-				if (portal)
-					this.archPreviews?.add({
-						id: portalId,
-						pos,
-						preview: this.previewFor(portal),
-					});
+				if (portal) {
+					const preview = this.previewFor(portal);
+					this.archPreviews?.add({ id: portalId, pos, preview });
+					this.setArchVariant(portalId, portal, preview);
+				}
 			});
 		}
+	}
+
+	/** Portal-type trim (render order: base arch 3 < overlay < preview 3.05) — the overlay never touches the opening, so previews, click targets and orbits see the same arch either way. */
+	private setArchVariant(
+		portalId: string,
+		portal: Portal,
+		preview: DisplayPreview,
+	): void {
+		if (!this.availability.portalVariants) return;
+		const variant = archVariantFor(portal.file, preview.kind);
+		this.portalVariants.set(portalId, variant);
+		const frame = archVariantFrame(variant);
+		const existing = this.portalVariantOverlays.get(portalId);
+		if (frame === null) {
+			existing?.destroy();
+			this.portalVariantOverlays.delete(portalId);
+			return;
+		}
+		if (existing) {
+			existing.setFrame(frame);
+			return;
+		}
+		const pos = this.portalWorldPos.get(portalId);
+		if (!pos) return;
+		const overlay = this.add
+			.image(pos.x, pos.y, PORTAL_VARIANT_SHEET_KEY, frame)
+			.setScale(WORLD_PORTAL_SCALE)
+			.setDepth(ARCH_VARIANT_DEPTH);
+		this.portalVariantOverlays.set(portalId, overlay);
 	}
 
 	private previewFor(portal: Portal): DisplayPreview {
@@ -948,6 +1034,7 @@ export class WorldScene extends Phaser.Scene {
 			portal,
 			this.save.fileOverrides[portal.id]?.content,
 			this.media.get(portal.id),
+			this.embeds.get(portal.id),
 		);
 	}
 
@@ -955,7 +1042,9 @@ export class WorldScene extends Phaser.Scene {
 	private refreshPortalPreview(portalId: string): void {
 		const portal = this.portalsById.get(portalId);
 		if (!portal) return;
-		this.archPreviews?.setPreview(portalId, this.previewFor(portal));
+		const preview = this.previewFor(portal);
+		this.archPreviews?.setPreview(portalId, preview);
+		this.setArchVariant(portalId, portal, preview);
 		if (this.focusedPortalId === portalId) {
 			this.focusedPortalId = null;
 			this.setFocusedPortal(portalId);
@@ -1133,9 +1222,11 @@ export class WorldScene extends Phaser.Scene {
 	 * been drawn yet at this point in create()'s ordering).
 	 */
 	private resolveSpawnPos(): Position {
-		const saved = this.save.playerPositions.world;
-		if (saved) return saved;
+		return this.save.playerPositions.world ?? this.defaultSpawnPos();
+	}
 
+	/** Where a fresh save starts — also kept clear of the guide NPC, whatever the current save says. */
+	private defaultSpawnPos(): Position {
 		const root =
 			this.manifest.clusters.find((c) => c.path === ".") ??
 			this.manifest.clusters[0];
@@ -1216,6 +1307,7 @@ export class WorldScene extends Phaser.Scene {
 				),
 			});
 		}
+		if (this.guideNpc) targets.push(this.guideNpc.interactable());
 		return targets;
 	}
 
@@ -1303,8 +1395,14 @@ export class WorldScene extends Phaser.Scene {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			return;
 		}
-
-		this.handleMovement(delta);
+		// The dialogue box swallows its keys before Phaser sees them; this also
+		// holds still a movement key that was already down when it opened.
+		if (this.guideNpc?.isTalking()) {
+			this.walker.cancel();
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+		} else {
+			this.handleMovement(delta);
+		}
 		this.handleChunkLoading();
 		this.handlePortalApproach();
 		const view = this.cameras.main.worldView;
@@ -1355,6 +1453,11 @@ export class WorldScene extends Phaser.Scene {
 		if (target.kind === "bonfire") {
 			this.pendingArrival = null;
 			this.returnToShelf();
+			return;
+		}
+		if (target.kind === "npc") {
+			this.pendingArrival = null;
+			this.guideNpc?.talk();
 			return;
 		}
 		if (target.kind !== "portal") {
@@ -1503,7 +1606,8 @@ export class WorldScene extends Phaser.Scene {
 		for (const portalId of inRange) {
 			const pos = this.portalWorldPos.get(portalId);
 			const portal = this.portalsById.get(portalId);
-			if (pos && portal && this.previewFor(portal).kind === "url")
+			const preview = portal ? this.previewFor(portal) : undefined;
+			if (pos && preview?.kind === "url" && !preview.embedBlocked)
 				webCandidates.push({ id: portalId, pos });
 		}
 		this.setNearWebPortal(
@@ -1560,12 +1664,10 @@ export class WorldScene extends Phaser.Scene {
 			},
 		);
 		const b = this.player.body.getBounds();
-		const occluded = rectsOverlap(world, {
-			x: b.x,
-			y: b.y,
-			w: b.width,
-			h: b.height,
-		});
+		const occluded = rectsOverlap(
+			world,
+			playerOccluderRect({ x: b.x, y: b.y, w: b.width, h: b.height }),
+		);
 		// Emitted every frame, not only on change: the React side mounts a
 		// frame or two after nearWebPortal is set and would otherwise never
 		// hear the rect of a camera that has already stopped moving. It skips
@@ -1610,12 +1712,17 @@ export class WorldScene extends Phaser.Scene {
 		this.interact();
 	};
 
-	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the bonfire. */
+	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the guide NPC, else the bonfire. */
 	private interact(): void {
 		if (this.enterNearestPortalInRange()) return;
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		if (this.guideNpc?.inReach(playerPos)) {
+			this.walker.cancel();
+			this.guideNpc.talk();
+			return;
+		}
 		const root = this.rootCluster();
 		if (!root) return;
-		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		if (
 			Phaser.Math.Distance.Between(
 				playerPos.x,
