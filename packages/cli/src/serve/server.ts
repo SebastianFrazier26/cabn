@@ -127,28 +127,42 @@ async function serveRepoAsset(
 }
 
 /**
- * The exec endpoint's full request gate, in the order the milestone lists
- * them: Host, then Origin, then token — each one is its own early 403 so a
- * test can assert exactly which check rejected a given request rather than
- * inferring it from one merged branch.
+ * Every request's gate, checked before any routing (see handleRequest) — not
+ * just /exec. A GET on `/`, `/app.js`, `/world/*`, or `/assets/*` answered
+ * over a rebound hostname would hand a hostile page the full world bundle
+ * (source code, via world.json + its chunks) and the session token embedded
+ * in the host page HTML; the token then being exec-only-checked would be
+ * defense-in-depth against the wrong threat. Host is checked unconditionally;
+ * Origin only when the request actually carries one (most non-browser
+ * clients never send it, and a same-origin navigation to `/` won't either).
  */
-function isExecRequestAuthorized(
+function isRequestFromLoopback(
 	req: IncomingMessage,
-	ctx: Pick<ServeContext, "port" | "token">,
+	ctx: Pick<ServeContext, "port">,
 ): { ok: true } | { ok: false; reason: string } {
 	if (!isLoopbackHost(req.headers.host, ctx.port)) {
 		return { ok: false, reason: "invalid host" };
 	}
 	const origin = req.headers.origin;
-	if (!isAllowedOrigin(Array.isArray(origin) ? origin[0] : origin, ctx.port)) {
+	if (
+		origin !== undefined &&
+		!isAllowedOrigin(Array.isArray(origin) ? origin[0] : origin, ctx.port)
+	) {
 		return { ok: false, reason: "invalid origin" };
 	}
+	return { ok: true };
+}
+
+/** Token check only — Host/Origin are already gated for every request by isRequestFromLoopback before handleRequest ever routes here. */
+function isExecTokenValid(
+	req: IncomingMessage,
+	ctx: Pick<ServeContext, "token">,
+): boolean {
 	const tokenHeader = req.headers["x-cabn-token"];
 	const presented = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader;
-	if (!presented || !constantTimeEqual(presented, ctx.token)) {
-		return { ok: false, reason: "invalid token" };
-	}
-	return { ok: true };
+	return (
+		Boolean(presented) && constantTimeEqual(presented as string, ctx.token)
+	);
 }
 
 async function handleExec(
@@ -156,10 +170,9 @@ async function handleExec(
 	res: ServerResponse,
 	ctx: ServeContext,
 ): Promise<void> {
-	const auth = isExecRequestAuthorized(req, ctx);
-	if (!auth.ok) {
+	if (!isExecTokenValid(req, ctx)) {
 		res.writeHead(403, { "content-type": "text/plain" });
-		res.end(auth.reason);
+		res.end("invalid token");
 		return;
 	}
 
@@ -230,10 +243,31 @@ async function handleRequest(
 	res: ServerResponse,
 	ctx: ServeContext,
 ): Promise<void> {
+	// Applied to every response regardless of route or outcome — nosniff and
+	// no-referrer cost nothing on a 403/404 either, and the token lives in
+	// both the page HTML and the printed URL's query string, so no-referrer
+	// matters even off the "/" route (an asset load from the host page is
+	// still a request "from" a page whose URL contains the token).
+	res.setHeader("X-Content-Type-Options", "nosniff");
+	res.setHeader("Referrer-Policy", "no-referrer");
+
+	const loopback = isRequestFromLoopback(req, ctx);
+	if (!loopback.ok) {
+		res.writeHead(403, { "content-type": "text/plain" });
+		res.end(loopback.reason);
+		return;
+	}
+
 	const url = new URL(req.url ?? "/", `http://${ctx.host}:${ctx.port}`);
 
 	if (req.method === "GET" && url.pathname === "/") {
-		res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+		// The page embeds the session token in a <script> — never cacheable,
+		// including by an intermediary that might otherwise serve it back to a
+		// different origin's request.
+		res.writeHead(200, {
+			"content-type": "text/html; charset=utf-8",
+			"cache-control": "no-store",
+		});
 		res.end(ctx.html);
 		return;
 	}

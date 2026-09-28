@@ -39,13 +39,19 @@ async function readNdjsonBody(
 		.map((l) => JSON.parse(l));
 }
 
+interface RawResponse {
+	status: number;
+	headers: Record<string, string | string[] | undefined>;
+	body: string;
+}
+
 /** `fetch()` treats `Host` as a forbidden request header and silently ignores an attempt to override it (WHATWG fetch spec) — a spoofed-Host test needs raw `node:http`, which has no such restriction. */
 function rawPost(
 	port: number,
 	path: string,
 	headers: Record<string, string>,
 	body: string,
-): Promise<{ status: number; body: string }> {
+): Promise<RawResponse> {
 	return new Promise((resolveReq, rejectReq) => {
 		const req = httpRequest(
 			{
@@ -61,6 +67,7 @@ function rawPost(
 				res.on("end", () =>
 					resolveReq({
 						status: res.statusCode ?? 0,
+						headers: res.headers,
 						body: Buffer.concat(chunks).toString("utf8"),
 					}),
 				);
@@ -68,6 +75,32 @@ function rawPost(
 		);
 		req.on("error", rejectReq);
 		req.end(body);
+	});
+}
+
+/** Same rationale as rawPost — a spoofed Host/Origin on a GET needs raw `node:http` too. */
+function rawGet(
+	port: number,
+	path: string,
+	headers: Record<string, string>,
+): Promise<RawResponse> {
+	return new Promise((resolveReq, rejectReq) => {
+		const req = httpRequest(
+			{ host: "127.0.0.1", port, path, method: "GET", headers },
+			(res) => {
+				const chunks: Buffer[] = [];
+				res.on("data", (c) => chunks.push(c));
+				res.on("end", () =>
+					resolveReq({
+						status: res.statusCode ?? 0,
+						headers: res.headers,
+						body: Buffer.concat(chunks).toString("utf8"),
+					}),
+				);
+			},
+		);
+		req.on("error", rejectReq);
+		req.end();
 	});
 }
 
@@ -238,3 +271,76 @@ describe("startServe — --allow-exec", () => {
 		).toBe(true);
 	});
 });
+
+// Every route, not just /exec — a DNS-rebinding page hitting a spoofed
+// hostname must never be able to read the world bundle (source code) or the
+// session token embedded in "/"'s HTML, with or without --allow-exec.
+describe.each([
+	{ label: "without --allow-exec", allowExec: false },
+	{ label: "with --allow-exec", allowExec: true },
+])(
+	"startServe — every route is Host/Origin gated ($label)",
+	({ allowExec }) => {
+		let chunkPath: string;
+
+		beforeEach(async () => {
+			handle = await startServe(FIXTURE_DIR, { port: 0, allowExec });
+			const manifest = await (
+				await fetch(`http://127.0.0.1:${handle.port}/world/world.json`)
+			).json();
+			const clusterId = manifest.clusters[0].id;
+			chunkPath = `/world/chunks/${clusterId}.json`;
+		});
+
+		it.each([
+			"/",
+			"/app.js",
+			"/world/world.json",
+			"/assets/originals/cabin_256.webp",
+		])("rejects a spoofed Host header on GET %s as 403", async (path) => {
+			const res = await rawGet(handle?.port ?? 0, path, {
+				host: "evil.example.com",
+			});
+			expect(res.status).toBe(403);
+		});
+
+		it("rejects a spoofed Host header on a chunk path as 403", async () => {
+			const res = await rawGet(handle?.port ?? 0, chunkPath, {
+				host: "evil.example.com",
+			});
+			expect(res.status).toBe(403);
+		});
+
+		it("rejects a hostile Origin header on a plain GET as 403", async () => {
+			const res = await rawGet(handle?.port ?? 0, "/", {
+				host: `127.0.0.1:${handle?.port}`,
+				origin: "http://evil.example.com",
+			});
+			expect(res.status).toBe(403);
+		});
+
+		it("still serves a legitimate 127.0.0.1 Host as 200", async () => {
+			const res = await rawGet(handle?.port ?? 0, "/", {
+				host: `127.0.0.1:${handle?.port}`,
+			});
+			expect(res.status).toBe(200);
+		});
+
+		it("still serves a legitimate localhost Host as 200", async () => {
+			const res = await rawGet(handle?.port ?? 0, "/", {
+				host: `localhost:${handle?.port}`,
+			});
+			expect(res.status).toBe(200);
+		});
+
+		it("'/' is never cached and never leaks via Referer", async () => {
+			const res = await rawGet(handle?.port ?? 0, "/", {
+				host: `127.0.0.1:${handle?.port}`,
+			});
+			expect(res.status).toBe(200);
+			expect(res.headers["cache-control"]).toBe("no-store");
+			expect(res.headers["referrer-policy"]).toBe("no-referrer");
+			expect(res.headers["x-content-type-options"]).toBe("nosniff");
+		});
+	},
+);
