@@ -97,6 +97,8 @@ const CabnConfigShapeSchema = z.strictObject({
 	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
 	/** Caps on image/audio/PDF bytes shipped in the bundle. A host's own ceilings (ConvertOptions.mediaMaxFileBytes/mediaMaxTotalBytes) still win. */
 	media: MediaCapsConfigSchema.optional(),
+	/** `false` hides the guide NPC (Wren) this world would otherwise show at its bonfire. Absent means "default": the engine shows the guide only in the first world of a shelf (or a world booted on its own). */
+	guide: z.boolean().optional(),
 	// Room for future per-world options (e.g. a default biome override, a
 	// world-level title/description) without another version bump — add them
 	// as optional fields here, not by loosening this strictObject.

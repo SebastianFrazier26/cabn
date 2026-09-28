@@ -306,6 +306,7 @@ export async function convert(
 		portals,
 		monsters,
 		allowedEmbedOrigins: cabnConfig?.allowedEmbedOrigins ?? [],
+		...(cabnConfig?.guide !== undefined ? { guide: cabnConfig.guide } : {}),
 	};
 	validateManifest(manifest);
 

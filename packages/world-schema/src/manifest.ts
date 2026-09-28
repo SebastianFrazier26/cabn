@@ -130,6 +130,13 @@ const WorldManifestShapeSchema = z.strictObject({
 	 * empty — additive, like richPreview above, not a version bump.
 	 */
 	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
+	/**
+	 * cabn.json's `guide`, carried through only when the author set it —
+	 * absent on every bundle whose cabn.json doesn't mention it, so those
+	 * bundles still validate against engines from before this field. The
+	 * engine reads `false` as "never show the guide NPC here".
+	 */
+	guide: z.boolean().optional(),
 });
 
 // Cross-reference checks catch a corrupted/hand-edited world (dangling
