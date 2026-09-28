@@ -2,6 +2,7 @@
 
 exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
 {
+  "allowedEmbedOrigins": [],
   "cabnVersion": 1,
   "clusters": [
     {
@@ -106,6 +107,9 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         "lines": [],
         "truncated": true,
       },
+      "richPreview": {
+        "kind": "sealed",
+      },
       "spawns": [],
     },
     {
@@ -126,6 +130,25 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
           "A tiny fixture package used by @cabn/converter's tests.",
           "It has a couple of modules and a nested sub-package so cluster/annex and",
           "directory-tree tests have something real to chew on.",
+        ],
+        "truncated": false,
+      },
+      "richPreview": {
+        "kind": "markdown",
+        "nodes": [
+          {
+            "level": 1,
+            "text": "mini-python",
+            "type": "heading",
+          },
+          {
+            "text": "A tiny fixture package used by @cabn/converter's tests.",
+            "type": "paragraph",
+          },
+          {
+            "text": "It has a couple of modules and a nested sub-package so cluster/annex and directory-tree tests have something real to chew on.",
+            "type": "paragraph",
+          },
         ],
         "truncated": false,
       },
@@ -155,6 +178,26 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         ],
         "truncated": false,
       },
+      "richPreview": {
+        "kind": "code",
+        "language": "python",
+        "lines": [
+          "#!/usr/bin/env python3",
+          """"Entry point for the mini-python fixture."""",
+          "",
+          "from pkg.sub.helper import greet",
+          "",
+          "",
+          "def main() -> None:",
+          "    print(greet("cabn"))",
+          "",
+          "",
+          "if __name__ == "__main__":",
+          "    main()",
+          "",
+        ],
+        "truncated": false,
+      },
       "spawns": [],
     },
     {
@@ -171,6 +214,14 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
       "id": "pkg/__init__.py",
       "preview": {
         "lines": [],
+        "truncated": false,
+      },
+      "richPreview": {
+        "kind": "code",
+        "language": "python",
+        "lines": [
+          "",
+        ],
         "truncated": false,
       },
       "spawns": [],
@@ -194,6 +245,16 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         ],
         "truncated": false,
       },
+      "richPreview": {
+        "kind": "code",
+        "language": "python",
+        "lines": [
+          "def greet(name: str) -> str:",
+          "    return f"hello, {name}"",
+          "",
+        ],
+        "truncated": false,
+      },
       "spawns": [],
     },
     {
@@ -212,6 +273,16 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
         "lines": [
           "def shout(text: str) -> str:",
           "    return text.upper() + "!"",
+        ],
+        "truncated": false,
+      },
+      "richPreview": {
+        "kind": "code",
+        "language": "python",
+        "lines": [
+          "def shout(text: str) -> str:",
+          "    return text.upper() + "!"",
+          "",
         ],
         "truncated": false,
       },

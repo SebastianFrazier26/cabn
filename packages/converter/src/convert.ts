@@ -3,6 +3,7 @@ import {
 	AssetsFileSchema,
 	CABN_VERSION,
 	type ChunkFile,
+	type RichPortalPreview,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
 	validateManifest,
@@ -11,14 +12,27 @@ import {
 	type WorldManifest,
 } from "@cabn/world-schema";
 import { type AnnotateFileInput, annotateWorld } from "./annotate/run.js";
+import {
+	checkOverrideTargetsExist,
+	loadCabnConfig,
+	resolveOverride,
+} from "./cabnConfig.js";
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { fnv1a } from "./hash.js";
+import { markdownToStructuredPreview } from "./markdownPreview.js";
 import { buildPreview } from "./preview.js";
+import { buildCodePreview, buildImagePreview } from "./richPreview.js";
 import { buildSearchIndex, type SearchDoc } from "./search-index.js";
 import type { FileSource } from "./sources/types.js";
 import { buildClusterTree, buildDirTree } from "./tree.js";
 import { DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILES, walk } from "./walk.js";
+
+// cabn.json is world config, not browsable content — it never gets a portal
+// of its own. A filename collision deeper in the tree is ignored too, same
+// as any other DEFAULT_IGNORES entry (the converter only ever reads the copy
+// at the source root, via loadCabnConfig's own independent entries scan).
+const CABN_CONFIG_FILENAME = "cabn.json";
 
 export interface ConvertOptions {
 	/** World display name (meta.name). */
@@ -43,12 +57,28 @@ export async function convert(
 	source: FileSource,
 	opts: ConvertOptions,
 ): Promise<WorldBundle> {
+	const maxFileBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+
+	// Drains source.entries() once up front for cabn.json + override lookups;
+	// walk() below drains it again for the normal file walk (see
+	// LoadedCabnConfig's doc comment for why that's an accepted, documented
+	// double-decompression cost on zip sources for now).
+	const { config: cabnConfig, entries: sourceEntries } =
+		await loadCabnConfig(source);
+
 	const walked = await walk(source, {
-		ignore: opts.ignore,
+		ignore: [...(opts.ignore ?? []), CABN_CONFIG_FILENAME],
 		maxFiles: opts.maxFiles ?? DEFAULT_MAX_FILES,
-		maxFileBytes: opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+		maxFileBytes,
 		includeSecrets: opts.includeSecrets,
 	});
+
+	if (cabnConfig) {
+		checkOverrideTargetsExist(
+			cabnConfig,
+			new Set(walked.files.map((f) => f.path)),
+		);
+	}
 
 	const dirTree = buildDirTree(walked.files);
 	const clusterTree = buildClusterTree(dirTree);
@@ -70,6 +100,9 @@ export async function convert(
 	const searchDocs: SearchDoc[] = [];
 	const portals: WorldManifest["portals"] = [];
 	const annotateInputs: AnnotateFileInput[] = [];
+	// assets/previews/<hash> entries from resolved image previews (default and
+	// cabn.json overrides alike) — merged into the bundle map at the end.
+	const previewAssets = new Map<string, Uint8Array>();
 
 	for (const file of walked.files) {
 		const clusterId = fileClusterId.get(file.path);
@@ -95,11 +128,45 @@ export async function convert(
 			lines,
 			binary: info.binary,
 		};
+
+		const override = cabnConfig?.previews[file.path];
+		let richPreview: RichPortalPreview;
+		if (override) {
+			const resolved = await resolveOverride(
+				file.path,
+				override,
+				sourceEntries,
+				maxFileBytes,
+			);
+			richPreview = resolved.preview;
+			for (const [assetPath, bytes] of resolved.assets) {
+				previewAssets.set(assetPath, bytes);
+			}
+		} else if (info.kind === "image") {
+			if (file.content) {
+				const built = buildImagePreview(file.path, file.content);
+				richPreview = built.preview;
+				previewAssets.set(built.assetPath, file.content);
+			} else {
+				// Oversized or secret-patterned — walk() never gave us content to copy.
+				richPreview = { kind: "sealed" };
+			}
+		} else if (info.binary) {
+			richPreview = { kind: "sealed" };
+		} else if (text === undefined) {
+			richPreview = { kind: "sealed" };
+		} else if (info.kind === "markdown") {
+			richPreview = markdownToStructuredPreview(text);
+		} else {
+			richPreview = buildCodePreview(text, info.language);
+		}
+
 		portals.push({
 			id: file.path,
 			clusterId,
 			file: portalFile,
 			preview,
+			richPreview,
 			spawns: [],
 		});
 		annotateInputs.push({
@@ -143,6 +210,7 @@ export async function convert(
 		paths,
 		portals,
 		monsters,
+		allowedEmbedOrigins: cabnConfig?.allowedEmbedOrigins ?? [],
 	};
 	validateManifest(manifest);
 
@@ -161,6 +229,9 @@ export async function convert(
 	}
 	bundle.set("search-index.json", JSON.stringify(searchIndex, null, 2));
 	bundle.set("assets.json", JSON.stringify(assets, null, 2));
+	for (const [assetPath, bytes] of previewAssets) {
+		bundle.set(assetPath, bytes);
+	}
 
 	return bundle;
 }
