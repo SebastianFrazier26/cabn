@@ -19,7 +19,11 @@ import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
-import { bakePaths, type PathSegment } from "../render/pathBaker.js";
+import {
+	bakePathRibbons,
+	bakePaths,
+	type PathSegment,
+} from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
 	createMovementKeys,
@@ -41,6 +45,12 @@ import {
 	fitSpriteToSize,
 	WIZARD_TOWER_SCALE,
 } from "../render/scale.js";
+import {
+	attachSky,
+	boundsWithSky,
+	dressEdges,
+	type EdgeDressing,
+} from "../render/worldDressing.js";
 import { largestAngularGapMidpoint } from "../systems/angularGap.js";
 import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
@@ -69,6 +79,8 @@ const TOWER_CLEARING_RADIUS = 170;
 const TOWER_CLEARING_EXCLUSION_RADIUS = 90;
 const CABIN_PATH_EXCLUSION_RADIUS = 26;
 const CASTLE_KEEP_DISTANCE = 260;
+/** A cabin sprite is ~128px across (256px art at CABIN_SCALE) — this keeps edge scenery a clear step back from it and its enter radius. */
+const CABIN_SCENERY_CLEARANCE = 110;
 const SHELF_PROPS_NEAR_TOWER = ["lamp-post", "bench", "flower-bed"] as const;
 
 interface CabinPlacement {
@@ -96,8 +108,11 @@ export class ShelfScene extends Phaser.Scene {
 	private enteringWorld = false;
 	private placedProps: PlacedProp[] = [];
 	private castleKeepPos = { x: 0, y: 0 };
+	private castleKeepSize: { w: number; h: number } | null = null;
 	private ambientEffects: { destroy(): void } | null = null;
 	private atmosphere: AtmosphereHandle | null = null;
+	private edgeDressing: EdgeDressing | null = null;
+	private sky: { destroy(): void } | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
@@ -136,6 +151,7 @@ export class ShelfScene extends Phaser.Scene {
 
 		this.drawGround(spawn);
 		this.drawPaths();
+		this.drawEdgeScenery(spawn);
 		this.drawCabins();
 
 		this.playerTextures = {
@@ -161,6 +177,10 @@ export class ShelfScene extends Phaser.Scene {
 			this.ambientEffects = null;
 			this.atmosphere?.destroy();
 			this.atmosphere = null;
+			this.sky?.destroy();
+			this.sky = null;
+			this.edgeDressing?.destroy();
+			this.edgeDressing = null;
 		});
 	}
 
@@ -202,9 +222,23 @@ export class ShelfScene extends Phaser.Scene {
 			: null;
 
 		this.atmosphere = attachAtmosphere(this, this.store, {
-			lights: [...propLights, ...(towerLight ? [towerLight] : [])],
+			lights: [
+				...this.castleKeepLights(),
+				...propLights,
+				...(towerLight ? [towerLight] : []),
+				...(this.edgeDressing?.lights ?? []),
+			],
 			reducedMotion,
 		});
+		if (this.availability.atmosphereArt) {
+			this.sky = attachSky(
+				this,
+				this.computeWorldBounds(),
+				`shelf:${this.shelfUrl}`,
+				this.atmosphere,
+				reducedMotion,
+			);
+		}
 
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
@@ -218,6 +252,23 @@ export class ShelfScene extends Phaser.Scene {
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
 			if (state.timeOfDay !== prev.timeOfDay) rebuild();
 		});
+	}
+
+	/**
+	 * The keep's two lit windows (props.ts castleKeep: 2x5-cell windows at
+	 * columns 9 and 21, rows 27-31, of its 32x44 grid) as fractions of its
+	 * display size, the same fractional-offset trick as propLightWorldPos.
+	 */
+	private castleKeepLights(): LightPoolOptions[] {
+		const size = this.castleKeepSize;
+		if (!size) return [];
+		return [-0.19, 0.19].map((xFrac) => ({
+			x: this.castleKeepPos.x + xFrac * size.w,
+			y: this.castleKeepPos.y + 0.17 * size.h,
+			radiusPx: 22,
+			color: PALETTE.gold,
+			alpha: 0.6,
+		}));
 	}
 
 	private layoutCabins(): void {
@@ -378,6 +429,7 @@ export class ShelfScene extends Phaser.Scene {
 			.image(this.castleKeepPos.x, this.castleKeepPos.y, CASTLE_KEEP_KEY)
 			.setDepth(2);
 		fitSpriteToSize(keep, CASTLE_KEEP_TARGET_HEIGHT_PX);
+		this.castleKeepSize = { w: keep.displayWidth, h: keep.displayHeight };
 	}
 
 	private drawPaths(): void {
@@ -394,7 +446,39 @@ export class ShelfScene extends Phaser.Scene {
 			from: { x: 0, y: 0 },
 			to: cabin.pos,
 		}));
-		bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
+		if (this.availability.atmosphereArt) {
+			bakePathRibbons(this, this.computeWorldBounds(), segments).rt.setDepth(1);
+		} else {
+			bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
+		}
+	}
+
+	/** Same edge dressing as WorldScene (render/worldDressing.ts), keeping clear of the tower clearing, every cabin, the castle keep, the spawn point and the spokes. */
+	private drawEdgeScenery(spawn: { x: number; y: number }): void {
+		if (!this.availability.atmosphereArt) return;
+		this.edgeDressing = dressEdges({
+			scene: this,
+			bounds: this.computeWorldBounds(),
+			seed: `shelf:${this.shelfUrl}`,
+			circles: [
+				{ x: 0, y: 0, radius: TOWER_CLEARING_RADIUS + 40 },
+				{ x: spawn.x, y: spawn.y, radius: 60 },
+				{ x: this.castleKeepPos.x, y: this.castleKeepPos.y, radius: 110 },
+				...this.cabins.map((cabin) => ({
+					x: cabin.pos.x,
+					y: cabin.pos.y,
+					radius: CABIN_SCENERY_CLEARANCE,
+				})),
+			],
+			segments: this.cabins.map((cabin) => ({
+				ax: 0,
+				ay: 0,
+				bx: cabin.pos.x,
+				by: cabin.pos.y,
+				halfWidth: 20,
+			})),
+			reducedMotion: prefersReducedMotion(),
+		});
 	}
 
 	private drawCabins(): void {
@@ -425,8 +509,24 @@ export class ShelfScene extends Phaser.Scene {
 	private setupCamera(): void {
 		const { minX, minY, maxX, maxY } = this.computeWorldBounds();
 
-		this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
-		this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);
+		if (this.availability.atmosphereArt) {
+			const { camera, physics } = boundsWithSky({ minX, minY, maxX, maxY });
+			this.physics.world.setBounds(
+				physics.minX,
+				physics.minY,
+				physics.maxX - physics.minX,
+				physics.maxY - physics.minY,
+			);
+			this.cameras.main.setBounds(
+				camera.minX,
+				camera.minY,
+				camera.maxX - camera.minX,
+				camera.maxY - camera.minY,
+			);
+		} else {
+			this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
+			this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);
+		}
 		this.cameras.main.startFollow(this.player.body, true, 0.1, 0.1);
 	}
 

@@ -4,6 +4,7 @@ import {
 	ANIMATED_MONSTER_SPECIES,
 	ASSET_KEYS,
 	ASSET_PATHS,
+	atmosphereAssetEntries,
 	BIOME_TILE_FRAME_SIZE,
 	BONFIRE_FRAME_COUNT,
 	biomeTileSheetKey,
@@ -56,6 +57,8 @@ export interface AssetAvailability {
 	characterBack: boolean;
 	/** All of: 3 biome tile sheets, the shared decal sheet, 4 path stamps, 10 props — WorldScene/ShelfScene fall back to tinted ellipses/dashed lines entirely if any one piece is missing, rather than a half-tiled scene. */
 	worldArt: boolean;
+	/** All of the M10 atmosphere keys (assetPaths.ts#atmosphereAssetEntries) — edge scenery, skyline, sky ornaments, path-ribbon pieces. */
+	atmosphereArt: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -144,6 +147,9 @@ export class PreloadScene extends Phaser.Scene {
 		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
 		this.load.image(WORLD_CABINET_KEY, WORLD_CABINET_PATH);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
+		for (const [key, path] of atmosphereAssetEntries()) {
+			this.load.image(key, path);
+		}
 	}
 
 	create(): void {
@@ -206,6 +212,11 @@ export class PreloadScene extends Phaser.Scene {
 				OPTIONAL_ASSET_KEYS.characterIdleBack,
 			),
 			worldArt: worldArtAvailable,
+			atmosphereArt:
+				worldArtAvailable &&
+				atmosphereAssetEntries().every(
+					([key]) => !this.missingOptional.has(key),
+				),
 		};
 
 		if ("shelfManifest" in this.target) {

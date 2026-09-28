@@ -24,6 +24,14 @@ import {
 	buildWorldCabinet,
 	type PropPaletteIndices,
 } from "./world-art/props.js";
+import {
+	buildMoon,
+	buildPathRibbon,
+	buildScenery,
+	buildSkyline,
+	buildStar,
+	FINE_CELL_SIZE,
+} from "./world-art/scenery.js";
 
 const worldArtDir = path.join(generatedDir, "world-art");
 
@@ -65,6 +73,12 @@ const PALETTE = {
 	woodLight: 63,
 	terracotta: 64,
 	lanternGlow: 65,
+	steelGray: 28,
+	paleGhostBlue: 30,
+	slateBlue: 31,
+	plum: 32,
+	slateDark: 60,
+	periwinkle: 37,
 } as const;
 
 const BIOME_GROUND_TONES = {
@@ -574,6 +588,235 @@ function buildSparkTexture(): RawImage {
 	return { data, width: size, height: size };
 }
 
+// --- M10 atmosphere pass (2026-09-28) ----------------------------------------
+
+const SCENERY_PALETTE = {
+	pineTones: {
+		shadow: PALETTE.groveShadow,
+		base: PALETTE.groveBase,
+		highlight: PALETTE.groveHighlight,
+	},
+	oakTones: {
+		shadow: PALETTE.meadowShadow,
+		base: PALETTE.meadowBase,
+		highlight: PALETTE.meadowHighlight,
+	},
+	shrubTones: {
+		shadow: PALETTE.meadowShadow,
+		base: PALETTE.meadowBase,
+		highlight: PALETTE.meadowHighlight,
+	},
+	trunk: PALETTE.woodDark,
+	trunkDark: PALETTE.ink,
+	stone: PALETTE.stoneMid,
+	stoneShadow: PALETTE.stoneDark,
+	stoneHighlight: PALETTE.stoneLight,
+	moss: PALETTE.groveHighlight,
+	berry: PALETTE.mushroomRed,
+	blossom: PALETTE.berryPink,
+	plank: PALETTE.parchment,
+	ink: PALETTE.ink,
+	petalA: PALETTE.berryPink,
+	petalB: PALETTE.skyBlue,
+	petalC: PALETTE.sunYellow,
+	petalCenter: PALETTE.cream,
+	stem: PALETTE.groveBase,
+	reed: PALETTE.gladeBase,
+	reedTip: PALETTE.woodWarm,
+	capRed: PALETTE.mushroomRed,
+	capShadow: PALETTE.autumnOrangeDark,
+	capSpot: PALETTE.cream,
+	stalk: PALETTE.parchment,
+	water: PALETTE.skyBlue,
+	waterDeep: PALETTE.periwinkle,
+	waterShine: PALETTE.paleGhostBlue,
+	shore: PALETTE.pathBase,
+	lily: PALETTE.meadowShadow,
+	wood: PALETTE.woodWarm,
+	woodDark: PALETTE.woodDark,
+	woodLight: PALETTE.woodLight,
+	plaster: PALETTE.parchment,
+	plasterShadow: PALETTE.pathBase,
+	roof: PALETTE.terracotta,
+	roofShadow: PALETTE.autumnOrangeDark,
+	sailCloth: PALETTE.cream,
+	windowGlow: PALETTE.lanternGlow,
+};
+
+async function genScenery(palette: RGB[]): Promise<Record<string, unknown>> {
+	const pieces = buildScenery(SCENERY_PALETTE);
+	const index: { name: string; key: string; file: string }[] = [];
+	for (const [i, piece] of pieces.entries()) {
+		const slug = `scenery_${piece.name.replace(/-/g, "_")}`;
+		const { crisp, soft } = await renderSoft(
+			piece.grid,
+			slug,
+			palette,
+			piece.cellSize,
+			20261500 + i,
+		);
+		await writePair(slug, crisp, soft, 8);
+		index.push({
+			name: piece.name,
+			key: `scenery-${piece.name}`,
+			file: `placeholders/${slug}_soft.png`,
+		});
+	}
+	return { pieces: index };
+}
+
+/**
+ * Multiplies every pixel by a night tint — the skyline's night variants are
+ * the day art, darkened and cooled, with the window layer composited back on
+ * top un-darkened. Done on the rendered image rather than by remapping palette
+ * indices because palette.json has no night-blue ramp to map onto, and adding
+ * one would ripple into every other consumer's hardcoded indices.
+ */
+function nightify(image: RawImage, tint: RGB): RawImage {
+	const data = Buffer.from(image.data);
+	for (let i = 0; i < data.length; i += 4) {
+		data[i] = Math.round((data[i] ?? 0) * (tint.r / 255));
+		data[i + 1] = Math.round((data[i + 1] ?? 0) * (tint.g / 255));
+		data[i + 2] = Math.round((data[i + 2] ?? 0) * (tint.b / 255));
+	}
+	return { data, width: image.width, height: image.height };
+}
+
+const SKYLINE_NIGHT_TINT: RGB = { r: 70, g: 74, b: 150 };
+
+async function genSkyline(palette: RGB[]): Promise<Record<string, unknown>> {
+	const pieces = buildSkyline({
+		farStone: PALETTE.slateBlue,
+		farStoneShadow: PALETTE.slateDark,
+		farStoneLight: PALETTE.steelGray,
+		farRoof: PALETTE.plum,
+		flag: PALETTE.berryPink,
+		hillTones: {
+			shadow: PALETTE.gladeShadow,
+			base: PALETTE.gladeBase,
+			highlight: PALETTE.gladeHighlight,
+		},
+		treeTones: {
+			shadow: PALETTE.groveShadow,
+			base: PALETTE.groveBase,
+			highlight: PALETTE.groveHighlight,
+		},
+		window: PALETTE.lanternGlow,
+	});
+	const index: Record<string, unknown>[] = [];
+	for (const [i, piece] of pieces.entries()) {
+		const slug = `skyline_${piece.name}`;
+		const day = await renderSoft(
+			piece.grid,
+			slug,
+			palette,
+			piece.cellSize,
+			20261600 + i,
+		);
+		await writePair(`${slug}_day`, day.crisp, day.soft, 4);
+		const nightSoft = nightify(day.soft, SKYLINE_NIGHT_TINT);
+		const nightCrisp = nightify(day.crisp, SKYLINE_NIGHT_TINT);
+		if (piece.windows.some((row) => row.some((cell) => cell !== null))) {
+			const lit = await renderSoft(
+				piece.windows,
+				`${slug}_windows`,
+				palette,
+				piece.cellSize,
+				20261650 + i,
+			);
+			compositeInto(nightSoft, lit.soft, 0, 0);
+			compositeInto(nightCrisp, lit.crisp, 0, 0);
+		}
+		await writePair(`${slug}_night`, nightCrisp, nightSoft, 4);
+		index.push({
+			name: piece.name,
+			day: `placeholders/${slug}_day_soft.png`,
+			night: `placeholders/${slug}_night_soft.png`,
+		});
+	}
+
+	const ornaments = {
+		moonLight: PALETTE.cream,
+		moonMid: PALETTE.parchment,
+		moonShadow: PALETTE.steelGray,
+		star: PALETTE.paleGhostBlue,
+		starCore: PALETTE.cream,
+	};
+	const moon = await renderSoft(
+		buildMoon(ornaments),
+		"sky_moon",
+		palette,
+		FINE_CELL_SIZE,
+		20261700,
+	);
+	await writePair("sky_moon", moon.crisp, moon.soft, 4);
+	const star = await renderSoft(
+		buildStar(ornaments),
+		"sky_star",
+		palette,
+		2,
+		20261701,
+		0,
+	);
+	await writePair("sky_star", star.crisp, star.soft, 4);
+
+	await writeRawRgbaPng(
+		buildSkyGradient({ r: 118, g: 178, b: 228 }, { r: 206, g: 230, b: 236 }),
+		path.join(placeholdersDir, "sky_day.png"),
+	);
+	await writeRawRgbaPng(
+		buildSkyGradient({ r: 10, g: 12, b: 38 }, { r: 58, g: 46, b: 104 }),
+		path.join(placeholdersDir, "sky_night.png"),
+	);
+	return { pieces: index, moon: "placeholders/sky_moon_soft.png" };
+}
+
+const SKY_GRADIENT_HEIGHT = 128;
+
+/** Smooth, not pixel art (same exception as buildSparkTexture): a stepped sky gradient bands visibly once stretched across the whole horizon. */
+function buildSkyGradient(top: RGB, horizon: RGB): RawImage {
+	const width = 4;
+	const height = SKY_GRADIENT_HEIGHT;
+	const data = Buffer.alloc(width * height * 4);
+	for (let y = 0; y < height; y++) {
+		const t = (y / (height - 1)) ** 1.6;
+		for (let x = 0; x < width; x++) {
+			const i = (y * width + x) * 4;
+			data[i] = Math.round(top.r + (horizon.r - top.r) * t);
+			data[i + 1] = Math.round(top.g + (horizon.g - top.g) * t);
+			data[i + 2] = Math.round(top.b + (horizon.b - top.b) * t);
+			data[i + 3] = 255;
+		}
+	}
+	return { data, width, height };
+}
+
+async function genPathRibbon(palette: RGB[]): Promise<Record<string, unknown>> {
+	const pieces = buildPathRibbon({
+		edge: PALETTE.pathHighlight,
+		edgeShadow: PALETTE.pathBase,
+		bed: PALETTE.stoneDark,
+		stone: PALETTE.stoneMid,
+		stoneShadow: PALETTE.stoneDark,
+		stoneHighlight: PALETTE.stoneLight,
+	});
+	const files: string[] = [];
+	for (const [i, piece] of pieces.entries()) {
+		const slug = `path_${piece.name.replace(/-/g, "_")}`;
+		const { crisp, soft } = await renderSoft(
+			piece.grid,
+			slug,
+			palette,
+			piece.cellSize,
+			20261800 + i,
+			0,
+		);
+		await writePair(slug, crisp, soft, 6);
+		files.push(`placeholders/${slug}_soft.png`);
+	}
+	return { files };
+}
+
 async function main() {
 	const palette: RGB[] = JSON.parse(
 		await readFile(paletteJsonPath, "utf8"),
@@ -587,6 +830,9 @@ async function main() {
 	const props = await genProps(palette);
 	const castleKeep = await genCastleKeep(palette);
 	const worldCabinet = await genWorldCabinet(palette);
+	const scenery = await genScenery(palette);
+	const skyline = await genSkyline(palette);
+	const pathRibbon = await genPathRibbon(palette);
 	await writeRawRgbaPng(
 		buildSparkTexture(),
 		path.join(placeholdersDir, "fx_spark.png"),
@@ -609,6 +855,9 @@ async function main() {
 		props: props.index,
 		castleKeep: castleKeep.index,
 		worldCabinet: worldCabinet.index,
+		scenery,
+		skyline,
+		pathRibbon,
 		mockScene: "mock-scene.png",
 	};
 	await writeFile(
