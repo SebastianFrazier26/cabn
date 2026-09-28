@@ -157,5 +157,10 @@
 		"key": "castle-keep",
 		"file": "placeholders/prop_castle_keep_soft.png"
 	},
+	"worldCabinet": {
+		"name": "world-cabinet",
+		"key": "world-cabinet",
+		"file": "placeholders/prop_world_cabinet_soft.png"
+	},
 	"mockScene": "mock-scene.png"
 }

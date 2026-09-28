@@ -21,6 +21,7 @@ import { buildPathStampGrids } from "./world-art/path-stamps-art.js";
 import {
 	buildCastleKeep,
 	buildProps,
+	buildWorldCabinet,
 	type PropPaletteIndices,
 } from "./world-art/props.js";
 
@@ -84,12 +85,6 @@ const BIOME_GROUND_TONES = {
 	},
 } as const;
 
-const DIRT_TONES = {
-	shadow: PALETTE.pathShadow,
-	base: PALETTE.pathBase,
-	highlight: PALETTE.pathHighlight,
-} as const;
-
 // Ground tiles/decals/path stamps/props are meant to read as clean, flat
 // Stardew-style pixel art with deliberate multi-tone shading baked into the
 // grid itself (see biome-tiles.ts) — soften()'s own per-cell jitter/grain
@@ -97,7 +92,11 @@ const DIRT_TONES = {
 // top of that, which is exactly the "Minecraft dirt" noise the user
 // rejected; zeroed out here instead of just turned down. bloom stays
 // dialed back since none of this art has bright highlights meant to glow.
-function worldArtSoftenOptions(cellSize: number, seed: number) {
+function worldArtSoftenOptions(
+	cellSize: number,
+	seed: number,
+	edgeFeatherPx = 1,
+) {
 	return {
 		...DEFAULT_SOFTEN_OPTIONS,
 		cellSize,
@@ -105,7 +104,7 @@ function worldArtSoftenOptions(cellSize: number, seed: number) {
 		grainStrength: 0,
 		bloomStrength: 0.12,
 		bloomThreshold: 235,
-		edgeFeatherPx: 1,
+		edgeFeatherPx,
 		seed,
 	};
 }
@@ -116,10 +115,14 @@ async function renderSoft(
 	palette: RGB[],
 	cellSize: number,
 	seed: number,
+	edgeFeatherPx?: number,
 ): Promise<{ crisp: RawImage; soft: RawImage }> {
 	const map = toPixelMap(name, grid);
 	const crisp = renderPixelMap(map, palette);
-	const soft = soften(crisp, worldArtSoftenOptions(cellSize, seed));
+	const soft = soften(
+		crisp,
+		worldArtSoftenOptions(cellSize, seed, edgeFeatherPx),
+	);
 	return { crisp, soft };
 }
 
@@ -146,18 +149,24 @@ async function genBiomeTiles(palette: RGB[]): Promise<BiomeTilesResult> {
 	const softFramesByBiome: Record<string, RawImage[]> = {};
 	let biomeSeed = 0;
 	for (const [biome, grassTones] of Object.entries(BIOME_GROUND_TONES)) {
-		const grids = buildBiomeTileFrames(grassTones, DIRT_TONES);
+		const grids = buildBiomeTileFrames(grassTones);
 		biomeSeed += 10_000;
 
 		const crispFrames: RawImage[] = [];
 		const softFrames: RawImage[] = [];
 		for (const [i, grid] of grids.entries()) {
+			// A heavier feather than the world-art default (1px) here
+			// specifically — edge tiles are transparent outside the grass
+			// silhouette now (see biome-tiles.ts), so this is the actual "soft,
+			// organic edge" the batch-3 review asked for; base variants (fully
+			// opaque, no silhouette to feather) are unaffected by the value.
 			const { crisp, soft } = await renderSoft(
 				grid,
 				`${biome}_tile_${i}`,
 				palette,
 				2,
 				20260928 + biomeSeed + i,
+				2,
 			);
 			crispFrames.push(crisp);
 			softFrames.push(soft);
@@ -342,6 +351,11 @@ const PROP_PALETTE: PropPaletteIndices = {
 	bedBorder: PALETTE.woodWarm,
 	bedSoil: PALETTE.pathShadow,
 	flagColor: PALETTE.berryPink,
+	ivyColor: PALETTE.groveHighlight,
+	cabinetWood: PALETTE.woodWarm,
+	cabinetWoodDark: PALETTE.woodDark,
+	cabinetWoodLight: PALETTE.woodLight,
+	cabinetHandle: PALETTE.lanternGlow,
 };
 
 async function genProps(palette: RGB[]): Promise<PropsResult> {
@@ -389,6 +403,30 @@ async function genCastleKeep(palette: RGB[]): Promise<CastleKeepResult> {
 			name: prop.name,
 			key: "castle-keep",
 			file: "placeholders/prop_castle_keep_soft.png",
+		},
+	};
+}
+
+interface WorldCabinetResult {
+	index: Record<string, unknown>;
+}
+
+/** Replaces the photographic cabinet_256.webp for in-world cluster markers only — see props.ts's worldCabinet doc comment. */
+async function genWorldCabinet(palette: RGB[]): Promise<WorldCabinetResult> {
+	const prop = buildWorldCabinet(PROP_PALETTE);
+	const { crisp, soft } = await renderSoft(
+		prop.grid,
+		"prop_world_cabinet",
+		palette,
+		prop.cellSize,
+		20261400,
+	);
+	await writePair("prop_world_cabinet", crisp, soft, 8);
+	return {
+		index: {
+			name: prop.name,
+			key: "world-cabinet",
+			file: "placeholders/prop_world_cabinet_soft.png",
 		},
 	};
 }
@@ -548,6 +586,7 @@ async function main() {
 	const pathStamps = await genPathStamps(palette);
 	const props = await genProps(palette);
 	const castleKeep = await genCastleKeep(palette);
+	const worldCabinet = await genWorldCabinet(palette);
 	await writeRawRgbaPng(
 		buildSparkTexture(),
 		path.join(placeholdersDir, "fx_spark.png"),
@@ -569,6 +608,7 @@ async function main() {
 		pathStamps: pathStamps.index,
 		props: props.index,
 		castleKeep: castleKeep.index,
+		worldCabinet: worldCabinet.index,
 		mockScene: "mock-scene.png",
 	};
 	await writeFile(

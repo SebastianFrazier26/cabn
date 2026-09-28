@@ -14,6 +14,7 @@ import {
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
+	WORLD_CABINET_KEY,
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -23,6 +24,10 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
+import {
+	attachLightPools,
+	type LightPoolOptions,
+} from "../render/lightPools.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
@@ -37,6 +42,7 @@ import {
 import {
 	type PlacedProp,
 	placeProps,
+	propLightWorldPos,
 	propSmokeWorldPos,
 } from "../render/propPlacement.js";
 import {
@@ -71,7 +77,7 @@ import {
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
-import { type Theme, themeFromSeed } from "../systems/theme.js";
+import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
 import {
 	type AssetAvailability,
 	BONFIRE_IDLE_ANIM,
@@ -104,9 +110,32 @@ const ARCH_OPENING_HEIGHT_RATIO = 0.4;
 const ARCH_OPENING_Y_OFFSET_RATIO = -0.08;
 const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE;
 
-/** Ground radius scales with file count so busier clusters read as bigger clearings. */
+// M10b batch 3: the old radius formula (90 + min(count,40)*4, capping out at
+// 250px for a 40-portal cluster) put arches 39px apart at that cap — well
+// under PORTAL_ARCH_DISPLAY_SIZE (96px) itself, so a busy cluster's arches
+// visibly overlapped ("packs file arches tightly around the bonfire",
+// batch-3 review). This derives the ring radius from the actual spacing
+// needed instead: circumference / count must be at least ARCH_RING_SPACING.
+// Mirrored (deliberately duplicated, not shared) in
+// packages/converter/src/layout.ts's estimatedClearingRadius(), which needs
+// the same shape to keep whole *clusters* from crowding each other — see
+// that file's own comment on why it's a duplication, not an import.
+const ARCH_RING_SPACING = PORTAL_ARCH_DISPLAY_SIZE * 1.2;
+const PORTAL_RING_MIN_RADIUS = 100;
+/** Room beyond the outermost portal ring for the prop-framing annulus + the flower-ring edge marking — this is what actually grows a clearing to fit its own content, rather than a flat per-file increment. */
+const CLEARING_OUTER_MARGIN = 90;
+
+function portalRingRadius(portalCount: number): number {
+	if (portalCount <= 1) return PORTAL_RING_MIN_RADIUS;
+	return Math.max(
+		PORTAL_RING_MIN_RADIUS,
+		(portalCount * ARCH_RING_SPACING) / (Math.PI * 2),
+	);
+}
+
+/** Ground radius scales with the portal ring it has to contain, so busier clusters get a clearing that actually fits their arches instead of just reading as "bigger" arbitrarily. */
 function groundRadius(cluster: Cluster): number {
-	return 130 + Math.min(cluster.portalIds.length, 40) * 3;
+	return portalRingRadius(cluster.portalIds.length) + CLEARING_OUTER_MARGIN;
 }
 
 // Matches the old fillEllipse(radius*2, radius*1.3) aspect ratio (Phaser's
@@ -115,6 +144,10 @@ function groundRadius(cluster: Cluster): number {
 const GROUND_RADIUS_Y_RATIO = 0.65;
 const DECALS_PER_CLUSTER = 14;
 const PROPS_PER_CLUSTER = 4;
+/** How far into the clearing's outer annulus props are confined (see systems/scatter.ts's minRadiusFrac) — "frame the edges/corners", not scatter anywhere between the plaza and the boundary. */
+const PROP_ANNULUS_INNER_FRAC = 0.68;
+/** How much of the per-world theme tint reaches the world-cabinet sprite (see systems/theme.ts's subtleTint) — low enough that the wood still reads as wood, not full-strength-tint noise. */
+const CABINET_TINT_STRENGTH = 0.35;
 // 58 = PORTAL_ARCH_DISPLAY_SIZE (96) / 2 + a 10px margin — batch 1 excluded
 // only 44px around a portal, less than the arch's own half-width, so a prop
 // could still land partway inside the sprite (the "arches and props overlap"
@@ -168,6 +201,7 @@ export class WorldScene extends Phaser.Scene {
 	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
 	private placedProps: PlacedProp[] = [];
 	private ambientEffects: { destroy(): void } | null = null;
+	private ambientLights: { destroy(): void } | null = null;
 	private unsubscribeBagSlots: (() => void) | null = null;
 	private unsubscribeGlow: (() => void) | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
@@ -256,6 +290,8 @@ export class WorldScene extends Phaser.Scene {
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
 			this.ambientEffects = null;
+			this.ambientLights?.destroy();
+			this.ambientLights = null;
 		});
 	}
 
@@ -274,15 +310,54 @@ export class WorldScene extends Phaser.Scene {
 			}
 		}
 
+		// M10b batch-3 review: night lighting read as "mostly whole-frame
+		// darkening" — real light pools at every lit prop plus a bigger,
+		// flickering one at the bonfire, night-only (rebuilt whenever
+		// timeOfDay flips, same as the fireflies/motes swap below).
+		const propLights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
+			const pos = propLightWorldPos(prop);
+			if (!pos) return [];
+			return [
+				{
+					x: pos.x,
+					y: pos.y,
+					radiusPx: 38,
+					color: PALETTE.gold,
+					alpha: 0.6,
+					flicker: true,
+				},
+			];
+		});
+
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
+			this.ambientLights?.destroy();
+			const timeOfDay = this.store.getState().timeOfDay;
 			this.ambientEffects = attachWorldEffects(this, {
 				bounds: this.computeWorldBounds(),
-				timeOfDay: this.store.getState().timeOfDay,
+				timeOfDay,
 				bonfirePos: root?.pos,
 				chimneyPositions,
 				reducedMotion,
 			});
+			this.ambientLights =
+				timeOfDay === "night"
+					? attachLightPools(this, [
+							...propLights,
+							...(root
+								? [
+										{
+											x: root.pos.x,
+											y: root.pos.y,
+											radiusPx: 90,
+											color: PALETTE.gold,
+											alpha: 0.65,
+											flicker: true,
+										},
+									]
+								: []),
+						])
+					: null;
 		};
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
@@ -502,6 +577,7 @@ export class WorldScene extends Phaser.Scene {
 					exclusions,
 					count: PROPS_PER_CLUSTER,
 					depth: 2,
+					minRadiusFrac: PROP_ANNULUS_INNER_FRAC,
 				}),
 			);
 		}
@@ -545,12 +621,34 @@ export class WorldScene extends Phaser.Scene {
 	private drawClusters(): void {
 		for (const cluster of this.manifest.clusters) {
 			const isRoot = cluster.path === ".";
-			const sprite = isRoot
-				? this.drawBonfire(cluster.pos)
-				: this.add.image(cluster.pos.x, cluster.pos.y, ASSET_KEYS.cabinet);
+			let sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
 
-			if (!isRoot)
+			if (isRoot) {
+				sprite = this.drawBonfire(cluster.pos);
+			} else if (this.availability.worldArt) {
+				// world-cabinet is already sized/detailed to stand alone
+				// unscaled (same convention as every other prop —
+				// propPlacement.ts never calls setScale either) — CABINET_SCALE
+				// below is only for the photographic fallback's much bigger
+				// source resolution. Tint is deliberately lightened toward
+				// white first (subtleTint) rather than applied at full
+				// strength — M10b batch-3 review: "stays subtle".
+				sprite = this.add.image(
+					cluster.pos.x,
+					cluster.pos.y,
+					WORLD_CABINET_KEY,
+				);
+				sprite
+					.setTint(subtleTint(this.theme.tint, CABINET_TINT_STRENGTH))
+					.setDepth(2);
+			} else {
+				sprite = this.add.image(
+					cluster.pos.x,
+					cluster.pos.y,
+					ASSET_KEYS.cabinet,
+				);
 				sprite.setScale(CABINET_SCALE).setTint(this.theme.tint).setDepth(2);
+			}
 
 			this.add
 				.text(
@@ -595,7 +693,7 @@ export class WorldScene extends Phaser.Scene {
 	private computePortalPositions(): void {
 		for (const cluster of this.manifest.clusters) {
 			const count = cluster.portalIds.length;
-			const radius = 90 + Math.min(count, 40) * 4;
+			const radius = portalRingRadius(count);
 			cluster.portalIds.forEach((portalId, index) => {
 				const angle =
 					(Phaser.Math.PI2 * index) / Math.max(count, 1) - Math.PI / 2;

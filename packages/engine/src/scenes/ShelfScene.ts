@@ -15,6 +15,10 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
+import {
+	attachLightPools,
+	type LightPoolOptions,
+} from "../render/lightPools.js";
 import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
@@ -25,9 +29,18 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
-import { type PlacedProp, placeProps } from "../render/propPlacement.js";
+import {
+	type PlacedProp,
+	placeProps,
+	propLightWorldPos,
+} from "../render/propPlacement.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
-import { CABIN_SCALE, WIZARD_TOWER_SCALE } from "../render/scale.js";
+import {
+	CABIN_SCALE,
+	CASTLE_KEEP_TARGET_HEIGHT_PX,
+	fitSpriteToSize,
+	WIZARD_TOWER_SCALE,
+} from "../render/scale.js";
 import { largestAngularGapMidpoint } from "../systems/angularGap.js";
 import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
@@ -84,6 +97,7 @@ export class ShelfScene extends Phaser.Scene {
 	private placedProps: PlacedProp[] = [];
 	private castleKeepPos = { x: 0, y: 0 };
 	private ambientEffects: { destroy(): void } | null = null;
+	private ambientLights: { destroy(): void } | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
@@ -140,31 +154,71 @@ export class ShelfScene extends Phaser.Scene {
 		this.store.getState().setPlayerPos(spawn);
 
 		const unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
-		this.setupAmbientEffects();
+		this.setupAmbientEffects(tower);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			unsubscribeGlow();
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
 			this.ambientEffects = null;
+			this.ambientLights?.destroy();
+			this.ambientLights = null;
 		});
 	}
 
 	/** Same shape as WorldScene's — fireflies/motes plus the tower-area lamp post's flicker (no chimney smoke on the shelf: SHELF_PROPS_NEAR_TOWER never includes "cottage"). */
-	private setupAmbientEffects(): void {
+	/** `tower` is the sprite drawTower() already created — the tower's own window light position is derived from its actual displayWidth/Height, same fractional-offset trick as propLightWorldPos, rather than a hardcoded pixel offset that would drift if the tower's scale ever changes again. */
+	private setupAmbientEffects(tower: Phaser.GameObjects.Image): void {
 		const reducedMotion = prefersReducedMotion();
 		for (const prop of this.placedProps) {
 			if (prop.name === "lamp-post")
 				attachLanternFlicker(this, prop.sprite, reducedMotion);
 		}
 
+		const propLights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
+			const pos = propLightWorldPos(prop);
+			if (!pos) return [];
+			return [
+				{
+					x: pos.x,
+					y: pos.y,
+					radiusPx: 38,
+					color: PALETTE.gold,
+					alpha: 0.6,
+					flicker: true,
+				},
+			];
+		});
+		// The wizard tower's window sits almost exactly at its sprite center
+		// (see tools/asset-pipeline/src/pixelmaps/wizard-tower.ts's "w" rows:
+		// 40-44 of 80, columns 21-26 of 48 — both within a couple percent of
+		// center) — no offset needed beyond the tower's own position.
+		const towerLight: LightPoolOptions | null = this.availability.wizardTower
+			? {
+					x: tower.x,
+					y: tower.y,
+					radiusPx: 46,
+					color: PALETTE.gold,
+					alpha: 0.6,
+				}
+			: null;
+
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
+			this.ambientLights?.destroy();
+			const timeOfDay = this.store.getState().timeOfDay;
 			this.ambientEffects = attachWorldEffects(this, {
 				bounds: this.computeWorldBounds(),
-				timeOfDay: this.store.getState().timeOfDay,
+				timeOfDay,
 				reducedMotion,
 			});
+			this.ambientLights =
+				timeOfDay === "night"
+					? attachLightPools(this, [
+							...propLights,
+							...(towerLight ? [towerLight] : []),
+						])
+					: null;
 		};
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
@@ -322,11 +376,14 @@ export class ShelfScene extends Phaser.Scene {
 			count: 3,
 			depth: 2,
 			allowedNames: SHELF_PROPS_NEAR_TOWER,
+			// Same "frame the edge" reasoning as WorldScene's clearings.
+			minRadiusFrac: 0.6,
 		});
 
-		this.add
+		const keep = this.add
 			.image(this.castleKeepPos.x, this.castleKeepPos.y, CASTLE_KEEP_KEY)
 			.setDepth(2);
+		fitSpriteToSize(keep, CASTLE_KEEP_TARGET_HEIGHT_PX);
 	}
 
 	private drawPaths(): void {

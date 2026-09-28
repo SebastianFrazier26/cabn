@@ -75,4 +75,26 @@ describe("placeScatter", () => {
 		});
 		expect(points).toEqual([]);
 	});
+
+	it("minRadiusFrac confines every point to the outer annulus", () => {
+		const minRadiusFrac = 0.6;
+		const points = placeScatter({ ...baseOptions, count: 40, minRadiusFrac });
+		expect(points.length).toBeGreaterThan(0);
+		for (const p of points) {
+			// Normalized ellipse-radius of the point — >=1 is the ellipse edge,
+			// 0 is dead center. Should never fall below minRadiusFrac (minus a
+			// hair for floating-point rounding).
+			const normalizedR = Math.hypot(
+				p.x / baseOptions.radiusX,
+				p.y / baseOptions.radiusY,
+			);
+			expect(normalizedR).toBeGreaterThanOrEqual(minRadiusFrac - 1e-9);
+		}
+	});
+
+	it("minRadiusFrac 0 behaves exactly like the old whole-disk default", () => {
+		const withZero = placeScatter({ ...baseOptions, minRadiusFrac: 0 });
+		const withUndefined = placeScatter(baseOptions);
+		expect(withZero).toEqual(withUndefined);
+	});
 });

@@ -134,70 +134,93 @@ function insideRoundedInset(
 	return true;
 }
 
+// M10b batch-3 review: the old opaque dirt-colored background outside the
+// grass inset baked a hard, sand-colored square border around every clearing
+// once batch 2 put a continuous grass field underneath everything — there's
+// no dirt anywhere else in the world anymore for that square to blend into.
+// Fix: the "outside" is transparent instead, so the field shows straight
+// through and only the grass silhouette itself reads. That silhouette also
+// gets a few small fixed-position "grass tuft" pixels poking a little past
+// the smooth inset curve (not randomized — same fixed-lookup-table
+// philosophy as TUFT_LAYOUTS above), so the edge reads as an uneven tuft
+// line instead of a geometrically perfect rounded rectangle.
+const FRINGE_OFFSETS: readonly (readonly [number, number])[] = [
+	[1, -1],
+	[3, 1],
+	[-2, 1],
+	[1, 2],
+	[-1, -2],
+	[2, -2],
+];
+
 /**
- * One of the 16 blob-lite edge tiles: dirt background, with a grass region
- * inset from any side whose neighbor tile isn't also ground (mask bit unset)
- * — see groundTiles.ts's edgeMask doc comment for the bit layout (N=1, E=2,
- * S=4, W=8). Concave corners (both adjacent sides missing) get a real
- * rounded arc rather than a sharp cut — a deliberate curve, not noise, is
- * what makes an autotiled edge read as "hand-drawn blob set" instead of a
- * grid of rectangles.
+ * One of the 16 blob-lite edge tiles: transparent background (the field
+ * shows through), with a grass region inset from any side whose neighbor
+ * tile isn't also ground (mask bit unset) — see groundTiles.ts's edgeMask
+ * doc comment for the bit layout (N=1, E=2, S=4, W=8). Concave corners (both
+ * adjacent sides missing) get a real rounded arc rather than a sharp cut —
+ * that, plus the tuft fringe above, is what makes an autotiled edge read as
+ * organic rather than a grid of rectangles.
  */
-function buildEdgeTile(
-	mask: number,
-	grass: GroundTones,
-	dirt: GroundTones,
-): Grid {
+function buildEdgeTile(mask: number, grass: GroundTones): Grid {
 	const grid = createGrid(TILE_GRID, TILE_GRID);
-	fillRect(grid, 0, 0, TILE_GRID, TILE_GRID, dirt.base);
 
 	const insetTop = mask & 1 ? 0 : MARGIN;
 	const insetRight = mask & 2 ? 0 : MARGIN;
 	const insetBottom = mask & 4 ? 0 : MARGIN;
 	const insetLeft = mask & 8 ? 0 : MARGIN;
+	const inside = (x: number, y: number): boolean =>
+		insideRoundedInset(x, y, insetTop, insetRight, insetBottom, insetLeft);
 
 	for (let y = 0; y < TILE_GRID; y++) {
 		for (let x = 0; x < TILE_GRID; x++) {
-			if (
-				insideRoundedInset(x, y, insetTop, insetRight, insetBottom, insetLeft)
-			) {
-				setPixel(grid, x, y, grass.base);
-			}
+			if (inside(x, y)) setPixel(grid, x, y, grass.base);
 		}
 	}
 
-	// A one-pixel shadow line just inside the grass/dirt boundary reads as
-	// the grass casting a little shade onto the dirt lip — deliberate,
-	// static shading, not a texture pass.
+	// A one-pixel shadow line just inside the grass boundary reads as the
+	// grass's own edge catching a little shade — deliberate, static shading,
+	// not a texture pass.
 	for (let y = 0; y < TILE_GRID; y++) {
 		for (let x = 0; x < TILE_GRID; x++) {
-			const isGrass = insideRoundedInset(
-				x,
-				y,
-				insetTop,
-				insetRight,
-				insetBottom,
-				insetLeft,
-			);
-			if (!isGrass) continue;
+			if (!inside(x, y)) continue;
 			const onEdge = ![
 				[x + 1, y],
 				[x - 1, y],
 				[x, y + 1],
 				[x, y - 1],
 			].every(([nx, ny]) =>
-				nx === undefined || ny === undefined
-					? true
-					: insideRoundedInset(
-							nx,
-							ny,
-							insetTop,
-							insetRight,
-							insetBottom,
-							insetLeft,
-						),
+				nx === undefined || ny === undefined ? true : inside(nx, ny),
 			);
 			if (onEdge) setPixel(grid, x, y, grass.shadow);
+		}
+	}
+
+	// Tuft fringe — only along sides that are actually inset (a side that
+	// butts cleanly against another ground tile shouldn't get a ragged edge
+	// where the two tiles meet).
+	const midX = TILE_GRID / 2;
+	const midY = TILE_GRID / 2;
+	for (const [dx, dy] of FRINGE_OFFSETS) {
+		if (insetTop > 0 && dy < 0)
+			setPixel(grid, Math.round(midX + dx), insetTop + dy, grass.base);
+		if (insetBottom > 0 && dy > 0) {
+			setPixel(
+				grid,
+				Math.round(midX + dx),
+				TILE_GRID - 1 - insetBottom + dy,
+				grass.base,
+			);
+		}
+		if (insetLeft > 0 && dx < 0)
+			setPixel(grid, insetLeft + dx, Math.round(midY + dy), grass.base);
+		if (insetRight > 0 && dx > 0) {
+			setPixel(
+				grid,
+				TILE_GRID - 1 - insetRight + dx,
+				Math.round(midY + dy),
+				grass.base,
+			);
 		}
 	}
 
@@ -205,16 +228,13 @@ function buildEdgeTile(
 }
 
 /** VARIANT_COUNT base grass variants followed by 16 blob-edge frames (mask 0-15) — see groundTiles.ts's tileFrameFor for how a mask maps to a frame index. */
-export function buildBiomeTileFrames(
-	grass: GroundTones,
-	dirt: GroundTones,
-): Grid[] {
+export function buildBiomeTileFrames(grass: GroundTones): Grid[] {
 	const frames: Grid[] = [];
 	for (let v = 0; v < VARIANT_COUNT; v++) {
 		frames.push(buildBaseVariant(grass, v));
 	}
 	for (let mask = 0; mask < 16; mask++) {
-		frames.push(buildEdgeTile(mask, grass, dirt));
+		frames.push(buildEdgeTile(mask, grass));
 	}
 	return frames;
 }

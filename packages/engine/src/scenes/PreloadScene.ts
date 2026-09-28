@@ -30,6 +30,8 @@ import {
 	propKey,
 	propPath,
 	WORLD_ART_BIOMES,
+	WORLD_CABINET_KEY,
+	WORLD_CABINET_PATH,
 } from "../assetPaths.js";
 
 export type PreloadSceneData =
@@ -140,6 +142,7 @@ export class PreloadScene extends Phaser.Scene {
 			this.load.image(propKey(name), propPath(name));
 		}
 		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
+		this.load.image(WORLD_CABINET_KEY, WORLD_CABINET_PATH);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 	}
 
@@ -189,6 +192,7 @@ export class PreloadScene extends Phaser.Scene {
 			...Array.from({ length: PATH_STAMP_COUNT }, (_, i) => pathStampKey(i)),
 			...PROP_NAMES.map(propKey),
 			CASTLE_KEEP_KEY,
+			WORLD_CABINET_KEY,
 			FX_SPARK_KEY,
 		];
 		const worldArtAvailable = worldArtKeys.every(

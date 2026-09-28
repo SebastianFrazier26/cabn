@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { themeFromSeed } from "../src/systems/theme.js";
+import { subtleTint, themeFromSeed } from "../src/systems/theme.js";
 
 describe("themeFromSeed", () => {
 	test("is a pure function: same seed yields the same theme every time", () => {
@@ -34,5 +34,27 @@ describe("themeFromSeed", () => {
 
 	test("seed 0 is a valid, non-crashing input", () => {
 		expect(() => themeFromSeed(0)).not.toThrow();
+	});
+});
+
+describe("subtleTint", () => {
+	test("strength 1 leaves the color untouched", () => {
+		expect(subtleTint(0xff0000, 1)).toBe(0xff0000);
+	});
+
+	test("strength 0 mixes all the way to white", () => {
+		expect(subtleTint(0xff0000, 0)).toBe(0xffffff);
+	});
+
+	test("an intermediate strength lands strictly between the color and white", () => {
+		const result = subtleTint(0x000000, 0.5);
+		const r = (result >> 16) & 0xff;
+		expect(r).toBeGreaterThan(0);
+		expect(r).toBeLessThan(255);
+	});
+
+	test("clamps strength outside [0, 1] rather than extrapolating", () => {
+		expect(subtleTint(0xff0000, 2)).toBe(subtleTint(0xff0000, 1));
+		expect(subtleTint(0xff0000, -1)).toBe(subtleTint(0xff0000, 0));
 	});
 });
