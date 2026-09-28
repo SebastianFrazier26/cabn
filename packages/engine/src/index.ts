@@ -11,6 +11,8 @@ export { FileOverlay } from "./react/FileOverlay.js";
 export { OrbSearch } from "./react/OrbSearch.js";
 export type { PortalEmbedProps } from "./react/PortalEmbed.js";
 export { PortalEmbed } from "./react/PortalEmbed.js";
+export type { PortalLivePageProps } from "./react/PortalLivePage.js";
+export { PortalLivePage } from "./react/PortalLivePage.js";
 export type { PortalPreviewProps } from "./react/PortalPreview.js";
 export { PortalPreview } from "./react/PortalPreview.js";
 export type { PortalPreviewDockProps } from "./react/PortalPreviewDock.js";

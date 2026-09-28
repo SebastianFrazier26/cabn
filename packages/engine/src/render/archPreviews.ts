@@ -22,9 +22,11 @@ import { resolveRelativeUrl } from "./resolveUrl.js";
  * camera for free, and gets the day/night grade like every other world
  * sprite — where a DOM overlay would need per-frame world->screen projection
  * for every visible arch and would float above the grade and the player.
- * The live, scrollable, interactive view (CodeMirror, the url iframe) stays
- * in the DOM, in the expanded dock (react/PortalPreviewDock.tsx), where one
- * instance at a time is cheap.
+ * The live, scrollable, interactive view (CodeMirror) stays in the DOM, in
+ * the expanded dock (react/PortalPreviewDock.tsx), where one instance at a
+ * time is cheap. The one exception is a url preview's live page, which is
+ * a DOM iframe projected over the nearest url arch (react/PortalLivePage.tsx)
+ * — again only one at a time.
  *
  * Cost control: only portals near the player *and* on screen get a detailed
  * canvas (selectDetailPortals, capped at MAX_DETAILED, LRU-evicted past
@@ -144,6 +146,34 @@ export class ArchPreviews {
 			this.paint(entry);
 			budget--;
 		}
+	}
+
+	/** For render/portalFx.ts: on-screen arches, and whether each shows its own painted preview yet or still the shared placeholder. */
+	forEachVisible(
+		cb: (id: string, pos: Position, kind: string, detailed: boolean) => void,
+	): void {
+		for (const entry of this.entries.values()) {
+			if (!entry.image.visible) continue;
+			cb(
+				entry.target.id,
+				entry.target.pos,
+				entry.target.preview.kind,
+				entry.detailKey !== null,
+			);
+		}
+	}
+
+	/** The resolve animation lights a freshly painted page up out of the dark (a tint, not alpha — fading alpha would show the ground through the arch's empty opening mid-fade). */
+	setPreviewReveal(id: string, reveal: number): void {
+		const image = this.entries.get(id)?.image;
+		if (!image) return;
+		if (reveal >= 1) {
+			image.clearTint();
+			return;
+		}
+		const r = Math.max(0, reveal);
+		const channel = (lo: number) => Math.round(lo + (255 - lo) * r);
+		image.setTint((channel(42) << 16) | (channel(40) << 8) | channel(64));
 	}
 
 	destroy(): void {
@@ -316,14 +346,29 @@ export class ArchPreviews {
 		if (!texture) return key;
 		const ctx = texture.getContext();
 		const style = PLACEHOLDER_STYLE[kind];
+		// A dark stepped "tunnel" instead of the old bold glyph: render/
+		// portalFx.ts swirls loading motes over it, so the placeholder only has
+		// to read as an unlit portal. The glyph stays as a faint rune so a
+		// glance still tells code from prose at a distance.
+		ctx.fillStyle = "#0d0a18";
+		ctx.fillRect(0, 0, w, h);
+		ctx.globalAlpha = 0.45;
 		ctx.fillStyle = COLORS[style.bg];
 		ctx.fillRect(0, 0, w, h);
-		ctx.globalAlpha = 0.55;
+		ctx.fillStyle = COLORS[style.fg];
+		const ringStep = Math.round(Math.min(w, h) / 9);
+		for (let i = 1; i <= 4; i++) {
+			ctx.globalAlpha = 0.06 * i;
+			const inset = i * ringStep;
+			ctx.fillRect(inset, inset, w - inset * 2, h - inset * 2);
+		}
+		ctx.globalAlpha = 0.22;
 		ctx.fillStyle = COLORS[style.fg];
 		ctx.font = `bold ${Math.round(w * 0.32)}px ${FONT_FAMILY}`;
 		ctx.textAlign = "center";
 		ctx.textBaseline = "middle";
 		ctx.fillText(style.glyph, w / 2, h / 2);
+		ctx.globalAlpha = 1;
 		texture.refresh();
 		return key;
 	}

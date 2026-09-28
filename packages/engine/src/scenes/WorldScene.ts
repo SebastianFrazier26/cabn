@@ -20,7 +20,7 @@ import {
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
-import { ArchPreviews } from "../render/archPreviews.js";
+import { type ArchOpening, ArchPreviews } from "../render/archPreviews.js";
 import {
 	type AtmosphereHandle,
 	attachAtmosphere,
@@ -53,6 +53,7 @@ import {
 	type PlayerHandle,
 	type PlayerTextures,
 } from "../render/playerController.js";
+import { PortalFx } from "../render/portalFx.js";
 import {
 	type PlacedProp,
 	placeProps,
@@ -81,10 +82,18 @@ import {
 	type Interactable,
 } from "../systems/clickWalk.js";
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
+import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
+import {
+	openingRect,
+	pickNearWebPortal,
+	projectWorldRect,
+	rectsOverlap,
+	urlArchClickAction,
+} from "../systems/portalFx.js";
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	applyOverridesToChunk,
@@ -148,6 +157,13 @@ const ARCH_OPENING_Y_OFFSET_RATIO = 0.17;
 const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * WORLD_PORTAL_SCALE;
 /** Just above the arch sprite (3) so the preview covers the opening's idle sparkles, below monsters (4) and the player (5). */
 const ARCH_PREVIEW_DEPTH = 3.05;
+/** Motes/glow/sheen over the preview, still below monsters (4) and the player (5). */
+const ARCH_FX_DEPTH = 3.06;
+const ARCH_OPENING: ArchOpening = {
+	width: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO,
+	height: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO,
+	offsetY: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO,
+};
 
 // M10b batch 3: the old radius formula (90 + min(count,40)*4, capping out at
 // 250px for a 40-portal cluster) put arches 39px apart at that cap — well
@@ -271,7 +287,9 @@ export class WorldScene extends Phaser.Scene {
 		null;
 
 	private archPreviews: ArchPreviews | null = null;
+	private portalFx: PortalFx | null = null;
 	private focusedPortalId: string | null = null;
+	private nearWebPortalId: string | null = null;
 	private portalsInRange = new Set<string>();
 
 	/** One theme per world (see drawClusters' doc comment) — computed once in create() so drawGround's ground-tint overlay and drawClusters' cabinet/bonfire tint always agree. */
@@ -349,7 +367,14 @@ export class WorldScene extends Phaser.Scene {
 			this.edgeDressing = null;
 			this.archPreviews?.destroy();
 			this.archPreviews = null;
+			this.portalFx?.destroy();
+			this.portalFx = null;
+			this.cameras.main.off(
+				Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE,
+				this.projectWebPortal,
+			);
 			this.setFocusedPortal(null);
+			this.setNearWebPortal(null);
 		});
 	}
 
@@ -812,13 +837,19 @@ export class WorldScene extends Phaser.Scene {
 	private drawPortals(): void {
 		this.archPreviews = new ArchPreviews(
 			this,
-			{
-				width: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO,
-				height: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO,
-				offsetY: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO,
-			},
+			ARCH_OPENING,
 			ARCH_PREVIEW_DEPTH,
 			this.worldBase,
+		);
+		this.portalFx = new PortalFx(
+			this,
+			ARCH_OPENING,
+			ARCH_FX_DEPTH,
+			prefersReducedMotion(),
+		);
+		this.cameras.main.on(
+			Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE,
+			this.projectWebPortal,
 		);
 		for (const cluster of this.manifest.clusters) {
 			cluster.portalIds.forEach((portalId) => {
@@ -860,6 +891,7 @@ export class WorldScene extends Phaser.Scene {
 			this.focusedPortalId = null;
 			this.setFocusedPortal(portalId);
 		}
+		if (this.nearWebPortalId === portalId) this.setNearWebPortal(null);
 	}
 
 	private setFocusedPortal(portalId: string | null): void {
@@ -1100,6 +1132,10 @@ export class WorldScene extends Phaser.Scene {
 
 	private onClick = (target: ClickTarget): void => {
 		this.pendingArrival = null;
+		if (this.tryOpenUrlArch(target)) {
+			this.walker.cancel();
+			return;
+		}
 		const from = { x: this.player.body.x, y: this.player.body.y };
 		if (target.kind === "ground") {
 			this.walker.walkTo(
@@ -1188,6 +1224,7 @@ export class WorldScene extends Phaser.Scene {
 			{ x: this.player.body.x, y: this.player.body.y },
 			{ x: view.x, y: view.y, w: view.width, h: view.height },
 		);
+		if (this.archPreviews) this.portalFx?.update(time, this.archPreviews);
 		this.handleArrival(delta);
 		this.handlePortalEnter();
 		this.handleReturnToShelf();
@@ -1371,6 +1408,101 @@ export class WorldScene extends Phaser.Scene {
 			}
 		}
 		this.setFocusedPortal(closestId);
+
+		const webCandidates = [];
+		for (const portalId of inRange) {
+			const pos = this.portalWorldPos.get(portalId);
+			const portal = this.portalsById.get(portalId);
+			if (pos && portal && this.previewFor(portal).kind === "url")
+				webCandidates.push({ id: portalId, pos });
+		}
+		this.setNearWebPortal(
+			pickNearWebPortal(webCandidates, playerPos, PORTAL_APPROACH_RADIUS),
+		);
+	}
+
+	private setNearWebPortal(portalId: string | null): void {
+		if (portalId === this.nearWebPortalId) return;
+		this.nearWebPortalId = portalId;
+		const portal = portalId ? this.portalsById.get(portalId) : undefined;
+		const preview = portal ? this.previewFor(portal) : undefined;
+		this.store.getState().setNearWebPortal(
+			portal && preview?.kind === "url"
+				? {
+						portalId: portal.id,
+						url: preview.url,
+						...(preview.title !== undefined ? { title: preview.title } : {}),
+						...(preview.fallbackImage !== undefined
+							? { fallbackImage: preview.fallbackImage }
+							: {}),
+						allowedEmbedOrigins: this.manifest.allowedEmbedOrigins,
+					}
+				: null,
+		);
+	}
+
+	/** Runs on the camera's FOLLOW_UPDATE, i.e. after this frame's follow lerp, so the DOM mini-page lands exactly where the canvas is about to draw the arch. */
+	private projectWebPortal = (): void => {
+		const id = this.nearWebPortalId;
+		const pos = id ? this.portalWorldPos.get(id) : undefined;
+		if (!id || !pos) return;
+		const camera = this.cameras.main;
+		const canvas = this.game.canvas;
+		const world = openingRect(pos, ARCH_OPENING);
+		const rect = projectWorldRect(
+			world,
+			{
+				view: {
+					x: camera.worldView.x,
+					y: camera.worldView.y,
+					w: camera.worldView.width,
+					h: camera.worldView.height,
+				},
+				zoom: camera.zoom,
+				offsetX: camera.x,
+				offsetY: camera.y,
+			},
+			{
+				left: canvas.offsetLeft,
+				top: canvas.offsetTop,
+				scaleX: canvas.clientWidth / this.scale.width || 1,
+				scaleY: canvas.clientHeight / this.scale.height || 1,
+			},
+		);
+		const b = this.player.body.getBounds();
+		const occluded = rectsOverlap(world, {
+			x: b.x,
+			y: b.y,
+			w: b.width,
+			h: b.height,
+		});
+		// Emitted every frame, not only on change: the React side mounts a
+		// frame or two after nearWebPortal is set and would otherwise never
+		// hear the rect of a camera that has already stopped moving. It skips
+		// identical rects itself.
+		this.bus.emit("portal:web-rect", { portalId: id, rect, occluded });
+	};
+
+	/** A click on a url arch's opening while standing near it opens the page instead of walking (systems/portalFx.ts#urlArchClickAction). The live mini-page normally covers the opening and catches that click in the DOM; this is the path for when it doesn't (dimmed under the player, or still loading). */
+	private tryOpenUrlArch(target: ClickTarget): boolean {
+		if (target.kind !== "interactable" || target.target.kind !== "portal")
+			return false;
+		const portal = this.portalsById.get(target.target.id);
+		const preview = portal ? this.previewFor(portal) : undefined;
+		if (preview?.kind !== "url") return false;
+		const pointer = this.input.activePointer;
+		const click = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+		const origins = this.manifest.allowedEmbedOrigins;
+		const action = urlArchClickAction(
+			{ x: click.x, y: click.y },
+			{ x: this.player.body.x, y: this.player.body.y },
+			target.target.pos,
+			openingRect(target.target.pos, ARCH_OPENING),
+			PORTAL_APPROACH_RADIUS,
+			canOpenPortalLink(preview.url, origins),
+		);
+		if (action !== "open-link") return false;
+		return openPortalLink(preview.url, origins);
 	}
 
 	private handlePortalEnter(): void {

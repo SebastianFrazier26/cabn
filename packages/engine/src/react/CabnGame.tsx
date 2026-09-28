@@ -10,6 +10,7 @@ import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { PortalLivePage } from "./PortalLivePage.js";
 import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
@@ -70,6 +71,8 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			<div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 			{handle && (
 				<PixelTheme store={handle.store}>
+					{/* First, so every HUD panel after it stacks above this in-world layer. */}
+					<PortalLivePage store={handle.store} bus={handle.bus} />
 					<FileOverlay store={handle.store} />
 					<PortalPreviewDock store={handle.store} />
 					<ToolHotbar store={handle.store} bus={handle.bus} />
