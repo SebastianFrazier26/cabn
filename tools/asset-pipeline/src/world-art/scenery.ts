@@ -2,12 +2,11 @@ import {
 	createGrid,
 	fillEllipse,
 	fillRect,
-	fillTriangle,
 	type Grid,
 	type GroundTonesLike,
 	setPixel,
-	shadeEllipseVolume,
 } from "../pixel-shapes.js";
+import { type Pen, pen } from "./pen.js";
 
 /**
  * M10 atmosphere pass (2026-09-28): edge scenery and points of interest for
@@ -34,78 +33,6 @@ export interface SceneryPiece {
 	name: string;
 	grid: Grid;
 	cellSize: number;
-}
-
-interface Pen {
-	g: Grid;
-	rect(x: number, y: number, w: number, h: number, idx: number): void;
-	ellipse(cx: number, cy: number, rx: number, ry: number, idx: number): void;
-	tri(
-		x0: number,
-		y0: number,
-		x1: number,
-		y1: number,
-		x2: number,
-		y2: number,
-		idx: number,
-	): void;
-	/** One base-unit block. */
-	px(x: number, y: number, idx: number): void;
-	/** One fine cell, in fine coordinates. */
-	fine(x: number, y: number, idx: number): void;
-	shade(
-		cx: number,
-		cy: number,
-		rx: number,
-		ry: number,
-		tones: GroundTonesLike,
-	): void;
-	/** Deterministically flips a fraction of `from`-colored fine cells in a base-unit box to `to` — leaf/stone texture at the fine cell size. */
-	speckle(
-		x: number,
-		y: number,
-		w: number,
-		h: number,
-		from: number,
-		to: number,
-		density: number,
-		seed: number,
-	): void;
-}
-
-function cellHash(x: number, y: number, seed: number): number {
-	let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;
-	h = Math.imul(h ^ (h >>> 13), 1274126177);
-	h ^= h >>> 16;
-	return (h >>> 0) / 4294967296;
-}
-
-function pen(width: number, height: number, k: number): Pen {
-	const g = createGrid(Math.round(width * k), Math.round(height * k));
-	const r = Math.round;
-	return {
-		g,
-		rect: (x, y, w, h, idx) =>
-			fillRect(g, r(x * k), r(y * k), r(w * k), r(h * k), idx),
-		ellipse: (cx, cy, rx, ry, idx) =>
-			fillEllipse(g, cx * k, cy * k, rx * k, ry * k, idx),
-		tri: (x0, y0, x1, y1, x2, y2, idx) =>
-			fillTriangle(g, x0 * k, y0 * k, x1 * k, y1 * k, x2 * k, y2 * k, idx),
-		px: (x, y, idx) => fillRect(g, r(x * k), r(y * k), k, k, idx),
-		fine: (x, y, idx) => setPixel(g, x, y, idx),
-		shade: (cx, cy, rx, ry, tones) =>
-			shadeEllipseVolume(g, cx * k, cy * k, rx * k, ry * k, tones),
-		speckle: (x, y, w, h, from, to, density, seed) => {
-			for (let fy = r(y * k); fy < r((y + h) * k); fy++) {
-				const row = g[fy];
-				if (!row) continue;
-				for (let fx = r(x * k); fx < r((x + w) * k); fx++) {
-					if (row[fx] === from && cellHash(fx, fy, seed) < density)
-						row[fx] = to;
-				}
-			}
-		},
-	};
 }
 
 export interface SceneryPalette {

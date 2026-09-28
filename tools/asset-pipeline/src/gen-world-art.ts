@@ -324,6 +324,7 @@ interface PropsResult {
 }
 
 const PROP_PALETTE: PropPaletteIndices = {
+	ink: PALETTE.ink,
 	wood: PALETTE.woodWarm,
 	woodDark: PALETTE.woodDark,
 	woodLight: PALETTE.woodLight,
@@ -337,12 +338,13 @@ const PROP_PALETTE: PropPaletteIndices = {
 	stoneHighlight: PALETTE.stoneLight,
 	glow: PALETTE.lanternGlow,
 	glowBright: PALETTE.cream,
+	// Same meadow tones as scenery's oaks, so scattered trees and the edge
+	// forest read as one species rather than two greens.
 	treeTones: {
-		shadow: PALETTE.groveShadow,
-		base: PALETTE.groveBase,
-		highlight: PALETTE.groveHighlight,
+		shadow: PALETTE.meadowShadow,
+		base: PALETTE.meadowBase,
+		highlight: PALETTE.meadowHighlight,
 	},
-	trunk: PALETTE.woodDark,
 	blossomAccent: PALETTE.berryPink,
 	bushTones: {
 		shadow: PALETTE.meadowShadow,
@@ -350,29 +352,34 @@ const PROP_PALETTE: PropPaletteIndices = {
 		highlight: PALETTE.meadowHighlight,
 	},
 	waterDark: PALETTE.ink,
+	waterShine: PALETTE.paleGhostBlue,
 	plankCream: PALETTE.parchment,
-	ink: PALETTE.ink,
+	plankShadow: PALETTE.pathBase,
 	potColor: PALETTE.terracotta,
-	potShadow: PALETTE.woodDark,
+	potShadow: PALETTE.autumnOrangeDark,
+	potLight: PALETTE.autumnOrange,
 	dirt: PALETTE.pathShadow,
 	petal: PALETTE.berryPink,
+	petalAlt: PALETTE.skyBlue,
 	petalCenter: PALETTE.sunYellow,
-	stem: PALETTE.groveBase,
-	// Warm cottage — terracotta walls, a deeper terracotta roof, a bright
-	// window glow (same "bright enough to catch the night bloom threshold"
-	// reasoning as lampPost's glow slit — see props.ts).
-	wallColor: PALETTE.terracotta,
-	wallShadow: PALETTE.woodDark,
+	// Cottage: plaster + timber under the shelf cabin's exact roof ramp, so
+	// scattered cottages and shelf cabins read as one village; windows stay
+	// bright enough to catch the night bloom threshold (see props.ts).
+	plaster: PALETTE.parchment,
+	plasterShadow: PALETTE.pathBase,
 	roofColor: PALETTE.autumnOrange,
 	roofShadow: PALETTE.autumnOrangeDark,
-	windowFrame: PALETTE.woodDark,
+	roofHighlight: PALETTE.terracotta,
 	windowGlow: PALETTE.lanternGlow,
-	doorColor: PALETTE.woodDark,
-	chimneyColor: PALETTE.stoneMid,
-	bedBorder: PALETTE.woodWarm,
+	windowWarm: PALETTE.sunYellow,
+	knob: PALETTE.sunYellow,
 	bedSoil: PALETTE.pathShadow,
 	flagColor: PALETTE.berryPink,
-	ivyColor: PALETTE.groveHighlight,
+	turretRoof: {
+		light: PALETTE.autumnOrange,
+		base: PALETTE.terracotta,
+		dark: PALETTE.autumnOrangeDark,
+	},
 };
 
 const IVY_TONES = {
@@ -382,9 +389,10 @@ const IVY_TONES = {
 } as const;
 
 // Landmarks (shelf cabin, world cabinet) render at the wizard tower's
-// cellSize (16) rather than the scatter props' 6 — the engine displays them
-// at the tower's own scale, so this is what makes their on-screen pixel
-// size match the tower's (see engine render/scale.ts).
+// cellSize (16) — the engine displays them at the tower's own scale, so this
+// is what makes their on-screen pixel size match the tower's (see engine
+// render/scale.ts). Props and scenery reach the same density a different
+// way: fine grids at cellSize 2, drawn unscaled.
 const LANDMARK_CELL_SIZE = 16;
 const LANDMARK_EDGE_FEATHER_PX = 2;
 
