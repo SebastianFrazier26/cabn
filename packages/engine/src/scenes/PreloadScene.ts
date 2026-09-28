@@ -4,6 +4,7 @@ import {
 	ANIMATED_MONSTER_SPECIES,
 	ASSET_KEYS,
 	ASSET_PATHS,
+	atmosphereAssetEntries,
 	BIOME_TILE_FRAME_SIZE,
 	BONFIRE_FRAME_COUNT,
 	biomeTileSheetKey,
@@ -60,6 +61,8 @@ export interface AssetAvailability {
 	worldArt: boolean;
 	/** The procedural shelf cabin — ShelfScene falls back to the photographic ASSET_KEYS.cabin without it. */
 	shelfCabin: boolean;
+	/** All of the M10 atmosphere keys (assetPaths.ts#atmosphereAssetEntries) — edge scenery, skyline, sky ornaments, path-ribbon pieces. */
+	atmosphereArt: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -149,6 +152,9 @@ export class PreloadScene extends Phaser.Scene {
 		this.load.image(WORLD_CABINET_KEY, WORLD_CABINET_PATH);
 		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
+		for (const [key, path] of atmosphereAssetEntries()) {
+			this.load.image(key, path);
+		}
 	}
 
 	/**
@@ -220,6 +226,9 @@ export class PreloadScene extends Phaser.Scene {
 			characterBack: this.loaded(OPTIONAL_ASSET_KEYS.characterIdleBack),
 			worldArt: worldArtAvailable,
 			shelfCabin: this.loaded(SHELF_CABIN_KEY),
+			atmosphereArt:
+				worldArtAvailable &&
+				atmosphereAssetEntries().every(([key]) => this.loaded(key)),
 		};
 
 		if ("shelfManifest" in this.target) {

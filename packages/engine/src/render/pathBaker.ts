@@ -1,7 +1,15 @@
 import type { Position } from "@cabn/world-schema";
 import type Phaser from "phaser";
-import { PATH_STAMP_COUNT, pathStampKey } from "../assetPaths.js";
+import {
+	PATH_BED_DISC_KEY,
+	PATH_COBBLE_COUNT,
+	PATH_EDGE_DISC_KEY,
+	PATH_STAMP_COUNT,
+	pathCobbleKey,
+	pathStampKey,
+} from "../assetPaths.js";
 import { hashStringSeed, mulberry32 } from "../systems/deterministicRandom.js";
+import { planPathRibbon, type RibbonPlan } from "./pathRibbon.js";
 import { stampPointsAlongSegment } from "./pathStamps.js";
 
 export interface WorldBounds {
@@ -83,4 +91,61 @@ export function bakePaths(
 
 	for (const image of stampImages.values()) image.destroy();
 	return rt;
+}
+
+function textureRadius(scene: Phaser.Scene, key: string): number {
+	return (
+		(scene.textures.get(key).getSourceImage() as { width: number }).width / 2
+	);
+}
+
+/**
+ * The ribbon baker (render/pathRibbon.ts for why): one world-bounds
+ * RenderTexture, three passes over every segment — sand edge discs, mortar
+ * bed discs, then cobbles. Replaces bakePaths whenever the atmosphere art set
+ * loaded; bakePaths stays as the fallback for a bundle without it.
+ */
+export function bakePathRibbons(
+	scene: Phaser.Scene,
+	bounds: WorldBounds,
+	segments: readonly PathSegment[],
+): { rt: Phaser.GameObjects.RenderTexture; plan: RibbonPlan } {
+	const width = bounds.maxX - bounds.minX;
+	const height = bounds.maxY - bounds.minY;
+	const rt = scene.add.renderTexture(
+		bounds.minX + width / 2,
+		bounds.minY + height / 2,
+		width,
+		height,
+	);
+	const plan = planPathRibbon(segments, {
+		edgeRadius: textureRadius(scene, PATH_EDGE_DISC_KEY),
+		bedRadius: textureRadius(scene, PATH_BED_DISC_KEY),
+		cobbleVariants: PATH_COBBLE_COUNT,
+	});
+
+	const edge = scene.make.image({ key: PATH_EDGE_DISC_KEY }, false);
+	const bed = scene.make.image({ key: PATH_BED_DISC_KEY }, false);
+	const cobbleImages = Array.from({ length: PATH_COBBLE_COUNT }, (_, i) =>
+		scene.make.image({ key: pathCobbleKey(i) }, false),
+	);
+	// One open batch for every stamp: a plain rt.draw() per stamp binds and
+	// flushes the framebuffer each time, which for a few thousand stamps cost
+	// seconds of main-thread stall on scene create.
+	rt.beginDraw();
+	for (const p of plan.edgeStamps) {
+		rt.batchDraw(edge, p.x - bounds.minX, p.y - bounds.minY);
+	}
+	for (const p of plan.bedStamps) {
+		rt.batchDraw(bed, p.x - bounds.minX, p.y - bounds.minY);
+	}
+	for (const c of plan.cobbles) {
+		const image = cobbleImages[c.variant] ?? cobbleImages[0];
+		if (image) rt.batchDraw(image, c.x - bounds.minX, c.y - bounds.minY);
+	}
+	rt.endDraw();
+	edge.destroy();
+	bed.destroy();
+	for (const image of cobbleImages) image.destroy();
+	return { rt, plan };
 }

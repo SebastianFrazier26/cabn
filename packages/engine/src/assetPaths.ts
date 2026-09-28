@@ -199,3 +199,98 @@ export type UiSparkleColor = (typeof UI_SPARKLE_COLORS)[number];
 export function uiSparklePath(color: UiSparkleColor): string {
 	return `${ASSET_BASE}/placeholders/ui_sparkle_${color}@8x.png`;
 }
+
+// M10 atmosphere pass (2026-09-28) — edge scenery, horizon skyline, night sky
+// ornaments and the path-ribbon pieces, all from gen-world-art.ts (see
+// world-art/scenery.ts). Optional as a group, same graceful-fallback shape as
+// worldArt: missing any one skips edge scenery/skyline and keeps the old
+// strip-stamp paths (PreloadScene's `atmosphereArt`).
+export const SCENERY_NAMES = [
+	"pine",
+	"oak",
+	"blossom-oak",
+	"shrub",
+	"rock-small",
+	"boulder",
+	"berry-shrub",
+	"flower-patch",
+	"reeds",
+	"mushroom",
+	"fallen-log",
+	"stump",
+	"ruin",
+	"windmill",
+	"windmill-sails",
+	"pond",
+	"waymarker",
+] as const;
+export type SceneryName = (typeof SCENERY_NAMES)[number];
+
+export function sceneryKey(name: SceneryName): string {
+	return `scenery-${name}`;
+}
+export function sceneryPath(name: SceneryName): string {
+	return `${ASSET_BASE}/placeholders/scenery_${name.replace(/-/g, "_")}_soft.png`;
+}
+
+export const SKYLINE_PIECES = [
+	"castle",
+	"watchtower",
+	"village",
+	"hill",
+	"treeline",
+] as const;
+export type SkylinePiece = (typeof SKYLINE_PIECES)[number];
+export type SkyVariant = "day" | "night";
+
+export function skylineKey(piece: SkylinePiece, variant: SkyVariant): string {
+	return `skyline-${piece}-${variant}`;
+}
+export function skylinePath(piece: SkylinePiece, variant: SkyVariant): string {
+	return `${ASSET_BASE}/placeholders/skyline_${piece}_${variant}_soft.png`;
+}
+
+export const SKY_DAY_KEY = "sky-day";
+export const SKY_DAY_PATH = `${ASSET_BASE}/placeholders/sky_day.png`;
+export const SKY_NIGHT_KEY = "sky-night";
+export const SKY_NIGHT_PATH = `${ASSET_BASE}/placeholders/sky_night.png`;
+export const SKY_MOON_KEY = "sky-moon";
+export const SKY_MOON_PATH = `${ASSET_BASE}/placeholders/sky_moon_soft.png`;
+export const SKY_STAR_KEY = "sky-star";
+export const SKY_STAR_PATH = `${ASSET_BASE}/placeholders/sky_star_soft.png`;
+
+export const PATH_EDGE_DISC_KEY = "path-edge-disc";
+export const PATH_EDGE_DISC_PATH = `${ASSET_BASE}/placeholders/path_edge_disc_soft.png`;
+export const PATH_BED_DISC_KEY = "path-bed-disc";
+export const PATH_BED_DISC_PATH = `${ASSET_BASE}/placeholders/path_bed_disc_soft.png`;
+export const PATH_COBBLE_COUNT = 4;
+export function pathCobbleKey(index: number): string {
+	return `path-cobble-${index}`;
+}
+export function pathCobblePath(index: number): string {
+	return `${ASSET_BASE}/placeholders/path_cobble_${index}_soft.png`;
+}
+
+/** Every key the atmosphere pass needs, as [key, path] pairs — PreloadScene loads these and derives `atmosphereArt` from them in one place. */
+export function atmosphereAssetEntries(): [string, string][] {
+	return [
+		...SCENERY_NAMES.map((n): [string, string] => [
+			sceneryKey(n),
+			sceneryPath(n),
+		]),
+		...SKYLINE_PIECES.flatMap((p): [string, string][] => [
+			[skylineKey(p, "day"), skylinePath(p, "day")],
+			[skylineKey(p, "night"), skylinePath(p, "night")],
+		]),
+		[SKY_DAY_KEY, SKY_DAY_PATH],
+		[SKY_NIGHT_KEY, SKY_NIGHT_PATH],
+		[SKY_MOON_KEY, SKY_MOON_PATH],
+		[SKY_STAR_KEY, SKY_STAR_PATH],
+		[PATH_EDGE_DISC_KEY, PATH_EDGE_DISC_PATH],
+		[PATH_BED_DISC_KEY, PATH_BED_DISC_PATH],
+		...Array.from({ length: PATH_COBBLE_COUNT }, (_, i): [string, string] => [
+			pathCobbleKey(i),
+			pathCobblePath(i),
+		]),
+	];
+}

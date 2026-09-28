@@ -18,18 +18,22 @@ import {
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachTimeOfDayGlow } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
+import {
+	type AtmosphereHandle,
+	attachAtmosphere,
+} from "../render/atmosphere.js";
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
-import {
-	attachLightPools,
-	type LightPoolOptions,
-} from "../render/lightPools.js";
+import type { LightPoolOptions } from "../render/lightPools.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
-import { bakePaths, type PathSegment } from "../render/pathBaker.js";
+import {
+	bakePathRibbons,
+	bakePaths,
+	type PathSegment,
+} from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
 	createMovementKeys,
@@ -53,7 +57,14 @@ import {
 	PORTAL_SCALE,
 	WORLD_CABINET_SCALE,
 } from "../render/scale.js";
+import {
+	attachSky,
+	boundsWithSky,
+	dressEdges,
+	type EdgeDressing,
+} from "../render/worldDressing.js";
 import { touchChunk } from "../systems/chunkCache.js";
+import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
 import { prefersReducedMotion } from "../systems/glowSettings.js";
 import {
 	newlyApproached,
@@ -164,6 +175,10 @@ const PATH_CORRIDOR_SAMPLE_SPACING = 40;
 const FIELD_SEED = 20260928;
 /** Same reasoning as ShelfScene's TOWER_SPAWN_CLEARANCE — clear space between the player's physics body and the bonfire's edge. */
 const BONFIRE_SPAWN_CLEARANCE = 24;
+/** Edge scenery keeps this far outside a clearing's own ground radius, so the forest frames the clearing instead of crowding its flower ring. */
+const EDGE_SCENERY_CLEARING_PAD = 36;
+/** Half the path ribbon's width (its sand edge disc radius, ~16.5px) plus a little air. */
+const EDGE_SCENERY_PATH_HALF_WIDTH = 20;
 /** Subtle per-world identity tint over the tiled ground — a low-alpha overlay rather than Phaser's multiplicative sprite tint, which would recolor the tile art itself instead of just washing over it. */
 const GROUND_THEME_TINT_ALPHA = 0.12;
 
@@ -202,9 +217,10 @@ export class WorldScene extends Phaser.Scene {
 	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
 	private placedProps: PlacedProp[] = [];
 	private ambientEffects: { destroy(): void } | null = null;
-	private ambientLights: { destroy(): void } | null = null;
+	private atmosphere: AtmosphereHandle | null = null;
+	private edgeDressing: EdgeDressing | null = null;
+	private sky: { destroy(): void } | null = null;
 	private unsubscribeBagSlots: (() => void) | null = null;
-	private unsubscribeGlow: (() => void) | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
 	private player!: PlayerHandle;
@@ -270,6 +286,7 @@ export class WorldScene extends Phaser.Scene {
 
 		this.drawGround(spawn);
 		this.drawPaths();
+		this.drawEdgeScenery(spawn);
 		this.drawClusters();
 		this.drawPortals();
 		this.drawEditedMarkers();
@@ -282,21 +299,22 @@ export class WorldScene extends Phaser.Scene {
 		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
-		this.unsubscribeGlow = attachTimeOfDayGlow(this, this.store);
 		this.setupAmbientEffects();
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-			this.unsubscribeGlow?.();
-			this.unsubscribeGlow = null;
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
 			this.ambientEffects = null;
-			this.ambientLights?.destroy();
-			this.ambientLights = null;
+			this.atmosphere?.destroy();
+			this.atmosphere = null;
+			this.sky?.destroy();
+			this.sky = null;
+			this.edgeDressing?.destroy();
+			this.edgeDressing = null;
 		});
 	}
 
-	/** Fireflies/motes/embers/smoke (fx/effects.ts) plus the lamp-post/cottage-window flicker — re-created (not just re-tinted) whenever timeOfDay changes, since fireflies-vs-motes is a swap, not a param tweak. */
+	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
 	private setupAmbientEffects(): void {
 		const reducedMotion = prefersReducedMotion();
 		const root =
@@ -311,54 +329,56 @@ export class WorldScene extends Phaser.Scene {
 			}
 		}
 
-		// M10b batch-3 review: night lighting read as "mostly whole-frame
-		// darkening" — real light pools at every lit prop plus a bigger,
-		// flickering one at the bonfire, night-only (rebuilt whenever
-		// timeOfDay flips, same as the fireflies/motes swap below).
-		const propLights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
+		const lights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
 			const pos = propLightWorldPos(prop);
 			if (!pos) return [];
 			return [
 				{
 					x: pos.x,
 					y: pos.y,
-					radiusPx: 38,
+					radiusPx: 44,
 					color: PALETTE.gold,
-					alpha: 0.6,
-					flicker: true,
+					alpha: 0.7,
+					flicker: prop.name === "lamp-post",
 				},
 			];
 		});
+		if (root) {
+			lights.push({
+				x: root.pos.x,
+				y: root.pos.y,
+				radiusPx: 120,
+				color: PALETTE.gold,
+				alpha: 0.75,
+				flicker: true,
+			});
+		}
+		lights.push(...(this.edgeDressing?.lights ?? []));
+		this.atmosphere = attachAtmosphere(this, this.store, {
+			lights,
+			reducedMotion,
+		});
+		if (this.availability.atmosphereArt) {
+			this.sky = attachSky(
+				this,
+				this.computeWorldBounds(),
+				this.worldId,
+				this.atmosphere,
+				reducedMotion,
+			);
+		}
 
+		// Fireflies-vs-motes is a swap, not a fade — rebuilt on the toggle
+		// itself while the grade/lights cross-fade in render/atmosphere.ts.
 		const rebuild = (): void => {
 			this.ambientEffects?.destroy();
-			this.ambientLights?.destroy();
-			const timeOfDay = this.store.getState().timeOfDay;
 			this.ambientEffects = attachWorldEffects(this, {
 				bounds: this.computeWorldBounds(),
-				timeOfDay,
+				timeOfDay: this.store.getState().timeOfDay,
 				bonfirePos: root?.pos,
 				chimneyPositions,
 				reducedMotion,
 			});
-			this.ambientLights =
-				timeOfDay === "night"
-					? attachLightPools(this, [
-							...propLights,
-							...(root
-								? [
-										{
-											x: root.pos.x,
-											y: root.pos.y,
-											radiusPx: 90,
-											color: PALETTE.gold,
-											alpha: 0.65,
-											flicker: true,
-										},
-									]
-								: []),
-						])
-					: null;
 		};
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
@@ -613,7 +633,51 @@ export class WorldScene extends Phaser.Scene {
 		// Same bounds as the ground field/camera (computeWorldBounds), not a
 		// tighter box hugging just the path endpoints — a mismatch there used
 		// to leave the path's own bake canvas clipping a stamp right at its edge.
-		bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
+		if (this.availability.atmosphereArt) {
+			bakePathRibbons(this, this.computeWorldBounds(), segments).rt.setDepth(1);
+		} else {
+			bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
+		}
+	}
+
+	/**
+	 * Border forest, meadow detail and points of interest in the space the
+	 * clearings and paths leave empty (render/worldDressing.ts). Keepouts are
+	 * the clearings themselves (which already contain their portal ring),
+	 * the spawn point, and every path corridor.
+	 */
+	private drawEdgeScenery(spawn: Position): void {
+		if (!this.availability.atmosphereArt) return;
+		const circles: CircleKeepout[] = this.manifest.clusters.map((cluster) => ({
+			x: cluster.pos.x,
+			y: cluster.pos.y,
+			radius: groundRadius(cluster) + EDGE_SCENERY_CLEARING_PAD,
+		}));
+		circles.push({ x: spawn.x, y: spawn.y, radius: SPAWN_EXCLUSION_RADIUS });
+		for (const pos of this.portalWorldPos.values()) {
+			circles.push({ x: pos.x, y: pos.y, radius: PORTAL_EXCLUSION_RADIUS });
+		}
+		const segments: SegmentKeepout[] = [];
+		for (const path of this.manifest.paths) {
+			const from = this.clustersById.get(path.from);
+			const to = this.clustersById.get(path.to);
+			if (!from || !to) continue;
+			segments.push({
+				ax: from.pos.x,
+				ay: from.pos.y,
+				bx: to.pos.x,
+				by: to.pos.y,
+				halfWidth: EDGE_SCENERY_PATH_HALF_WIDTH,
+			});
+		}
+		this.edgeDressing = dressEdges({
+			scene: this,
+			bounds: this.computeWorldBounds(),
+			seed: this.worldId,
+			circles,
+			segments,
+			reducedMotion: prefersReducedMotion(),
+		});
 	}
 
 	// Same seed for every cabinet in this world (this.theme, set once in
@@ -966,8 +1030,24 @@ export class WorldScene extends Phaser.Scene {
 	private setupCamera(): void {
 		const { minX, minY, maxX, maxY } = this.computeWorldBounds();
 
-		this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
-		this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);
+		if (this.availability.atmosphereArt) {
+			const { camera, physics } = boundsWithSky({ minX, minY, maxX, maxY });
+			this.physics.world.setBounds(
+				physics.minX,
+				physics.minY,
+				physics.maxX - physics.minX,
+				physics.maxY - physics.minY,
+			);
+			this.cameras.main.setBounds(
+				camera.minX,
+				camera.minY,
+				camera.maxX - camera.minX,
+				camera.maxY - camera.minY,
+			);
+		} else {
+			this.physics.world.setBounds(minX, minY, maxX - minX, maxY - minY);
+			this.cameras.main.setBounds(minX, minY, maxX - minX, maxY - minY);
+		}
 		this.cameras.main.startFollow(this.player.body, true, 0.1, 0.1);
 	}
 

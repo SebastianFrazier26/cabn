@@ -1,8 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
 	clampGlowParams,
+	DAY_GLOW_PARAMS,
 	DEFAULT_GLOW_PARAMS,
+	lerpGlowParams,
+	NIGHT_GLOW_PARAMS,
 } from "../../src/fx/glowParams.js";
+
+describe("day/night glow presets", () => {
+	it("leave tint/brightness neutral so glow-on and glow-off nights match (the grade lives in render/atmosphere.ts)", () => {
+		for (const preset of [DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS]) {
+			expect(preset.tint).toEqual({ r: 1, g: 1, b: 1 });
+			expect(preset.brightness).toBe(1);
+		}
+	});
+
+	it("lower the bloom threshold at night so lights bloom", () => {
+		expect(NIGHT_GLOW_PARAMS.threshold).toBeLessThan(DAY_GLOW_PARAMS.threshold);
+	});
+});
+
+describe("lerpGlowParams", () => {
+	it("returns each endpoint at t=0 and t=1", () => {
+		expect(lerpGlowParams(DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS, 0)).toEqual(
+			DAY_GLOW_PARAMS,
+		);
+		const atOne = lerpGlowParams(DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS, 1);
+		expect(atOne.threshold).toBeCloseTo(NIGHT_GLOW_PARAMS.threshold);
+		expect(atOne.bloomIntensity).toBeCloseTo(NIGHT_GLOW_PARAMS.bloomIntensity);
+	});
+
+	it("is the field-wise midpoint at t=0.5", () => {
+		const mid = lerpGlowParams(DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS, 0.5);
+		expect(mid.threshold).toBeCloseTo(
+			(DAY_GLOW_PARAMS.threshold + NIGHT_GLOW_PARAMS.threshold) / 2,
+		);
+	});
+});
 
 describe("clampGlowParams", () => {
 	it("returns the defaults untouched when given no overrides", () => {
