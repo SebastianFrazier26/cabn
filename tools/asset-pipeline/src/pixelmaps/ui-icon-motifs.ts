@@ -28,22 +28,40 @@ function placeMotif(
 	motif: ReadonlyArray<readonly [number, number, string]>,
 	x0: number,
 	y0: number,
+	scale: number,
 ): void {
+	// Stamps each motif offset as a `scale x scale` block rather than a single
+	// pixel — v3's icons roughly doubled in resolution, and a motif sized for
+	// a 20px icon reads as a barely-visible fleck at 44-64px otherwise.
 	for (const [dx, dy, ch] of motif) {
-		const x = x0 + dx;
-		const y = y0 + dy;
-		const row = rows[y];
-		if (row === undefined || x < 0 || x >= row.length) continue;
-		rows[y] = `${row.slice(0, x)}${ch}${row.slice(x + 1)}`;
+		for (let sy = 0; sy < scale; sy++) {
+			for (let sx = 0; sx < scale; sx++) {
+				const x = x0 + dx * scale + sx;
+				const y = y0 + dy * scale + sy;
+				const row = rows[y];
+				if (row === undefined || x < 0 || x >= row.length) continue;
+				rows[y] = `${row.slice(0, x)}${ch}${row.slice(x + 1)}`;
+			}
+		}
 	}
 }
 
 /** Mutates `rows` in place, stamping the shared leaf sprig anchored at (x0, y0). */
-export function placeLeafSprig(rows: string[], x0: number, y0: number): void {
-	placeMotif(rows, LEAF_SPRIG, x0, y0);
+export function placeLeafSprig(
+	rows: string[],
+	x0: number,
+	y0: number,
+	scale = 1,
+): void {
+	placeMotif(rows, LEAF_SPRIG, x0, y0, scale);
 }
 
 /** Mutates `rows` in place, stamping the shared flower fleck anchored at (x0, y0). */
-export function placeFlowerFleck(rows: string[], x0: number, y0: number): void {
-	placeMotif(rows, FLOWER_FLECK, x0, y0);
+export function placeFlowerFleck(
+	rows: string[],
+	x0: number,
+	y0: number,
+	scale = 1,
+): void {
+	placeMotif(rows, FLOWER_FLECK, x0, y0, scale);
 }

@@ -1,186 +1,205 @@
-# cabn pixel-RPG UI — style tokens (M10a mockup v2)
+# cabn pixel-RPG UI — style tokens (M10a mockup v3)
 
 Companion to `mockup.html`. This document describes the mockup as built —
 it is a proposal for review, not a spec already implemented in
-`packages/engine/src/react/`.
+`packages/engine/src/react/`. See `IMPLEMENTATION-PLAN.md` for how this
+would actually land in the engine, once approved.
 
-## v2 — this is a reset, not a tweak
+## History
 
-The first pass ("diegetic storybook": wood-plank frames, parchment fill,
-wax seals) was rejected outright: too textured ("like Minecraft dirt"), the
-parchment fill read as patchy and hard to read, the palette was bland, the
-hotbar was emoji in wooden squares, and every tool screen looked the same.
-This version throws out all of that and rebuilds around **Stardew Valley /
-Pokémon Black-White**: flat colorful panels with a simple outline + inset
-highlight bevel (no raster texture anywhere), a legible retro dialog font,
-real item-icon art in the hotbar, and a distinct particle/atmosphere effect
-per magical tool. Scene-transition concepts (page-turn / scroll-unroll /
-vignette iris) are the one thing carried over unchanged, per explicit
-feedback that they were fine.
+- **v1** ("diegetic storybook": wood-plank frames, parchment fill, wax
+  seals) — rejected: too textured, muted palette, samey across tools.
+- **v2** (Stardew Valley / Pokémon Black-White flat panels) — approved
+  direction ("wayyyy better, def on the right path").
+- **v3** (this version) — a refinement pass on the approved v2 direction:
+  day/night theming, the pixel font applied to all UI text (not just
+  headings), stronger/more per-tool magic effects, and higher-resolution
+  item icons. Scene-transition concepts are unchanged since v1, per
+  explicit "these are fine" feedback both rounds.
 
-## Frame
+## Day/night theming
 
-- `.panel`: flat `--panel-body` fill, `4px solid var(--border-outer)`,
-  `border-radius: 14px`, `box-shadow: inset 0 0 0 3px var(--border-highlight)`
-  for the inner bevel line, plus a flat `5px 5px 0 rgba(0,0,0,0.22)` hard
-  drop-shadow (no blur — a flat offset shadow is the GBA/DS convention, a
-  blurred one reads as a modern web card). Small rotated-square corner
-  accents (`::before`/`::after`) are a cheap nod to the corner dots common
-  on GBA/DS menu boxes.
-- No raster art anywhere in the frame. This is a deliberate reversal from
-  v1: CSS borders/radius/box-shadow give the exact same "flat colored
-  border, rounded corners" look Stardew/Pokémon menus have, with zero
-  texture risk and zero new binary assets to generate per panel.
-- Real pixel-art assets are now scoped to exactly two things: **item icons**
-  (the hotbar tools) and a **sparkle particle** — both listed below.
+**Meadow = day, Berry = night**, not two unrelated palette options — v2's
+"pick one" framing was replaced with a single time-of-day axis. Every color
+token now has a day value (`:root`) and a night value
+(`body[data-theme="night"]`), switched by a JS-computed `data-theme`
+attribute. `mockup.html`'s toggle has three states:
 
-## Item icons
+- **Auto** (default) — resolves from the local clock: day is 06:00–18:00,
+  night is everything else. The topbar shows the resolved state
+  (`auto -> day` / `auto -> night`) next to the toggle.
+- **Day** / **Night** — manual override, matching the engine-side settings
+  override this needs (see IMPLEMENTATION-PLAN.md's `timeOfDay` section).
 
-Five new tool icons (`tools/asset-pipeline/src/pixelmaps/ui-item-*.ts`),
-replacing v1's approach of borrowing whatever existing icon was closest
-(spyglass/quill both used `letter_opener_256.webp`, wand used
-`cabinet_256.webp` — see `packages/engine/src/systems/tools.ts`'s own
-comment on this). Each runs through the *same* `soften()` pass with no
-option overrides as `wizard_tower`/`character_idle`/`ghost` (the spyglass
-gets one override, see below), so they land in the same soft-rendered
-family as the existing recovered originals rather than reading as new art
-bolted on next to them. All five also carry the same small leaf-sprig +
-cream-flower accent cluster that `key.png`/`letter_opener.png` have near
-their base (`ui-icon-motifs.ts`), for the same reason.
+Per explicit direction, **panels stay clean and cool in both themes** — the
+warm cottagecore treatment is scoped to the world's own sprites (M10b),
+not this UI chrome. Day panels shifted from v2's warm cream
+(`#fff8ec`) to a cool pale blue-white (`#f2f8ff`); night panels were
+already cool lavender and are essentially unchanged. The sky gradient,
+sun/moon (`.celestial`), and a small starfield (`.star`, night only) are
+the only backdrop elements that change with theme — no new sprites, just
+CSS.
 
-| icon | reads as | honest note |
-|---|---|---|
-| crystal orb | swirling violet/cyan glass sphere on a bronze stand | strongest of the five |
-| quill | feather + ink-dipped nib + gold-rimmed inkwell | strongest of the five |
-| bag | satchel with an arched carry handle + gold buckle | went through two silhouettes — v1's tapered-top shape read as a hood/cloak, not a bag; the handle loop is what fixed it |
-| wand | wrapped-grip rod with a glowing star tip | solid |
-| spyglass | flared brass tube tapering to a glass-tipped end | **weakest of the five** — two revision passes (added an eyepiece flare, replaced a circular lens with a flat tinted tube-tip so it stopped rendering as a diamond/star indistinguishable from the wand) improved it, but it still reads more as "a rod" than unmistakably "a telescope" at a glance. If this direction proceeds, this is the one icon worth a third pass or a different silhouette (e.g. a bent/collapsed two-segment shape) before it ships |
+### Color tokens
 
-`ui-frames.ts` overrides the spyglass's soften pass specifically
-(`bloomThreshold: 235, bloomStrength: 0.15`) — its pale-ghost-blue lens tip
-sits just above the default bloom threshold (180) and was blooming into a
-starburst that duplicated the wand's own signature glow.
-
-## Sparkle particle
-
-One small 4-point sparkle (`ui-sparkle.ts`), in three colors (violet/cyan/
-gold, all existing curated palette indices), reused at different positions,
-sizes, and animation delays as the "particle effect" for the orb search
-screen — one sprite standing in for a particle system rather than dozens of
-bespoke frames. Crisp only (no soften pass): at 9x9 source pixels these are
-meant to glow sharply against a colored backdrop, not read as soft objects.
-
-## Per-tool "magic" treatment
-
-The explicit ask was that each tool feel distinct, not just re-skinned —
-implemented as a different *atmosphere* layered into the same shared
-`.panel` chrome, so the UI still reads as one system:
-
-| tool | effect | how |
-|---|---|---|
-| spyglass (ls) | lens vignette + sweeping sheen | radial-gradient darkening at the panel edges, plus a diagonal light-gradient sweeping across on a 3.2s loop |
-| crystal orb (search) | violet/cyan swirling mist + sparkles | a blurred rotating conic-gradient behind the modal, plus 3-5 positioned sparkle sprites with staggered twinkle |
-| bag (tray) | open satchel interior | a warm brown radial vignette + dashed "stitched seam" inset border |
-| quill (editor) | ink & glyph shimmer | small code-glyph characters (`{ } % λ`) drifting upward and fading near the panel top, plus a soft ink-blot behind the plaque corner |
-| wand (run) | rune scroll | two counter-rotating dashed rings (violet + cyan) behind the panel, reading as an active spell circle rather than v1's literal unrolling parchment |
-
-All five are CSS-only (gradients, `clip-path`, keyframe animations, and the
-sparkle raster) — no new binary assets beyond the sparkle sprite itself.
-
-## Color tokens
-
-Two palette variants, toggled live in `mockup.html` (top-right). Neither is
-palette.json-derived — palette.json is sprite-extracted (browns/greens for
-the cottagecore item art) and has nothing saturated enough for a Pokémon/
-Stardew-style chrome palette. These are new UI-only tokens, same as v1's
-`--world-bg-deep`/`--world-bg-mid` were.
-
-**Meadow** (default) — warm, Stardew-leaning:
+**Day** (default):
 
 | token | hex |
 |---|---|
-| `--panel-body` | `#fff8ec` |
-| `--panel-body-alt` | `#ffe8bf` |
+| `--panel-body` | `#f2f8ff` |
+| `--panel-body-alt` | `#dff0ff` |
 | `--border-outer` | `#3b2f6b` |
 | `--border-highlight` | `#8fd6ef` |
-| `--text` | `#2a2140` |
-| `--text-secondary` | `#5b4d8a` |
+| `--text` | `#201a3d` |
+| `--text-secondary` | `#55507f` |
 | `--accent-yellow` | `#ffd23f` |
 | `--accent-green` | `#5ec26a` |
 | `--accent-pink` | `#ef5fa0` |
 | `--accent-orange` | `#ff9142` |
 | `--accent-cyan` | `#4fd0d8` |
 | `--accent-violet` | `#8a6fd6` |
-| `--sky-top` / `--sky-bottom` | `#7fd0f2` / `#bdeaa0` |
+| `--sky-top` / `--sky-bottom` | `#8fd8f5` / `#cdeeb0` |
+| `--celestial` (sun) | `#ffd23f` |
 
-**Berry** — cooler, Pokémon-B/W-leaning:
+**Night**:
 
 | token | hex |
 |---|---|
-| `--panel-body` | `#f3f0ff` |
-| `--panel-body-alt` | `#e3ddff` |
-| `--border-outer` | `#2a2159` |
+| `--panel-body` | `#eeeaff` |
+| `--panel-body-alt` | `#ded6ff` |
+| `--border-outer` | `#221a4d` |
 | `--border-highlight` | `#ffd23f` |
-| `--text` | `#241c47` |
-| `--text-secondary` | `#6a5fae` |
+| `--text` | `#1c1640` |
+| `--text-secondary` | `#635ca8` |
 | `--accent-yellow` | `#ffcf4d` |
 | `--accent-green` | `#46d19a` |
 | `--accent-pink` | `#ff4fa0` |
 | `--accent-orange` | `#ff7a45` |
 | `--accent-cyan` | `#46c9e0` |
 | `--accent-violet` | `#7a5fe0` |
-| `--sky-top` / `--sky-bottom` | `#6f5fd6` / `#ff9ecb` |
+| `--sky-top` / `--sky-bottom` | `#120e33` / `#3b2f75` |
+| `--celestial` (moon) | `#e9e9ff` |
 
-## Type — a real, tested finding, not just a pick
+Neither is palette.json-derived — palette.json is sprite-extracted
+(browns/greens for the cottagecore item art) and has nothing this
+saturated. Same "new UI-only tokens" status as v1/v2's invented backdrop
+colors.
 
-The brief suggested Pixelify Sans. **It doesn't work and was rejected after
-testing**, not just picked around: at every weight (400/500/700) its
-lowercase `c` is visually indistinguishable from `o`, and several digits
-(`2`/`5` in particular) are ambiguous with `8`. This isn't a nitpick — it
-means the word "cabn" itself renders as "oabn" in the font the brief
-suggested. Screenshotted proof of this (and the replacement) is what
-`mockup.html` actually ships:
+## Frame
 
-- **Rejected**: Pixelify Sans — `c`→`o` and digit confusion at every weight tested.
-- **Also tested, not used**: Press Start 2P (unambiguous but very poor
-  paragraph readability, more "arcade marquee" than "dialog box"), Jersey
-  10/15 (clear but reads as a scoreboard/jersey-number face, not dialog
-  text), Silkscreen (clear but its lowercase renders as small-caps —fine
-  for headers, awkward for body copy), VT323 (clear and legible, but reads
-  as a green CRT terminal, not a cozy RPG textbox).
-- **Chosen: DotGothic16`** — OFL, self-hostable, every character in "cabn -
-  pixel-RPG UI mockup v2 0123456789" is unambiguous at both the sizes
-  tested (16px headers, 13px body), and its dot-matrix construction is
-  genuinely in the same family Japanese RPG dialog boxes (which is what
-  Pokémon's own textbox font descends from) use. Used for every UI text
-  role in the mockup; `JetBrains Mono` (unchanged from v1) stays the code
-  font — legible monospace was already a requirement the brief carved out
-  as separate from the display-font question.
+Unchanged from v2: `.panel` is a flat `--panel-body` fill, `4px solid
+var(--border-outer)`, `border-radius: 14px`, an inset `--border-highlight`
+bevel line, a flat (non-blurred) drop-shadow, and small rotated-square
+corner accents. No raster texture anywhere in the frame — that was the
+whole point of the v1->v2 reset and nothing here reopens it.
 
-Re-verify the Google Fonts link still resolves when reviewing — this was
-checked today (see CHANGELOG date) against the live Google Fonts CDN, not
-assumed from training knowledge alone.
+## Type — pixel font is now everywhere, not just headings
+
+v2 shipped `DotGothic16` on headings/titles only; body copy, list rows,
+inputs, and HUD chrome were still `JetBrains Mono`. v3 applies
+`--font-display` (DotGothic16) to every actual UI-facing text element —
+panel titles, list rows, search results, bag slots, HUD pills, help-card
+rows, `kbd` keys, buttons. `--font-mono` (JetBrains Mono) is now scoped to
+exactly two things: **code** (`.code-line`/`.editor-gutter` inside the
+quill editor panel) and this document's own dev-facing scaffolding in the
+mockup (`.section-note`, `.current-thumb` captions, the topbar's
+description paragraph, transition-frame labels) — deliberately left in
+mono so "my commentary about the mockup" stays visually distinct from
+"the actual proposed UI," which is the thing rendered in the pixel font.
+
+DotGothic16's own legibility findings (from v2's font-testing round, still
+current): unambiguous at both header and body sizes, OFL, self-hostable.
+No new font testing was needed this round.
+
+## Item icons — v3 redraw at ~2x resolution
+
+All five icons were redrawn from scratch at roughly double v2's grid size
+(44-64px tall instead of 20-30px), sharing a new lighting model
+(`tools/asset-pipeline/src/pixelmaps/ui-icon-shading.ts`): a fixed up-left
+light source quantized into 4 bands (`cylinderBand` for rod/tube shapes,
+`sphereBand` for round ones), so every icon reads as lit from the same
+direction instead of each having its own ad hoc two-tone split. All five
+still run through the unmodified `soften()` pass (the spyglass keeps its
+one bloom override, see below) and still carry the shared leaf/flower
+accent motif, now stamped at 2x scale (`placeLeafSprig`/`placeFlowerFleck`
+gained a `scale` parameter) so it stays legible at the larger grid.
+
+| icon | v3 change |
+|---|---|
+| spyglass | **The explicit ask**: now reads unmistakably as a telescope — a real flared brass eyepiece, four visible ring segments (each with its own highlight lip, not just a shadow seam), and a genuinely round glass lens with a crisp glint. v2's lens was a radius-2 circle that rendered as a diamond at that resolution and got mistaken for the wand's own glow; at radius ~5 here it reads as an actual lens. |
+| wand | **The explicit ask**: replaced the plus-shaped sparkle tip with a 4-facet diamond gem (each facet a flat shade via the light direction) in a bronze setting, and the handle now has a genuinely twisted/carved grip (diagonal carve bands) instead of flat horizontal wraps. |
+| orb | Upgraded: the swirl now sits under a directional shadow/highlight crescent (`sphereBand`), so the sphere reads as a lit 3D object with internal texture rather than a flat two-tone pinwheel. |
+| quill | Upgraded: a third barb tone (a gradient across the vane width instead of a flat two-stripe alternation) and a glint on the inkwell's shoulder. |
+| bag | Upgraded: a fourth leather tone (a thin highlight rim on the lit edge) and stitch ticks along the seam — small deliberate marks, not noise, so this doesn't reopen the "textured/patchy" complaint from v1. |
+
+All five were re-verified at actual hotbar display size (64px slot / 40px
+icon) via a real screenshot, not just at the larger crisp/soft comparison
+size — see the report for the crop. At that size the spyglass and wand
+fixes are both clearly legible; the wand's carved-grip detail is fine
+enough that it mostly disappears at 40px (visible in the icon-art section's
+larger comparison instead) — worth knowing if hotbar icons ever render
+smaller than this in the real engine.
+
+`ui-frames.ts` still overrides the spyglass's soften pass
+(`bloomThreshold: 235, bloomStrength: 0.15`) for the same reason as v2 —
+its pale-ghost-blue lens sits just above the default bloom threshold.
+
+## Per-tool effects — stronger, plus four new ones
+
+Existing five effects (spyglass vignette+sheen, orb mist+sparkles, bag
+vignette+stitching, quill ink/glyphs, wand/run rune rings) all turned up:
+
+- Orb: two counter-rotating mist layers now (was one), less blurred and
+  more saturated (added pink to the violet/cyan conic gradient) so the
+  swirl visibly reads instead of just tinting the backdrop; sparkle count
+  doubled (5 -> 8) at higher opacity.
+- Spyglass: tighter, darker vignette; faster, brighter sheen sweep.
+- Rune rings: three rings now (was two), plus four small glowing "rune"
+  dots fixed to the middle ring's radius — reads as an active spell circle
+  rather than "two thin circles."
+
+New this round, all one-shot (not ambient loops) and all gated under
+`prefers-reduced-motion: no-preference` with a static/fade fallback:
+
+- **Open bursts** — a handful of sparkle sprites radiate out and fade on
+  panel open, one per tool (spyglass/orb/bag/quill), colored to match that
+  tool's palette (cyan/gold for spyglass, violet/cyan/gold for orb,
+  gold/orange for bag, violet for quill). `mockup.html` has a "replay open
+  effect" button per section since there's no real panel-mount event to
+  hook into statically — real integration would trigger this from the
+  same mount that currently plays each overlay's existing open animation
+  (`RunOverlay`'s `cabn-unfurl` keyframe is the existing precedent for
+  "remount == retrigger").
+- **Hotbar hover shimmer** — a diagonal sheen sweeps once across a slot on
+  hover (reuses the spyglass's `sheen` keyframe). Reduced motion: a flat
+  `brightness(1.15)` bump instead of a moving sweep.
+- **Victory confetti burst** — six colored squares (one per accent color)
+  radiate from the victory ribbon and fade, replacing v2's static toast.
+- **Encounter shake + flash** — a brief horizontal shake plus a white
+  flash pulse on the encounter card, as a "hit" beat. Reduced motion drops
+  the shake (skipped under `no-preference` gating, same pattern as
+  everything else) but keeps the flash — a brief opacity change isn't the
+  vestibular-motion category `prefers-reduced-motion` targets, so it's the
+  one effect in this set that isn't gated.
+
+All of these are `img`/`div` elements with `--tx`/`--ty` (and `--rot` for
+confetti) CSS custom properties set per-instance, animated via a shared
+`burst-out`/`confetti-out` keyframe — no new binary assets beyond the
+existing three sparkle sprites, reused at different colors/positions.
 
 ## Motion
 
-Unchanged in spirit from v1, same durations:
-
-| interaction | duration | easing |
+| interaction | duration | notes |
 |---|---|---|
-| button press | 100ms | instant (box-shadow flattens + 2px translate) |
-| hover | 180ms | `cubic-bezier(0.22, 1, 0.36, 1)` |
-| panel/modal open | 340ms | same curve, slower |
-| ambient loops (sparkle twinkle, mist swirl, sheen sweep, rune spin) | 1.6s–12s | linear or ease-in-out, looping |
-| scene transition — vignette iris | ~260ms | linear |
-| scene transition — scroll-unroll | ~340ms | settle curve |
-| scene transition — page-turn | ~420ms | settle curve |
-
-Every ambient effect (sparkle twinkle, mist swirl, lens sheen, glyph drift,
-rune-ring spin) is **static by default** and only animates under
-`@media (prefers-reduced-motion: no-preference)` — same "reduced by
-default, enhanced when allowed" structure as v1, which avoids fighting a
-base rule with `!important` (Biome's `noImportantStyles` lint rule flags
-that pattern, which is what caught it during v1's build).
+| button press | 100ms | unchanged |
+| hover (shimmer, spy-row/orb-hit backgrounds) | 180-650ms | hotbar shimmer sweep is 650ms |
+| panel/modal open | 340ms | unchanged |
+| open burst (per-tool) | 600ms ease-out | new |
+| victory confetti | 900ms ease-out | new |
+| encounter shake | 450ms | new |
+| encounter flash | 450ms | new, runs even under reduced motion |
+| ambient loops (mist/sheen/rune spin/twinkle) | 1.4s-13s | several shortened vs. v2 for a livelier feel |
+| scene transitions | 260-420ms | unchanged since v1 |
 
 ## Accessibility
 
@@ -189,54 +208,45 @@ relative-luminance formula, unit-tested against black/white = 21:1).
 
 | pair | ratio | verdict |
 |---|---|---|
-| Meadow: text on panel-body | 14.31:1 | pass |
-| Meadow: text on panel-body-alt | 12.62:1 | pass |
-| Meadow: text-secondary on panel-body | 6.92:1 | pass |
-| Meadow: cream/white on border-outer | 11.02:1 | pass |
-| Meadow: text on accent-yellow | 10.46:1 | pass |
-| Meadow: text on accent-cyan | 8.16:1 | pass |
-| Meadow: text on accent-pink | 4.90:1 | pass (barely — don't go below ~13px) |
-| Meadow: text on accent-green | 6.76:1 | pass |
-| **Meadow: white on accent-pink** | **3.08:1** | **fail — this is why every `.btn`/badge uses `--text` (dark), never white, on any accent color** |
-| **Meadow: white on accent-green** | **2.23:1** | **fail, same reason** |
-| Berry: text on panel-body | 14.05:1 | pass |
-| Berry: text on panel-body-alt | 12.05:1 | pass |
-| Berry: text-secondary on panel-body | 4.85:1 | pass (barely) |
-| Berry: gold/cream on border-outer | 9.96:1 / 12.82:1 | pass |
-| Berry: text on accent-yellow | 10.72:1 | pass |
-| Berry: text on accent-pink | 5.16:1 | pass |
+| Day: text on panel-body | 15.39:1 | pass |
+| Day: text on panel-body-alt | 14.14:1 | pass |
+| Day: text-secondary on panel-body | 6.92:1 | pass |
+| Day: white/cream on border-outer | 11.64:1 | pass |
+| Day: text on accent-yellow | 11.39:1 | pass |
+| Day: text on accent-pink | 5.34:1 | pass |
+| Day: text on accent-green | 7.36:1 | pass |
+| Day: focus ring (border-outer on accent-yellow) | 8.06:1 | pass |
+| Night: text on panel-body | 14.42:1 | pass |
+| Night: text on panel-body-alt | 12.25:1 | pass |
+| Night: text-secondary on panel-body | 4.92:1 | pass |
+| Night: gold/white on border-outer | 10.99:1 / 15.87:1 | pass |
+| Night: text on accent-yellow | 11.54:1 | pass |
+| Night: text on accent-pink | 5.55:1 | pass |
+| Night: focus ring (border-outer on accent-yellow) | 10.80:1 | pass |
 
-**Rule this produced:** every colored badge, pill, ribbon, and button uses
-`--text` (the dark ink color) for its label, never white — white only
-appears on the deep `--border-outer` surface (plaques, the topbar) and on
-the ribbon banners, where a `text-shadow` compensates (the ribbon's own
-saturated fill would otherwise put white text below 3.1:1, same failure
-mode as the buttons above).
+Every ratio comfortably clears AA (4.5:1) in both themes. The v2 rule still
+applies and is the reason all of the above pass: every colored badge,
+pill, ribbon, and button uses `--text` (dark), never white, on any accent
+color — white only appears on `--border-outer` (which is dark in both
+themes) and on the ribbon banners, where a `text-shadow` compensates.
 
-v1's finding about the *currently shipped* `editorTheme.ts` gutter color
-(`steelGray` on `parchmentDark`, 2.06:1, real AA failure) still stands and
-is independent of which UI direction this milestone lands on — still not
-fixed pending the user's decision, per the instruction not to touch
-`editorTheme.ts` yet.
-
-**Focus ring**: same double-ring idea as v1, re-verified against the new
-tokens — `box-shadow: 0 0 0 2px var(--border-outer), 0 0 0 4px
-var(--accent-yellow)` on every button/input. `--border-outer` against
-`--accent-yellow` measures 8.06:1 (Meadow) / 9.78:1 (Berry), both well
-past the 3:1 WCAG 2.2 non-text-contrast minimum, and the dark inner ring
-means it stays visible even against panels whose own border is already
-`--border-outer`.
+**Known, deliberately untouched**: `editorTheme.ts`'s real
+`steelGray`-on-`parchmentDark` contrast bug (2.06:1, found in v1, still
+present in the shipped engine code) is being fixed separately — not part
+of this mockup round per explicit instruction.
 
 ## Open questions for the user
 
-1. **Meadow or Berry?** Or react to direction only.
-2. **Spyglass icon** — acceptable as-is, or worth a third redesign pass
-   (see the item-icon table above)?
-3. **DotGothic16** — does the dot-matrix/Japanese-RPG-dialog lineage read
-   as "Pokémon/Stardew" enough, or does this need another round against a
-   different candidate (Jersey 10/15 and VT323 were the runners-up)?
-4. **Ambient effect intensity** — mist swirl/sheen/rune-ring opacities were
-   picked to be visible without fighting panel text; turn any of them up
-   (more overtly magical) or down (calmer)?
-5. Corner accent diamonds on panels are a small detail (8px) — bigger/bolder,
-   or leave subtle?
+1. Auto-day/night boundary is a flat 06:00/18:00 cutoff with no
+   dawn/dusk transition — worth a gradient transition zone, or is a hard
+   cutoff fine?
+2. Open-burst colors are hand-picked per tool (cyan/gold for spyglass,
+   etc.) — happy with those pairings, or want them unified to one "magic"
+   palette regardless of tool?
+3. Wand's carved-grip detail is nearly invisible at 40px hotbar size (see
+   the item-icons table above) — worth simplifying since it barely reads
+   at ship size, or keep it since larger UI contexts (inventory, tooltips)
+   might show the icon bigger?
+4. Confetti/shake read fine as concepts here — should the "hit" shake
+   scale with severity (e.g. bigger for repeated failures), or always the
+   same intensity?

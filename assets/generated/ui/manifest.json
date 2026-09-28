@@ -1,40 +1,40 @@
 {
 	"ui_icon_orb": {
 		"kind": "item-icon",
-		"width": 22,
-		"height": 26,
+		"width": 44,
+		"height": 52,
 		"crispFile": "ui_icon_orb.png",
 		"crispUpscaledFile": "ui_icon_orb@8x.png",
 		"softFile": "ui_icon_orb_soft.png"
 	},
 	"ui_icon_spyglass": {
 		"kind": "item-icon",
-		"width": 20,
-		"height": 28,
+		"width": 44,
+		"height": 58,
 		"crispFile": "ui_icon_spyglass.png",
 		"crispUpscaledFile": "ui_icon_spyglass@8x.png",
 		"softFile": "ui_icon_spyglass_soft.png"
 	},
 	"ui_icon_bag": {
 		"kind": "item-icon",
-		"width": 22,
-		"height": 24,
+		"width": 44,
+		"height": 48,
 		"crispFile": "ui_icon_bag.png",
 		"crispUpscaledFile": "ui_icon_bag@8x.png",
 		"softFile": "ui_icon_bag_soft.png"
 	},
 	"ui_icon_quill": {
 		"kind": "item-icon",
-		"width": 20,
-		"height": 30,
+		"width": 40,
+		"height": 60,
 		"crispFile": "ui_icon_quill.png",
 		"crispUpscaledFile": "ui_icon_quill@8x.png",
 		"softFile": "ui_icon_quill_soft.png"
 	},
 	"ui_icon_wand": {
 		"kind": "item-icon",
-		"width": 16,
-		"height": 30,
+		"width": 34,
+		"height": 60,
 		"crispFile": "ui_icon_wand.png",
 		"crispUpscaledFile": "ui_icon_wand@8x.png",
 		"softFile": "ui_icon_wand_soft.png"

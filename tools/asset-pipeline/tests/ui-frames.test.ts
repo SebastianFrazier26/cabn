@@ -73,14 +73,15 @@ describe("buildSparkle", () => {
 });
 
 describe("buildCrystalOrbIcon", () => {
-	test("sphere silhouette is round — same radius reached along both axes", () => {
+	test("sphere silhouette is round — its widest row is most of the icon's width", () => {
 		const map = buildCrystalOrbIcon();
-		// center row (y=9) and center column (x=10 or 11) should both hit the
-		// rim at roughly the same offset from center, confirming pixelAt's
-		// distance check isn't accidentally elliptical.
-		const centerRow = map.rows[9] ?? "";
-		const opaqueInRow = [...centerRow].filter((c) => c !== ".").length;
-		expect(opaqueInRow).toBeGreaterThan(10);
+		// A round sphere's widest row (its equator, wherever that lands) should
+		// span most of the icon's width; an accidentally elliptical or squashed
+		// shape would fall well short of this regardless of exact center coords.
+		const widestRow = Math.max(
+			...map.rows.map((row) => [...row].filter((c) => c !== ".").length),
+		);
+		expect(widestRow).toBeGreaterThan(map.width * 0.6);
 	});
 });
 
