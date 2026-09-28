@@ -139,7 +139,14 @@ describe("createDefaultTools / createDefaultToolRegistry", () => {
 			"quill",
 			"wand",
 		]);
-		expect(tools.map((t) => t.hotkey)).toEqual(["E", "L", "F", "B", "Q", "R"]);
+		expect(tools.map((t) => t.hotkey)).toEqual([
+			"Enter",
+			"L",
+			"F",
+			"B",
+			"Q",
+			"R",
+		]);
 	});
 
 	it("builds a registry where every default tool is dispatchable", () => {

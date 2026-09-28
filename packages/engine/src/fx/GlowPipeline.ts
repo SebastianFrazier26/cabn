@@ -1,6 +1,4 @@
 import Phaser from "phaser";
-import type { StoreApi } from "zustand/vanilla";
-import type { CabnStore } from "../bridge/store.js";
 import { firstPipeline } from "./firstPipeline.js";
 import {
 	clampGlowParams,
@@ -97,45 +95,26 @@ export function applyGlow(
 	pipeline?.configure(params);
 }
 
-export function removeGlow(camera: Phaser.Cameras.Scene2D.Camera): void {
-	camera.removePostPipeline(GLOW_PIPELINE_KEY);
-}
-
-/** The one entry point every scene's camera setup + store subscription calls: attach/update or detach the pipeline in one place instead of each scene branching on `enabled` itself. */
-export function syncGlow(
-	game: Phaser.Game,
-	camera: Phaser.Cameras.Scene2D.Camera,
-	enabled: boolean,
-	params: Partial<GlowParams> = {},
-): void {
-	if (enabled) applyGlow(game, camera, params);
-	else removeGlow(camera);
-}
-
 /**
- * Every glow-bearing scene (World/Shelf/File) wants the same three lines —
- * sync once immediately, keep syncing when the store's `glowEnabled` toggle
- * changes, stop on shutdown. `params` may be a getter: WorldScene/ShelfScene
- * pass one reading the live day/night blend, because a value captured once at
- * create() meant re-enabling glow at night re-applied whatever preset the
- * scene had *started* with (usually day) — part of the 2026-09-28 "night
- * doesn't really work" report.
+ * Glow is always on (2026-09-28: the user settings are down to day/night
+ * only) — every glow-bearing scene (World/Shelf/File) attaches it once at
+ * camera setup, and it silently degrades to nothing wherever WebGL
+ * post-pipelines aren't available (isGlowSupported). `params` may be a
+ * getter so WorldScene/ShelfScene attach with the live day/night blend
+ * rather than whatever preset was current at create().
  */
-export function attachGlowLifecycle(
+export function attachGlow(
 	scene: Phaser.Scene,
-	store: StoreApi<CabnStore>,
 	params: Partial<GlowParams> | (() => Partial<GlowParams>) = {},
-): () => void {
-	const camera = scene.cameras.main;
-	const resolve = typeof params === "function" ? params : () => params;
-	syncGlow(scene.game, camera, store.getState().glowEnabled, resolve());
-	return store.subscribe((state, prev) => {
-		if (state.glowEnabled === prev.glowEnabled) return;
-		syncGlow(scene.game, camera, state.glowEnabled, resolve());
-	});
+): void {
+	applyGlow(
+		scene.game,
+		scene.cameras.main,
+		typeof params === "function" ? params() : params,
+	);
 }
 
-/** Re-pushes params to an already-attached pipeline without attaching one — the per-frame path during a day/night cross-fade, which must never re-attach glow the player switched off. */
+/** Re-pushes params to an already-attached pipeline without attaching one — the per-frame path during a day/night cross-fade; a no-op where glow isn't supported. */
 export function updateGlowParams(
 	camera: Phaser.Cameras.Scene2D.Camera,
 	params: Partial<GlowParams>,

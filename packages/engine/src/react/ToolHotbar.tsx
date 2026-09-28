@@ -7,6 +7,7 @@ import {
 	type Tool,
 	type ToolRegistry,
 } from "../systems/tools.js";
+import { classifyFocus, type FocusCandidate } from "../systems/uiFocus.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface ToolHotbarProps {
@@ -20,6 +21,14 @@ export interface ToolHotbarProps {
 // have their own open states too (mode === "editor"/"run"), but the whole
 // hotbar is hidden in both of those modes (see the early return below), so
 // there's no slot left to ring; opener/bag have no open state at all.
+const HOTKEY_TOOL_IDS: Record<string, string> = {
+	f: "orb",
+	l: "spyglass",
+	b: "bag",
+	q: "quill",
+	r: "wand",
+};
+
 function isToolSelected(
 	toolId: string,
 	state: { spyglassOpen: boolean; searchOpen: boolean },
@@ -29,18 +38,11 @@ function isToolSelected(
 	return false;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-	return (
-		target instanceof HTMLElement &&
-		(target.tagName === "INPUT" || target.tagName === "TEXTAREA")
-	);
-}
-
 /**
  * Bottom hotbar rendering the tool registry's slots. Owns the one global
- * keydown listener for the React-side tools (L/F, Cmd/Ctrl+F) — E stays
- * Phaser-only (WorldScene polls it directly for frame-accurate movement
- * feel; see systems/tools.ts's opener comment) so it isn't bound here.
+ * keydown listener for the React-side tools (L/F/B/Q/R, Cmd/Ctrl+F) — Enter
+ * stays Phaser-only (each scene polls it directly for frame-accurate feel;
+ * see systems/tools.ts's opener comment) so it isn't bound here.
  */
 export function ToolHotbar({
 	store,
@@ -55,9 +57,9 @@ export function ToolHotbar({
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			// The editor traps its own keys (including single letters that would
-			// otherwise dispatch a tool, e.g. typing "b" in code) — CodeMirror's
-			// content div isn't an <input>/<textarea> so isTypingTarget alone
-			// wouldn't catch it, hence the explicit mode check. A run in progress
+			// otherwise dispatch a tool, e.g. typing "b" in code) — the focus
+			// check below covers CodeMirror's contenteditable too, but the mode
+			// check also covers clicks on the spellbook's own buttons. A run in progress
 			// has its own keys (Space/N/1-2-4/Esc, see RunOverlay) that would
 			// otherwise collide with nothing here today but are excluded on the
 			// same principle — this hotbar's keys are for "not currently inside
@@ -75,13 +77,19 @@ export function ToolHotbar({
 				registry.dispatch("orb", { store, bus });
 				return;
 			}
-			if (isTypingTarget(event.target)) return;
+			if (classifyFocus(event.target as FocusCandidate | null) === "text")
+				return;
 
-			if (key === "f") registry.dispatch("orb", { store, bus });
-			else if (key === "l") registry.dispatch("spyglass", { store, bus });
-			else if (key === "b") registry.dispatch("bag", { store, bus });
-			else if (key === "q") registry.dispatch("quill", { store, bus });
-			else if (key === "r") registry.dispatch("wand", { store, bus });
+			// Cmd/Ctrl/Alt chords belong to the browser/OS (Cmd+R reload, Cmd+Q
+			// quit) — they used to fire the wand/quill on their way through.
+			if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+			const toolId = HOTKEY_TOOL_IDS[key];
+			if (!toolId) return;
+			// Opening the orb focuses its input during this same keydown, so
+			// without this the "f" itself landed in the search box.
+			event.preventDefault();
+			registry.dispatch(toolId, { store, bus });
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
@@ -135,7 +143,12 @@ function HotbarSlot({
 	return (
 		<button
 			type="button"
-			onClick={onUse}
+			onClick={(event) => {
+				onUse();
+				// A mouse click would otherwise leave focus on this slot, and the
+				// next Enter meant for the world would re-click it as well.
+				event.currentTarget.blur();
+			}}
 			title={`${tool.name} (${tool.hotkey})`}
 			className={`cabn-hotbar-slot${selected ? " selected" : ""}`}
 			style={{ pointerEvents: "auto" }}

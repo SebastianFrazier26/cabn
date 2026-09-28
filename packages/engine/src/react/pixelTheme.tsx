@@ -142,6 +142,13 @@ const PIXEL_THEME_CSS = `
 	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 20px;
 	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight); color: var(--cabn-text);
 }
+.cabn-segmented button {
+	font: inherit; color: inherit; background: none; border: none; cursor: pointer;
+	padding: 5px 10px; border-radius: 14px;
+}
+.cabn-segmented button.selected {
+	background: var(--cabn-border-outer); color: var(--cabn-panel-body);
+}
 .cabn-help-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; gap: 12px; }
 .cabn-help-row kbd {
 	font-family: var(--cabn-font-display); background: var(--cabn-border-outer); color: #fff;
@@ -617,7 +624,7 @@ export interface PixelThemeProps {
  * reads the resulting CSS custom properties via plain `var(--cabn-...)`
  * values in its own inline styles or `cabn-*` class names, per
  * IMPLEMENTATION-PLAN.md section 2's "subscribe once, let CSS cascade" shape
- * (same pattern GlowPipeline.ts already uses for glowEnabled, just for CSS
+ * (the same subscribe-and-sync shape scenes use for timeOfDay, just for CSS
  * custom properties instead of a Phaser pipeline).
  */
 export function PixelTheme({

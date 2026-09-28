@@ -89,7 +89,7 @@ async function walkToward(
 	);
 }
 
-test("demo loads, renders a non-blank world, and walking into a cabin loads a world", async ({
+test("demo loads, renders a non-blank world, click-to-move works, and walking into a cabin loads a world", async ({
 	page,
 }) => {
 	const consoleErrors: string[] = [];
@@ -120,9 +120,32 @@ test("demo loads, renders a non-blank world, and walking into a cabin loads a wo
 	const initial = await getStoreState(page);
 	expect(initial).toBeDefined();
 	expect(initial?.activeWorldBase).toBeNull();
+	const spawn = initial?.playerPos ?? { x: 0, y: 0 };
+
+	// Click-to-move: the camera follows the player, so the canvas centre is
+	// (about) the player — a click 160px right of it is open ground on the
+	// shelf's east side (the tower is west of spawn, the cabins north/south).
+	const box = await canvas.boundingBox();
+	if (!box) throw new Error("canvas has no bounding box");
+	await page.mouse.click(box.x + box.width / 2 + 160, box.y + box.height / 2);
+	await expect
+		.poll(async () => (await getStoreState(page))?.playerPos.x ?? spawn.x, {
+			timeout: 5_000,
+		})
+		.toBeGreaterThan(spawn.x + 100);
+
+	// A click on a React panel over the canvas must not become a walk command.
+	// Wait for the click-walk above to finish first so any movement seen
+	// after the panel click could only have come from it.
+	await page.waitForTimeout(1200);
+	const beforePanelClick = (await getStoreState(page))?.playerPos;
+	await page.getByRole("button", { name: "Auto" }).click();
+	await page.waitForTimeout(500);
+	const afterPanelClick = (await getStoreState(page))?.playerPos;
+	expect(afterPanelClick).toEqual(beforePanelClick);
 
 	// ShelfScene places the demo's first world's cabin CABIN_RING_RADIUS
-	// (480px) due "up" (angle -PI/2) from the shelf's origin, and E enters
+	// (480px) due "up" (angle -PI/2) from the shelf's origin, and Enter enters
 	// within CABIN_ENTER_RADIUS (70px) — see
 	// packages/engine/src/scenes/ShelfScene.ts. The player no longer spawns
 	// at that same origin (M10b batch 1 fixed "spawns on top of the tower" —
@@ -132,19 +155,19 @@ test("demo loads, renders a non-blank world, and walking into a cabin loads a wo
 	// offset changing again without this test needing to know why. Stops
 	// well inside the real CABIN_ENTER_RADIUS (70px, ShelfScene.ts) rather
 	// than right at its edge, so a burst's overshoot never lands the player
-	// just outside it the instant before E is pressed.
+	// just outside it the instant before Enter is pressed.
 	const CABIN_POS = { x: 0, y: -480 };
 	const WALK_STOP_RADIUS = 50;
 	await walkToward(page, CABIN_POS, WALK_STOP_RADIUS);
-	// Not page.keyboard.press("e") — CDP's down+up pair for a `.press()` can
+	// Not page.keyboard.press("Enter") — CDP's down+up pair for a `.press()` can
 	// land within a single browser input-processing tick, before the game
 	// loop's next update() ever polls the key, and Phaser's JustDown() then
 	// never observes it. A real keypress is never this fast; holding it
 	// across a frame boundary (confirmed empirically, not documented anywhere)
 	// is what makes this reliable under a headless CDP driver.
-	await page.keyboard.down("e");
+	await page.keyboard.down("Enter");
 	await page.waitForTimeout(150);
-	await page.keyboard.up("e");
+	await page.keyboard.up("Enter");
 
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {

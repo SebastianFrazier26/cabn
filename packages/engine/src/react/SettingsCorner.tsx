@@ -1,131 +1,77 @@
-import { useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { persistGlowEnabled } from "../systems/glowSettings.js";
 import type { TimeOfDayOverride } from "../systems/timeOfDay.js";
 import { persistTimeOfDayOverride } from "../systems/timeOfDaySettings.js";
 import { useCabnStore } from "./useCabnStore.js";
 
-const NEXT_TIME_OF_DAY_OVERRIDE: Record<TimeOfDayOverride, TimeOfDayOverride> =
-	{
-		auto: "day",
-		day: "night",
-		night: "auto",
-	};
+const OPTIONS: ReadonlyArray<{
+	value: TimeOfDayOverride;
+	label: string;
+	title: string;
+}> = [
+	{ value: "auto", label: "Auto", title: "follow your clock (day 6am-6pm)" },
+	{ value: "day", label: "Day", title: "always day" },
+	{ value: "night", label: "Night", title: "always night" },
+];
 
 export interface SettingsCornerProps {
 	store: StoreApi<CabnStore>;
-	bus: CabnBus;
 }
 
 /**
- * A single "reset this world" escape hatch, tucked in a corner rather than a
- * full settings panel (there's nothing else to configure yet). Hidden while
- * the editor is open, same as the hotbar — resetting mid-edit out from under
- * an open buffer would be confusing, and there's nothing here you can't do a
- * moment later once you've closed it.
+ * The one user setting: auto/day/night (2026-09-28 — glow is always on now,
+ * and "reset world" moved into the spyglass panel, next to the per-file
+ * resets, since it's a world action rather than a setting). A three-way
+ * segmented control rather than the old cycle-on-click pill, so the current
+ * choice and the other two are all visible at once. Hidden while the editor
+ * is open, same as the hotbar.
  */
 export function SettingsCorner({
 	store,
-	bus,
 }: SettingsCornerProps): React.ReactElement | null {
 	const mode = useCabnStore(store, (s) => s.mode);
-	const glowEnabled = useCabnStore(store, (s) => s.glowEnabled);
-	const timeOfDayOverride = useCabnStore(store, (s) => s.timeOfDayOverride);
-	const [confirming, setConfirming] = useState(false);
+	const override = useCabnStore(store, (s) => s.timeOfDayOverride);
 
 	if (mode === "editor") return null;
 
 	return (
-		<div
+		<fieldset
+			className="cabn-pill-button cabn-segmented"
+			aria-label="time of day"
 			style={{
 				position: "absolute",
 				top: 16,
 				left: 16,
 				zIndex: 6,
+				margin: 0,
+				padding: 3,
 				display: "flex",
-				alignItems: "flex-start",
-				gap: 8,
+				gap: 2,
+				cursor: "default",
 				// PixelTheme's wrapper is pointerEvents: "none" so it never blocks the
 				// canvas underneath — this corner has real click targets, so it opts
 				// back in explicitly.
 				pointerEvents: "auto",
 			}}
 		>
-			<button
-				type="button"
-				className="cabn-pill-button"
-				title="toggle glow"
-				onClick={() => {
-					const next = !glowEnabled;
-					store.getState().setGlowEnabled(next);
-					persistGlowEnabled(next);
-				}}
-			>
-				Glow: {glowEnabled ? "on" : "off"}
-			</button>
-			<button
-				type="button"
-				className="cabn-pill-button"
-				title="cycle day/night (auto follows your clock)"
-				onClick={() => {
-					const next = NEXT_TIME_OF_DAY_OVERRIDE[timeOfDayOverride];
-					store.getState().setTimeOfDayOverride(next);
-					persistTimeOfDayOverride(next);
-				}}
-			>
-				{timeOfDayOverride === "auto"
-					? "Auto"
-					: timeOfDayOverride === "day"
-						? "Day"
-						: "Night"}
-			</button>
-			{confirming ? (
-				<div
-					className="cabn-panel"
-					style={{
-						fontSize: 12,
-						display: "flex",
-						flexDirection: "column",
-						gap: 8,
-						padding: 10,
+			{OPTIONS.map((option) => (
+				<button
+					key={option.value}
+					type="button"
+					title={option.title}
+					aria-pressed={override === option.value}
+					className={override === option.value ? "selected" : undefined}
+					onClick={(event) => {
+						store.getState().setTimeOfDayOverride(option.value);
+						persistTimeOfDayOverride(option.value);
+						// A mouse click would otherwise leave focus on this button,
+						// and the next Enter meant for the world would re-click it.
+						event.currentTarget.blur();
 					}}
 				>
-					<span>Reset all saved edits for this world?</span>
-					<div style={{ display: "flex", gap: 8 }}>
-						<button
-							type="button"
-							className="cabn-btn neutral"
-							onClick={() => {
-								bus.emit("tool:reset-world", {});
-								setConfirming(false);
-							}}
-							style={{ padding: "3px 10px" }}
-						>
-							Reset
-						</button>
-						<button
-							type="button"
-							className="cabn-btn cancel"
-							onClick={() => setConfirming(false)}
-							style={{ padding: "3px 10px" }}
-						>
-							Cancel
-						</button>
-					</div>
-				</div>
-			) : (
-				<button
-					type="button"
-					className="cabn-pill-button"
-					title="reset world"
-					onClick={() => setConfirming(true)}
-					style={{ width: 32, height: 32, borderRadius: "50%", padding: 0 }}
-				>
-					⚙
+					{option.label}
 				</button>
-			)}
-		</div>
+			))}
+		</fieldset>
 	);
 }

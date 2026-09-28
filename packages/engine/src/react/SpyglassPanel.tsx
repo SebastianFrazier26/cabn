@@ -53,8 +53,10 @@ export function SpyglassPanel({
 	// retriggers its CSS animation — the same "remount == retrigger" pattern
 	// every other tool screen's open animation relies on.
 	const [playToken, setPlayToken] = useState(0);
+	const [confirmingReset, setConfirmingReset] = useState(false);
 	useEffect(() => {
 		if (open) setPlayToken((token) => token + 1);
+		else setConfirmingReset(false);
 	}, [open]);
 
 	// Previously only closable via the "x" button or clicking a row — every
@@ -63,10 +65,16 @@ export function SpyglassPanel({
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") store.getState().setSpyglassOpen(false);
+			if (event.key !== "Escape") return;
+			// Capture phase + preventDefault: Phaser's own window listener (bubble
+			// phase) skips events already marked handled, so this Esc closes the
+			// panel only — it used to also leave the world at the bonfire, or
+			// the file, underneath.
+			event.preventDefault();
+			store.getState().setSpyglassOpen(false);
 		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [open, store]);
 
 	if (!open) return null;
@@ -203,6 +211,61 @@ export function SpyglassPanel({
 						)}
 					</div>
 				</div>
+				<div className="cabn-panel-divider" />
+				{/* Moved here from SettingsCorner's old gear button (2026-09-28) —
+				    it sits beside the per-file resets it generalises, and keeps
+				    the settings corner down to the day/night control. */}
+				{confirmingReset ? (
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							gap: 8,
+							padding: "4px 0",
+						}}
+					>
+						<span>Reset all saved edits?</span>
+						<button
+							type="button"
+							className="cabn-btn neutral"
+							style={{ padding: "3px 10px" }}
+							onClick={() => {
+								bus.emit("tool:reset-world", {});
+								setConfirmingReset(false);
+							}}
+						>
+							Reset
+						</button>
+						<button
+							type="button"
+							className="cabn-btn cancel"
+							style={{ padding: "3px 10px" }}
+							onClick={() => setConfirmingReset(false)}
+						>
+							Cancel
+						</button>
+					</div>
+				) : (
+					<button
+						type="button"
+						title="discard every saved edit, bag slot and defeated monster in this world"
+						onClick={() => setConfirmingReset(true)}
+						style={{
+							display: "block",
+							margin: "2px auto 0",
+							background: "none",
+							border: "none",
+							cursor: "pointer",
+							color: "inherit",
+							font: "inherit",
+							opacity: 0.6,
+							padding: "4px 8px",
+						}}
+					>
+						reset world…
+					</button>
+				)}
 				<div className="cabn-effect-burst play">
 					{OPEN_BURST_SPARKS.map((s, i) => (
 						// Fixed, static per-render burst layout, never reordered — index is

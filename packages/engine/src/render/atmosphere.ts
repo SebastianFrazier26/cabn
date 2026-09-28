@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import { FX_SPARK_KEY } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
-import { attachGlowLifecycle, updateGlowParams } from "../fx/GlowPipeline.js";
+import { attachGlow, updateGlowParams } from "../fx/GlowPipeline.js";
 import {
 	DAY_GLOW_PARAMS,
 	lerpGlowParams,
@@ -109,7 +109,7 @@ export function attachAtmosphere(
 
 	const glowParams = () =>
 		lerpGlowParams(DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS, eased);
-	const unsubscribeGlow = attachGlowLifecycle(scene, store, glowParams);
+	attachGlow(scene, glowParams);
 
 	const redraw = (): void => {
 		const now = scene.time.now;
@@ -187,7 +187,6 @@ export function attachAtmosphere(
 			scene.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);
 			camera.off(Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE, redraw);
 			scene.scale.off(Phaser.Scale.Events.RESIZE, onResize);
-			unsubscribeGlow();
 			for (const pool of pools) pool.sprite.destroy();
 			eraser.destroy();
 			grade.destroy();

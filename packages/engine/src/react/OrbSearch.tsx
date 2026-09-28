@@ -86,10 +86,13 @@ export function OrbSearch({
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") store.getState().setSearchOpen(false);
+			if (event.key !== "Escape") return;
+			// Same capture + preventDefault as SpyglassPanel's Esc.
+			event.preventDefault();
+			store.getState().setSearchOpen(false);
 		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [open, store]);
 
 	// Remounting the burst element (key={playToken}) on every open is what
@@ -220,6 +223,16 @@ export function OrbSearch({
 						ref={inputRef}
 						value={query}
 						onChange={(e) => setQuery(e.target.value)}
+						onKeyDown={(e) => {
+							// Enter picks the top result. The game can't also act on this
+							// Enter: render/keyboardFocusGate.ts turns Phaser's keyboard
+							// off while a text field has focus.
+							const top = hits[0];
+							if (e.key === "Enter" && top && !e.nativeEvent.isComposing) {
+								e.preventDefault();
+								select(top);
+							}
+						}}
 						placeholder={
 							scope === "file" ? "search this file..." : "search the world..."
 						}
