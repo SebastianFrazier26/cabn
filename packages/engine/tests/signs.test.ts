@@ -71,10 +71,22 @@ describe("placeSign", () => {
 			expect(
 				footprintClear(spot.x, spot.y, FOOTPRINT, inp.circles, inp.segments, 4),
 			).toBe(true);
-			expect(Math.hypot(spot.x - arch.x, spot.y - arch.y)).toBeGreaterThan(
-				SIGN_ARCH_KEEPOUT,
-			);
+			// The sign's post and board never overlap the arch's stone; the box's empty corners may graze it.
+			const overlapX = Math.abs(spot.x - arch.x) < 66 + FOOTPRINT.w / 2;
+			const overlapY =
+				spot.y > arch.y - 90 && spot.y - FOOTPRINT.h < arch.y + 90;
+			expect(overlapX && overlapY, JSON.stringify(spot)).toBe(false);
 		}
+	});
+
+	test("the arch keepout covers its roof, not just a circle round its middle", () => {
+		const { circles } = signKeepouts(world, []);
+		const archCircles = circles.filter(
+			(c) => c.x === arch.x && c.radius === SIGN_ARCH_KEEPOUT,
+		);
+		expect(archCircles).toHaveLength(2);
+		const top = Math.min(...archCircles.map((c) => c.y - c.radius));
+		expect(top).toBeLessThanOrEqual(arch.y - 96);
 	});
 
 	test("never on the path corridor", () => {

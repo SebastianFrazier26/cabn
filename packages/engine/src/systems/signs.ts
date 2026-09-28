@@ -13,6 +13,7 @@ import {
 	type CircleKeepout,
 	type Footprint,
 	footprintClear,
+	keepoutDistance,
 	type SegmentKeepout,
 } from "./edgeScenery.js";
 
@@ -79,6 +80,19 @@ export function placeSign(input: SignPlacementInput): Point | null {
 			input.circles,
 			input.segments,
 			CLEARANCE,
+		) &&
+		// footprintClear samples a tree's canopy shape; a signboard is a wide
+		// rectangle at the top, so its corners are checked too.
+		[-0.5, 0.5].every((side) =>
+			[1, 0.6].every(
+				(up) =>
+					keepoutDistance(
+						p.x + side * input.footprint.w,
+						p.y - up * input.footprint.h,
+						input.circles,
+						input.segments,
+					) >= 0,
+			),
 		);
 	if (ok(want)) return { x: Math.round(want.x) + 0, y: Math.round(want.y) + 0 };
 
@@ -109,8 +123,14 @@ export interface SignWorldGeometry {
 	obstacles: readonly CircleKeepout[];
 }
 
-/** Arch stone is ~200 of its 256px frame at 0.75 scale; half of that plus air. */
-export const SIGN_ARCH_KEEPOUT = 80;
+/**
+ * The arch's stone is taller than it is wide (~150 x 180 px at world scale),
+ * so one circle either misses its roof or pushes signs far off its sides; two
+ * stacked circles make a capsule that hugs it. A single 80px circle let a
+ * sign stand on the roof's shoulder (owner placing, 2026-09-28).
+ */
+export const SIGN_ARCH_KEEPOUT = 78;
+export const SIGN_ARCH_CAPSULE_DY = 34;
 /** The grass in front of an arch's opening, where the player walks in. */
 export const SIGN_ARCH_APRON = { dy: 104, radius: 40 };
 /** Fountain body, and the cluster label drawn under it. */
@@ -127,7 +147,8 @@ export function signKeepouts(
 ): { circles: CircleKeepout[]; segments: SegmentKeepout[] } {
 	const circles: CircleKeepout[] = [];
 	for (const a of world.arches) {
-		circles.push({ x: a.x, y: a.y, radius: SIGN_ARCH_KEEPOUT });
+		for (const dy of [-SIGN_ARCH_CAPSULE_DY, SIGN_ARCH_CAPSULE_DY])
+			circles.push({ x: a.x, y: a.y + dy, radius: SIGN_ARCH_KEEPOUT });
 		circles.push({
 			x: a.x,
 			y: a.y + SIGN_ARCH_APRON.dy,
@@ -260,6 +281,7 @@ export function standInFront(
 	target: Point,
 	kind: "portal" | "cluster" | "sign",
 ): Point {
-	const dy = kind === "portal" ? 124 : kind === "cluster" ? 86 : 22;
+	// A sign's point is its board centre; 74 below it puts the player just past the post's foot, still inside its reading reach.
+	const dy = kind === "portal" ? 124 : kind === "cluster" ? 86 : 74;
 	return { x: target.x, y: target.y + dy };
 }
