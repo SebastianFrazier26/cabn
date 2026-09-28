@@ -15,6 +15,7 @@ export * from "./preview.js";
 export * from "./richPreview.js";
 export * from "./search-index.js";
 export * from "./shelf.js";
+export * from "./signs.js";
 export * from "./sources/types.js";
 export * from "./sources/zip.js";
 export * from "./tree.js";
