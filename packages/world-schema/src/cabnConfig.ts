@@ -87,6 +87,22 @@ export const MediaCapsConfigSchema = z
 	.partial();
 export type MediaCapsConfig = z.infer<typeof MediaCapsConfigSchema>;
 
+// Bounds keep a hand-edited value from turning every function into a bramble
+// (or none ever). The thresholds are also written into each CodeSmell rule
+// string, which is how the engine's post-edit re-check recovers them.
+export const DEFAULT_MAX_FUNCTION_LINES = 80;
+export const DEFAULT_MAX_NESTING_DEPTH = 4;
+
+export const AnnotateConfigSchema = z
+	.strictObject({
+		/** A function spanning more lines than this is a CodeSmell (default DEFAULT_MAX_FUNCTION_LINES). */
+		maxFunctionLines: z.number().int().min(10).max(2000),
+		/** Control-flow nesting deeper than this inside one function is a CodeSmell (default DEFAULT_MAX_NESTING_DEPTH). */
+		maxNestingDepth: z.number().int().min(2).max(20),
+	})
+	.partial();
+export type AnnotateConfig = z.infer<typeof AnnotateConfigSchema>;
+
 const CabnConfigShapeSchema = z.strictObject({
 	cabnConfigVersion: z.literal(CABN_CONFIG_VERSION),
 	/** Relative path (from the source root) -> preview override. Leave absent for the converter's default preview. */
@@ -97,6 +113,8 @@ const CabnConfigShapeSchema = z.strictObject({
 	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
 	/** Caps on image/audio/PDF bytes shipped in the bundle. A host's own ceilings (ConvertOptions.mediaMaxFileBytes/mediaMaxTotalBytes) still win. */
 	media: MediaCapsConfigSchema.optional(),
+	/** Thresholds for the code-smell annotator. Optional and additive, same as `media`. */
+	annotate: AnnotateConfigSchema.optional(),
 	// Room for future per-world options (e.g. a default biome override, a
 	// world-level title/description) without another version bump — add them
 	// as optional fields here, not by loosening this strictObject.

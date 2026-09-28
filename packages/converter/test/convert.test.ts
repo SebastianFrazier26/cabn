@@ -34,6 +34,7 @@ describe("convert (DirSource)", () => {
 				"search-index.json",
 				"assets.json",
 				"media.json",
+				"monsters.json",
 				"chunks/root.json",
 				"chunks/pkg.json",
 				"chunks/pkg--sub.json",

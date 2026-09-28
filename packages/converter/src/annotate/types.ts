@@ -14,6 +14,13 @@ export interface AnnotateContext {
 	 * without one having to reconstruct the other.
 	 */
 	worldFiles: ReadonlySet<string>;
+	/** Per-world annotator knobs (cabn.json `annotate`); absent means every default. */
+	options?: AnnotateOptions;
+}
+
+export interface AnnotateOptions {
+	maxFunctionLines?: number;
+	maxNestingDepth?: number;
 }
 
 export interface ErrorAnnotation {
@@ -28,10 +35,10 @@ export interface ErrorAnnotation {
 	loc?: { line: number; col: number };
 	species: Species;
 	/**
-	 * Provisional — run.ts's tiering pass (count of monsters sharing this
-	 * annotation's attachment point) overwrites this before a monster ships in
-	 * a manifest. Annotators only need to distinguish "cosmetic" (wisp, 0)
-	 * from "everything else" (1, bumped to 2 by the tiering pass).
+	 * The annotation's base severity: 0 cosmetic (wisp), 1 ordinary, 2 a
+	 * real syntax error, 3 a leaked secret. run.ts's tiering pass may bump
+	 * it one step when the same file/path is already crowded with other
+	 * serious monsters (see run.ts).
 	 */
 	tier: number;
 }

@@ -3,15 +3,43 @@ import { z } from "zod";
 // Species/error codes double as the annotation taxonomy contract: @cabn/converter's
 // taxonomy.ts maps these codes to these species, so both live here rather than being
 // redefined downstream.
-export const ErrorCodeSchema = z.enum([
+//
+// The first six codes/species are the only ones a converter ever writes into
+// world.json: every engine ever shipped parses world.json with exactly those
+// enums, so one more value there makes an older engine reject the whole
+// world. Everything after them ships in monsters.json instead (see
+// monsters.ts), which older engines never fetch.
+export const WORLD_JSON_ERROR_CODES = [
 	"NullTypeError",
 	"Corrupted",
 	"InvalidMode",
 	"IoError",
 	"OuroborosError",
 	"WispNote",
+] as const;
+
+export const EXTENDED_ERROR_CODES = [
+	"SyntaxError",
+	"LeakedSecret",
+	"DeadCode",
+	"CodeSmell",
+	"UnknownBug",
+] as const;
+
+export const ErrorCodeSchema = z.enum([
+	...WORLD_JSON_ERROR_CODES,
+	...EXTENDED_ERROR_CODES,
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
+
+const WORLD_JSON_ERROR_CODE_SET: ReadonlySet<string> = new Set(
+	WORLD_JSON_ERROR_CODES,
+);
+
+/** True for a code every engine version understands inside world.json. */
+export function isWorldJsonErrorCode(code: ErrorCode): boolean {
+	return WORLD_JSON_ERROR_CODE_SET.has(code);
+}
 
 export const SpeciesSchema = z.enum([
 	"ghost",
@@ -20,6 +48,11 @@ export const SpeciesSchema = z.enum([
 	"gremlin",
 	"ouroboros",
 	"will-o-wisp",
+	"imp",
+	"magpie",
+	"skeleton",
+	"bramble",
+	"shade",
 ]);
 export type Species = z.infer<typeof SpeciesSchema>;
 
