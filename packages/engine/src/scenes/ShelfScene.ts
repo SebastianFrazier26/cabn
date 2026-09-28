@@ -113,6 +113,7 @@ export class ShelfScene extends Phaser.Scene {
 	private placedProps: PlacedProp[] = [];
 	private castleKeepPos = { x: 0, y: 0 };
 	private castleKeepSize: { w: number; h: number } | null = null;
+	private cabinWindowLights: LightPoolOptions[] = [];
 	private ambientEffects: { destroy(): void } | null = null;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
@@ -138,6 +139,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.cabins = [];
 		this.cabinsInRange = new Set();
 		this.placedProps = [];
+		this.cabinWindowLights = [];
 	}
 
 	create(): void {
@@ -228,6 +230,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.atmosphere = attachAtmosphere(this, this.store, {
 			lights: [
 				...this.castleKeepLights(),
+				...this.cabinWindowLights,
 				...propLights,
 				...(towerLight ? [towerLight] : []),
 				...(this.edgeDressing?.lights ?? []),
@@ -272,6 +275,24 @@ export class ShelfScene extends Phaser.Scene {
 			radiusPx: 22,
 			color: PALETTE.gold,
 			alpha: 0.6,
+		}));
+	}
+
+	/**
+	 * The procedural cabin's two lit windows (world-art/shelf-cabin.ts: 9x9
+	 * windows at columns 9 and 34, rows 28-36, of its 52x48 grid) as
+	 * fractions of its display size, like castleKeepLights. The photographic
+	 * fallback gets none — its windows aren't at known positions.
+	 */
+	private shelfCabinLights(
+		sprite: Phaser.GameObjects.Image,
+	): LightPoolOptions[] {
+		return [-0.24, 0.24].map((xFrac) => ({
+			x: sprite.x + xFrac * sprite.displayWidth,
+			y: sprite.y + 0.18 * sprite.displayHeight,
+			radiusPx: 26,
+			color: PALETTE.gold,
+			alpha: 0.65,
 		}));
 	}
 
@@ -502,6 +523,9 @@ export class ShelfScene extends Phaser.Scene {
 						: theme.tint,
 				)
 				.setDepth(2);
+			if (procedural) {
+				this.cabinWindowLights.push(...this.shelfCabinLights(sprite));
+			}
 
 			this.add
 				.text(
