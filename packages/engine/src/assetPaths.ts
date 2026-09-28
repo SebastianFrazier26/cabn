@@ -201,6 +201,27 @@ export function uiIconPath(name: UiIconName): string {
 	return `${ASSET_BASE}/placeholders/ui_icon_${name}_soft.png`;
 }
 
+// Spellbook toolbar icons (2026-09-28) — tools/asset-pipeline's
+// ui-tool-icons.ts, same soft-rendered family and placeholders/ location as
+// the hotbar item icons above.
+export const UI_TOOL_ICON_NAMES = [
+	"find",
+	"replace",
+	"rename",
+	"format",
+	"comment",
+	"goto",
+	"symbol",
+	"fold",
+	"unfold",
+	"save",
+] as const;
+export type UiToolIconName = (typeof UI_TOOL_ICON_NAMES)[number];
+
+export function uiToolIconPath(name: UiToolIconName): string {
+	return `${ASSET_BASE}/placeholders/ui_tool_${name}_soft.png`;
+}
+
 // Art-density pass (2026-09-28): pixel-art frames for the literal tool
 // screens (crystal ball, spyglass lens, open satchel + its flap) from
 // tools/asset-pipeline's ui-screen-*.ts — plain <img>/CSS assets like the

@@ -5,14 +5,24 @@ import {
 	historyKeymap,
 	indentWithTab,
 } from "@codemirror/commands";
-import { EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import { uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { annotateFileLive } from "../systems/battle.js";
+import {
+	type OutlineSymbol,
+	outlineSymbols,
+} from "../systems/editorOutline.js";
+import {
+	isValidIdentifier,
+	planRename,
+	type RenameOccurrence,
+	wordAt,
+} from "../systems/editorRename.js";
 import { getActiveExecutionProvider } from "../systems/execution/executionProvider.js";
 import { insertTextAt } from "../systems/insertText.js";
 import {
@@ -26,9 +36,26 @@ import {
 	spellbookStatusLine,
 	toSpellbookErrorRows,
 } from "../systems/spellbookStatus.js";
+import {
+	detectMac,
+	type SpellbookToolId,
+	toolForKey,
+} from "../systems/spellbookTools.js";
 import { loadLanguageExtension } from "./editorLanguages.js";
 import { pixelEditorExtensions } from "./editorTheme.js";
+import {
+	applyRenameInView,
+	nonCodeRangesFor,
+	runEditorCommand,
+	spellbookToolExtensions,
+} from "./editorTools.js";
 import { RunConsole, toRunConsoleSnapshot } from "./RunConsole.js";
+import {
+	GoToLineDialog,
+	RenameDialog,
+	SymbolPicker,
+} from "./SpellbookDialogs.js";
+import { SpellbookToolbar } from "./SpellbookToolbar.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface EditorOverlayProps {
@@ -39,29 +66,85 @@ export interface EditorOverlayProps {
 const BAG_SLOT_ALT_KEYS = ["1", "2", "3", "4", "5"];
 const LIVE_ANNOTATE_DEBOUNCE_MS = 350;
 
-// Open-burst sparks + drifting ink glyphs — violet, per STYLE.md's editor
-// color pairing ("a small violet burst when the editor opens"). Positions
-// mirror the approved mockup (mockup.html's #editor-burst/.glyph elements).
+// Open-burst sparks + border motes — violet, per STYLE.md's editor color
+// pairing ("a small violet burst when the editor opens"). Round-2 playtest
+// (2026-09-28): the motes used to cluster at the top of the left page, over
+// the code; they now sit on the book's own frame — the four edges, the four
+// corners and the spine gutter — which never overlaps either page's text.
 const OPEN_BURST_SPARKS: ReadonlyArray<{
+	left: string;
+	top: string;
 	tx: number;
 	ty: number;
 	delayMs: number;
 }> = [
-	{ tx: -50, ty: -20, delayMs: 0 },
-	{ tx: 50, ty: -20, delayMs: 70 },
-];
-const DRIFTING_GLYPHS: ReadonlyArray<{
-	symbol: string;
-	left: string;
-	top: number;
-	delayMs: number;
-}> = [
-	{ symbol: "{ }", left: "24px", top: 10, delayMs: 0 },
-	{ symbol: "λ", left: "55%", top: 20, delayMs: 1100 },
-	{ symbol: "%", left: "80%", top: 6, delayMs: 2200 },
+	{ left: "0%", top: "0%", tx: -26, ty: -22, delayMs: 0 },
+	{ left: "100%", top: "0%", tx: 26, ty: -22, delayMs: 60 },
+	{ left: "100%", top: "100%", tx: 26, ty: 22, delayMs: 120 },
+	{ left: "0%", top: "100%", tx: -26, ty: 22, delayMs: 180 },
 ];
 
+type BorderMote = {
+	/** A glyph, or null for a sparkle sprite. */
+	symbol: string | null;
+	/** Positioned inside the spine element rather than the whole frame — the right page's padding makes the spine sit off the frame's true 50%. */
+	spine?: true;
+	left: string;
+	top: string;
+	delayMs: number;
+};
+const BORDER_MOTES: readonly BorderMote[] = [
+	// Corners.
+	{ symbol: null, left: "0%", top: "0%", delayMs: 0 },
+	{ symbol: null, left: "100%", top: "0%", delayMs: 900 },
+	{ symbol: null, left: "100%", top: "100%", delayMs: 1800 },
+	{ symbol: null, left: "0%", top: "100%", delayMs: 2700 },
+	// Top edge (skipping the ribbon bookmark at ~26%).
+	{ symbol: "{ }", left: "12%", top: "0%", delayMs: 400 },
+	{ symbol: null, left: "42%", top: "0%", delayMs: 2100 },
+	{ symbol: "λ", left: "71%", top: "0%", delayMs: 1300 },
+	// Bottom edge.
+	{ symbol: null, left: "18%", top: "100%", delayMs: 1500 },
+	{ symbol: "%", left: "37%", top: "100%", delayMs: 300 },
+	{ symbol: null, left: "63%", top: "100%", delayMs: 2400 },
+	{ symbol: "✦", left: "86%", top: "100%", delayMs: 1000 },
+	// Left and right edges.
+	{ symbol: "λ", left: "0%", top: "34%", delayMs: 1900 },
+	{ symbol: null, left: "0%", top: "68%", delayMs: 600 },
+	{ symbol: null, left: "100%", top: "28%", delayMs: 2600 },
+	{ symbol: "{ }", left: "100%", top: "62%", delayMs: 800 },
+	// Spine gutter.
+	{ symbol: "✦", left: "50%", top: "30%", delayMs: 1200, spine: true },
+	{ symbol: null, left: "50%", top: "74%", delayMs: 200, spine: true },
+];
+
+function Mote({ mote }: { mote: BorderMote }): React.ReactElement {
+	return (
+		<span
+			className={`cabn-spellbook-mote${mote.symbol ? " glyph" : ""}`}
+			style={{
+				left: mote.left,
+				top: mote.top,
+				animationDelay: `${mote.delayMs}ms`,
+			}}
+		>
+			{mote.symbol ?? <img src={uiSparklePath("violet")} alt="" />}
+		</span>
+	);
+}
+
 const IDLE_RUN = createIdleRunPlaybackState();
+const TOOL_HINT_MS = 2400;
+
+type SpellbookDialog =
+	| { kind: "goto" }
+	| { kind: "symbol"; symbols: OutlineSymbol[] }
+	| {
+			kind: "rename";
+			oldName: string;
+			occurrences: RenameOccurrence[];
+			caretFrom: number;
+	  };
 
 /**
  * The spellbook: a two-page tome CodeMirror opens inside of, replacing the
@@ -103,6 +186,8 @@ export function EditorOverlay({
 	const bagSlots = useCabnStore(store, (s) => s.bagSlots);
 
 	const hostRef = useRef<HTMLDivElement>(null);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const consumedInBookRef = useRef(new WeakSet<KeyboardEvent>());
 	const viewRef = useRef<EditorView | null>(null);
 	const bagSlotsRef = useRef(bagSlots);
 	bagSlotsRef.current = bagSlots;
@@ -122,6 +207,17 @@ export function EditorOverlay({
 	const [errorRows, setErrorRows] = useState<SpellbookErrorRow[]>([]);
 	const [localRun, setLocalRun] = useState<RunPlaybackState>(IDLE_RUN);
 	const runRequestIdRef = useRef(0);
+	const [dialog, setDialog] = useState<SpellbookDialog | null>(null);
+	const dialogRef = useRef(dialog);
+	dialogRef.current = dialog;
+	const [toolHint, setToolHint] = useState<string | null>(null);
+	const isMac = useMemo(
+		() => detectMac(typeof navigator === "undefined" ? "" : navigator.platform),
+		[],
+	);
+	// The CM keymap is built once per open, so it calls through this ref to
+	// reach the current render's handler instead of a stale closure.
+	const handleToolRef = useRef<(id: SpellbookToolId) => void>(() => {});
 
 	const isOpen = mode === "editor";
 
@@ -164,6 +260,8 @@ export function EditorOverlay({
 		setConfirmingDiscard(false);
 		setPlayToken((token) => token + 1);
 		setLocalRun(IDLE_RUN);
+		setDialog(null);
+		setToolHint(null);
 		recomputeErrors(content);
 
 		loadLanguageExtension(editorLanguage).then((languageExtension) => {
@@ -172,12 +270,23 @@ export function EditorOverlay({
 			const state = EditorState.create({
 				doc: content,
 				extensions: [
+					spellbookToolExtensions(
+						editorLanguage,
+						languageExtension !== null,
+						content,
+						{
+							onTool: (id) => handleToolRef.current(id),
+							onNote: setToolHint,
+						},
+					),
 					keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
 					history(),
 					pixelEditorExtensions,
 					...(languageExtension ? [languageExtension] : []),
 					EditorView.updateListener.of((update) => {
 						if (!update.docChanged) return;
+						// Rename's preview holds document offsets; any edit makes them stale.
+						if (dialogRef.current?.kind === "rename") setDialog(null);
 						setDirty(true);
 						clearTimeout(debounce);
 						const nextContent = update.state.doc.toString();
@@ -261,6 +370,72 @@ export function EditorOverlay({
 		view.focus();
 	}, []);
 
+	useEffect(() => {
+		if (!toolHint) return;
+		const timeout = setTimeout(() => setToolHint(null), TOOL_HINT_MS);
+		return () => clearTimeout(timeout);
+	}, [toolHint]);
+
+	const closeDialog = useCallback(() => {
+		setDialog(null);
+		viewRef.current?.focus();
+	}, []);
+
+	const openRename = useCallback(() => {
+		const view = viewRef.current;
+		const currentPortalId = portalIdRef.current;
+		if (!view || !currentPortalId) return;
+		const { editorLanguage } = store.getState();
+		const text = view.state.doc.toString();
+		const { main } = view.state.selection;
+		// Always the whole identifier: a find-selected "Record" inside
+		// "HarvestRecord" renames HarvestRecord, not a substring nobody declared.
+		const target = wordAt(
+			text,
+			main.empty ? main.head : main.from,
+			editorLanguage,
+		);
+		if (!target.word || !isValidIdentifier(target.word, editorLanguage)) {
+			setToolHint("Put the caret on a name to rename it");
+			return;
+		}
+		const plan = planRename(
+			[{ path: currentPortalId, text, excluded: nonCodeRangesFor(view.state) }],
+			target.word,
+			target.word,
+			editorLanguage,
+		);
+		const occurrences = plan.files[0]?.occurrences ?? [];
+		if (occurrences.length === 0) {
+			setToolHint(`"${target.word}" only appears in strings or comments here`);
+			return;
+		}
+		setDialog({
+			kind: "rename",
+			oldName: target.word,
+			occurrences,
+			caretFrom:
+				occurrences.find((o) => main.head >= o.from && main.head <= o.to)
+					?.from ?? -1,
+		});
+	}, [store]);
+
+	const goToPosition = useCallback(
+		(line: number, column: number, length = 0) => {
+			const view = viewRef.current;
+			if (!view) return;
+			const lineNumber = Math.min(Math.max(line + 1, 1), view.state.doc.lines);
+			const docLine = view.state.doc.line(lineNumber);
+			const anchor = docLine.from + Math.min(column, docLine.length);
+			view.dispatch({
+				selection: EditorSelection.single(anchor, anchor + length),
+				effects: EditorView.scrollIntoView(anchor, { y: "center" }),
+			});
+			view.focus();
+		},
+		[],
+	);
+
 	/** Ctrl/Cmd+Enter (or the Run button) — see this file's own doc comment on why this is a separate, book-local run rather than `mode: "run"`. */
 	const startInlineRun = useCallback(() => {
 		const view = viewRef.current;
@@ -294,6 +469,48 @@ export function EditorOverlay({
 		runRequestIdRef.current++; // invalidate any in-flight run
 		setLocalRun((prev) => runPlaybackReducer(prev, { type: "STOP" }));
 	}, []);
+
+	const handleTool = useCallback(
+		(id: SpellbookToolId) => {
+			const view = viewRef.current;
+			if (!view) return;
+			switch (id) {
+				case "run":
+					startInlineRun();
+					return;
+				case "save":
+					handleSave();
+					return;
+				case "rename":
+					openRename();
+					return;
+				case "goto":
+					setDialog({ kind: "goto" });
+					return;
+				case "symbol":
+					setDialog({
+						kind: "symbol",
+						symbols: outlineSymbols(
+							view.state.doc.toString(),
+							store.getState().editorLanguage,
+						),
+					});
+					return;
+				default:
+					setDialog(null);
+					runEditorCommand(
+						id,
+						view,
+						store.getState().editorLanguage,
+						setToolHint,
+					);
+					// The replace panel focuses its own input; everything else acts on the doc.
+					if (id !== "find" && id !== "replace") view.focus();
+			}
+		},
+		[startInlineRun, handleSave, openRename, store],
+	);
+	handleToolRef.current = handleTool;
 
 	// The one tick source for the book's run — a rAF loop mirroring FileScene's
 	// per-frame `updateRun`, just driven by the browser instead of Phaser's
@@ -341,21 +558,41 @@ export function EditorOverlay({
 		};
 	}, [isOpen, bus]);
 
+	// Keys already handled inside the book — CodeMirror's keymap (toolbar
+	// bindings, the search panel's own Esc) or a dialog's Esc/Enter — are
+	// recorded as they bubble through the book's root, before reaching the
+	// window listener below. `event.defaultPrevented` alone can't tell them
+	// apart there: Phaser's KeyboardManager (also on window, registered
+	// earlier) preventDefault()s its captured keys like Esc whenever focus
+	// is outside a text field, and that must not swallow Esc-to-close. The
+	// target can't be checked either — closing a panel detaches it first.
+	useEffect(() => {
+		const root = rootRef.current;
+		if (!isOpen || !root) return;
+		const onBookKeyDown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented) consumedInBookRef.current.add(event);
+		};
+		root.addEventListener("keydown", onBookKeyDown);
+		return () => root.removeEventListener("keydown", onBookKeyDown);
+	}, [isOpen]);
+
 	useEffect(() => {
 		if (!isOpen) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+			if (consumedInBookRef.current.has(event)) return;
+			// Fallback for when focus isn't inside the editor (a dialog, the
+			// run console's buttons) — also stops Cmd/Ctrl+F reaching the
+			// browser's own find bar.
+			const tool = toolForKey(event, isMac);
+			if (tool) {
 				event.preventDefault();
-				startInlineRun();
-				return;
-			}
-			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-				event.preventDefault();
-				handleSave();
+				handleTool(tool.id);
 				return;
 			}
 			if (event.key === "Escape") {
-				if (confirmingDiscard) {
+				if (dialogRef.current) {
+					closeDialog();
+				} else if (confirmingDiscard) {
 					setConfirmingDiscard(false); // second Esc backs out of the confirm, not a second discard
 				} else {
 					requestClose();
@@ -363,7 +600,10 @@ export function EditorOverlay({
 				return;
 			}
 			if (event.altKey) {
-				const index = BAG_SLOT_ALT_KEYS.indexOf(event.key);
+				// Physical digit, not event.key: Option+1 on macOS types "¡".
+				const index = BAG_SLOT_ALT_KEYS.indexOf(
+					event.code.replace("Digit", ""),
+				);
 				if (index !== -1) {
 					const slot = bagSlotsRef.current[index];
 					if (slot) {
@@ -378,10 +618,11 @@ export function EditorOverlay({
 	}, [
 		isOpen,
 		confirmingDiscard,
-		handleSave,
 		requestClose,
 		pasteSlotById,
-		startInlineRun,
+		handleTool,
+		closeDialog,
+		isMac,
 	]);
 
 	if (!isOpen) return null;
@@ -398,6 +639,7 @@ export function EditorOverlay({
 
 	return (
 		<div
+			ref={rootRef}
 			style={{
 				position: "absolute",
 				// Same wider framing as the previous single-panel quill (2026-09-28
@@ -410,149 +652,200 @@ export function EditorOverlay({
 				pointerEvents: "auto",
 			}}
 		>
-			<div key={playToken} className="cabn-spellbook-spread">
-				<div className="cabn-spellbook-ribbon" />
-				<div className="cabn-spellbook-page left">
-					<div className="cabn-spellbook-page-header">
-						<span>
-							{portalId ?? "(no file)"}
-							{dirty && (
-								<span
-									style={{ marginLeft: 8, color: "var(--cabn-accent-yellow)" }}
-								>
-									●
-								</span>
-							)}
-						</span>
-					</div>
-					<div style={{ position: "relative", flex: 1, minHeight: 0 }}>
-						<div className="cabn-editor-ink-blot" />
-						{DRIFTING_GLYPHS.map((g) => (
-							<span
-								key={g.symbol}
-								className="cabn-editor-glyph"
-								style={{
-									left: g.left,
-									top: g.top,
-									animationDelay: `${g.delayMs}ms`,
-								}}
-							>
-								{g.symbol}
+			<SpellbookToolbar isMac={isMac} onTool={handleTool} />
+			<div key={playToken} className="cabn-spellbook-frame">
+				<div className="cabn-spellbook-spread">
+					<div className="cabn-spellbook-ribbon" />
+					<div className="cabn-spellbook-page left">
+						<div className="cabn-spellbook-page-header">
+							<span>
+								{portalId ?? "(no file)"}
+								{dirty && (
+									<span
+										style={{
+											marginLeft: 8,
+											color: "var(--cabn-accent-yellow)",
+										}}
+									>
+										●
+									</span>
+								)}
 							</span>
-						))}
-						<div ref={hostRef} style={{ height: "100%", overflow: "auto" }} />
-						<div className="cabn-effect-burst play">
-							{OPEN_BURST_SPARKS.map((s, i) => (
-								// Fixed, static per-render burst layout, never reordered — index
-								// is a stable enough key, same reasoning as RunConsole's log.
-								<img
-									// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
-									key={i}
-									className="cabn-spark"
-									src={uiSparklePath("violet")}
-									alt=""
-									style={
-										{
-											"--cabn-tx": `${s.tx}px`,
-											"--cabn-ty": `${s.ty}px`,
-											animationDelay: `${s.delayMs}ms`,
-										} as React.CSSProperties
+						</div>
+						<div style={{ position: "relative", flex: 1, minHeight: 0 }}>
+							<div ref={hostRef} style={{ height: "100%", overflow: "auto" }} />
+							{dialog?.kind === "goto" && viewRef.current && (
+								<GoToLineDialog
+									totalLines={viewRef.current.state.doc.lines}
+									currentLine={
+										viewRef.current.state.doc.lineAt(
+											viewRef.current.state.selection.main.head,
+										).number
 									}
+									onGo={(line, column) => {
+										setDialog(null);
+										goToPosition(line, column);
+									}}
+									onClose={closeDialog}
 								/>
-							))}
+							)}
+							{dialog?.kind === "symbol" && (
+								<SymbolPicker
+									symbols={dialog.symbols}
+									onPick={(symbol) => {
+										setDialog(null);
+										const lineText =
+											viewRef.current?.state.doc.line(symbol.line + 1).text ??
+											"";
+										const column = Math.max(lineText.indexOf(symbol.name), 0);
+										goToPosition(symbol.line, column, symbol.name.length);
+									}}
+									onClose={closeDialog}
+								/>
+							)}
+							{dialog?.kind === "rename" && (
+								<RenameDialog
+									oldName={dialog.oldName}
+									language={store.getState().editorLanguage}
+									occurrences={dialog.occurrences}
+									caretFrom={dialog.caretFrom}
+									onApply={(selected, newName) => {
+										setDialog(null);
+										const view = viewRef.current;
+										if (!view) return;
+										applyRenameInView(view, selected, newName);
+										setToolHint(
+											`Renamed ${selected.length} × ${dialog.oldName} → ${newName}`,
+										);
+										view.focus();
+									}}
+									onClose={closeDialog}
+								/>
+							)}
+							{toolHint && (
+								<div className="cabn-spellbook-tool-hint">{toolHint}</div>
+							)}
+						</div>
+					</div>
+					<div className="cabn-spellbook-spine" aria-hidden="true">
+						{BORDER_MOTES.filter((m) => m.spine).map((m) => (
+							<Mote key={`${m.left}-${m.top}`} mote={m} />
+						))}
+					</div>
+					<div className="cabn-spellbook-page right">
+						<div className="cabn-spellbook-page-header">
+							<span>Errors ({errorRows.length})</span>
+						</div>
+						<div
+							className="cabn-spellbook-errors"
+							style={{ maxHeight: "34%", overflowY: "auto" }}
+						>
+							{errorRows.length === 0 ? (
+								<div style={{ padding: "6px 4px", opacity: 0.7, fontSize: 12 }}>
+									no annotator errors in this file
+								</div>
+							) : (
+								<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+									{errorRows.map((row) => (
+										<li key={row.key}>
+											<button
+												type="button"
+												className="cabn-spellbook-error-row"
+												disabled={row.line === undefined}
+												onClick={() =>
+													row.line !== undefined && jumpToLine(row.line)
+												}
+											>
+												<span className="cabn-spellbook-error-line">
+													{row.displayLine ?? "—"}
+												</span>
+												<span>{row.message}</span>
+											</button>
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+						<div className="cabn-panel-divider" />
+						<div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+							{runIdle ? (
+								<div
+									style={{
+										margin: "auto",
+										display: "flex",
+										flexDirection: "column",
+										alignItems: "center",
+										gap: 10,
+									}}
+								>
+									<button
+										type="button"
+										className="cabn-btn confirm"
+										onClick={startInlineRun}
+									>
+										Run
+									</button>
+									<span style={{ fontSize: 11, opacity: 0.7 }}>
+										Ctrl/Cmd+Enter
+									</span>
+								</div>
+							) : (
+								<RunConsole
+									run={toRunConsoleSnapshot(localRun)}
+									sourceLine={runSourceLine}
+									onPlayPause={() =>
+										setLocalRun((prev) =>
+											runPlaybackReducer(prev, {
+												type: prev.status === "playing" ? "PAUSE" : "PLAY",
+											}),
+										)
+									}
+									onStep={() =>
+										setLocalRun((prev) =>
+											runPlaybackReducer(prev, { type: "STEP" }),
+										)
+									}
+									onSetSpeed={(speed) =>
+										setLocalRun((prev) =>
+											runPlaybackReducer(prev, { type: "SET_SPEED", speed }),
+										)
+									}
+									onStop={resetInlineRun}
+									stopLabel="Reset"
+								/>
+							)}
 						</div>
 					</div>
 				</div>
-				<div className="cabn-spellbook-spine" />
-				<div className="cabn-spellbook-page right">
-					<div className="cabn-spellbook-page-header">
-						<span>Errors ({errorRows.length})</span>
-					</div>
-					<div
-						className="cabn-spellbook-errors"
-						style={{ maxHeight: "34%", overflowY: "auto" }}
-					>
-						{errorRows.length === 0 ? (
-							<div style={{ padding: "6px 4px", opacity: 0.7, fontSize: 12 }}>
-								no annotator errors in this file
-							</div>
-						) : (
-							<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-								{errorRows.map((row) => (
-									<li key={row.key}>
-										<button
-											type="button"
-											className="cabn-spellbook-error-row"
-											disabled={row.line === undefined}
-											onClick={() =>
-												row.line !== undefined && jumpToLine(row.line)
-											}
-										>
-											<span className="cabn-spellbook-error-line">
-												{row.displayLine ?? "—"}
-											</span>
-											<span>{row.message}</span>
-										</button>
-									</li>
-								))}
-							</ul>
-						)}
-					</div>
-					<div className="cabn-panel-divider" />
-					<div style={{ flex: 1, minHeight: 0, display: "flex" }}>
-						{runIdle ? (
-							<div
-								style={{
-									margin: "auto",
-									display: "flex",
-									flexDirection: "column",
-									alignItems: "center",
-									gap: 10,
-								}}
-							>
-								<button
-									type="button"
-									className="cabn-btn confirm"
-									onClick={startInlineRun}
-								>
-									Run
-								</button>
-								<span style={{ fontSize: 11, opacity: 0.7 }}>
-									Ctrl/Cmd+Enter
-								</span>
-							</div>
-						) : (
-							<RunConsole
-								run={toRunConsoleSnapshot(localRun)}
-								sourceLine={runSourceLine}
-								onPlayPause={() =>
-									setLocalRun((prev) =>
-										runPlaybackReducer(prev, {
-											type: prev.status === "playing" ? "PAUSE" : "PLAY",
-										}),
-									)
-								}
-								onStep={() =>
-									setLocalRun((prev) =>
-										runPlaybackReducer(prev, { type: "STEP" }),
-									)
-								}
-								onSetSpeed={(speed) =>
-									setLocalRun((prev) =>
-										runPlaybackReducer(prev, { type: "SET_SPEED", speed }),
-									)
-								}
-								onStop={resetInlineRun}
-								stopLabel="Reset"
-							/>
-						)}
-					</div>
+				<div className="cabn-spellbook-motes" aria-hidden="true">
+					{BORDER_MOTES.filter((m) => !m.spine).map((m) => (
+						<Mote key={`${m.left}-${m.top}`} mote={m} />
+					))}
+				</div>
+				<div className="cabn-effect-burst play">
+					{OPEN_BURST_SPARKS.map((s) => (
+						<img
+							key={`${s.left}-${s.top}`}
+							className="cabn-spark"
+							src={uiSparklePath("violet")}
+							alt=""
+							style={
+								{
+									left: s.left,
+									top: s.top,
+									"--cabn-tx": `${s.tx}px`,
+									"--cabn-ty": `${s.ty}px`,
+									animationDelay: `${s.delayMs}ms`,
+								} as React.CSSProperties
+							}
+						/>
+					))}
 				</div>
 			</div>
 			<div className="cabn-spellbook-controls">
 				<span className="cabn-spellbook-status">
-					{status.summary} · Ctrl/Cmd+Enter run · Ctrl/Cmd+S save · Esc close ·
-					Alt+1-5 paste bag slot
+					{status.summary} · Esc close · Alt+1-5 paste bag slot · hover a tool
+					for its shortcut
 				</span>
 				<div style={{ display: "flex", gap: 10 }}>
 					<button
@@ -562,22 +855,6 @@ export function EditorOverlay({
 						style={{ padding: "7px 16px" }}
 					>
 						Close
-					</button>
-					<button
-						type="button"
-						className="cabn-btn neutral"
-						onClick={startInlineRun}
-						style={{ padding: "7px 16px" }}
-					>
-						Run
-					</button>
-					<button
-						type="button"
-						className="cabn-btn confirm"
-						onClick={handleSave}
-						style={{ padding: "7px 16px" }}
-					>
-						Save
 					</button>
 				</div>
 			</div>

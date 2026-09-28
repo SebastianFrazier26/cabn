@@ -21,6 +21,11 @@ import {
 	SPYGLASS_CONTENT_RECT,
 } from "../src/pixelmaps/ui-screen-spyglass.js";
 import { buildSparkle } from "../src/pixelmaps/ui-sparkle.js";
+import {
+	buildToolIcon,
+	TOOL_ICON_NAMES,
+	TOOL_ICON_SIZE,
+} from "../src/pixelmaps/ui-tool-icons.js";
 
 // 36 flat RGB stand-ins — enough indices for every legend used below without
 // pulling in the real generated palette.json (these tests exercise geometry,
@@ -161,6 +166,34 @@ describe("tool-screen frames", () => {
 			for (let x = r.x; x < r.x + r.width; x++) {
 				expect(map.rows[y]?.[x]).not.toBe(".");
 			}
+		}
+	});
+});
+
+describe("spellbook tool icons", () => {
+	const palette: RGB[] = Array.from({ length: 66 }, (_, i) => ({
+		r: i,
+		g: i,
+		b: i,
+	}));
+
+	test.each(TOOL_ICON_NAMES)("%s is a valid 24x24 map", (name) => {
+		const map = buildToolIcon(name);
+		expect(map.width).toBe(TOOL_ICON_SIZE);
+		expect(map.rows).toHaveLength(TOOL_ICON_SIZE);
+		expect(() => renderPixelMap(map, palette)).not.toThrow();
+		expect(map.rows.join("")).toContain("O");
+	});
+
+	test("names are unique and prefixed so they never collide with item icons", () => {
+		const names = TOOL_ICON_NAMES.map((n) => buildToolIcon(n).name);
+		expect(new Set(names).size).toBe(names.length);
+		for (const name of names) expect(name.startsWith("ui_tool_")).toBe(true);
+	});
+
+	test("regeneration is deterministic", () => {
+		for (const name of TOOL_ICON_NAMES) {
+			expect(buildToolIcon(name).rows).toEqual(buildToolIcon(name).rows);
 		}
 	});
 });

@@ -15,6 +15,8 @@ export interface Tool {
 	icon: string;
 	/** Display + lookup key, e.g. "Enter", "L", "Cmd/Ctrl+F". */
 	hotkey: string;
+	/** Short verb shown under the slot inside a file ("Run", "Copy"...), where what a tool *does* matters more than what it is. */
+	label?: string;
 	onUse(ctx: ToolContext): void;
 }
 
@@ -74,6 +76,7 @@ export function createDefaultTools(): Tool[] {
 	return [
 		{
 			id: "opener",
+			label: "Use",
 			name: "Opener",
 			icon: uiIconPath("key"),
 			hotkey: "Enter",
@@ -86,6 +89,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "spyglass",
+			label: "Look",
 			name: "Spyglass",
 			icon: uiIconPath("spyglass"),
 			hotkey: "L",
@@ -93,6 +97,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "orb",
+			label: "Search",
 			name: "Crystal orb",
 			icon: uiIconPath("orb"),
 			// Registry hotkey is the display/lookup key; the hotbar's own keydown
@@ -103,6 +108,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "bag",
+			label: "Copy",
 			name: "Bag",
 			icon: uiIconPath("bag"),
 			hotkey: "B",
@@ -110,6 +116,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "quill",
+			label: "Edit",
 			name: "Quill",
 			icon: uiIconPath("quill"),
 			hotkey: "Q",
@@ -120,6 +127,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "wand",
+			label: "Run",
 			name: "Wand",
 			icon: uiIconPath("wand"),
 			hotkey: "R",

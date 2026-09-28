@@ -99,5 +99,85 @@
 		"crispFile": "ui_screen_satchel_flap.png",
 		"crispUpscaledFile": "ui_screen_satchel_flap@8x.png",
 		"softFile": "ui_screen_satchel_flap_soft.png"
+	},
+	"ui_tool_find": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_find.png",
+		"crispUpscaledFile": "ui_tool_find@8x.png",
+		"softFile": "ui_tool_find_soft.png"
+	},
+	"ui_tool_replace": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_replace.png",
+		"crispUpscaledFile": "ui_tool_replace@8x.png",
+		"softFile": "ui_tool_replace_soft.png"
+	},
+	"ui_tool_rename": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_rename.png",
+		"crispUpscaledFile": "ui_tool_rename@8x.png",
+		"softFile": "ui_tool_rename_soft.png"
+	},
+	"ui_tool_format": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_format.png",
+		"crispUpscaledFile": "ui_tool_format@8x.png",
+		"softFile": "ui_tool_format_soft.png"
+	},
+	"ui_tool_comment": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_comment.png",
+		"crispUpscaledFile": "ui_tool_comment@8x.png",
+		"softFile": "ui_tool_comment_soft.png"
+	},
+	"ui_tool_goto": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_goto.png",
+		"crispUpscaledFile": "ui_tool_goto@8x.png",
+		"softFile": "ui_tool_goto_soft.png"
+	},
+	"ui_tool_symbol": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_symbol.png",
+		"crispUpscaledFile": "ui_tool_symbol@8x.png",
+		"softFile": "ui_tool_symbol_soft.png"
+	},
+	"ui_tool_fold": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_fold.png",
+		"crispUpscaledFile": "ui_tool_fold@8x.png",
+		"softFile": "ui_tool_fold_soft.png"
+	},
+	"ui_tool_unfold": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_unfold.png",
+		"crispUpscaledFile": "ui_tool_unfold@8x.png",
+		"softFile": "ui_tool_unfold_soft.png"
+	},
+	"ui_tool_save": {
+		"kind": "tool-icon",
+		"width": 24,
+		"height": 24,
+		"crispFile": "ui_tool_save.png",
+		"crispUpscaledFile": "ui_tool_save@8x.png",
+		"softFile": "ui_tool_save_soft.png"
 	}
 }
