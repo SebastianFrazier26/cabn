@@ -137,7 +137,10 @@ function LivePage({
 			data-testid="portal-live-page"
 			data-portal-id={web.portalId}
 		>
-			<div ref={frameRef} className="cabn-live-page-frame">
+			{/* inert: the framed page must never take focus (Tab, or a stray
+			    click) — a focused iframe swallows every key, so Enter/WASD
+			    would stop reaching the world. It still loads and renders. */}
+			<div ref={frameRef} className="cabn-live-page-frame" inert>
 				<PortalEmbed
 					url={web.url}
 					{...(web.title !== undefined ? { title: web.title } : {})}

@@ -47,7 +47,8 @@ const PORTAL_FX_CSS = `
 	transition: opacity 180ms linear;
 }
 .cabn-pixel-root .cabn-live-page[data-occluded="true"] { opacity: 0.28; }
-.cabn-pixel-root .cabn-live-page[data-occluded="true"] .cabn-live-page-open { pointer-events: none; }
+.cabn-pixel-root .cabn-live-page[data-occluded="true"],
+.cabn-pixel-root .cabn-live-page[data-occluded="true"] * { pointer-events: none; }
 .cabn-pixel-root .cabn-live-page-frame { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .cabn-pixel-root .cabn-live-page-frame .cabn-panel { border: none; border-radius: 0; box-shadow: none; }
 .cabn-pixel-root .cabn-live-page-night {
