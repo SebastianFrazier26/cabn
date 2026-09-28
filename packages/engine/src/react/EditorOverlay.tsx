@@ -10,7 +10,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import { PALETTE, toCssColor } from "../palette.js";
 import { insertTextAt } from "../systems/insertText.js";
 import { loadLanguageExtension } from "./editorLanguages.js";
 import { cottagecoreEditorExtensions } from "./editorTheme.js";
@@ -204,35 +203,34 @@ export function EditorOverlay({
 
 	return (
 		<div
+			className="cabn-panel"
 			style={{
 				position: "absolute",
 				inset: "24px 24px 24px 24px",
 				zIndex: 8,
 				display: "flex",
 				flexDirection: "column",
-				background: toCssColor(PALETTE.parchment),
-				border: `4px solid ${toCssColor(PALETTE.trail)}`,
-				borderRadius: 12,
-				boxShadow: "0 8px 24px rgba(50, 34, 20, 0.45)",
+				padding: 0,
 				overflow: "hidden",
+				pointerEvents: "auto",
 			}}
 		>
 			<div
 				style={{
+					position: "relative",
+					zIndex: 1,
 					display: "flex",
 					justifyContent: "space-between",
 					alignItems: "center",
 					padding: "8px 16px",
-					background: toCssColor(PALETTE.parchmentDark),
-					borderBottom: `3px solid ${toCssColor(PALETTE.trail)}`,
-					fontFamily: "Georgia, 'Iowan Old Style', serif",
-					color: toCssColor(PALETTE.ink),
+					background: "var(--cabn-border-outer)",
+					color: "#fff",
 				}}
 			>
 				<span>
 					{portalId ?? "(no file)"}
 					{dirty && (
-						<span style={{ marginLeft: 8, color: toCssColor(PALETTE.gold) }}>
+						<span style={{ marginLeft: 8, color: "var(--cabn-accent-yellow)" }}>
 							●
 						</span>
 					)}
@@ -244,20 +242,15 @@ export function EditorOverlay({
 			<div ref={hostRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }} />
 			{battleHint && (
 				<div
+					className="cabn-panel"
 					style={{
 						position: "absolute",
 						bottom: 14,
 						left: "50%",
 						transform: "translateX(-50%)",
-						background: toCssColor(PALETTE.ink),
-						color: toCssColor(PALETTE.parchment),
-						padding: "8px 16px",
-						borderRadius: 8,
-						fontFamily: "Georgia, 'Iowan Old Style', serif",
 						fontSize: 13,
 						maxWidth: "70%",
 						textAlign: "center",
-						boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
 					}}
 				>
 					{battleHint}
@@ -268,20 +261,16 @@ export function EditorOverlay({
 					style={{
 						position: "absolute",
 						inset: 0,
-						background: "rgba(50, 34, 20, 0.55)",
+						background: "rgba(20, 16, 40, 0.55)",
 						display: "flex",
 						alignItems: "center",
 						justifyContent: "center",
+						pointerEvents: "auto",
 					}}
 				>
 					<div
+						className="cabn-panel"
 						style={{
-							background: toCssColor(PALETTE.parchment),
-							border: `3px solid ${toCssColor(PALETTE.ink)}`,
-							borderRadius: 8,
-							padding: 20,
-							fontFamily: "Georgia, 'Iowan Old Style', serif",
-							color: toCssColor(PALETTE.ink),
 							display: "flex",
 							flexDirection: "column",
 							gap: 12,
@@ -292,29 +281,17 @@ export function EditorOverlay({
 						<div style={{ display: "flex", gap: 10 }}>
 							<button
 								type="button"
+								className="cabn-btn cancel"
 								onClick={() => store.getState().closeEditor()}
-								style={{
-									padding: "6px 14px",
-									cursor: "pointer",
-									border: `2px solid ${toCssColor(PALETTE.ink)}`,
-									borderRadius: 6,
-									background: toCssColor(PALETTE.parchmentDark),
-									color: toCssColor(PALETTE.ink),
-								}}
+								style={{ padding: "6px 14px" }}
 							>
 								Discard
 							</button>
 							<button
 								type="button"
+								className="cabn-btn neutral"
 								onClick={() => setConfirmingDiscard(false)}
-								style={{
-									padding: "6px 14px",
-									cursor: "pointer",
-									border: `2px solid ${toCssColor(PALETTE.ink)}`,
-									borderRadius: 6,
-									background: "none",
-									color: toCssColor(PALETTE.ink),
-								}}
+								style={{ padding: "6px 14px" }}
 							>
 								Cancel
 							</button>

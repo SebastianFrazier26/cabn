@@ -211,6 +211,16 @@ const PIXEL_THEME_CSS = `
 .cabn-rune-ring.two { inset: -14%; border-color: var(--cabn-accent-cyan); border-width: 2px; }
 .cabn-rune-ring.three { inset: -36%; border-color: var(--cabn-accent-yellow); border-width: 2px; opacity: 0.4; }
 .cabn-rune-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--cabn-accent-yellow); box-shadow: 0 0 8px 2px var(--cabn-accent-yellow); }
+.cabn-run-line-current {
+	background: rgba(255,210,63,0.35); border-left: 4px solid var(--cabn-accent-yellow);
+	padding: 2px 8px; font-family: var(--cabn-font-mono); font-size: 12px; border-radius: 4px;
+}
+.cabn-run-log { background: rgba(59,47,107,0.08); padding: 6px 8px; font-family: var(--cabn-font-mono); font-size: 11px; border-radius: 6px; }
+.cabn-speed-btn {
+	font-family: var(--cabn-font-display); font-size: 11px; border: 2px solid var(--cabn-border-outer);
+	padding: 3px 9px; background: #fff; cursor: pointer; color: var(--cabn-text); border-radius: 6px;
+}
+.cabn-speed-btn.active { background: var(--cabn-accent-yellow); }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-rune-ring { animation: cabn-spin-slow 7s linear infinite; }
 	.cabn-rune-ring.two { animation-direction: reverse; animation-duration: 9s; }
