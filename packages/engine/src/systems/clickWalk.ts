@@ -18,7 +18,8 @@ export type InteractableKind =
 	| "cabin"
 	| "monster"
 	| "bonfire"
-	| "exit";
+	| "exit"
+	| "npc";
 
 export interface Interactable {
 	id: string;

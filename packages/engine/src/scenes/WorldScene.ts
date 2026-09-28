@@ -39,6 +39,7 @@ import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundField } from "../render/groundField.js";
+import { GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
 import {
@@ -115,6 +116,7 @@ import {
 	withBagSlots,
 	withDefeatedMonster,
 	withFileOverride,
+	withGuideTalked,
 	withoutFileOverride,
 	withPlayerPosition,
 	withVisitedCluster,
@@ -137,6 +139,8 @@ export interface WorldSceneData {
 	returnTo?: { shelfUrl: string };
 	/** The bundle's media.json entries (BootScene), keyed by portal id; empty for a bundle without one. */
 	media?: ReadonlyMap<string, MediaPreview>;
+	/** See BootSceneData — decides whether this is the shelf's first world, the one the guide NPC stands in. */
+	shelfIndex?: number;
 }
 
 const CLUSTER_LOAD_RADIUS = 260;
@@ -242,6 +246,8 @@ export class WorldScene extends Phaser.Scene {
 	private media: ReadonlyMap<string, MediaPreview> = new Map();
 	private availability!: AssetAvailability;
 	private returnTo: { shelfUrl: string } | undefined;
+	private shelfIndex: number | undefined;
+	private guideNpc: GuideNpc | null = null;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -312,6 +318,7 @@ export class WorldScene extends Phaser.Scene {
 		this.media = data.media ?? new Map();
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
+		this.shelfIndex = data.shelfIndex;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
 		// by the last visit's return-to-shelf would otherwise still be true.
 		this.returningToShelf = false;
@@ -354,6 +361,20 @@ export class WorldScene extends Phaser.Scene {
 		this.drawPortals();
 		this.drawEditedMarkers();
 		this.drawMonsters();
+		this.guideNpc = GuideNpc.spawn(this, {
+			manifest: this.manifest,
+			shelfIndex: this.shelfIndex,
+			store: this.store,
+			spawn: this.defaultSpawnPos(),
+			portalPositions: this.portalWorldPos.values(),
+			bonfireWidth: this.bonfireDisplayWidth(),
+			reducedMotion: prefersReducedMotion(),
+			talked: () => this.save.guideTalked === true,
+			markTalked: () => {
+				this.save = withGuideTalked(this.save);
+				persistSave(this.save);
+			},
+		});
 		this.createPlayer(spawn);
 		this.setupInput();
 		this.setupCamera();
@@ -377,7 +398,10 @@ export class WorldScene extends Phaser.Scene {
 			this.archPreviews = null;
 			this.portalFx?.destroy();
 			this.portalFx = null;
-			this.cameras.main.off(
+			// Phaser's CameraManager shuts down first (it subscribed when the
+			// scene started, before create()) and clears `main` — without the
+			// `?.` every return to the shelf threw here and froze the game.
+			this.cameras.main?.off(
 				Phaser.Cameras.Scene2D.Events.FOLLOW_UPDATE,
 				this.projectWebPortal,
 			);
@@ -1091,9 +1115,11 @@ export class WorldScene extends Phaser.Scene {
 	 * been drawn yet at this point in create()'s ordering).
 	 */
 	private resolveSpawnPos(): Position {
-		const saved = this.save.playerPositions.world;
-		if (saved) return saved;
+		return this.save.playerPositions.world ?? this.defaultSpawnPos();
+	}
 
+	/** Where a fresh save starts — also kept clear of the guide NPC, whatever the current save says. */
+	private defaultSpawnPos(): Position {
 		const root =
 			this.manifest.clusters.find((c) => c.path === ".") ??
 			this.manifest.clusters[0];
@@ -1174,6 +1200,7 @@ export class WorldScene extends Phaser.Scene {
 				),
 			});
 		}
+		if (this.guideNpc) targets.push(this.guideNpc.interactable());
 		return targets;
 	}
 
@@ -1261,8 +1288,14 @@ export class WorldScene extends Phaser.Scene {
 			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
 			return;
 		}
-
-		this.handleMovement(delta);
+		// The dialogue box swallows its keys before Phaser sees them; this also
+		// holds still a movement key that was already down when it opened.
+		if (this.guideNpc?.isTalking()) {
+			this.walker.cancel();
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+		} else {
+			this.handleMovement(delta);
+		}
 		this.handleChunkLoading();
 		this.handlePortalApproach();
 		const view = this.cameras.main.worldView;
@@ -1312,6 +1345,11 @@ export class WorldScene extends Phaser.Scene {
 		if (target.kind === "bonfire") {
 			this.pendingArrival = null;
 			this.returnToShelf();
+			return;
+		}
+		if (target.kind === "npc") {
+			this.pendingArrival = null;
+			this.guideNpc?.talk();
 			return;
 		}
 		if (target.kind !== "portal") {
@@ -1567,12 +1605,17 @@ export class WorldScene extends Phaser.Scene {
 		this.interact();
 	};
 
-	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the bonfire. */
+	/** The world's one interaction, shared by Enter and the hotbar opener (see systems/tools.ts): the nearest portal in reach, else the guide NPC, else the bonfire. */
 	private interact(): void {
 		if (this.enterNearestPortalInRange()) return;
+		const playerPos = { x: this.player.body.x, y: this.player.body.y };
+		if (this.guideNpc?.inReach(playerPos)) {
+			this.walker.cancel();
+			this.guideNpc.talk();
+			return;
+		}
 		const root = this.rootCluster();
 		if (!root) return;
-		const playerPos = { x: this.player.body.x, y: this.player.body.y };
 		if (
 			Phaser.Math.Distance.Between(
 				playerPos.x,

@@ -9,6 +9,7 @@ import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
+import { GuideDialog } from "./GuideDialog.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { PortalLivePage } from "./PortalLivePage.js";
@@ -95,6 +96,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<MonsterCounter store={handle.store} />
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />
+					<GuideDialog store={handle.store} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

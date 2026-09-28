@@ -46,6 +46,9 @@ export const PLACEHOLDERS = [
 	"ouroboros_idle1_soft.png",
 	"will_o_wisp_idle0_soft.png",
 	"will_o_wisp_idle1_soft.png",
+	"npc_guide_strip_soft.png",
+	"npc_guide_bubble_soft.png",
+	"npc_guide_portrait_soft.png",
 ];
 
 async function copyInto(subdir, files) {

@@ -64,6 +64,13 @@ const SaveDataShapeSchema = z.strictObject({
 	bagSlots: z.array(BagSlotSchema),
 	/** Monster ids the player has defeated (M6) — keyed by id, not portal, since a portal can spawn more than one. */
 	defeatedMonsterIds: z.array(z.string()),
+	/**
+	 * Set once the player first talks to the guide NPC (hides its "!"
+	 * bubble). Optional rather than a version bump: every existing v2 save
+	 * still parses. The cost is one-way — an engine from before this field
+	 * rejects a save that has it (strictObject) and starts that world fresh.
+	 */
+	guideTalked: z.boolean().optional(),
 });
 export type SaveData = z.infer<typeof SaveDataShapeSchema>;
 
@@ -180,6 +187,11 @@ export function withBagSlots(
 	bagSlots: readonly BagSlot[],
 ): SaveData {
 	return { ...save, bagSlots: [...bagSlots] };
+}
+
+export function withGuideTalked(save: SaveData): SaveData {
+	if (save.guideTalked) return save;
+	return { ...save, guideTalked: true };
 }
 
 // --- Override application (pure — the "edited content wins" rule) -----

@@ -172,6 +172,22 @@ export const WORLD_FOUNTAIN_GEM_PATH = `${ASSET_BASE}/placeholders/prop_world_fo
 export const SHELF_CABIN_KEY = "shelf-cabin";
 export const SHELF_CABIN_PATH = `${ASSET_BASE}/placeholders/prop_shelf_cabin_soft.png`;
 
+// The guide NPC (tools/asset-pipeline's pixelmaps/guide-npc.ts): three idle
+// frames on the player's own 24x32 grid at soften's cellSize 16, so she's
+// drawn at the player's 0.125 scale and stands exactly as tall. The bubble is
+// the same density; the portrait is a React <img> in the dialogue box, not a
+// Phaser texture. Optional: without the strip WorldScene draws a tinted
+// player sprite in her place.
+export const GUIDE_NPC_KEY = "npc-guide";
+export const GUIDE_NPC_PATH = `${ASSET_BASE}/placeholders/npc_guide_strip_soft.png`;
+export const GUIDE_NPC_FRAME_WIDTH = 384;
+export const GUIDE_NPC_FRAME_HEIGHT = 512;
+export const GUIDE_NPC_SCALE = 0.125;
+export const GUIDE_NPC_IDLE_ANIM = "npc-guide-idle";
+export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
+export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
+export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything

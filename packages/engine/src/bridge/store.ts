@@ -124,6 +124,16 @@ export interface CabnState {
 	timeOfDay: TimeOfDay;
 	focusedPortalPreview: FocusedPortalPreview | null;
 	nearWebPortal: NearWebPortal | null;
+	/** The guide NPC in the current world (render/guideNpc.ts publishes it on spawn and clears it on shutdown); null in every world without one. */
+	guideNpc: GuideNpcSummary | null;
+	/** True while the guide's dialogue box (react/GuideDialog.tsx) is open — WorldScene holds the player still meanwhile. */
+	guideOpen: boolean;
+}
+
+export interface GuideNpcSummary {
+	pos: Position;
+	/** Whether the player has talked to the guide in this world's save — drives the "!" bubble. */
+	talked: boolean;
 }
 
 export interface CabnActions {
@@ -169,6 +179,8 @@ export interface CabnActions {
 	refreshTimeOfDay(): void;
 	setFocusedPortalPreview(preview: FocusedPortalPreview | null): void;
 	setNearWebPortal(portal: NearWebPortal | null): void;
+	setGuideNpc(guide: GuideNpcSummary | null): void;
+	setGuideOpen(open: boolean): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -197,6 +209,8 @@ const initialState: CabnState = {
 	timeOfDay: "day",
 	focusedPortalPreview: null,
 	nearWebPortal: null,
+	guideNpc: null,
+	guideOpen: false,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -255,5 +269,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setFocusedPortalPreview: (focusedPortalPreview) =>
 			set({ focusedPortalPreview }),
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
+		setGuideNpc: (guideNpc) => set({ guideNpc }),
+		setGuideOpen: (guideOpen) => set({ guideOpen }),
 	}));
 }

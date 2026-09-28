@@ -8,7 +8,12 @@ import {
 import Phaser from "phaser";
 
 export type BootSceneData =
-	| { worldUrl: string; returnTo?: { shelfUrl: string } }
+	| {
+			worldUrl: string;
+			returnTo?: { shelfUrl: string };
+			/** This world's position in shelf.json's `worlds` (ShelfScene sets it); absent when a host boots a world directly. */
+			shelfIndex?: number;
+	  }
 	| { shelfUrl: string };
 
 /**
@@ -62,10 +67,16 @@ export class BootScene extends Phaser.Scene {
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
 		);
-		const returnTo = this.target.returnTo;
+		const { returnTo, shelfIndex } = this.target;
 		loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`).then((media) => {
 			if (!this.scene.isActive()) return;
-			this.scene.start("preload", { manifest, worldBase, returnTo, media });
+			this.scene.start("preload", {
+				manifest,
+				worldBase,
+				returnTo,
+				media,
+				...(shelfIndex !== undefined ? { shelfIndex } : {}),
+			});
 		});
 	}
 }
