@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-28 — Monster redraw and battle frames
+
+- The five legacy monster sprites were redrawn to match the 2026-09-28 species (same palette, ink outline, soften pipeline, two idle frames each). The approved request was that they should look like the new ones instead of placeholder blobs.
+  - **Rot-sprite** (`pixelmaps/rot-sprite.ts`): a glossy teal slime with a queasy face and a dripping base. Magenta corruption blotches, stray glitch pixels and one scanline torn a pixel sideways stand for garbled data. It is teal so it doesn't read as the bramble. idle1 squashes it.
+  - **Warded mimic** (`warded-mimic.ts`): a gold-banded chest with the lid cracked open on teeth, glowing eyes in the gap, a lolling tongue and an amethyst ward rune on a plum lock plate. idle1 lifts the lid and flickers the rune.
+  - **Gremlin** (`gremlin.ts`): a bat-eared tangerine goblin with a fanged grin, brandishing the steel `[` it pried out of the file. idle1 flicks its ears and cuts its eyes toward the bracket.
+  - **Ouroboros** (`ouroboros.ts`): a sapphire serpent coiled into a ring, generated procedurally (tapered tube, lit and shaded, cream belly, gold back spots) with a hand-drawn head at twelve o'clock biting its own tail. It is now 36x36 instead of 48x48, so its cells match the other species' on-screen density. idle1 slides the back spots half a step.
+  - **Will-o'-wisp** (`will-o-wisp.ts`): a lantern-glow spirit flame (sky-blue tongues, a warm cream core, a sleepy face) with its TODO pinned to it as a paper scrap. idle1 flickers the tongues and flutters the note.
+  - The ghost was left unchanged.
+- **Battle frames for all 11 species**: one hit frame (colours bleached toward white, outline hot red) and a three-frame defeat poof (the monster breaking up with puffs bursting at its edges, then a full cloud, then scattering puffs and sparkles). `tools/asset-pipeline/src/monster-fx.ts` derives them from each species' idle0 at exactly its size, so swapping textures never changes a fitted sprite's size. `pnpm -F @cabn/asset-pipeline placeholders && … soften` renders them as `<slug>_hit_soft.png` and `<slug>_defeat{0,1,2}_soft.png`. Running it twice gives byte-identical output.
+- **Engine** (`assetPaths.ts`, `PreloadScene`, `render/monsterSprite.ts`, `FileScene`): the frames load as optional assets and register as `monster-hit-<species>` / `monster-defeat-<species>` animations only when every frame loaded.
+  - When a fix defeats a monster, the hit frame flashes, the poof plays at 10fps, then the sprite fades out. The sparkles and "Fixed!" text still play alongside it.
+  - A save that doesn't fix the encountered monster flashes its hit frame during the existing shrug. A run blocked by a monster still only shrugs.
+  - If a species' frames are missing, it falls back to the old tween-only fade and shrug.
+  - `copy-assets.mjs` bundles the 44 new files for `cabn serve`.
+- **Tests**: asset-pipeline `monster-fx.test.ts` (both idle frames of the redrawn species; battle frames keep idle0's size, are deterministic, and the hit frame keeps the silhouette). Engine `battleFxAssets.test.ts`. The cli bundle-coverage test now includes the battle frames. New Playwright `monster-redraw.spec.ts`: redrawn monsters orbit without errors, and fixing `lib/utils.py` plays the gremlin's hit and all three defeat frames before it's removed.
+- **Screenshots**: `assets/generated/review/monster-redraw/` has the species sheet (all 11 species: idle, hit and defeat), orbit strips by day and night, and the in-file defeat sequence.
+
 ## 2026-09-28 — Current-world map
 
 - Added a React/SVG minimap in the top-right and a larger map opened with M and closed with M or Esc. Both show folders, paths, files, player position, undefeated monster anchors and saved visited clearings. Selecting a file uses existing walk-to-portal navigation without entering it.
