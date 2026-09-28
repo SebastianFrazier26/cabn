@@ -21,9 +21,16 @@ import { buildPathStampGrids } from "./world-art/path-stamps-art.js";
 import {
 	buildCastleKeep,
 	buildProps,
-	buildWorldCabinet,
 	type PropPaletteIndices,
 } from "./world-art/props.js";
+import {
+	buildShelfCabinGrid,
+	type ShelfCabinPalette,
+} from "./world-art/shelf-cabin.js";
+import {
+	buildWorldCabinet,
+	type WorldCabinetPalette,
+} from "./world-art/world-cabinet.js";
 
 const worldArtDir = path.join(generatedDir, "world-art");
 
@@ -352,10 +359,65 @@ const PROP_PALETTE: PropPaletteIndices = {
 	bedSoil: PALETTE.pathShadow,
 	flagColor: PALETTE.berryPink,
 	ivyColor: PALETTE.groveHighlight,
-	cabinetWood: PALETTE.woodWarm,
-	cabinetWoodDark: PALETTE.woodDark,
-	cabinetWoodLight: PALETTE.woodLight,
-	cabinetHandle: PALETTE.lanternGlow,
+};
+
+const IVY_TONES = {
+	shadow: PALETTE.groveShadow,
+	base: PALETTE.groveBase,
+	highlight: PALETTE.groveHighlight,
+} as const;
+
+// Landmarks (shelf cabin, world cabinet) render at the wizard tower's
+// cellSize (16) rather than the scatter props' 6 — the engine displays them
+// at the tower's own scale, so this is what makes their on-screen pixel
+// size match the tower's (see engine render/scale.ts).
+const LANDMARK_CELL_SIZE = 16;
+const LANDMARK_EDGE_FEATHER_PX = 2;
+
+const WORLD_CABINET_PALETTE: WorldCabinetPalette = {
+	ink: PALETTE.ink,
+	wood: PALETTE.woodWarm,
+	woodDark: PALETTE.woodDark,
+	woodLight: PALETTE.woodLight,
+	handle: PALETTE.sunYellow,
+	handleBright: PALETTE.lanternGlow,
+	glassBack: PALETTE.stoneDark,
+	glint: PALETTE.cream,
+	curios: [
+		PALETTE.mushroomRed,
+		PALETTE.skyBlue,
+		PALETTE.cream,
+		PALETTE.meadowBase,
+		PALETTE.berryPink,
+		PALETTE.sunYellow,
+	],
+	ivy: IVY_TONES,
+};
+
+// Roof matches the cottage prop's autumn-orange pair so the scattered
+// cottages and the shelf cabins read as the same village; walls use the
+// warm/dark/light wood trio every wooden prop uses.
+const SHELF_CABIN_PALETTE: ShelfCabinPalette = {
+	ink: PALETTE.ink,
+	roofSeam: PALETTE.woodDark,
+	roofShadow: PALETTE.autumnOrangeDark,
+	roofBase: PALETTE.autumnOrange,
+	roofHighlight: PALETTE.terracotta,
+	woodDark: PALETTE.woodDark,
+	wood: PALETTE.woodWarm,
+	woodLight: PALETTE.woodLight,
+	stoneDark: PALETTE.stoneDark,
+	stone: PALETTE.stoneMid,
+	stoneLight: PALETTE.stoneLight,
+	windowGlow: PALETTE.lanternGlow,
+	windowWarm: PALETTE.sunYellow,
+	knob: PALETTE.sunYellow,
+	pot: PALETTE.terracotta,
+	potShadow: PALETTE.autumnOrangeDark,
+	petalA: PALETTE.berryPink,
+	petalB: PALETTE.sunYellow,
+	petalC: PALETTE.cream,
+	ivy: IVY_TONES,
 };
 
 async function genProps(palette: RGB[]): Promise<PropsResult> {
@@ -411,23 +473,48 @@ interface WorldCabinetResult {
 	index: Record<string, unknown>;
 }
 
-/** Replaces the photographic cabinet_256.webp for in-world cluster markers only — see props.ts's worldCabinet doc comment. */
-async function genWorldCabinet(palette: RGB[]): Promise<WorldCabinetResult> {
-	const prop = buildWorldCabinet(PROP_PALETTE);
+async function genLandmark(
+	grid: Grid,
+	slug: string,
+	palette: RGB[],
+	seed: number,
+): Promise<void> {
 	const { crisp, soft } = await renderSoft(
-		prop.grid,
-		"prop_world_cabinet",
+		grid,
+		slug,
 		palette,
-		prop.cellSize,
-		20261400,
+		LANDMARK_CELL_SIZE,
+		seed,
+		LANDMARK_EDGE_FEATHER_PX,
 	);
-	await writePair("prop_world_cabinet", crisp, soft, 8);
+	await writePair(slug, crisp, soft, 8);
+}
+
+/** Replaces the photographic cabinet_256.webp for in-world cluster markers — see world-cabinet.ts's doc comment. */
+async function genWorldCabinet(palette: RGB[]): Promise<WorldCabinetResult> {
+	const prop = buildWorldCabinet(WORLD_CABINET_PALETTE);
+	await genLandmark(prop.grid, "prop_world_cabinet", palette, 20261400);
 	return {
 		index: {
 			name: prop.name,
 			key: "world-cabinet",
 			file: "placeholders/prop_world_cabinet_soft.png",
 		},
+	};
+}
+
+/** Replaces the photographic cabin_256.webp for the shelf's per-world cabins — see shelf-cabin.ts's doc comment. */
+async function genShelfCabin(palette: RGB[]): Promise<Record<string, unknown>> {
+	await genLandmark(
+		buildShelfCabinGrid(SHELF_CABIN_PALETTE),
+		"prop_shelf_cabin",
+		palette,
+		20261500,
+	);
+	return {
+		name: "shelf-cabin",
+		key: "shelf-cabin",
+		file: "placeholders/prop_shelf_cabin_soft.png",
 	};
 }
 
@@ -587,6 +674,7 @@ async function main() {
 	const props = await genProps(palette);
 	const castleKeep = await genCastleKeep(palette);
 	const worldCabinet = await genWorldCabinet(palette);
+	const shelfCabin = await genShelfCabin(palette);
 	await writeRawRgbaPng(
 		buildSparkTexture(),
 		path.join(placeholdersDir, "fx_spark.png"),
@@ -609,6 +697,7 @@ async function main() {
 		props: props.index,
 		castleKeep: castleKeep.index,
 		worldCabinet: worldCabinet.index,
+		shelfCabin,
 		mockScene: "mock-scene.png",
 	};
 	await writeFile(

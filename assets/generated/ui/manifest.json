@@ -39,6 +39,14 @@
 		"crispUpscaledFile": "ui_icon_wand@8x.png",
 		"softFile": "ui_icon_wand_soft.png"
 	},
+	"ui_icon_key": {
+		"kind": "item-icon",
+		"width": 32,
+		"height": 58,
+		"crispFile": "ui_icon_key.png",
+		"crispUpscaledFile": "ui_icon_key@8x.png",
+		"softFile": "ui_icon_key_soft.png"
+	},
 	"ui_sparkle_violet": {
 		"kind": "particle",
 		"width": 9,

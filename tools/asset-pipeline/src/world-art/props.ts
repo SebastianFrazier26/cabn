@@ -418,10 +418,6 @@ export interface PropPaletteIndices {
 	bedSoil: number;
 	flagColor: number;
 	ivyColor: number;
-	cabinetWood: number;
-	cabinetWoodDark: number;
-	cabinetWoodLight: number;
-	cabinetHandle: number;
 }
 
 /** The random-scatter prop pool — see gen-world-art.ts's castleKeep call for the one-off shelf accent that's deliberately *not* in this list. */
@@ -529,51 +525,6 @@ export function buildCastleKeep(idx: PropPaletteIndices): Prop {
 			idx.flagColor,
 			idx.windowGlow,
 			idx.ivyColor,
-		),
-		cellSize: 6,
-	};
-}
-
-/**
- * The in-world cabinet marker (WorldScene's non-root clusters) — batch-3
- * review: "still dark red and green noise", referring to the original
- * photographic cabinet_256.webp (assets/source/icons/cabinet.png, matted and
- * resized, not part of this procedural pipeline at all) read as muddy at
- * gameplay scale. This is a from-scratch procedural replacement in the same
- * house style as every other batch-2/3 prop: readable wood-plank paneling, a
- * visible seam down the middle (two cabinet doors), and two small brass
- * handles. WorldScene applies the per-world theme tint at low strength on
- * top of this (see applySubtleTint in scenes/WorldScene.ts) rather than
- * Phaser's full-strength multiplicative tint, which is the other half of
- * "stays subtle" — no amount of restraint in the art itself survives being
- * multiplied by a saturated theme color at full strength.
- */
-function worldCabinet(
-	wood: number,
-	woodDark: number,
-	woodLight: number,
-	handle: number,
-): Grid {
-	const g = createGrid(18, 22);
-	fillRect(g, 0, 2, 18, 20, woodDark);
-	fillRect(g, 1, 2, 16, 18, wood);
-	fillRect(g, 1, 2, 16, 2, woodLight);
-	fillRect(g, 8, 2, 1, 18, woodDark);
-	for (let y = 6; y < 20; y += 5) fillRect(g, 1, y, 16, 1, woodDark);
-	setPixel(g, 6, 10, handle);
-	setPixel(g, 11, 10, handle);
-	fillRect(g, 0, 20, 18, 2, woodDark);
-	return g;
-}
-
-export function buildWorldCabinet(idx: PropPaletteIndices): Prop {
-	return {
-		name: "world-cabinet",
-		grid: worldCabinet(
-			idx.cabinetWood,
-			idx.cabinetWoodDark,
-			idx.cabinetWoodLight,
-			idx.cabinetHandle,
 		),
 		cellSize: 6,
 	};

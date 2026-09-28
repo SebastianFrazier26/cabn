@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { RGB } from "../src/color.js";
 import { renderPixelMap } from "../src/pixelmap.js";
 import { buildBagIcon } from "../src/pixelmaps/ui-item-bag.js";
+import { buildKeyIcon } from "../src/pixelmaps/ui-item-key.js";
 import { buildCrystalOrbIcon } from "../src/pixelmaps/ui-item-orb.js";
 import { buildQuillIcon } from "../src/pixelmaps/ui-item-quill.js";
 import { buildSpyglassIcon } from "../src/pixelmaps/ui-item-spyglass.js";
@@ -23,6 +24,7 @@ const ALL_BUILDERS = [
 	buildBagIcon,
 	buildQuillIcon,
 	buildWandIcon,
+	buildKeyIcon,
 	() => buildSparkle("violet"),
 	() => buildSparkle("cyan"),
 	() => buildSparkle("gold"),
