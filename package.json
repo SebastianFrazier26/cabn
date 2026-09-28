@@ -11,10 +11,12 @@
 		"build": "pnpm -r build",
 		"test": "pnpm -r test",
 		"lint": "biome check .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"changeset": "changeset"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.14",
+		"@changesets/cli": "^3.0.3",
 		"typescript": "^7.0.2",
 		"vitest": "^5.0.1"
 	}

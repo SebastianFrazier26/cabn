@@ -1,9 +1,21 @@
-import { CabnGame } from "@cabn/engine";
+import { CabnGame, type CabnGameHandle } from "@cabn/engine";
 
 // build:world (see scripts/build-world.mjs) converts both demo projects and
 // writes a shelf.json listing them here, under public/, so it's served as a
 // static file by both `vite` (dev) and the production build.
 const SHELF_URL = "/worlds/shelf.json";
+
+// Ships in every build (this file's code runs regardless), but only ever
+// touches `window` when a page is explicitly loaded with ?e2e=1 — the CI
+// browser smoke test's own trigger, never set by a real visitor. A build-time
+// MODE check was the other option; this one needs no separate "test" build,
+// so `vite preview` of the same production bundle the demo actually ships is
+// what the smoke test exercises.
+function exposeTestHookIfRequested(handle: CabnGameHandle | null): void {
+	if (new URLSearchParams(window.location.search).get("e2e") !== "1") return;
+	(window as unknown as { __cabnStore: unknown }).__cabnStore =
+		handle?.store ?? undefined;
+}
 
 export function App(): React.ReactElement {
 	return (
@@ -34,7 +46,10 @@ export function App(): React.ReactElement {
 				</span>
 			</header>
 			<div style={{ flex: 1, minHeight: 0 }}>
-				<CabnGame shelfUrl={SHELF_URL} />
+				<CabnGame
+					shelfUrl={SHELF_URL}
+					onGameReady={exposeTestHookIfRequested}
+				/>
 			</div>
 		</div>
 	);

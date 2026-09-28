@@ -1,7 +1,22 @@
 {
 	"name": "@cabn/cli",
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "The cabn CLI: build/inspect a world bundle, build a shelf of worlds, and cabn serve for a local walkable game with optional real code execution.",
+	"keywords": [
+		"cabn",
+		"cli"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/cli"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/cli#readme",
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"bin": {
 		"cabn": "dist/main.js"
 	},
@@ -12,10 +27,12 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.json",
+		"build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
 		"test": "vitest run"
 	},
 	"dependencies": {

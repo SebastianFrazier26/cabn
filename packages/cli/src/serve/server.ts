@@ -44,11 +44,20 @@ export interface ServeHandle {
 
 export const DEFAULT_SERVE_PORT = 5178;
 
-// assets/generated/{originals,placeholders} is resolved relative to this
-// monorepo's own layout (packages/cli/dist/serve/server.js -> repo root),
-// same "hardcoded relative walk" apps/demo's build-world.mjs already does —
-// see CHANGELOG for why a real published `cabn` outside this checkout simply
-// won't find these (best-effort only, see serveRepoAsset below).
+// A published @cabn/cli has scripts/copy-assets.mjs bundle the fixed sprite
+// subset `cabn serve` actually uses into dist/assets at build time (dist/
+// serve/server.js -> dist/assets) — this is what makes sprites work via
+// `npx @cabn/cli serve` outside this monorepo.
+const BUNDLED_ASSETS_DIR = resolvePath(
+	fileURLToPath(import.meta.url),
+	"../../assets",
+);
+
+// Falls back to this monorepo's own assets/generated/ (packages/cli/dist/
+// serve/server.js -> repo root), same "hardcoded relative walk" apps/demo's
+// build-world.mjs already does — covers running from source before a build
+// (no dist/assets yet) and any sprite copy-assets.mjs doesn't bundle (e.g.
+// art still on a parallel branch — see serveRepoAsset below).
 const REPO_ASSETS_DIR = resolvePath(
 	fileURLToPath(import.meta.url),
 	"../../../../../assets/generated",
@@ -111,19 +120,24 @@ async function serveRepoAsset(
 	res: ServerResponse,
 	relPath: string,
 ): Promise<void> {
-	try {
-		const real = await resolveConfinedPath(REPO_ASSETS_DIR, relPath);
-		const data = await readFile(real);
-		res.writeHead(200, { "content-type": contentTypeFor(real) });
-		res.end(data);
-	} catch {
-		// Best-effort: a `cabn` installed outside this monorepo (see
-		// REPO_ASSETS_DIR's own doc) has no assets/generated at all — the
-		// engine's own PreloadScene already falls back to tinted placeholders
-		// for any sprite that 404s, so this degrades rather than breaks.
-		res.writeHead(404);
-		res.end("not found");
+	// Bundled dist/assets checked first so a published install wins even if
+	// this happens to also be running inside the monorepo checkout.
+	for (const base of [BUNDLED_ASSETS_DIR, REPO_ASSETS_DIR]) {
+		try {
+			const real = await resolveConfinedPath(base, relPath);
+			const data = await readFile(real);
+			res.writeHead(200, { "content-type": contentTypeFor(real) });
+			res.end(data);
+			return;
+		} catch {
+			// try the next candidate
+		}
 	}
+	// Best-effort: neither location has this sprite — the engine's own
+	// PreloadScene already falls back to tinted placeholders for any sprite
+	// that 404s, so this degrades rather than breaks.
+	res.writeHead(404);
+	res.end("not found");
 }
 
 /**

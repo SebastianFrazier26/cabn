@@ -18,7 +18,15 @@ import { ToolHotbar } from "./ToolHotbar.js";
 // Exactly one of the two: a plain worldUrl boots straight into that world (no
 // shelf to return to); shelfUrl boots into the shelf hub, which then boots
 // worlds itself as the player walks into cabins (see ShelfScene).
-export type CabnGameProps = { worldUrl: string } | { shelfUrl: string };
+export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
+	/**
+	 * Fires once per mount with the freshly-created game/store/bus, and again
+	 * with null on unmount. Optional — added for host apps that need their own
+	 * hooks into the store (e.g. a browser e2e test asserting on game state);
+	 * CabnGame itself never calls this for anything internal.
+	 */
+	onGameReady?: (handle: CabnGameHandle | null) => void;
+};
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -30,7 +38,9 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
+	const { onGameReady } = props;
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: onGameReady is deliberately excluded — an inline arrow-function prop (the common case) is a fresh reference every render and would re-create the whole game each time.
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
@@ -39,10 +49,12 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 			worldUrl !== undefined ? { worldUrl } : { shelfUrl: shelfUrl as string };
 		const next = createCabnGame(container, target);
 		setHandle(next);
+		onGameReady?.(next);
 
 		return () => {
 			next.game.destroy(true);
 			setHandle(null);
+			onGameReady?.(null);
 		};
 		// worldUrl/shelfUrl changing is treated as a fresh game, not a hot-swap —
 		// Phaser's scene graph doesn't cleanly support re-pointing an already-

@@ -1,7 +1,23 @@
 {
 	"name": "@cabn/world-schema",
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "Zod schemas and types for cabn's world bundle format (world.json, chunks, search index, assets) plus a validateManifest helper.",
+	"keywords": [
+		"cabn",
+		"zod",
+		"schema"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/world-schema"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/world-schema#readme",
 	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -9,7 +25,10 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"schema",
+		"README.md",
+		"LICENSE"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.json",

@@ -8,6 +8,9 @@ import { configDefaults, defineConfig } from "vitest/config";
 // declares but never actually installs).
 export default defineConfig({
 	test: {
-		exclude: [...configDefaults.exclude, "sample-project/**"],
+		// e2e/*.spec.ts are Playwright tests (see playwright.config.ts) — vitest's
+		// default include glob matches *.spec.ts too and would otherwise try (and
+		// fail) to run them with vitest's own runner.
+		exclude: [...configDefaults.exclude, "sample-project/**", "e2e/**"],
 	},
 });

@@ -5,6 +5,22 @@
 	"type": "module",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
+		"dev": "tsx watch src/server.ts",
+		"start": "node dist/server.js",
+		"keygen": "tsc -p tsconfig.json && node dist/keygen.js",
 		"test": "vitest run"
+	},
+	"dependencies": {
+		"@cabn/converter": "workspace:*",
+		"@fastify/cors": "^11.3.0",
+		"@fastify/multipart": "^10.1.2",
+		"@fastify/rate-limit": "^11.2.0",
+		"fastify": "^5.12.5",
+		"fflate": "^0.8.3"
+	},
+	"devDependencies": {
+		"@cabn/world-schema": "workspace:*",
+		"@types/node": "^22.20.4",
+		"tsx": "^4.23.15"
 	}
 }

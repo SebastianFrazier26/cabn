@@ -18,4 +18,48 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm lint
+      # Fails the build on high/critical findings in prod deps only — see
+      # README's audit note for the current low-severity dev-tooling finding
+      # this deliberately doesn't gate on.
+      - run: pnpm audit --audit-level=high
       - run: pnpm -r test
+
+  browser-smoke:
+    # The important check — two bugs so far only showed up in a real browser,
+    # never in jsdom-based component tests. Runs against a `vite preview` of
+    # the actual production build, not `vite dev`.
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      # Installed only in CI — see apps/demo/playwright.config.ts's doc on why
+      # a developer machine should point PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      # at an already-cached browser instead.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm --filter @cabn/demo exec playwright install --with-deps chromium
+      - run: pnpm --filter @cabn/demo exec playwright test
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/demo/playwright-report
+          retention-days: 7
+      - name: Upload Playwright traces/screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/demo/test-results
+          retention-days: 7
