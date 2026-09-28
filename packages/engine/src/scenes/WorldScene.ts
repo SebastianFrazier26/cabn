@@ -51,6 +51,7 @@ import {
 	CABINET_SCALE,
 	MONSTER_HOVER_SIZE,
 	PORTAL_SCALE,
+	WORLD_CABINET_SCALE,
 } from "../render/scale.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import { prefersReducedMotion } from "../systems/glowSettings.js";
@@ -626,11 +627,9 @@ export class WorldScene extends Phaser.Scene {
 			if (isRoot) {
 				sprite = this.drawBonfire(cluster.pos);
 			} else if (this.availability.worldArt) {
-				// world-cabinet is already sized/detailed to stand alone
-				// unscaled (same convention as every other prop —
-				// propPlacement.ts never calls setScale either) — CABINET_SCALE
-				// below is only for the photographic fallback's much bigger
-				// source resolution. Tint is deliberately lightened toward
+				// world-cabinet is scaled to the wizard tower's pixel density
+				// (render/scale.ts's WORLD_CABINET_SCALE); CABINET_SCALE below
+				// is only for the photographic fallback. Tint is deliberately lightened toward
 				// white first (subtleTint) rather than applied at full
 				// strength — M10b batch-3 review: "stays subtle".
 				sprite = this.add.image(
@@ -639,6 +638,7 @@ export class WorldScene extends Phaser.Scene {
 					WORLD_CABINET_KEY,
 				);
 				sprite
+					.setScale(WORLD_CABINET_SCALE)
 					.setTint(subtleTint(this.theme.tint, CABINET_TINT_STRENGTH))
 					.setDepth(2);
 			} else {

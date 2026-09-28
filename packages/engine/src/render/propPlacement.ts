@@ -70,6 +70,48 @@ export function propLightWorldPos(
 }
 
 /**
+ * Landmark-ish props that read as repetitive when a clearing gets two —
+ * the M10 playtest's "too many wells". Everything else in the pool is
+ * small/generic enough (bushes, flower pots, fences) that repeats look
+ * natural.
+ */
+export const PROP_MAX_PER_CLEARING: Partial<Record<PropName, number>> = {
+	well: 1,
+	bench: 1,
+};
+
+/**
+ * Maps each scatter point's random variant to a prop name, re-picking any
+ * pick that would exceed its per-clearing cap by stepping forward through
+ * the pool to the next name still under its cap. Deterministic (same
+ * variants in, same names out), so layouts stay stable between visits; only
+ * capped picks move, so an uncapped clearing lays out exactly as before.
+ */
+export function assignCappedPropNames(
+	variants: readonly number[],
+	pool: readonly PropName[],
+	caps: Partial<Record<PropName, number>> = PROP_MAX_PER_CLEARING,
+): PropName[] {
+	if (pool.length === 0) throw new Error("placeProps: prop pool is empty");
+	const used = new Map<PropName, number>();
+	const underCap = (name: PropName) =>
+		(used.get(name) ?? 0) < (caps[name] ?? Number.POSITIVE_INFINITY);
+	return variants.map((variant) => {
+		const start = ((variant % pool.length) + pool.length) % pool.length;
+		let pick = pool[start] as PropName;
+		for (let step = 0; step < pool.length; step++) {
+			const candidate = pool[(start + step) % pool.length] as PropName;
+			if (underCap(candidate)) {
+				pick = candidate;
+				break;
+			}
+		}
+		used.set(pick, (used.get(pick) ?? 0) + 1);
+		return pick;
+	});
+}
+
+/**
  * Props are real sprites, not baked into the ground `RenderTexture` the way
  * decals are (see groundBaker.ts's doc comment) — a handful per cluster is
  * nowhere near "thousands," and unlike a flat decal, a prop wants a fixed
@@ -94,9 +136,12 @@ export function placeProps(params: PlacePropsParams): PlacedProp[] {
 		minRadiusFrac: params.minRadiusFrac,
 	});
 
-	return points.map((point) => {
-		const name = pool[point.variant] ?? pool[0];
-		if (!name) throw new Error("placeProps: prop pool is empty");
+	const names = assignCappedPropNames(
+		points.map((point) => point.variant),
+		pool,
+	);
+	return points.map((point, i) => {
+		const name = names[i] as PropName;
 		const sprite = params.scene.add.image(point.x, point.y, propKey(name));
 		sprite.setDepth(params.depth);
 		return { sprite, name, x: point.x, y: point.y };
