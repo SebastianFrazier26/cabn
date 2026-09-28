@@ -61,6 +61,11 @@ export const PLACEHOLDERS = [
 	"bramble_idle1_soft.png",
 	"shade_idle0_soft.png",
 	"shade_idle1_soft.png",
+	// AI pets (assetPaths.ts petStripPath/petPortraitPath, pets/providers.ts species).
+	...["cat", "ferret", "bird", "llama", "owl", "whale"].flatMap((species) => [
+		`pet_${species}_strip_soft.png`,
+		`pet_${species}_portrait_soft.png`,
+	]),
 	// Battle frames (assetPaths.ts BATTLE_FX_MONSTER_SPECIES): hit + 3 defeat.
 	...[
 		"ghost",

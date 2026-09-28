@@ -16,9 +16,12 @@ import {
 	monsterFramePath,
 	monsterHitPath,
 	OPTIONAL_ASSET_PATHS,
+	petPortraitPath,
+	petStripPath,
 	SIGNPOST_PATH,
 	uiIconPath,
 } from "../../../engine/src/assetPaths.js";
+import { PET_PROVIDERS } from "../../../engine/src/pets/providers.js";
 import { ORIGINALS, PLACEHOLDERS } from "../../scripts/copy-assets.mjs";
 
 const REPO_ASSETS = join(
@@ -63,6 +66,9 @@ function allRuntimeAssetPaths(): string[] {
 		for (let i = 0; i < MONSTER_DEFEAT_FRAME_COUNT; i++) {
 			paths.push(monsterDefeatPath(species, i));
 		}
+	}
+	for (const { species } of Object.values(PET_PROVIDERS)) {
+		paths.push(petStripPath(species), petPortraitPath(species));
 	}
 	for (let i = 0; i < BONFIRE_FRAME_COUNT; i++) {
 		paths.push(OPTIONAL_ASSET_PATHS.bonfireFrame(i));
