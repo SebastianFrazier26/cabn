@@ -174,73 +174,87 @@ export function OrbSearch({
 					}}
 				/>
 			))}
+			{/* The literal crystal ball: a glass sphere (cabn-crystal-ball) results
+			    swirl inside of, rising up on top of a plinth (cabn-crystal-plinth)
+			    that holds the search input — replacing the old flat rectangular
+			    panel per the M10 plan's "using the crystal ball should open a
+			    LITERAL crystal ball" feedback. */}
 			<div
-				className="cabn-panel"
 				style={{
 					position: "relative",
 					zIndex: 3,
-					width: "min(520px, 100%)",
-					overflow: "hidden",
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
 				}}
 			>
-				<input
-					ref={inputRef}
-					value={query}
-					onChange={(e) => setQuery(e.target.value)}
-					placeholder={
-						scope === "file" ? "search this file..." : "search the world..."
-					}
-					style={{
-						width: "100%",
-						font: "inherit",
-						fontSize: 14,
-						background: "transparent",
-						border: "none",
-						borderBottom: "3px dashed var(--cabn-border-outer)",
-						outline: "none",
-						color: "inherit",
-						padding: "4px 2px 8px",
-					}}
-				/>
-				<div style={{ maxHeight: "50vh", overflow: "auto" }}>
-					{scope === "world" && loading && (
-						<Status text="loading the world's search index..." />
-					)}
-					{scope === "world" && error && (
-						<Status text={`search index failed to load: ${error}`} />
-					)}
-					{hits.length === 0 && query.trim() && !loading && (
-						<Status text="no matches" />
-					)}
-					<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-						{hits.map((hit) => (
-							<SearchHitRow
-								key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
-								hit={hit}
-								onSelect={() => select(hit)}
+				<div key={playToken} className="cabn-crystal-ball">
+					<div className="cabn-crystal-ball-mist" />
+					<div className="cabn-crystal-ball-mist two" />
+					<div className="cabn-crystal-ball-content">
+						{scope === "world" && loading && (
+							<Status text="loading the world's search index..." />
+						)}
+						{scope === "world" && error && (
+							<Status text={`search index failed to load: ${error}`} />
+						)}
+						{hits.length === 0 && query.trim() && !loading && (
+							<Status text="no matches" />
+						)}
+						{hits.length === 0 && !query.trim() && (
+							<Status text="speak a query to the ball..." />
+						)}
+						<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+							{hits.map((hit) => (
+								<SearchHitRow
+									key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
+									hit={hit}
+									onSelect={() => select(hit)}
+								/>
+							))}
+						</ul>
+					</div>
+					<div className="cabn-effect-burst play">
+						{OPEN_BURST_SPARKS.map((s, i) => (
+							// Fixed, static per-render burst layout, never reordered — index
+							// is a stable enough key.
+							<img
+								// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+								key={i}
+								className="cabn-spark"
+								src={uiSparklePath(s.color)}
+								alt=""
+								style={
+									{
+										"--cabn-tx": `${s.tx}px`,
+										"--cabn-ty": `${s.ty}px`,
+										animationDelay: `${s.delayMs}ms`,
+									} as React.CSSProperties
+								}
 							/>
 						))}
-					</ul>
+					</div>
 				</div>
-				<div key={playToken} className="cabn-effect-burst play">
-					{OPEN_BURST_SPARKS.map((s, i) => (
-						// Fixed, static per-render burst layout, never reordered — index
-						// is a stable enough key.
-						<img
-							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
-							key={i}
-							className="cabn-spark"
-							src={uiSparklePath(s.color)}
-							alt=""
-							style={
-								{
-									"--cabn-tx": `${s.tx}px`,
-									"--cabn-ty": `${s.ty}px`,
-									animationDelay: `${s.delayMs}ms`,
-								} as React.CSSProperties
-							}
-						/>
-					))}
+				<div className="cabn-crystal-plinth">
+					<input
+						ref={inputRef}
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						placeholder={
+							scope === "file" ? "search this file..." : "search the world..."
+						}
+						style={{
+							width: "100%",
+							font: "inherit",
+							fontSize: 14,
+							background: "transparent",
+							border: "none",
+							borderBottom: "2px dashed rgba(255,255,255,0.4)",
+							outline: "none",
+							color: "inherit",
+							padding: "4px 2px 8px",
+						}}
+					/>
 				</div>
 			</div>
 		</div>
@@ -274,7 +288,9 @@ function SearchHitRow({
 					textAlign: "left",
 					background: "none",
 					border: "none",
-					borderBottom: "2px dotted rgba(59,47,107,0.25)",
+					// A light-on-dark dotted rule, not the usual dark-on-light one — this
+					// row sits inside the crystal ball's dark glass, not a panelBody.
+					borderBottom: "2px dotted rgba(255,255,255,0.25)",
 					font: "inherit",
 					padding: "8px 4px",
 					cursor: "pointer",

@@ -79,6 +79,11 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 210, 63, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 210, 63, 0.25);
 	--cabn-editor-gutter-border: rgba(59, 47, 107, 0.35);
+	/* A subtle "recessed panel" tint (run log, satchel lining) — a text-colored
+	   wash at low opacity. Day = dark ink on the near-white panel; night needs
+	   the opposite direction (white wash on the near-black panel) or it reads
+	   as invisible/muddy against the new dark panelBody. */
+	--cabn-inset-tint: rgba(59, 47, 107, 0.08);
 	font-family: var(--cabn-font-display);
 	color: var(--cabn-text);
 }
@@ -87,6 +92,7 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 207, 77, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 207, 77, 0.25);
 	--cabn-editor-gutter-border: rgba(34, 26, 77, 0.35);
+	--cabn-inset-tint: rgba(255, 255, 255, 0.06);
 }
 
 /* ================= flat pixel panel (Pokemon B/W textbox-ish), STYLE.md "Frame" ================= */
@@ -111,7 +117,13 @@ const PIXEL_THEME_CSS = `
 
 .cabn-btn {
 	font-family: var(--cabn-font-display); font-size: 12px; padding: 7px 16px; border-radius: 10px;
-	border: 3px solid var(--cabn-border-outer); cursor: pointer; color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); cursor: pointer;
+	/* Fixed dark ink, not var(--cabn-text) — every variant below fills with a
+	   bright candy accent that barely changes between day/night (see
+	   pixelThemeTokens.ts's comment on why accent-* stayed put), so the label
+	   needs to stay dark in both themes too; the near-white night text token
+	   would be unreadable on top of a bright yellow/green/pink button. */
+	color: #201a3d;
 	box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
 }
 .cabn-btn:active { box-shadow: 1px 1px 0 rgba(0,0,0,0.2); transform: translate(2px, 2px); }
@@ -143,6 +155,11 @@ const PIXEL_THEME_CSS = `
 	100% { opacity: 0; transform: translate(var(--cabn-tx), var(--cabn-ty)) scale(0.3); }
 }
 @keyframes cabn-burst-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+/* Shared reduced-motion fallback for every literal-tool-screen open animation
+   below (crystal ball/spyglass/satchel/spellbook/wand-cast) — plain fade in,
+   no scale/rotate/clip-path, per the M10 plan's "reduced motion falls back to
+   a fade" requirement for each of them. */
+@keyframes cabn-fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
 /* Reduced-motion default: fade in place, no radiating translate/scale — same "reduced by default, enhanced under :no-preference" shape mockup.html established. */
 .cabn-effect-burst.play .cabn-spark { animation: cabn-burst-fade 500ms ease-out forwards; }
 
@@ -157,12 +174,9 @@ const PIXEL_THEME_CSS = `
 .cabn-hotbar-slot img { width: 40px; height: 40px; object-fit: contain; position: relative; z-index: 1; image-rendering: pixelated; }
 .cabn-hotbar-slot .cabn-key { position: relative; z-index: 1; font-size: 10px; color: var(--cabn-text-secondary); margin-top: 1px; font-family: var(--cabn-font-display); }
 .cabn-hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 0 0 0 3px var(--cabn-accent-yellow); transform: translateY(-3px); }
-.cabn-hotbar-slot .cabn-badge {
-	position: absolute; top: -6px; right: -6px; z-index: 2;
-	background: var(--cabn-accent-pink); color: var(--cabn-text); border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
-	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
-	font-family: var(--cabn-font-display);
-}
+/* .cabn-badge itself (shared with the satchel's closed-count badge) is defined
+   in the bag section below — kept next to its other consumer rather than
+   duplicated here. */
 .cabn-hotbar-slot::after {
 	content: ""; position: absolute; inset: -60%; z-index: 1; pointer-events: none;
 	background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.65) 50%, transparent 58%);
@@ -172,18 +186,41 @@ const PIXEL_THEME_CSS = `
 	.cabn-hotbar-slot:hover { filter: brightness(1.15); }
 }
 
-/* ================= spyglass — lens vignette ================= */
-.cabn-spyglass-frame { width: 260px; position: relative; overflow: hidden; }
-.cabn-spyglass-frame::before {
-	content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 2;
-	background: radial-gradient(circle at center, transparent 45%, rgba(10,8,30,0.65) 100%);
+/* ================= spyglass — round lens, brass rim ================= */
+/* The rim: a literal brass ring (radial gradient standing in for a
+   metal bevel — no photographic texture, per the flat-pixel-RPG mandate)
+   sized to fit a circular lens inside it, not a rectangular frame. */
+.cabn-spyglass-frame {
+	position: relative; width: 300px; height: 300px; border-radius: 50%; padding: 14px;
+	display: flex; align-items: center; justify-content: center;
+	background: radial-gradient(circle at 35% 30%, #e6c98a 0%, #b8903f 45%, #6b4d1e 85%);
+	box-shadow: 0 0 0 4px var(--cabn-border-outer), 5px 5px 0 rgba(0,0,0,0.25), inset 0 0 0 3px rgba(255,255,255,0.35);
 }
 .cabn-spyglass-frame::after {
-	content: ""; position: absolute; inset: -40%; pointer-events: none; z-index: 2;
-	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.5) 50%, transparent 65%);
+	content: ""; position: absolute; inset: 6%; border-radius: 50%; pointer-events: none; z-index: 3;
+	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.45) 50%, transparent 65%);
 }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-spyglass-frame::after { animation: cabn-sheen 2.6s linear infinite; }
+}
+/* The lens itself: circular, clip-path iris-opens on mount — overrides
+   .cabn-panel's rectangular border-radius/padding/box-shadow, keeps its
+   background/color/font tokens. */
+.cabn-spyglass-lens {
+	width: 100%; height: 100%; border-radius: 50%; border: none; padding: 26px 22px;
+	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), inset 0 0 28px rgba(0,0,0,0.3);
+	display: flex; flex-direction: column; overflow: hidden;
+	clip-path: circle(50% at 50% 50%);
+}
+@keyframes cabn-iris-open {
+	0% { clip-path: circle(0% at 50% 50%); }
+	100% { clip-path: circle(50% at 50% 50%); }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-spyglass-lens { animation: cabn-iris-open 380ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-spyglass-lens { animation: cabn-fade-in 180ms ease-out; }
 }
 
 /* ================= crystal orb search — violet/cyan/pink mist ================= */
@@ -217,20 +254,161 @@ const PIXEL_THEME_CSS = `
 	.cabn-orb-mist.two { animation: cabn-swirl 14s linear infinite reverse; }
 }
 
-/* ================= bag tray — open satchel interior ================= */
-.cabn-bag-frame { position: relative; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-.cabn-bag-frame::before {
-	content: ""; position: absolute; inset: 6px; border-radius: 8px; pointer-events: none;
-	background: radial-gradient(ellipse at 50% 0%, rgba(120,70,30,0.32), transparent 70%);
-	border: 2px dashed rgba(120,70,30,0.45);
+/* The literal ball itself: a glass sphere (not a rectangular panel) results
+   swirl inside of, on top of a plinth holding the search input. Fixed light
+   text/dividers regardless of day/night — the glass interior is always dark,
+   same reasoning as the ribbon banners' always-white text. */
+.cabn-crystal-ball {
+	position: relative; width: min(420px, 86vw); height: min(420px, 86vw); border-radius: 50%;
+	background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.06) 26%, rgba(58,35,95,0.6) 62%, rgba(18,10,36,0.92) 100%);
+	box-shadow: 0 0 46px 12px rgba(138,111,214,0.5), inset 0 0 46px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.22);
+	overflow: hidden; display: flex; color: #f3edff;
 }
-.cabn-bag-slot {
-	position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between;
-	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 8px;
-	padding: 5px 10px; font-size: 11px; color: var(--cabn-text); max-width: 220px;
+.cabn-crystal-ball-mist {
+	position: absolute; inset: 10%; border-radius: 50%;
+	background: conic-gradient(from 0deg, var(--cabn-accent-violet), var(--cabn-accent-cyan), var(--cabn-accent-pink), var(--cabn-accent-violet));
+	opacity: 0.28; filter: blur(30px);
 }
-.cabn-bag-slot.filled { box-shadow: 0 0 0 2px var(--cabn-accent-yellow); }
-.cabn-bag-slot .cabn-x { opacity: 0.55; cursor: pointer; }
+.cabn-crystal-ball-mist.two { inset: 22%; opacity: 0.18; filter: blur(20px); }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-crystal-ball-mist { animation: cabn-swirl 9s linear infinite; }
+	.cabn-crystal-ball-mist.two { animation: cabn-swirl 12s linear infinite reverse; }
+}
+.cabn-crystal-ball-content {
+	position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column;
+	padding: 40px 34px 18px; overflow: auto; font-size: 13px;
+}
+.cabn-crystal-plinth {
+	margin-top: -20px; width: min(280px, 70vw); padding: 16px 20px 10px; color: #f3edff;
+	background: linear-gradient(180deg, #574aa8, #2c2560);
+	clip-path: polygon(10% 0, 90% 0, 100% 100%, 0% 100%);
+	box-shadow: 0 6px 0 rgba(0,0,0,0.3);
+}
+@keyframes cabn-ball-rise {
+	0% { transform: translateY(36px) scale(0.82); opacity: 0; box-shadow: 0 0 0 0 rgba(138,111,214,0), inset 0 0 46px rgba(0,0,0,0.45), inset 0 0 0 4px rgba(255,255,255,0.22); }
+	70% { opacity: 1; }
+	100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-crystal-ball { animation: cabn-ball-rise 420ms cubic-bezier(0.22, 0.8, 0.3, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-crystal-ball { animation: cabn-fade-in 180ms ease-out; }
+}
+
+/* ================= bag — closed badge + literal open satchel ================= */
+.cabn-satchel-closed {
+	position: relative; width: 56px; height: 56px; padding: 8px; cursor: pointer;
+	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 3px 3px 0 rgba(0,0,0,0.2);
+	display: flex; align-items: center; justify-content: center;
+}
+.cabn-satchel-closed img { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; }
+/* Reused by both the hotbar's per-tool count badge and this satchel's slot count. */
+.cabn-badge {
+	position: absolute; top: -6px; right: -6px; z-index: 2;
+	background: var(--cabn-accent-pink); color: #201a3d; border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
+	font-family: var(--cabn-font-display);
+}
+.cabn-satchel-open {
+	position: relative; perspective: 420px; padding: 18px 16px 14px;
+	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-radius: 4px 14px 14px 14px;
+	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), 5px 5px 0 rgba(0,0,0,0.22);
+	transform-origin: bottom left;
+}
+.cabn-satchel-flap {
+	position: absolute; top: -24px; left: 12px; width: 76px; height: 30px;
+	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-bottom: none;
+	border-radius: 16px 16px 0 0; transform-origin: bottom center; transform-style: preserve-3d;
+}
+@keyframes cabn-satchel-pop { 0% { transform: scale(0.85) translateY(10px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes cabn-flap-open { 0% { transform: rotateX(0deg); } 100% { transform: rotateX(-125deg); } }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-satchel-open { animation: cabn-satchel-pop 260ms ease-out; }
+	.cabn-satchel-flap { animation: cabn-flap-open 320ms ease-out 60ms both; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-satchel-open { animation: cabn-fade-in 180ms ease-out; }
+	.cabn-satchel-flap { transform: rotateX(-125deg); }
+}
+/* Each grabbed slot as a physical drawstring pouch, not a plain row. */
+.cabn-bag-pouch {
+	position: relative; display: flex; align-items: center; gap: 6px;
+	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 6px 6px 14px 14px;
+	padding: 9px 10px 6px; font-size: 11px; color: var(--cabn-text); max-width: 220px;
+}
+.cabn-bag-pouch::before {
+	content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+	width: 18px; height: 7px; border-radius: 4px; background: var(--cabn-border-outer);
+}
+.cabn-bag-pouch-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border: none; color: inherit; font: inherit; cursor: pointer; }
+
+/*
+ * ================= spellbook — open-book frame =================
+ * The editor+run screen as a literal open tome (playtest feedback: "editing/
+ * code running feels a little clunky... we want the editors to feel part of
+ * the world but still be fully functional") — a page spread with a spine
+ * down the middle and a ribbon bookmark, flat pixel-RPG style throughout, no
+ * wood/parchment texture (explicitly rejected in review). Opens with a fast
+ * scaleX+rotateY "cover falling open" pop, comfortably under 500ms; reduced
+ * motion falls back to a plain fade via the shared cabn-fade-in keyframe.
+ */
+.cabn-spellbook-spread {
+	position: relative; flex: 1; min-height: 0; display: flex; perspective: 1600px;
+	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-radius: 14px;
+	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), 8px 8px 0 rgba(0,0,0,0.25);
+	overflow: hidden; transform-origin: left center;
+}
+.cabn-spellbook-page { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.cabn-spellbook-page.left { padding: 0; }
+.cabn-spellbook-page.right { padding: 12px 16px; background: var(--cabn-panel-body-alt); }
+.cabn-spellbook-page-header {
+	position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+	padding: 8px 16px; font-size: 13px;
+}
+.cabn-spellbook-page.left .cabn-spellbook-page-header { background: var(--cabn-border-outer); color: #fff; }
+.cabn-spellbook-page.right .cabn-spellbook-page-header { padding: 0 0 6px; font-weight: bold; }
+.cabn-spellbook-spine {
+	position: relative; flex: none; width: 12px;
+	background: linear-gradient(90deg, rgba(0,0,0,0.28), rgba(0,0,0,0.04) 45%, rgba(0,0,0,0.04) 55%, rgba(0,0,0,0.28));
+	z-index: 2; pointer-events: none;
+}
+.cabn-spellbook-ribbon {
+	position: absolute; top: -6px; left: 26%; width: 20px; height: 44px; z-index: 3; pointer-events: none;
+	background: var(--cabn-accent-pink); clip-path: polygon(0 0, 100% 0, 100% 82%, 50% 100%, 0 82%);
+	box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+}
+.cabn-spellbook-controls {
+	display: flex; align-items: center; justify-content: space-between; gap: 12px;
+	padding: 8px 4px 0; flex-wrap: wrap;
+}
+/* A readable chip, not bare text on the world behind it — floating text over
+   grass/night-sky backgrounds tested poorly for contrast either theme. */
+.cabn-spellbook-status {
+	font-size: 11px; background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 2px solid var(--cabn-border-outer); border-radius: 10px; padding: 5px 10px;
+}
+.cabn-spellbook-errors { font-size: 12px; }
+.cabn-spellbook-error-row {
+	width: 100%; display: flex; gap: 8px; text-align: left; background: none; border: none;
+	border-bottom: 2px dotted var(--cabn-border-outer); font: inherit; padding: 5px 2px; cursor: pointer; color: inherit;
+}
+.cabn-spellbook-error-row:disabled { cursor: default; opacity: 0.6; }
+.cabn-spellbook-error-line {
+	flex: none; min-width: 22px; text-align: right; font-family: var(--cabn-font-mono);
+	color: var(--cabn-text-secondary);
+}
+@keyframes cabn-book-open {
+	0% { transform: scaleX(0.1) rotateY(40deg); opacity: 0; }
+	100% { transform: scaleX(1) rotateY(0deg); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-spellbook-spread { animation: cabn-book-open 420ms cubic-bezier(0.22, 0.8, 0.3, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-spellbook-spread { animation: cabn-fade-in 180ms ease-out; }
+}
 
 /*
  * ================= editor (quill) — ink blot + drifting glyphs =================
@@ -285,21 +463,40 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-victory-toast.play .cabn-confetti { animation: cabn-burst-fade 500ms ease-out forwards; }
 
-/* ================= wand / run — rune scroll ================= */
+/* ================= wand / run — literal spell-circle cast ================= */
 .cabn-rune-ring { position: absolute; inset: -26%; border-radius: 50%; border: 3px dashed var(--cabn-accent-violet); opacity: 0.55; }
 .cabn-rune-ring.two { inset: -14%; border-color: var(--cabn-accent-cyan); border-width: 2px; }
 .cabn-rune-ring.three { inset: -36%; border-color: var(--cabn-accent-yellow); border-width: 2px; opacity: 0.4; }
 .cabn-rune-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--cabn-accent-yellow); box-shadow: 0 0 8px 2px var(--cabn-accent-yellow); }
+/* The wand icon itself, floating faintly behind the console — the literal
+   object this screen is "opening", same idea as the crystal ball/spyglass/
+   satchel screens centering their own tool icon. Low opacity + no pointer
+   events: purely atmospheric, never competes with the run log for attention. */
+.cabn-wand-cast-icon {
+	position: absolute; top: 50%; left: 50%; width: 96px; height: 96px;
+	transform: translate(-50%, -50%); opacity: 0.16; pointer-events: none;
+	image-rendering: pixelated; z-index: 0;
+}
+@keyframes cabn-wand-cast {
+	0% { transform: scale(0.2) rotate(-25deg); opacity: 0; }
+	60% { transform: scale(1.06) rotate(4deg); opacity: 1; }
+	100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.cabn-wand-cast { animation: cabn-wand-cast 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2); transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+	.cabn-wand-cast { animation: cabn-fade-in 180ms ease-out; }
+}
 .cabn-run-line-current {
 	background: rgba(255,210,63,0.35); border-left: 4px solid var(--cabn-accent-yellow);
 	padding: 2px 8px; font-family: var(--cabn-font-mono); font-size: 12px; border-radius: 4px;
 }
-.cabn-run-log { background: rgba(59,47,107,0.08); padding: 6px 8px; font-family: var(--cabn-font-mono); font-size: 11px; border-radius: 6px; }
+.cabn-run-log { background: var(--cabn-inset-tint); padding: 6px 8px; font-family: var(--cabn-font-mono); font-size: 11px; border-radius: 6px; }
 .cabn-speed-btn {
 	font-family: var(--cabn-font-display); font-size: 11px; border: 2px solid var(--cabn-border-outer);
-	padding: 3px 9px; background: #fff; cursor: pointer; color: var(--cabn-text); border-radius: 6px;
+	padding: 3px 9px; background: var(--cabn-panel-body-alt); cursor: pointer; color: var(--cabn-text); border-radius: 6px;
 }
-.cabn-speed-btn.active { background: var(--cabn-accent-yellow); }
+/* Same fixed-dark-ink reasoning as .cabn-btn above — "active" swaps the fill for the bright accent. */
+.cabn-speed-btn.active { background: var(--cabn-accent-yellow); color: #201a3d; }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-rune-ring { animation: cabn-spin-slow 7s linear infinite; }
 	.cabn-rune-ring.two { animation-direction: reverse; animation-duration: 9s; }

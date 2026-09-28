@@ -63,6 +63,15 @@ export interface CabnState {
 	searchOpen: boolean;
 	/** True while the spyglass ("ls") panel is showing the active cluster's portals. */
 	spyglassOpen: boolean;
+	/**
+	 * True while the satchel's full contents are shown as a literal open-bag
+	 * panel (BagTray) — a React-only UI toggle, unlike spyglassOpen/searchOpen:
+	 * grabbing a new slot (the "B" hotkey/tool:bag-use, FileScene-owned
+	 * selection mechanic) never sets this, it only ever appends to bagSlots.
+	 * This just controls whether the small closed-satchel badge or the big
+	 * open-satchel view is what's currently rendered.
+	 */
+	bagOpen: boolean;
 	/** Base URL (dir) of the currently-loaded world's manifest — the orb needs it to fetch that world's search-index.json lazily. */
 	activeWorldBase: string | null;
 	portals: PortalSummary[];
@@ -94,6 +103,7 @@ export interface CabnActions {
 	setPlayerPos(pos: Position): void;
 	setSearchOpen(open: boolean): void;
 	setSpyglassOpen(open: boolean): void;
+	setBagOpen(open: boolean): void;
 	setActiveWorldBase(base: string | null): void;
 	setPortals(portals: PortalSummary[]): void;
 	addBagSlot(slot: BagSlot): void;
@@ -136,6 +146,7 @@ const initialState: CabnState = {
 	playerPos: { x: 0, y: 0 },
 	searchOpen: false,
 	spyglassOpen: false,
+	bagOpen: false,
 	activeWorldBase: null,
 	portals: [],
 	bagSlots: [],
@@ -166,6 +177,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setPlayerPos: (playerPos) => set({ playerPos }),
 		setSearchOpen: (searchOpen) => set({ searchOpen }),
 		setSpyglassOpen: (spyglassOpen) => set({ spyglassOpen }),
+		setBagOpen: (bagOpen) => set({ bagOpen }),
 		setActiveWorldBase: (activeWorldBase) => set({ activeWorldBase }),
 		setPortals: (portals) => set({ portals }),
 		addBagSlot: (slot) => set({ bagSlots: addBagSlot(get().bagSlots, slot) }),

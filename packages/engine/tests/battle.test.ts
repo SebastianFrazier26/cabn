@@ -1,6 +1,6 @@
 import type { PortalFile } from "@cabn/world-schema";
 import { describe, expect, it } from "vitest";
-import { checkMonsterFixed } from "../src/systems/battle.js";
+import { annotateFileLive, checkMonsterFixed } from "../src/systems/battle.js";
 
 function file(path: string, overrides: Partial<PortalFile> = {}): PortalFile {
 	return {
@@ -146,5 +146,25 @@ describe("checkMonsterFixed", () => {
 				worldFiles,
 			),
 		).toBe(true);
+	});
+});
+
+describe("annotateFileLive", () => {
+	it("aggregates every per-file annotator's hits against one buffer", () => {
+		const worldFiles = new Set(["src/a.ts"]);
+		const results = annotateFileLive(
+			file("src/a.ts"),
+			'import { helper } from "./missing.js"; // TODO: fix\nconst x = (1 + 2\n',
+			worldFiles,
+		);
+		const codes = results.map((r) => r.code).sort();
+		expect(codes).toEqual(["IoError", "NullTypeError", "WispNote"]);
+	});
+
+	it("returns no results for a clean file", () => {
+		const worldFiles = new Set(["src/a.ts"]);
+		expect(
+			annotateFileLive(file("src/a.ts"), "export const x = 1;\n", worldFiles),
+		).toEqual([]);
 	});
 });

@@ -59,27 +59,38 @@ export const DAY_TOKENS: PixelThemeTokens = {
 	editorGutterText: 0x55507f,
 };
 
+// 2026-09-28: was previously a near-white lavender panel (0xeeeaff) with dark
+// text — a re-tinted *light* theme wearing night colors, not an actual dark
+// mode (playtest feedback: "the UI night theme must read as a true dark
+// mode"). Now the panel itself goes dark and the text/syntax set flips to
+// light-on-dark, computed fresh (not just eyeballed) against the new
+// panelBody/panelBodyAlt via the same contrastRatio() editorThemeContrast.test.ts
+// uses, so every pair here is proven >=4.5:1 before it shipped. Accent-* stay
+// the same vivid tones the old night theme already used (they were never the
+// problem — only the panel/text pairing was) except where noted.
 export const NIGHT_TOKENS: PixelThemeTokens = {
-	panelBody: 0xeeeaff,
-	panelBodyAlt: 0xded6ff,
-	borderOuter: 0x221a4d,
+	panelBody: 0x1c1836,
+	panelBodyAlt: 0x140f28,
+	// Brightened from a near-black 0x221a4d so the panel's own border is still
+	// visible against the new dark panelBody (a border needs to read as an
+	// edge, not vanish into the fill it's outlining).
+	borderOuter: 0x554aa0,
 	borderHighlight: 0xffd23f,
-	text: 0x1c1640,
-	textSecondary: 0x635ca8,
+	text: 0xf1ecff,
+	textSecondary: 0xb7aee0,
 	accentYellow: 0xffcf4d,
 	accentGreen: 0x46d19a,
 	accentPink: 0xff4fa0,
 	accentOrange: 0xff7a45,
 	accentCyan: 0x46c9e0,
 	accentViolet: 0x7a5fe0,
-	syntaxKeyword: 0xc23700,
-	syntaxString: 0x1b7753,
-	syntaxNumber: 0x6d4fe1,
-	syntaxFunction: 0x137384,
-	syntaxType: 0xd10060,
-	syntaxAttribute: 0x886300,
-	// Distinct from plain textSecondary (unlike the day theme, where
-	// textSecondary itself already clears 4.5:1 against panelBodyAlt) —
-	// textSecondary alone only measures 4.18:1 here, just under AA.
-	editorGutterText: 0x5c55a0,
+	// Lightened variants of the accents, not darkened (opposite technique from
+	// DAY_TOKENS) — a near-black panel needs bright text, not dark.
+	syntaxKeyword: 0xff9e5c,
+	syntaxString: 0x8fe3a0,
+	syntaxNumber: 0xc3b2ff,
+	syntaxFunction: 0x7fe6f0,
+	syntaxType: 0xff9fd0,
+	syntaxAttribute: 0xffe28a,
+	editorGutterText: 0xa89fd8,
 };
