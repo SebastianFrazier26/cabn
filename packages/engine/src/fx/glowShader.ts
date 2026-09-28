@@ -55,6 +55,17 @@ void main() {
 
 	vec3 color = base.rgb + bloom * bloomIntensity;
 
+	// Soft-clip: subtract any over-1.0 overflow from every channel equally,
+	// rather than letting the GPU hard-clip each channel independently. A
+	// hard per-channel clip is what turned an already-bright curated tone
+	// (e.g. the wizard tower's pale-blue window) into flat white once bloom
+	// pushed it over 1.0 — every channel saturates to the same 1.0 ceiling,
+	// which is indistinguishable from pure white regardless of the original
+	// hue. Subtracting the overflow keeps the channels' relative differences
+	// (so the highlight stays tinted) while still bringing the peak back to 1.0.
+	float peak = max(max(color.r, color.g), color.b);
+	color -= max(peak - 1.0, 0.0);
+
 	float dist = length(outTexCoord - 0.5) * 2.0;
 	float vignette = smoothstep(vignetteRadius, 1.0, dist) * vignetteStrength;
 	color *= 1.0 - vignette;

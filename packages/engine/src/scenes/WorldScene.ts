@@ -11,6 +11,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
 	ASSET_KEYS,
+	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
 } from "../assetPaths.js";
@@ -19,7 +20,10 @@ import type { CabnStore } from "../bridge/store.js";
 import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { bakeClusterGround } from "../render/groundBaker.js";
 import { addHoverBob, createMonsterSprite } from "../render/monsterSprite.js";
+import { bakePaths, type PathSegment } from "../render/pathBaker.js";
+import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -28,6 +32,7 @@ import {
 	type PlayerTextures,
 	updatePlayerMovement,
 } from "../render/playerController.js";
+import { placeProps } from "../render/propPlacement.js";
 import {
 	BONFIRE_SCALE,
 	CABINET_SCALE,
@@ -56,7 +61,8 @@ import {
 	withPlayerPosition,
 	withVisitedCluster,
 } from "../systems/save.js";
-import { themeFromSeed } from "../systems/theme.js";
+import type { ScatterExclusion } from "../systems/scatter.js";
+import { type Theme, themeFromSeed } from "../systems/theme.js";
 import {
 	type AssetAvailability,
 	BONFIRE_IDLE_ANIM,
@@ -93,6 +99,19 @@ const PORTAL_ARCH_DISPLAY_SIZE = PORTAL_ARCH_FRAME_SIZE * PORTAL_SCALE;
 function groundRadius(cluster: Cluster): number {
 	return 130 + Math.min(cluster.portalIds.length, 40) * 3;
 }
+
+// Matches the old fillEllipse(radius*2, radius*1.3) aspect ratio (Phaser's
+// fillEllipse takes full width/height, so radiusY was always 0.65 * radiusX)
+// — kept so the tiled ground reads the same footprint the ellipse did.
+const GROUND_RADIUS_Y_RATIO = 0.65;
+const DECALS_PER_CLUSTER = 14;
+const PROPS_PER_CLUSTER = 3;
+const PORTAL_EXCLUSION_RADIUS = 44;
+const SPAWN_EXCLUSION_RADIUS = 56;
+const PATH_CORRIDOR_EXCLUSION_RADIUS = 26;
+const PATH_CORRIDOR_SAMPLE_SPACING = 40;
+/** Subtle per-world identity tint over the tiled ground — a low-alpha overlay rather than Phaser's multiplicative sprite tint, which would recolor the tile art itself instead of just washing over it. */
+const GROUND_THEME_TINT_ALPHA = 0.12;
 
 export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
@@ -142,6 +161,9 @@ export class WorldScene extends Phaser.Scene {
 	private previewMaskShape!: Phaser.GameObjects.Graphics;
 	private portalsInRange = new Set<string>();
 
+	/** One theme per world (see drawClusters' doc comment) — computed once in create() so drawGround's ground-tint overlay and drawClusters' cabinet/bonfire tint always agree. */
+	private theme!: Theme;
+
 	/** Non-null while a tool-triggered auto-walk (spyglass/orb result click) is in flight — suppresses WASD so it doesn't fight the tween. */
 	private autoWalkTween: Phaser.Tweens.Tween | null = null;
 
@@ -177,14 +199,21 @@ export class WorldScene extends Phaser.Scene {
 
 		this.worldId = computeWorldId(this.manifest.meta);
 		this.save = loadSave(this.worldId);
+		this.theme = themeFromSeed(this.manifest.meta.themeSeed ?? 0);
 
-		this.drawGround();
+		// Portal positions and the player spawn point both have to exist before
+		// drawGround() runs — its decal/prop scatter must exclude them — so
+		// they're computed (not yet rendered) ahead of everything else.
+		this.computePortalPositions();
+		const spawn = this.resolveSpawnPos();
+
+		this.drawGround(spawn);
 		this.drawPaths();
 		this.drawClusters();
 		this.drawPortals();
 		this.drawEditedMarkers();
 		this.drawMonsters();
-		this.createPlayer();
+		this.createPlayer(spawn);
 		this.createArchPreview();
 		this.setupInput();
 		this.setupCamera();
@@ -267,35 +296,182 @@ export class WorldScene extends Phaser.Scene {
 		});
 	};
 
-	private drawGround(): void {
-		const g = this.add.graphics().setDepth(0);
-		for (const cluster of this.manifest.clusters) {
-			g.fillStyle(PALETTE.biome[cluster.biome], 0.35);
-			g.fillEllipse(
+	/** manifest.paths touching this cluster, sampled near this cluster's own ground so decals/props never land on the dirt track leading out of it — reuses stampPointsAlongSegment purely as a "points along a line" sampler, nothing drawn here. */
+	private pathExclusionsForCluster(cluster: Cluster): ScatterExclusion[] {
+		const exclusions: ScatterExclusion[] = [];
+		const radius = groundRadius(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
+		for (const path of this.manifest.paths) {
+			if (path.from !== cluster.id && path.to !== cluster.id) continue;
+			const otherId = path.from === cluster.id ? path.to : path.from;
+			const other = this.clustersById.get(otherId);
+			if (!other) continue;
+			for (const point of stampPointsAlongSegment(
+				cluster.pos,
+				other.pos,
+				PATH_CORRIDOR_SAMPLE_SPACING,
+			)) {
+				if (
+					Phaser.Math.Distance.Between(
+						point.x,
+						point.y,
+						cluster.pos.x,
+						cluster.pos.y,
+					) <= radius
+				) {
+					exclusions.push({
+						x: point.x,
+						y: point.y,
+						radius: PATH_CORRIDOR_EXCLUSION_RADIUS,
+					});
+				}
+			}
+		}
+		return exclusions;
+	}
+
+	private clusterExclusions(
+		cluster: Cluster,
+		spawn: Position,
+	): ScatterExclusion[] {
+		const exclusions = this.pathExclusionsForCluster(cluster);
+		for (const portalId of cluster.portalIds) {
+			const pos = this.portalWorldPos.get(portalId);
+			if (pos)
+				exclusions.push({
+					x: pos.x,
+					y: pos.y,
+					radius: PORTAL_EXCLUSION_RADIUS,
+				});
+		}
+		if (
+			Phaser.Math.Distance.Between(
+				spawn.x,
+				spawn.y,
 				cluster.pos.x,
 				cluster.pos.y,
-				groundRadius(cluster) * 2,
-				groundRadius(cluster) * 1.3,
+			) <=
+			groundRadius(cluster) + SPAWN_EXCLUSION_RADIUS
+		) {
+			exclusions.push({
+				x: spawn.x,
+				y: spawn.y,
+				radius: SPAWN_EXCLUSION_RADIUS,
+			});
+		}
+		return exclusions;
+	}
+
+	/**
+	 * Tiled biome ground + scattered decals, baked per cluster (see
+	 * groundBaker.ts), with the old tinted-ellipse fill as a full fallback
+	 * when the batch-1 art didn't load — never a half-tiled scene. Props
+	 * (trees, fences, etc.) are placed here too since they share the same
+	 * per-cluster exclusion zones, even though they render as their own
+	 * sprites rather than being baked (see propPlacement.ts's doc comment).
+	 */
+	private drawGround(spawn: Position): void {
+		if (!this.availability.worldArt) {
+			const g = this.add.graphics().setDepth(0);
+			for (const cluster of this.manifest.clusters) {
+				g.fillStyle(PALETTE.biome[cluster.biome], 0.35);
+				g.fillEllipse(
+					cluster.pos.x,
+					cluster.pos.y,
+					groundRadius(cluster) * 2,
+					groundRadius(cluster) * 1.3,
+				);
+			}
+			return;
+		}
+
+		const tintOverlay = this.add.graphics().setDepth(0.5);
+		for (const cluster of this.manifest.clusters) {
+			const radiusX = groundRadius(cluster);
+			const radiusY = radiusX * GROUND_RADIUS_Y_RATIO;
+			const exclusions = this.clusterExclusions(cluster, spawn);
+
+			bakeClusterGround({
+				scene: this,
+				clusterId: cluster.id,
+				biomeSheetKey: biomeTileSheetKey(cluster.biome),
+				centerX: cluster.pos.x,
+				centerY: cluster.pos.y,
+				radiusX,
+				radiusY,
+				exclusions,
+				decalCount: DECALS_PER_CLUSTER,
+				seed: 20260928,
+			}).setDepth(0);
+
+			tintOverlay.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
+			tintOverlay.fillEllipse(
+				cluster.pos.x,
+				cluster.pos.y,
+				radiusX * 2,
+				radiusY * 2,
 			);
+
+			placeProps({
+				scene: this,
+				clusterId: cluster.id,
+				centerX: cluster.pos.x,
+				centerY: cluster.pos.y,
+				radiusX,
+				radiusY,
+				exclusions,
+				count: PROPS_PER_CLUSTER,
+				depth: 2,
+			});
 		}
 	}
 
 	private drawPaths(): void {
-		const g = this.add.graphics().setDepth(1);
-		g.lineStyle(2, PALETTE.trail, 0.8);
+		if (!this.availability.worldArt) {
+			const g = this.add.graphics().setDepth(1);
+			g.lineStyle(2, PALETTE.trail, 0.8);
+			for (const path of this.manifest.paths) {
+				const from = this.clustersById.get(path.from);
+				const to = this.clustersById.get(path.to);
+				if (!from || !to) continue; // schema guarantees this in a valid manifest; guard keeps a corrupt bundle from crashing the scene
+				dashedLine(g, from.pos, to.pos);
+			}
+			return;
+		}
+
+		const segments: PathSegment[] = [];
+		const xs: number[] = [];
+		const ys: number[] = [];
 		for (const path of this.manifest.paths) {
 			const from = this.clustersById.get(path.from);
 			const to = this.clustersById.get(path.to);
-			if (!from || !to) continue; // schema guarantees this in a valid manifest; guard keeps a corrupt bundle from crashing the scene
-			dashedLine(g, from.pos, to.pos);
+			if (!from || !to) continue;
+			segments.push({
+				id: `${path.from}::${path.to}`,
+				from: from.pos,
+				to: to.pos,
+			});
+			xs.push(from.pos.x, to.pos.x);
+			ys.push(from.pos.y, to.pos.y);
 		}
+		if (segments.length === 0) return;
+
+		const margin = 200; // room for the widest stamp so a path never clips at the bake canvas edge
+		bakePaths(
+			this,
+			{
+				minX: Math.min(...xs) - margin,
+				minY: Math.min(...ys) - margin,
+				maxX: Math.max(...xs) + margin,
+				maxY: Math.max(...ys) + margin,
+			},
+			segments,
+		).setDepth(1);
 	}
 
+	// Same seed for every cabinet in this world (this.theme, set once in
+	// create()) — a world is one converted project, so it gets one theme, not
+	// one per cluster.
 	private drawClusters(): void {
-		// Same seed for every cabinet in this world — a world is one converted
-		// project, so it gets one theme, not one per cluster.
-		const theme = themeFromSeed(this.manifest.meta.themeSeed ?? 0);
-
 		for (const cluster of this.manifest.clusters) {
 			const isRoot = cluster.path === ".";
 			const sprite = isRoot
@@ -303,7 +479,7 @@ export class WorldScene extends Phaser.Scene {
 				: this.add.image(cluster.pos.x, cluster.pos.y, ASSET_KEYS.cabinet);
 
 			if (!isRoot)
-				sprite.setScale(CABINET_SCALE).setTint(theme.tint).setDepth(2);
+				sprite.setScale(CABINET_SCALE).setTint(this.theme.tint).setDepth(2);
 
 			this.add
 				.text(
@@ -344,18 +520,27 @@ export class WorldScene extends Phaser.Scene {
 		return sprite;
 	}
 
-	private drawPortals(): void {
+	/** Fills portalWorldPos without creating any sprites — drawGround()'s scatter exclusions need real portal positions before drawPortals() itself runs (see create()'s ordering comment). */
+	private computePortalPositions(): void {
 		for (const cluster of this.manifest.clusters) {
 			const count = cluster.portalIds.length;
 			const radius = 90 + Math.min(count, 40) * 4;
 			cluster.portalIds.forEach((portalId, index) => {
 				const angle =
 					(Phaser.Math.PI2 * index) / Math.max(count, 1) - Math.PI / 2;
-				const pos: Position = {
+				this.portalWorldPos.set(portalId, {
 					x: cluster.pos.x + Math.cos(angle) * radius,
 					y: cluster.pos.y + Math.sin(angle) * radius,
-				};
-				this.portalWorldPos.set(portalId, pos);
+				});
+			});
+		}
+	}
+
+	private drawPortals(): void {
+		for (const cluster of this.manifest.clusters) {
+			cluster.portalIds.forEach((portalId) => {
+				const pos = this.portalWorldPos.get(portalId);
+				if (!pos) return; // computePortalPositions() populates every id from this same manifest — defensive only
 
 				const sprite = this.add.sprite(
 					pos.x,
@@ -487,9 +672,15 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setDefeatedMonsterIds(this.save.defeatedMonsterIds);
 	}
 
-	private createPlayer(): void {
-		const spawn = this.save.playerPositions.world ??
-			this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 };
+	/** Pure computation of where the player starts — split out of createPlayer() so drawGround()'s scatter exclusions can use the same spawn point before any sprite exists (see create()'s ordering comment). */
+	private resolveSpawnPos(): Position {
+		return (
+			this.save.playerPositions.world ??
+			this.manifest.clusters[0]?.pos ?? { x: 0, y: 0 }
+		);
+	}
+
+	private createPlayer(spawn: Position): void {
 		this.playerTextures = {
 			front: ASSET_KEYS.characterIdle,
 			back: this.availability.characterBack

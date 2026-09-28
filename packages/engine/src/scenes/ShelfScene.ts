@@ -7,6 +7,7 @@ import type { CabnStore } from "../bridge/store.js";
 import { attachGlowLifecycle } from "../fx/GlowPipeline.js";
 import { PALETTE, toCssColor } from "../palette.js";
 import { dashedLine } from "../render/dashedLine.js";
+import { bakePaths, type PathSegment } from "../render/pathBaker.js";
 import {
 	createMovementKeys,
 	createPlayer,
@@ -34,6 +35,8 @@ export interface ShelfSceneData {
 const CABIN_RING_RADIUS = 480;
 const CABIN_ENTER_RADIUS = 70;
 const WORLD_MARGIN = 400;
+/** Clear space between the player's physics body and the tower's edge — see playerController.ts's body.setSize(24, 16). */
+const TOWER_SPAWN_CLEARANCE = 24;
 
 interface CabinPlacement {
 	world: ShelfWorldEntry;
@@ -79,9 +82,18 @@ export class ShelfScene extends Phaser.Scene {
 
 	create(): void {
 		this.layoutCabins();
-		this.drawTower();
+		const tower = this.drawTower();
 		this.drawPaths();
 		this.drawCabins();
+
+		// Spawn beside the tower, not on top of it (M10b batch-1 fix — the
+		// tower used to sit at this same (0,0) point the player spawned at).
+		// East of the tower rather than toward the first cabin (due north,
+		// see layoutCabins' angle) so spawning never starts the player
+		// standing in that path's way. Derived from the tower sprite's own
+		// displayWidth rather than a hardcoded offset so the cabinet-fallback
+		// tower (much smaller — see drawTower) still gets a correctly-sized gap.
+		const spawn = { x: tower.displayWidth / 2 + TOWER_SPAWN_CLEARANCE, y: 0 };
 
 		this.playerTextures = {
 			front: ASSET_KEYS.characterIdle,
@@ -89,14 +101,14 @@ export class ShelfScene extends Phaser.Scene {
 				? OPTIONAL_ASSET_KEYS.characterIdleBack
 				: null,
 		};
-		this.player = createPlayer(this, { x: 0, y: 0 }, this.playerTextures);
+		this.player = createPlayer(this, spawn, this.playerTextures);
 		this.movementKeys = createMovementKeys(this);
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("ShelfScene requires keyboard input");
 		this.enterKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.E);
 
 		this.setupCamera();
-		this.store.getState().setPlayerPos({ x: 0, y: 0 });
+		this.store.getState().setPlayerPos(spawn);
 
 		const unsubscribeGlow = attachGlowLifecycle(this, this.store);
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribeGlow);
@@ -118,7 +130,7 @@ export class ShelfScene extends Phaser.Scene {
 		});
 	}
 
-	private drawTower(): void {
+	private drawTower(): Phaser.GameObjects.Image {
 		const available = this.availability.wizardTower;
 		const sprite = this.add.image(
 			0,
@@ -141,12 +153,37 @@ export class ShelfScene extends Phaser.Scene {
 			})
 			.setOrigin(0.5, 0)
 			.setDepth(2);
+
+		return sprite;
 	}
 
 	private drawPaths(): void {
-		const g = this.add.graphics().setDepth(1);
-		g.lineStyle(2, PALETTE.trail, 0.8);
-		for (const cabin of this.cabins) dashedLine(g, { x: 0, y: 0 }, cabin.pos);
+		if (!this.availability.worldArt) {
+			const g = this.add.graphics().setDepth(1);
+			g.lineStyle(2, PALETTE.trail, 0.8);
+			for (const cabin of this.cabins) dashedLine(g, { x: 0, y: 0 }, cabin.pos);
+			return;
+		}
+
+		if (this.cabins.length === 0) return;
+		const xs = this.cabins.map((c) => c.pos.x);
+		const ys = this.cabins.map((c) => c.pos.y);
+		const margin = 200;
+		const segments: PathSegment[] = this.cabins.map((cabin) => ({
+			id: `spoke::${cabin.world.id}`,
+			from: { x: 0, y: 0 },
+			to: cabin.pos,
+		}));
+		bakePaths(
+			this,
+			{
+				minX: Math.min(0, ...xs) - margin,
+				minY: Math.min(0, ...ys) - margin,
+				maxX: Math.max(0, ...xs) + margin,
+				maxY: Math.max(0, ...ys) + margin,
+			},
+			segments,
+		).setDepth(1);
 	}
 
 	private drawCabins(): void {

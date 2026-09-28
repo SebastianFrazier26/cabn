@@ -4,15 +4,28 @@ import {
 	ANIMATED_MONSTER_SPECIES,
 	ASSET_KEYS,
 	ASSET_PATHS,
+	BIOME_TILE_FRAME_SIZE,
 	BONFIRE_FRAME_COUNT,
+	biomeTileSheetKey,
+	biomeTileSheetPath,
+	DECAL_FRAME_SIZE,
+	DECAL_SHEET_KEY,
+	DECAL_SHEET_PATH,
 	MONSTER_GHOST_KEY,
 	MONSTER_GHOST_PATH,
 	monsterFrameKey,
 	monsterFramePath,
 	OPTIONAL_ASSET_KEYS,
 	OPTIONAL_ASSET_PATHS,
+	PATH_STAMP_COUNT,
 	PORTAL_ARCH_FRAME_COUNT,
 	PORTAL_ARCH_FRAME_SIZE,
+	PROP_NAMES,
+	pathStampKey,
+	pathStampPath,
+	propKey,
+	propPath,
+	WORLD_ART_BIOMES,
 } from "../assetPaths.js";
 
 export type PreloadSceneData =
@@ -35,6 +48,8 @@ export interface AssetAvailability {
 	wizardTower: boolean;
 	bonfire: boolean;
 	characterBack: boolean;
+	/** All of: 3 biome tile sheets, the shared decal sheet, 4 path stamps, 10 props — WorldScene/ShelfScene fall back to tinted ellipses/dashed lines entirely if any one piece is missing, rather than a half-tiled scene. */
+	worldArt: boolean;
 }
 
 export class PreloadScene extends Phaser.Scene {
@@ -99,6 +114,27 @@ export class PreloadScene extends Phaser.Scene {
 				monsterFramePath(species, 1),
 			);
 		}
+
+		for (const biome of WORLD_ART_BIOMES) {
+			this.load.spritesheet(
+				biomeTileSheetKey(biome),
+				biomeTileSheetPath(biome),
+				{
+					frameWidth: BIOME_TILE_FRAME_SIZE,
+					frameHeight: BIOME_TILE_FRAME_SIZE,
+				},
+			);
+		}
+		this.load.spritesheet(DECAL_SHEET_KEY, DECAL_SHEET_PATH, {
+			frameWidth: DECAL_FRAME_SIZE,
+			frameHeight: DECAL_FRAME_SIZE,
+		});
+		for (let i = 0; i < PATH_STAMP_COUNT; i++) {
+			this.load.image(pathStampKey(i), pathStampPath(i));
+		}
+		for (const name of PROP_NAMES) {
+			this.load.image(propKey(name), propPath(name));
+		}
 	}
 
 	create(): void {
@@ -141,12 +177,23 @@ export class PreloadScene extends Phaser.Scene {
 			});
 		}
 
+		const worldArtKeys = [
+			...WORLD_ART_BIOMES.map(biomeTileSheetKey),
+			DECAL_SHEET_KEY,
+			...Array.from({ length: PATH_STAMP_COUNT }, (_, i) => pathStampKey(i)),
+			...PROP_NAMES.map(propKey),
+		];
+		const worldArtAvailable = worldArtKeys.every(
+			(key) => !this.missingOptional.has(key),
+		);
+
 		const availability: AssetAvailability = {
 			wizardTower: !this.missingOptional.has(OPTIONAL_ASSET_KEYS.wizardTower),
 			bonfire: bonfireAvailable,
 			characterBack: !this.missingOptional.has(
 				OPTIONAL_ASSET_KEYS.characterIdleBack,
 			),
+			worldArt: worldArtAvailable,
 		};
 
 		if ("shelfManifest" in this.target) {

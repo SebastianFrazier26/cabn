@@ -81,3 +81,58 @@ export const OPTIONAL_ASSET_PATHS = {
 	bonfireFrame: (index: number) =>
 		`${ASSET_BASE}/placeholders/bonfire_frame${index}_soft.png`,
 } as const;
+
+// M10b batch 1 (world art) — see tools/asset-pipeline/src/gen-world-art.ts,
+// which renders all of these, and assets/generated/world-art/tile-index.json
+// for the human-readable frame index this hardcodes. Optional, same
+// graceful-fallback shape as wizardTower/bonfire above: WorldScene/ShelfScene
+// fall back to the old tinted-ellipse-and-dashed-line ground/paths if any
+// piece is missing, rather than a half-tiled scene.
+export const WORLD_ART_BIOMES = ["meadow", "grove", "glade"] as const;
+export type WorldArtBiome = (typeof WORLD_ART_BIOMES)[number];
+
+export const BIOME_TILE_FRAME_SIZE = 32;
+export const BIOME_TILE_SHEET_COLS = 5;
+/** Base grass-variant frames are 0..VARIANT_COUNT-1; edge frames start at VARIANT_COUNT (see groundTiles.ts#tileFrameFor). */
+export const BIOME_TILE_VARIANT_COUNT = 4;
+
+export function biomeTileSheetKey(biome: WorldArtBiome): string {
+	return `biome-tiles-${biome}`;
+}
+export function biomeTileSheetPath(biome: WorldArtBiome): string {
+	return `${ASSET_BASE}/placeholders/${biome}_tiles_soft.png`;
+}
+
+export const DECAL_SHEET_KEY = "world-decals";
+export const DECAL_SHEET_PATH = `${ASSET_BASE}/placeholders/decals_soft.png`;
+export const DECAL_FRAME_SIZE = 24;
+export const DECAL_COUNT = 6;
+
+export const PATH_STAMP_COUNT = 4;
+export function pathStampKey(index: number): string {
+	return `path-stamp-${index}`;
+}
+export function pathStampPath(index: number): string {
+	return `${ASSET_BASE}/placeholders/path_stamp_${index}_soft.png`;
+}
+
+export const PROP_NAMES = [
+	"fence",
+	"hedge",
+	"stone-lantern",
+	"tree-small",
+	"tree-large",
+	"bush",
+	"well",
+	"signpost",
+	"flower-pot",
+	"log-pile",
+] as const;
+export type PropName = (typeof PROP_NAMES)[number];
+
+export function propKey(name: PropName): string {
+	return `prop-${name}`;
+}
+export function propPath(name: PropName): string {
+	return `${ASSET_BASE}/placeholders/prop_${name.replace(/-/g, "_")}_soft.png`;
+}

@@ -49,6 +49,46 @@ function variance(values: number[]): number {
 	return values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
 }
 
+/**
+ * Steers toward `target` in short key-bursts, re-reading position and
+ * re-choosing which arrow keys to hold after each burst, rather than picking
+ * a direction once and holding it for the whole walk. Movement speed doesn't
+ * slow down near the target (see playerController.ts — it's a constant-speed
+ * walk, not a seek-and-decelerate), so a single fixed diagonal held the
+ * whole time overshoots the axis that arrives first and then just keeps
+ * going, increasing distance instead of arriving — confirmed manually running
+ * this against the shelf spawn, not a hypothetical.
+ */
+async function walkToward(
+	page: Page,
+	target: { x: number; y: number },
+	withinPx: number,
+	options: { maxMs?: number; burstMs?: number } = {},
+): Promise<void> {
+	const maxMs = options.maxMs ?? 20_000;
+	const burstMs = options.burstMs ?? 150;
+	const deadline = Date.now() + maxMs;
+
+	while (Date.now() < deadline) {
+		const pos = (await getStoreState(page))?.playerPos;
+		if (!pos) break;
+		const dx = target.x - pos.x;
+		const dy = target.y - pos.y;
+		if (Math.hypot(dx, dy) <= withinPx) return;
+
+		const keys: string[] = [];
+		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
+		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
+		for (const key of keys) await page.keyboard.down(key);
+		await page.waitForTimeout(burstMs);
+		for (const key of keys) await page.keyboard.up(key);
+	}
+
+	throw new Error(
+		`walkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
+	);
+}
+
 test("demo loads, renders a non-blank world, and walking into a cabin loads a world", async ({
 	page,
 }) => {
@@ -82,21 +122,17 @@ test("demo loads, renders a non-blank world, and walking into a cabin loads a wo
 	expect(initial?.activeWorldBase).toBeNull();
 
 	// ShelfScene places the demo's first world's cabin CABIN_RING_RADIUS
-	// (480px) due "up" from the player's (0,0) spawn, and E enters within
-	// CABIN_ENTER_RADIUS (70px) — see packages/engine/src/scenes/ShelfScene.ts.
-	// Walk until the store reports the player has arrived rather than for a
-	// fixed duration: CI runners render far fewer frames per second than a
-	// dev machine, so a fixed 2.2s hold only covered about half the distance
-	// there.
-	const ARRIVED_Y = -(480 - 40);
-	await page.keyboard.down("ArrowUp");
-	await expect
-		.poll(async () => (await getStoreState(page))?.playerPos.y ?? 0, {
-			timeout: 20_000,
-			intervals: [100],
-		})
-		.toBeLessThanOrEqual(ARRIVED_Y);
-	await page.keyboard.up("ArrowUp");
+	// (480px) due "up" (angle -PI/2) from the shelf's origin, and E enters
+	// within CABIN_ENTER_RADIUS (70px) — see
+	// packages/engine/src/scenes/ShelfScene.ts. The player no longer spawns
+	// at that same origin (M10b batch 1 fixed "spawns on top of the tower" —
+	// it's now offset beside the tower's footprint), so this steers toward
+	// the cabin from wherever the store reports the *actual* spawn is,
+	// rather than assuming (0,0) and walking straight up — robust to that
+	// offset changing again without this test needing to know why.
+	const CABIN_POS = { x: 0, y: -480 };
+	const CABIN_ENTER_RADIUS = 70;
+	await walkToward(page, CABIN_POS, CABIN_ENTER_RADIUS);
 	// Not page.keyboard.press("e") — CDP's down+up pair for a `.press()` can
 	// land within a single browser input-processing tick, before the game
 	// loop's next update() ever polls the key, and Phaser's JustDown() then

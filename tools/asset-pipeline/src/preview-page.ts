@@ -105,6 +105,25 @@ async function main() {
 		)
 		.join("\n");
 
+	const worldArtProps = [
+		"fence",
+		"hedge",
+		"stone_lantern",
+		"tree_small",
+		"tree_large",
+		"bush",
+		"well",
+		"signpost",
+		"flower_pot",
+		"log_pile",
+	];
+	const worldArtPropRows = worldArtProps
+		.map(
+			(slug) => `
+			<figure><img class="soft" src="placeholders/prop_${slug}_soft.png" alt="${escapeHtml(slug)} prop"><figcaption>${escapeHtml(slug.replace(/_/g, "-"))}</figcaption></figure>`,
+		)
+		.join("\n");
+
 	const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -197,6 +216,61 @@ async function main() {
 		<figure><img class="pixel" src="portal-preview-composite.png" alt="portal arch with file preview composite, crisp"><figcaption>crisp</figcaption></figure>
 		<figure><img class="soft" src="portal-preview-composite_soft.png" alt="portal arch with file preview composite, softened"><figcaption>softened</figcaption></figure>
 	</div>
+
+	<h2>World art — batch 1 (M10b)</h2>
+	<p class="note">Biome ground tilesets, path stamps, decals, and props for the walkable world — replacing WorldScene/ShelfScene's tinted-ellipse ground and dashed-line paths. Saturated Stardew Valley / Pokémon-style palette (a second pass — the first attempt used the muted cottagecore tones above and read as bland; see the CHANGELOG for that revision). Scheme: 16-tile blob-lite autotiling (4-directional N/E/S/W neighbor mask, not the 8-directional 47-tile set — see packages/engine/src/render/groundTiles.ts). Full frame index in assets/generated/world-art/tile-index.json.</p>
+	<section class="icon-row">
+		<h3>Biome tilesets (32px tiles: 4 base grass variants + 16 blob-edge frames)</h3>
+		<div class="stage">
+			<figure><img class="pixel" src="placeholders/meadow_tiles.png" alt="meadow tileset, crisp"><figcaption>meadow, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/meadow_tiles_soft.png" alt="meadow tileset, softened"><figcaption>meadow, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/grove_tiles.png" alt="grove tileset, crisp"><figcaption>grove, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/grove_tiles_soft.png" alt="grove tileset, softened"><figcaption>grove, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/glade_tiles.png" alt="glade tileset, crisp"><figcaption>glade, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/glade_tiles_soft.png" alt="glade tileset, softened"><figcaption>glade, softened</figcaption></figure>
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>Decals (flowers, clover, pebbles, mushrooms, fallen leaves — shared across biomes, selected per-biome by the scatter logic)</h3>
+		<div class="stage">
+			<figure><img class="pixel" src="placeholders/decals.png" alt="decal sheet, crisp"><figcaption>crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/decals_soft.png" alt="decal sheet, softened"><figcaption>softened</figcaption></figure>
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>Path stamps (soft dirt-brush sprites stamped along a segment at runtime — see render/pathStamps.ts — rather than corner/T/cross tiles, since paths run at arbitrary angles between clusters)</h3>
+		<div class="stage">
+			<figure><img class="pixel" src="placeholders/path_stamp_0.png" alt="path stamp small, crisp"><figcaption>small, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_0_soft.png" alt="path stamp small, softened"><figcaption>small, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_1.png" alt="path stamp medium, crisp"><figcaption>medium, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_1_soft.png" alt="path stamp medium, softened"><figcaption>medium, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_2.png" alt="path stamp large, crisp"><figcaption>large, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_2_soft.png" alt="path stamp large, softened"><figcaption>large, softened</figcaption></figure>
+			<figure><img class="pixel" src="placeholders/path_stamp_3.png" alt="path stamp elongated, crisp"><figcaption>elongated, crisp</figcaption></figure>
+			<figure><img class="soft" src="placeholders/path_stamp_3_soft.png" alt="path stamp elongated, softened"><figcaption>elongated, softened</figcaption></figure>
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>Props (10)</h3>
+		<div class="stage">
+			${worldArtPropRows}
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>Composed mock scene</h3>
+		<p class="note">Assembled directly from the frames above (same blob-mask math as the engine's tileFrameFor, minus the hashed variant pick) — a tiled clearing, scattered decals, a path trailing off one edge, and a tree/fence/well, with no browser involved.</p>
+		<div class="calibration">
+			<figure><img class="soft" src="world-art/mock-scene.png" alt="composed mock scene: tiled clearing with decals, path, and props" style="width: 320px; image-rendering: pixelated;"><figcaption>mock-scene.png</figcaption></figure>
+		</div>
+	</section>
+	<section class="icon-row">
+		<h3>In-engine (headless Playwright screenshots)</h3>
+		<p class="note">The actual demo, not a mockup — captured via <code>apps/demo/e2e</code>'s Playwright setup against a production build. See the CHANGELOG for how these were captured.</p>
+		<div class="stage">
+			<figure><img class="soft" src="review/shelf.png" alt="shelf scene screenshot: wizard tower at correct scale, player spawned beside it" style="width: 420px;"><figcaption>shelf — tower scale + spawn fix</figcaption></figure>
+			<figure><img class="soft" src="review/world-inside.png" alt="inside a world: tiled biome ground, path stamps, scattered decals and props" style="width: 420px;"><figcaption>inside a world — tiled ground, paths, props</figcaption></figure>
+		</div>
+	</section>
 
 	<details>
 		<summary><h2 style="display:inline">Recovered sprites (superseded, kept for reference)</h2></summary>

@@ -1,3 +1,5 @@
+import { mulberry32 } from "./deterministicRandom.js";
+
 /**
  * Per-world visual theme derived from WorldMeta.themeSeed — the same seed
  * must always tint that world's cabin (on the shelf), its cabinets (inside
@@ -12,19 +14,11 @@ export interface Theme {
 	lightness: number;
 }
 
-// Deliberately duplicated from @cabn/converter's layout.ts mulberry32 rather
-// than shared: it's a ~10-line, well-known PRNG, and engine has no other
-// reason to depend on converter (a Node-conversion package) just for this.
-function mulberry32(seed: number): () => number {
-	let a = seed;
-	return () => {
-		a |= 0;
-		a = (a + 0x6d2b79f5) | 0;
-		let t = Math.imul(a ^ (a >>> 15), 1 | a);
-		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-}
+// mulberry32 itself now lives in deterministicRandom.ts (shared with the
+// M10b world-art placement logic) — still a deliberate duplication of
+// @cabn/converter's own copy in layout.ts, not an import from it: engine has
+// no other reason to depend on converter (a Node-conversion package) for a
+// ~10-line, well-known PRNG.
 
 // Narrow bands, not the full 0-1 range: the brief is "same family, slightly
 // different place" — a world tinted near-black or neon would read as broken,

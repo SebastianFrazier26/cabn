@@ -5,7 +5,21 @@ export const CABIN_SCALE = 0.5;
 export const CABINET_SCALE = 0.375;
 export const PORTAL_SCALE = 0.375;
 export const BONFIRE_SCALE = 0.375;
-export const WIZARD_TOWER_SCALE = 0.75;
+
+// wizard_tower's pixel map is 48x80 (tools/asset-pipeline/src/pixelmaps/
+// wizard-tower.ts), rendered through soften()'s default cellSize (16) into a
+// 768x1280 raw sprite — a *much* denser source grid than cabin_256.webp's
+// flat 256x256, so the old WIZARD_TOWER_SCALE (0.75, picked as if it were
+// another cabin-scale asset) displayed the tower at 576x960: nearly the
+// whole screen, the M10b batch-1 bug report ("far too large... not half the
+// screen"). The player's own on-screen height is 64px (character-idle's
+// 24x32 pixel map * cellSize 16 * CHARACTER_SCALE 0.125, see
+// playerController.ts) — a landmark reads as a landmark at roughly 2.5-3x
+// that, so this targets a 179px-tall tower (2.8x) instead of deriving from
+// an unrelated asset's scale constant.
+export const WIZARD_TOWER_RAW_WIDTH_PX = 768;
+export const WIZARD_TOWER_RAW_HEIGHT_PX = 1280;
+export const WIZARD_TOWER_SCALE = 0.14;
 
 // Each monster species' pixel map is a different native size (ouroboros is
 // deliberately 48x48 vs. everything else's ~18-32px, see tools/asset-pipeline's

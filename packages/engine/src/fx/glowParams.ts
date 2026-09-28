@@ -22,10 +22,20 @@ export interface GlowParams {
 // Deliberately restrained — this is meant to read as "the soft-rendered
 // source art's own gentle glow", not an HDR bloom effect. Kept well short of
 // each field's clamp ceiling below.
+//
+// threshold raised (0.75 -> 0.85) and bloomIntensity lowered (0.35 -> 0.22)
+// for M10b batch 1: the wizard tower's window (pale ghost blue, already a
+// bright curated tone — see palette.ts) sat just above the old threshold, so
+// its own bright-pass excess plus the additive bloom on top pushed every
+// channel to 1.0 — a hard, desaturating clip to solid white, not a glow. A
+// higher threshold means fewer near-bright pixels feed the bloom at all;
+// glowShader.ts's brightPass also now soft-clips the *result* channel-wise
+// (see that file), which is the actual clip-proofing — these two defaults
+// just keep the common case comfortably under where clipping starts.
 export const DEFAULT_GLOW_PARAMS: GlowParams = {
-	threshold: 0.75,
+	threshold: 0.85,
 	blurRadius: 2.5,
-	bloomIntensity: 0.35,
+	bloomIntensity: 0.22,
 	vignetteStrength: 0.18,
 	vignetteRadius: 0.7,
 };

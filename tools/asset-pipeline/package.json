@@ -14,8 +14,9 @@
 		"animate": "tsx src/portal-animation.ts",
 		"bonfire": "tsx src/bonfire-animation.ts",
 		"composite": "tsx src/portal-composite.ts",
+		"world-art": "tsx src/gen-world-art.ts",
 		"preview": "tsx src/preview-page.ts",
-		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run bonfire && pnpm run composite && pnpm run preview"
+		"generate": "pnpm run palette && pnpm run recover && pnpm run matte && pnpm run placeholders && pnpm run soften && pnpm run animate && pnpm run bonfire && pnpm run composite && pnpm run world-art && pnpm run preview"
 	},
 	"dependencies": {
 		"gifenc": "^1.0.3",

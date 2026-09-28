@@ -323,9 +323,279 @@
 				"b": 205
 			},
 			"curated": true
+		},
+		{
+			"hex": "#e3a5ba",
+			"rgb": {
+				"r": 227,
+				"g": 165,
+				"b": 186
+			},
+			"curated": true
+		},
+		{
+			"hex": "#7994d2",
+			"rgb": {
+				"r": 121,
+				"g": 148,
+				"b": 210
+			},
+			"curated": true
+		},
+		{
+			"hex": "#f0d05c",
+			"rgb": {
+				"r": 240,
+				"g": 208,
+				"b": 92
+			},
+			"curated": true
+		},
+		{
+			"hex": "#b04242",
+			"rgb": {
+				"r": 176,
+				"g": 66,
+				"b": 66
+			},
+			"curated": true
+		},
+		{
+			"hex": "#46963c",
+			"rgb": {
+				"r": 70,
+				"g": 150,
+				"b": 60
+			},
+			"curated": true
+		},
+		{
+			"hex": "#78c85a",
+			"rgb": {
+				"r": 120,
+				"g": 200,
+				"b": 90
+			},
+			"curated": true
+		},
+		{
+			"hex": "#b4e678",
+			"rgb": {
+				"r": 180,
+				"g": 230,
+				"b": 120
+			},
+			"curated": true
+		},
+		{
+			"hex": "#236e3c",
+			"rgb": {
+				"r": 35,
+				"g": 110,
+				"b": 60
+			},
+			"curated": true
+		},
+		{
+			"hex": "#3c9650",
+			"rgb": {
+				"r": 60,
+				"g": 150,
+				"b": 80
+			},
+			"curated": true
+		},
+		{
+			"hex": "#6ebe6e",
+			"rgb": {
+				"r": 110,
+				"g": 190,
+				"b": 110
+			},
+			"curated": true
+		},
+		{
+			"hex": "#3c8c78",
+			"rgb": {
+				"r": 60,
+				"g": 140,
+				"b": 120
+			},
+			"curated": true
+		},
+		{
+			"hex": "#64be96",
+			"rgb": {
+				"r": 100,
+				"g": 190,
+				"b": 150
+			},
+			"curated": true
+		},
+		{
+			"hex": "#aae1b4",
+			"rgb": {
+				"r": 170,
+				"g": 225,
+				"b": 180
+			},
+			"curated": true
+		},
+		{
+			"hex": "#c49658",
+			"rgb": {
+				"r": 196,
+				"g": 150,
+				"b": 88
+			},
+			"curated": true
+		},
+		{
+			"hex": "#e6be78",
+			"rgb": {
+				"r": 230,
+				"g": 190,
+				"b": 120
+			},
+			"curated": true
+		},
+		{
+			"hex": "#f5dca5",
+			"rgb": {
+				"r": 245,
+				"g": 220,
+				"b": 165
+			},
+			"curated": true
+		},
+		{
+			"hex": "#eb5a96",
+			"rgb": {
+				"r": 235,
+				"g": 90,
+				"b": 150
+			},
+			"curated": true
+		},
+		{
+			"hex": "#5aa0eb",
+			"rgb": {
+				"r": 90,
+				"g": 160,
+				"b": 235
+			},
+			"curated": true
+		},
+		{
+			"hex": "#ffdc46",
+			"rgb": {
+				"r": 255,
+				"g": 220,
+				"b": 70
+			},
+			"curated": true
+		},
+		{
+			"hex": "#e63c32",
+			"rgb": {
+				"r": 230,
+				"g": 60,
+				"b": 50
+			},
+			"curated": true
+		},
+		{
+			"hex": "#eb8c3c",
+			"rgb": {
+				"r": 235,
+				"g": 140,
+				"b": 60
+			},
+			"curated": true
+		},
+		{
+			"hex": "#b45a28",
+			"rgb": {
+				"r": 180,
+				"g": 90,
+				"b": 40
+			},
+			"curated": true
+		},
+		{
+			"hex": "#bec3cd",
+			"rgb": {
+				"r": 190,
+				"g": 195,
+				"b": 205
+			},
+			"curated": true
+		},
+		{
+			"hex": "#969eaa",
+			"rgb": {
+				"r": 150,
+				"g": 158,
+				"b": 170
+			},
+			"curated": true
+		},
+		{
+			"hex": "#646c78",
+			"rgb": {
+				"r": 100,
+				"g": 108,
+				"b": 120
+			},
+			"curated": true
+		},
+		{
+			"hex": "#96643c",
+			"rgb": {
+				"r": 150,
+				"g": 100,
+				"b": 60
+			},
+			"curated": true
+		},
+		{
+			"hex": "#6e4628",
+			"rgb": {
+				"r": 110,
+				"g": 70,
+				"b": 40
+			},
+			"curated": true
+		},
+		{
+			"hex": "#be8c5a",
+			"rgb": {
+				"r": 190,
+				"g": 140,
+				"b": 90
+			},
+			"curated": true
+		},
+		{
+			"hex": "#d27846",
+			"rgb": {
+				"r": 210,
+				"g": 120,
+				"b": 70
+			},
+			"curated": true
+		},
+		{
+			"hex": "#fff0b4",
+			"rgb": {
+				"r": 255,
+				"g": 240,
+				"b": 180
+			},
+			"curated": true
 		}
 	],
-	"generatedAt": "2026-09-25T03:53:44.597Z",
+	"generatedAt": "2026-09-28T02:57:08.366Z",
 	"sources": [
 		"cabin.png",
 		"cabinet.png",
