@@ -46,6 +46,16 @@ export const PLACEHOLDERS = [
 	"ouroboros_idle1_soft.png",
 	"will_o_wisp_idle0_soft.png",
 	"will_o_wisp_idle1_soft.png",
+	"imp_idle0_soft.png",
+	"imp_idle1_soft.png",
+	"magpie_idle0_soft.png",
+	"magpie_idle1_soft.png",
+	"skeleton_idle0_soft.png",
+	"skeleton_idle1_soft.png",
+	"bramble_idle0_soft.png",
+	"bramble_idle1_soft.png",
+	"shade_idle0_soft.png",
+	"shade_idle1_soft.png",
 ];
 
 async function copyInto(subdir, files) {

@@ -27,15 +27,23 @@ export const PORTAL_ARCH_FRAME_COUNT = 6;
 export const BONFIRE_FRAME_COUNT = 4;
 
 // M6 monster sprites. Ghost (M2) is a single static image — no idle animation
-// — so it gets its own key rather than the frame-pair shape the other five
-// species use (each rendered as two idle frames by tools/asset-pipeline, see
-// its pixelmaps/{rot-sprite,warded-mimic,gremlin,ouroboros,will-o-wisp}.ts).
+// — so it gets its own key rather than the frame-pair shape every other
+// species uses (each rendered as two idle frames by tools/asset-pipeline, see
+// its pixelmaps/*.ts). Species are keyed by string, not @cabn/world-schema's
+// Species enum, so art can ship ahead of (or behind) the schema that names
+// it; render/monsterSprite.ts falls back to shade, then ghost, for any
+// species with no loaded frames.
 const MONSTER_FILE_SLUG: Record<string, string> = {
 	"rot-sprite": "rot_sprite",
 	"warded-mimic": "warded_mimic",
 	gremlin: "gremlin",
 	ouroboros: "ouroboros",
 	"will-o-wisp": "will_o_wisp",
+	imp: "imp",
+	magpie: "magpie",
+	skeleton: "skeleton",
+	bramble: "bramble",
+	shade: "shade",
 };
 
 export const MONSTER_GHOST_KEY = "monster-ghost";
@@ -57,6 +65,11 @@ export const ANIMATED_MONSTER_SPECIES = [
 	"gremlin",
 	"ouroboros",
 	"will-o-wisp",
+	"imp",
+	"magpie",
+	"skeleton",
+	"bramble",
+	"shade",
 ] as const;
 
 function bonfireFrameKey(index: number): string {
