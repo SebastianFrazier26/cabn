@@ -15,6 +15,7 @@ import {
 	type TimeOfDay,
 	type TimeOfDayOverride,
 } from "../systems/timeOfDay.js";
+import type { WorldMapSummary } from "../systems/worldMap.js";
 
 export type CabnMode = "world" | "file" | "editor" | "encounter" | "run";
 
@@ -83,6 +84,9 @@ export interface NearWebPortal {
 }
 
 export interface CabnState {
+	worldMap: WorldMapSummary | null;
+	mapOpen: boolean;
+	visitedClusterIds: string[];
 	mode: CabnMode;
 	activeClusterId: string | null;
 	activePortalId: string | null;
@@ -150,6 +154,11 @@ export interface GuideNpcSummary {
 }
 
 export interface CabnActions {
+	setWorldMap(worldMap: WorldMapSummary | null): void;
+	setMapOpen(open: boolean): void;
+	setVisitedClusterIds(ids: string[]): void;
+	/** Clears world HUD/search metadata on shelf entry without discarding the bag or file buffer. */
+	clearWorldContext(): void;
 	setActiveCluster(clusterId: string | null): void;
 	enterPortal(
 		portalId: string,
@@ -203,6 +212,9 @@ export interface CabnActions {
 export type CabnStore = CabnState & CabnActions;
 
 const initialState: CabnState = {
+	worldMap: null,
+	mapOpen: false,
+	visitedClusterIds: [],
 	mode: "world",
 	activeClusterId: null,
 	activePortalId: null,
@@ -236,11 +248,41 @@ const initialState: CabnState = {
 export function createCabnStore(): StoreApi<CabnStore> {
 	return createStore<CabnStore>((set, get) => ({
 		...initialState,
+		setWorldMap: (worldMap) =>
+			set({ worldMap, mapOpen: false, visitedClusterIds: [] }),
+		setMapOpen: (mapOpen) =>
+			set({
+				mapOpen:
+					mapOpen &&
+					get().worldMap !== null &&
+					get().mode === "world" &&
+					!get().guideOpen,
+			}),
+		setVisitedClusterIds: (visitedClusterIds) => set({ visitedClusterIds }),
+		clearWorldContext: () =>
+			set({
+				worldMap: null,
+				mapOpen: false,
+				visitedClusterIds: [],
+				activeClusterId: null,
+				activeWorldBase: null,
+				loadedChunks: [],
+				portals: [],
+				monsters: [],
+				defeatedMonsterIds: [],
+				searchOpen: false,
+				spyglassOpen: false,
+				focusedPortalPreview: null,
+				nearWebPortal: null,
+				guideNpc: null,
+				guideOpen: false,
+			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
 			const buffer = content === null ? null : createFileBufferState(content);
 			set({
 				mode: "file",
+				mapOpen: false,
 				activePortalId: portalId,
 				activePortalContent: content,
 				activeFileState: buffer,

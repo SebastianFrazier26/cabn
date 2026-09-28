@@ -160,6 +160,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.shelfUrl = data.shelfUrl;
 		this.availability = data.availability;
 		this.store = this.registry.get("store");
+		this.store.getState().clearWorldContext();
 		this.bus = this.registry.get("bus");
 		this.cabins = [];
 		this.cabinsInRange = new Set();

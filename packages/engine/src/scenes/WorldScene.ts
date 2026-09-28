@@ -139,6 +139,7 @@ import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
 import { type Theme, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
+import { summarizeWorldMap } from "../systems/worldMap.js";
 import {
 	type AssetAvailability,
 	BONFIRE_IDLE_ANIM,
@@ -386,6 +387,10 @@ export class WorldScene extends Phaser.Scene {
 		// drawGround() runs — its decal/prop scatter must exclude them — so
 		// they're computed (not yet rendered) ahead of everything else.
 		this.computePortalPositions();
+		this.store
+			.getState()
+			.setWorldMap(summarizeWorldMap(this.manifest, this.portalWorldPos));
+		this.store.getState().setVisitedClusterIds([...this.save.visitedClusters]);
 		const spawn = this.resolveSpawnPos();
 
 		this.drawGround(spawn);
@@ -450,6 +455,7 @@ export class WorldScene extends Phaser.Scene {
 			);
 			this.setFocusedPortal(null);
 			this.setNearWebPortal(null);
+			this.store.getState().setWorldMap(null);
 		});
 	}
 
@@ -1387,6 +1393,12 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	update(time: number, delta: number): void {
+		if (this.store.getState().mapOpen) {
+			this.walker.cancel();
+			this.pendingArrival = null;
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			return;
+		}
 		// Covers "file" and the new "editor" mode alike — both mean FileScene (or
 		// its overlay) owns input right now, not just the one this scene used to
 		// know about (in practice this scene is asleep whenever either is true,
@@ -1878,6 +1890,7 @@ export class WorldScene extends Phaser.Scene {
 	}): void => {
 		if (this.save.visitedClusters.includes(clusterId)) return;
 		this.save = withVisitedCluster(this.save, clusterId);
+		this.store.getState().setVisitedClusterIds([...this.save.visitedClusters]);
 		persistSave(this.save);
 	};
 
@@ -1936,6 +1949,7 @@ export class WorldScene extends Phaser.Scene {
 		const resetPortalIds = Object.keys(this.save.fileOverrides);
 		const revivedMonsterIds = [...this.save.defeatedMonsterIds];
 		this.save = emptySaveData(this.worldId);
+		this.store.getState().setVisitedClusterIds([]);
 		clearSave(this.worldId);
 		for (const clusterId of this.chunkContents.keys())
 			this.refreshEffectiveChunk(clusterId);

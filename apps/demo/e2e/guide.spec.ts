@@ -174,15 +174,21 @@ test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", 
 
 	const atOpen = (await state(page))?.playerPos;
 	await page.keyboard.press("1");
-	await expect(page.getByTestId("guide-page")).toHaveText("Moving · 1 / 5");
+	await expect(page.getByTestId("guide-page")).toHaveText(
+		/^Moving · 1 \/ \d+$/,
+	);
 	await page.keyboard.press("Space"); // skip the typewriter
 	await page.keyboard.press("ArrowRight");
-	await expect(page.getByTestId("guide-page")).toHaveText("Moving · 2 / 5");
+	await expect(page.getByTestId("guide-page")).toHaveText(
+		/^Moving · 2 \/ \d+$/,
+	);
 	await expect(page.getByTestId("guide-text")).toContainText("Press Enter");
 	await page.waitForTimeout(3000);
 	await shoot(page, "dialog-day-moving-2");
 	await page.keyboard.press("ArrowLeft");
-	await expect(page.getByTestId("guide-page")).toHaveText("Moving · 1 / 5");
+	await expect(page.getByTestId("guide-page")).toHaveText(
+		/^Moving · 1 \/ \d+$/,
+	);
 	// Arrow keys page the box; they must not walk the player underneath.
 	expect((await state(page))?.playerPos).toEqual(atOpen);
 

@@ -22,6 +22,7 @@ import { SettingsCorner } from "./SettingsCorner.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
 import { VictoryToast } from "./VictoryToast.js";
+import { WorldMap } from "./WorldMap.js";
 
 // Exactly one of the two: a plain worldUrl boots straight into that world (no
 // shelf to return to); shelfUrl boots into the shelf hub, which then boots
@@ -95,6 +96,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<OrbSearch store={handle.store} bus={handle.bus} />
 					<BagTray store={handle.store} bus={handle.bus} />
 					<SettingsCorner store={handle.store} />
+					<WorldMap store={handle.store} bus={handle.bus} />
 					<MonsterCounter store={handle.store} />
 					<EncounterBanner store={handle.store} />
 					<VictoryToast store={handle.store} />

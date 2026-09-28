@@ -1,6 +1,14 @@
 # Changelog
 
+## 2026-09-28 — Current-world map
+
+- Added a React/SVG minimap in the top-right and a larger map opened with M and closed with M or Esc. Both show folders, paths, files, player position, undefeated monster anchors and saved visited clearings. Selecting a file uses existing walk-to-portal navigation without entering it.
+- The larger map pauses movement and captures game shortcuts, keeps keyboard focus inside its controls, and leaves typing and Wren's dialogue alone. Shelf/world changes clear map state; inventory, time settings and file buffers are preserved.
+- Added geometry/lifecycle tests, a browser regression and a detailed agent handoff in `docs/handoffs/2026-09-28-current-world-map.md`.
+
 ## 2026-09-28
+
+- Returning to the shelf clears the previous world's bug counter, folder index and search context while preserving the bag, clock settings and file buffer. Clearing world metadata does not trigger a victory celebration.
 
 - Integrated inline editing, Wren, the expanded monster taxonomy, typed portal arches and embed checks for the M10 playtest. Wren and the player's guide now explain the shared editing buffer, file-page Alt/Option shortcuts and all eleven species. Typed arch overlays are recreated when returning to a world from the shelf.
 

@@ -22,6 +22,12 @@ When a text box has focus (the orb's search box, the spellbook or the file page'
 
 ## Tools
 
+### Current-world map
+
+The minimap in the top-right shows the current world's folders, paths, files, player and undefeated monsters. Bright clearings are folders visited in this world's saved progress; unvisited clearings remain visible in a darker color. Gold marks you, cyan squares mark files, and red marks monsters at their portal or path anchors. If you walk beyond the mapped clearings, your marker stays at the nearest map edge.
+
+Press `M`, or click **Map (M)**, for a larger centered map. Select a cyan file marker or a named destination below the map to walk to its arch using the same navigation as the spyglass. This does not open the file automatically. `M`, `Esc` or **Close** closes the larger map. Movement pauses while it is open; opening it cancels any existing click-walk. Map keys do not run while typing or while Wren is speaking. The map is hidden on the shelf and inside files, and resets when changing worlds.
+
 The hotbar at the bottom of the screen holds your tools. Click a slot or press its key. Inside a text file, add `Alt` (`Option` on macOS) to the tool keys so plain letters can type. Each slot shows a short verb (Use, Look, Search, Copy, Edit, Run).
 
 <!-- BEGIN GENERATED guide:tools (packages/engine/src/systems/guideContent.ts) -->
@@ -163,6 +169,7 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - The shelf holds one cabin per world. Inside a world, stone fountains mark folders and portal arches are files.
 - Walk up to an arch to peek at its file, then press Enter to step inside. Esc, or the arch at the top of a file, takes you back out.
 - This bonfire is the way home: press Enter beside it, or Esc nearby, to return to the shelf.
+- The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.
 
 #### Tools
 

@@ -183,6 +183,7 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 				"The shelf holds one cabin per world. Inside a world, stone fountains mark folders and portal arches are files.",
 				"Walk up to an arch to peek at its file, then press Enter to step inside. Esc, or the arch at the top of a file, takes you back out.",
 				"This bonfire is the way home: press Enter beside it, or Esc nearby, to return to the shelf.",
+				"The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.",
 			],
 		},
 		{
