@@ -254,16 +254,16 @@ async function main() {
 		</div>
 	</section>
 	<section class="icon-row">
-		<h3>Props (13, plus the shelf's one-off castle keep and the in-world cabinet marker)</h3>
-		<p class="note">Batch 2 cottagecore set — "stone-lantern" upgraded to "lamp-post" and "log-pile" replaced with "stone-wall" (both flagged weak in batch-1 review); cottage, flower-bed, bench, and the castle keep are new. Trees gained a third, higher canopy tier for a taller/more layered silhouette. Batch 3: the castle keep is redrawn (real coursed-masonry shading, a recessed crenellated parapet, a proper pennant, lit windows, ivy) and — having shipped unscaled in batch 2 — is now deliberately scaled to read *smaller* than the wizard tower next to it, not bigger. <code>world-cabinet</code> (last figure below) replaces the photographic cabinet_256.webp for in-world cluster markers, which batch-3 review called "dark red and green noise" at gameplay scale.</p>
+		<h3>Props (13, plus the shelf's one-off castle keep and the in-world fountain marker)</h3>
+		<p class="note">Batch 2 cottagecore set — "stone-lantern" upgraded to "lamp-post" and "log-pile" replaced with "stone-wall" (both flagged weak in batch-1 review); cottage, flower-bed, bench, and the castle keep are new. Trees gained a third, higher canopy tier for a taller/more layered silhouette. Batch 3: the castle keep is redrawn (real coursed-masonry shading, a recessed crenellated parapet, a proper pennant, lit windows, ivy) and — having shipped unscaled in batch 2 — is now deliberately scaled to read *smaller* than the wizard tower next to it, not bigger. <code>world-fountain</code> (last figure below, 6-frame strip + tinted gem overlay) is the in-world directory marker since the 2026-09-28 round-2 playtest, replacing the curio cabinet that read as out of place beside the stone portal arches. Before/after screenshots: review/layout-fountain/.</p>
 		<div class="stage">
 			${worldArtPropRows}
-			<figure><img class="soft" src="placeholders/prop_world_cabinet_soft.png" alt="world-cabinet prop" style="width: 120px;"><figcaption>world-cabinet (M10 redraw)</figcaption></figure>
+			<figure><img class="soft" src="placeholders/prop_world_fountain_strip_soft.png" alt="world-fountain animation strip" style="width: 672px;"><figcaption>world-fountain (6 frames)</figcaption></figure>
 		</div>
 	</section>
 	<section class="icon-row">
 		<h3>Art-consistency pass (M10) — legacy photographic art redrawn procedurally</h3>
-		<p class="note">The matted originals above (cabin, cabinet, key) no longer ship in normal play. The shelf cabin and world cabinet are drawn on the wizard tower's grid density (cellSize 16, displayed at the tower's scale) with its 1-cell ink outline and up-left light; the opener key is a sixth v3 item icon. Before/after in-engine screenshots: review/consistency/.</p>
+		<p class="note">The matted originals above (cabin, cabinet, key) no longer ship in normal play. The shelf cabin is drawn on the wizard tower's grid density (cellSize 16, displayed at the tower's scale) with its 1-cell ink outline and up-left light; the opener key is a sixth v3 item icon. Before/after in-engine screenshots: review/consistency/.</p>
 		<div class="stage">
 			<figure><img class="pixel" src="placeholders/prop_shelf_cabin.png" alt="shelf cabin, crisp" style="width: 208px;"><figcaption>shelf-cabin, crisp</figcaption></figure>
 			<figure><img class="soft" src="placeholders/prop_shelf_cabin_soft.png" alt="shelf cabin, softened" style="width: 208px;"><figcaption>shelf-cabin, softened</figcaption></figure>

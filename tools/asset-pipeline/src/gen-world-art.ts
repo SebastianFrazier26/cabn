@@ -21,6 +21,7 @@ import { buildPathStampGrids } from "./world-art/path-stamps-art.js";
 import {
 	buildCastleKeep,
 	buildProps,
+	PROP_CELL_SIZE,
 	type PropPaletteIndices,
 } from "./world-art/props.js";
 import {
@@ -36,9 +37,13 @@ import {
 	type ShelfCabinPalette,
 } from "./world-art/shelf-cabin.js";
 import {
-	buildWorldCabinet,
-	type WorldCabinetPalette,
-} from "./world-art/world-cabinet.js";
+	buildWorldFountainFrame,
+	buildWorldFountainGem,
+	WORLD_FOUNTAIN_FRAME_COUNT,
+	WORLD_FOUNTAIN_HEIGHT,
+	WORLD_FOUNTAIN_WIDTH,
+	type WorldFountainPalette,
+} from "./world-art/world-fountain.js";
 
 const worldArtDir = path.join(generatedDir, "world-art");
 
@@ -86,6 +91,8 @@ const PALETTE = {
 	plum: 32,
 	slateDark: 60,
 	periwinkle: 37,
+	mossShadow: 4,
+	mossHighlight: 9,
 } as const;
 
 const BIOME_GROUND_TONES = {
@@ -388,7 +395,7 @@ const IVY_TONES = {
 	highlight: PALETTE.groveHighlight,
 } as const;
 
-// Landmarks (shelf cabin, world cabinet) render at the wizard tower's
+// Landmarks (the shelf cabin) render at the wizard tower's
 // cellSize (16) — the engine displays them at the tower's own scale, so this
 // is what makes their on-screen pixel size match the tower's (see engine
 // render/scale.ts). Props and scenery reach the same density a different
@@ -396,24 +403,23 @@ const IVY_TONES = {
 const LANDMARK_CELL_SIZE = 16;
 const LANDMARK_EDGE_FEATHER_PX = 2;
 
-const WORLD_CABINET_PALETTE: WorldCabinetPalette = {
+// Exactly the portal arch's stone/moss/rune indices (pixelmaps/portal-arch.ts
+// PORTAL_LEGEND), so the fountain and the arches around it read as one set.
+const WORLD_FOUNTAIN_PALETTE: WorldFountainPalette = {
 	ink: PALETTE.ink,
-	wood: PALETTE.woodWarm,
-	woodDark: PALETTE.woodDark,
-	woodLight: PALETTE.woodLight,
-	handle: PALETTE.sunYellow,
-	handleBright: PALETTE.lanternGlow,
-	glassBack: PALETTE.stoneDark,
-	glint: PALETTE.cream,
-	curios: [
-		PALETTE.mushroomRed,
-		PALETTE.skyBlue,
-		PALETTE.cream,
-		PALETTE.meadowBase,
-		PALETTE.berryPink,
-		PALETTE.sunYellow,
-	],
-	ivy: IVY_TONES,
+	stoneLight: PALETTE.stoneLight,
+	stone: PALETTE.steelGray,
+	stoneShadow: PALETTE.slateBlue,
+	mossShadow: PALETTE.mossShadow,
+	mossLight: PALETTE.mossHighlight,
+	rune: PALETTE.paleGhostBlue,
+	water: PALETTE.skyBlue,
+	waterDeep: PALETTE.periwinkle,
+	waterLight: PALETTE.paleGhostBlue,
+	sparkle: PALETTE.cream,
+	gemLight: PALETTE.cream,
+	gemMid: PALETTE.stoneLight,
+	gemDark: PALETTE.steelGray,
 };
 
 // Roof matches the cottage prop's autumn-orange pair so the scattered
@@ -491,10 +497,6 @@ async function genCastleKeep(palette: RGB[]): Promise<CastleKeepResult> {
 	};
 }
 
-interface WorldCabinetResult {
-	index: Record<string, unknown>;
-}
-
 async function genLandmark(
 	grid: Grid,
 	slug: string,
@@ -512,16 +514,48 @@ async function genLandmark(
 	await writePair(slug, crisp, soft, 8);
 }
 
-/** Replaces the photographic cabinet_256.webp for in-world cluster markers — see world-cabinet.ts's doc comment. */
-async function genWorldCabinet(palette: RGB[]): Promise<WorldCabinetResult> {
-	const prop = buildWorldCabinet(WORLD_CABINET_PALETTE);
-	await genLandmark(prop.grid, "prop_world_cabinet", palette, 20261400);
+/** In-world directory marker (see world-fountain.ts's doc comment): a horizontal strip of animation frames plus a separate gem overlay the engine tints per world. */
+async function genWorldFountain(
+	palette: RGB[],
+): Promise<Record<string, unknown>> {
+	const crispFrames: RawImage[] = [];
+	const softFrames: RawImage[] = [];
+	for (let i = 0; i < WORLD_FOUNTAIN_FRAME_COUNT; i++) {
+		// One seed for every frame so soften()'s edge treatment of the stone is
+		// identical frame to frame — only the water may change, or the whole
+		// fountain would shimmer.
+		const { crisp, soft } = await renderSoft(
+			buildWorldFountainFrame(WORLD_FOUNTAIN_PALETTE, i),
+			`prop_world_fountain_f${i}`,
+			palette,
+			PROP_CELL_SIZE,
+			20261400,
+		);
+		crispFrames.push(crisp);
+		softFrames.push(soft);
+	}
+	await writePair(
+		"prop_world_fountain_strip",
+		composeSheet(crispFrames, WORLD_FOUNTAIN_FRAME_COUNT),
+		composeSheet(softFrames, WORLD_FOUNTAIN_FRAME_COUNT),
+		8,
+	);
+	const gem = await renderSoft(
+		buildWorldFountainGem(WORLD_FOUNTAIN_PALETTE),
+		"prop_world_fountain_gem",
+		palette,
+		PROP_CELL_SIZE,
+		20261401,
+	);
+	await writePair("prop_world_fountain_gem", gem.crisp, gem.soft, 8);
 	return {
-		index: {
-			name: prop.name,
-			key: "world-cabinet",
-			file: "placeholders/prop_world_cabinet_soft.png",
-		},
+		name: "world-fountain",
+		key: "world-fountain",
+		file: "placeholders/prop_world_fountain_strip_soft.png",
+		frameWidth: WORLD_FOUNTAIN_WIDTH * PROP_CELL_SIZE,
+		frameHeight: WORLD_FOUNTAIN_HEIGHT * PROP_CELL_SIZE,
+		frames: WORLD_FOUNTAIN_FRAME_COUNT,
+		gem: "placeholders/prop_world_fountain_gem_soft.png",
 	};
 }
 
@@ -924,7 +958,7 @@ async function main() {
 	const pathStamps = await genPathStamps(palette);
 	const props = await genProps(palette);
 	const castleKeep = await genCastleKeep(palette);
-	const worldCabinet = await genWorldCabinet(palette);
+	const worldFountain = await genWorldFountain(palette);
 	const shelfCabin = await genShelfCabin(palette);
 	const scenery = await genScenery(palette);
 	const skyline = await genSkyline(palette);
@@ -950,7 +984,7 @@ async function main() {
 		pathStamps: pathStamps.index,
 		props: props.index,
 		castleKeep: castleKeep.index,
-		worldCabinet: worldCabinet.index,
+		worldFountain,
 		shelfCabin,
 		scenery,
 		skyline,

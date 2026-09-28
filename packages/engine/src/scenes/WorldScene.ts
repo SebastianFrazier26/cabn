@@ -15,7 +15,9 @@ import {
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
-	WORLD_CABINET_KEY,
+	WORLD_FOUNTAIN_GEM_KEY,
+	WORLD_FOUNTAIN_IDLE_ANIM,
+	WORLD_FOUNTAIN_KEY,
 } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -64,7 +66,6 @@ import {
 	BONFIRE_SCALE,
 	CABINET_SCALE,
 	MONSTER_HOVER_SIZE,
-	WORLD_CABINET_SCALE,
 	WORLD_PORTAL_SCALE,
 } from "../render/scale.js";
 import {
@@ -108,7 +109,7 @@ import {
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
-import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
+import { type Theme, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
 import {
 	type AssetAvailability,
@@ -186,8 +187,8 @@ const DECALS_PER_CLUSTER = 14;
 const PROPS_PER_CLUSTER = 4;
 /** How far into the clearing's outer annulus props are confined (see systems/scatter.ts's minRadiusFrac) — "frame the edges/corners", not scatter anywhere between the plaza and the boundary. */
 const PROP_ANNULUS_INNER_FRAC = 0.68;
-/** How much of the per-world theme tint reaches the world-cabinet sprite (see systems/theme.ts's subtleTint) — low enough that the wood still reads as wood, not full-strength-tint noise. */
-const CABINET_TINT_STRENGTH = 0.35;
+/** Where the fountain's lower basin water sits relative to the sprite centre (world-fountain.ts's WATER.cy, 41 of 58 cells) — the night light pool reflects off the water, not the column. */
+const FOUNTAIN_WATER_OFFSET_Y = 24;
 // Half the arch's display size + room for a prop's own half-extent — batch 1
 // excluded only 44px around a portal, so a prop could land partway inside the
 // sprite. Exclusions test the prop's *centre*, so since the 2026-09-28 art
@@ -393,6 +394,18 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
+		if (this.availability.worldArt) {
+			for (const cluster of this.manifest.clusters) {
+				if (cluster === root) continue;
+				lights.push({
+					x: cluster.pos.x,
+					y: cluster.pos.y + FOUNTAIN_WATER_OFFSET_Y,
+					radiusPx: 52,
+					color: PALETTE.gold,
+					alpha: 0.26,
+				});
+			}
+		}
 		// Each arch's preview is its own faint light source — without this the
 		// night grade darkens the in-arch text to illegible. Cool and dim so the
 		// additive glow doesn't wash the preview out; the grade hole (see
@@ -731,20 +744,21 @@ export class WorldScene extends Phaser.Scene {
 			if (isRoot) {
 				sprite = this.drawBonfire(cluster.pos);
 			} else if (this.availability.worldArt) {
-				// world-cabinet is scaled to the wizard tower's pixel density
-				// (render/scale.ts's WORLD_CABINET_SCALE); CABINET_SCALE below
-				// is only for the photographic fallback. Tint is deliberately lightened toward
-				// white first (subtleTint) rather than applied at full
-				// strength — M10b batch-3 review: "stays subtle".
-				sprite = this.add.image(
+				// Drawn unscaled (props density). The world's theme colour goes on
+				// the gem overlay only, at full strength — tinting the whole
+				// sprite would muddy the stone the portal arches share.
+				const fountain = this.add.sprite(
 					cluster.pos.x,
 					cluster.pos.y,
-					WORLD_CABINET_KEY,
+					WORLD_FOUNTAIN_KEY,
+					0,
 				);
-				sprite
-					.setScale(WORLD_CABINET_SCALE)
-					.setTint(subtleTint(this.theme.tint, CABINET_TINT_STRENGTH))
-					.setDepth(2);
+				fountain.setDepth(2).play(WORLD_FOUNTAIN_IDLE_ANIM);
+				this.add
+					.image(cluster.pos.x, cluster.pos.y, WORLD_FOUNTAIN_GEM_KEY)
+					.setTint(this.theme.tint)
+					.setDepth(2.01);
+				sprite = fountain;
 			} else {
 				sprite = this.add.image(
 					cluster.pos.x,
