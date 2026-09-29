@@ -1,3 +1,7 @@
+import {
+	clearingRadiusYForRing,
+	GROUND_RADIUS_Y_RATIO,
+} from "@cabn/converter/core";
 import type {
 	Cluster,
 	EmbedVerdict,
@@ -254,10 +258,6 @@ const PORTAL_RING_SIZES: PortalRingSizes = {
 /** Room beyond the outermost portal ring for the prop-framing annulus + the flower-ring edge marking — this is what actually grows a clearing to fit its own content, rather than a flat per-file increment. */
 const CLEARING_OUTER_MARGIN = 90;
 
-// Matches the old fillEllipse(radius*2, radius*1.3) aspect ratio (Phaser's
-// fillEllipse takes full width/height, so radiusY was always 0.65 * radiusX)
-// — kept so the tiled ground reads the same footprint the ellipse did.
-const GROUND_RADIUS_Y_RATIO = 0.65;
 const DECALS_PER_CLUSTER = 14;
 const PROPS_PER_CLUSTER = 4;
 /** How far into the clearing's outer annulus props are confined (see systems/scatter.ts's minRadiusFrac) — "frame the edges/corners", not scatter anywhere between the plaza and the boundary. */
@@ -319,6 +319,7 @@ export class WorldScene extends Phaser.Scene {
 	private portalsById = new Map<string, Portal>();
 	private portalWorldPos = new Map<string, Position>();
 	private portalRingRadii = new Map<string, number>();
+	private clearingRadiiY = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private portalVariantOverlays = new Map<string, Phaser.GameObjects.Image>();
 	private portalVariants = new Map<string, ArchVariant>();
@@ -858,7 +859,7 @@ export class WorldScene extends Phaser.Scene {
 	/** manifest.paths touching this cluster, sampled near this cluster's own ground so decals/props never land on the dirt track leading out of it — reuses stampPointsAlongSegment purely as a "points along a line" sampler, nothing drawn here. */
 	private pathExclusionsForCluster(cluster: Cluster): ScatterExclusion[] {
 		const exclusions: ScatterExclusion[] = [];
-		const radius = this.groundRadius(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
+		const radius = this.groundReach(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
 		for (const path of this.manifest.paths) {
 			if (path.from !== cluster.id && path.to !== cluster.id) continue;
 			const otherId = path.from === cluster.id ? path.to : path.from;
@@ -914,7 +915,7 @@ export class WorldScene extends Phaser.Scene {
 				cluster.pos.x,
 				cluster.pos.y,
 			) <=
-			this.groundRadius(cluster) + SPAWN_EXCLUSION_RADIUS
+			this.groundReach(cluster) + SPAWN_EXCLUSION_RADIUS
 		) {
 			exclusions.push({
 				x: spawn.x,
@@ -945,7 +946,7 @@ export class WorldScene extends Phaser.Scene {
 					cluster.pos.x,
 					cluster.pos.y,
 					this.groundRadius(cluster) * 2,
-					this.groundRadius(cluster) * 1.3,
+					this.groundRadiusY(cluster) * 2,
 				);
 			}
 			return;
@@ -964,7 +965,7 @@ export class WorldScene extends Phaser.Scene {
 		const tintOverlay = this.add.graphics().setDepth(0.6);
 		for (const cluster of this.manifest.clusters) {
 			const radiusX = this.groundRadius(cluster);
-			const radiusY = radiusX * GROUND_RADIUS_Y_RATIO;
+			const radiusY = this.groundRadiusY(cluster);
 			const exclusions = this.clusterExclusions(cluster, spawn);
 
 			bakeClusterGround({
@@ -1053,7 +1054,7 @@ export class WorldScene extends Phaser.Scene {
 		const circles: CircleKeepout[] = this.manifest.clusters.map((cluster) => ({
 			x: cluster.pos.x,
 			y: cluster.pos.y,
-			radius: this.groundRadius(cluster) + EDGE_SCENERY_CLEARING_PAD,
+			radius: this.groundReach(cluster) + EDGE_SCENERY_CLEARING_PAD,
 		}));
 		circles.push({ x: spawn.x, y: spawn.y, radius: SPAWN_EXCLUSION_RADIUS });
 		for (const pos of this.portalWorldPos.values()) {
@@ -1183,6 +1184,14 @@ export class WorldScene extends Phaser.Scene {
 				PORTAL_RING_SIZES,
 			);
 			this.portalRingRadii.set(cluster.id, ring.radius);
+			this.clearingRadiiY.set(
+				cluster.id,
+				clearingRadiusYForRing(
+					ring.radius,
+					ring.angles,
+					ring.radius + CLEARING_OUTER_MARGIN,
+				),
+			);
 			cluster.portalIds.forEach((portalId, index) => {
 				const angle = ring.angles[index] ?? 0;
 				this.portalWorldPos.set(portalId, {
@@ -1199,6 +1208,19 @@ export class WorldScene extends Phaser.Scene {
 			(this.portalRingRadii.get(cluster.id) ?? PORTAL_RING_SIZES.minRadiusPx) +
 			CLEARING_OUTER_MARGIN
 		);
+	}
+
+	/** Half-height of the clearing's ground ellipse: the old 0.65 of groundRadius() unless the portal ring needs more (@cabn/converter's clearingFit.ts). */
+	private groundRadiusY(cluster: Cluster): number {
+		return (
+			this.clearingRadiiY.get(cluster.id) ??
+			this.groundRadius(cluster) * GROUND_RADIUS_Y_RATIO
+		);
+	}
+
+	/** Circle around the hub that contains the whole clearing, for circular keepouts. */
+	private groundReach(cluster: Cluster): number {
+		return Math.max(this.groundRadius(cluster), this.groundRadiusY(cluster));
 	}
 
 	private drawPortals(): void {
