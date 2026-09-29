@@ -61,6 +61,7 @@ const FOUNTAIN: WorldFountainPalette = {
 	gemLight: 11,
 	gemMid: 12,
 	gemDark: 13,
+	gemBezel: 14,
 };
 
 /** Every opaque cell touching transparency (or the grid edge) must be ink — the tower/icon outline convention. */
@@ -220,6 +221,25 @@ describe("world fountain", () => {
 		for (let y = 0; y < gem.length; y++)
 			for (let x = 0; x < (gem[y]?.length ?? 0); x++)
 				if (gem[y]?.[x] != null) expect(base[y]?.[x]).toBe(FOUNTAIN.rune);
+	});
+
+	test("the gem socket is ringed by the bezel tone, hugging the gem", () => {
+		const gem = buildWorldFountainGem(FOUNTAIN);
+		const base = buildWorldFountainFrame(FOUNTAIN, 0);
+		let bezel = 0;
+		for (let y = 0; y < base.length; y++)
+			for (let x = 0; x < (base[y]?.length ?? 0); x++) {
+				if (base[y]?.[x] !== FOUNTAIN.gemBezel) continue;
+				bezel++;
+				const touchesGem = [
+					[x - 1, y],
+					[x + 1, y],
+					[x, y - 1],
+					[x, y + 1],
+				].some(([gx, gy]) => gem[gy as number]?.[gx as number] != null);
+				expect(touchesGem).toBe(true);
+			}
+		expect(bezel).toBeGreaterThanOrEqual(8);
 	});
 
 	test("is deterministic", () => {

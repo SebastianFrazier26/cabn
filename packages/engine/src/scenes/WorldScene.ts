@@ -143,7 +143,7 @@ import {
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
-import { type Theme, themeFromSeed } from "../systems/theme.js";
+import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
 import { summarizeWorldMap } from "../systems/worldMap.js";
 import {
@@ -261,6 +261,12 @@ const PROPS_PER_CLUSTER = 4;
 const PROP_ANNULUS_INNER_FRAC = 0.68;
 /** Where the fountain's lower basin water sits relative to the sprite centre (world-fountain.ts's WATER.cy, 41 of 58 cells) — the night light pool reflects off the water, not the column. */
 const FOUNTAIN_WATER_OFFSET_Y = 24;
+/** The gem socket's centre relative to the sprite centre (world-fountain.ts's GEM.cy, 30 of 58 cells, at 2px per cell). */
+const FOUNTAIN_GEM_OFFSET_Y = 2;
+/** Lantern amber rather than the bonfire's gold: over the pale-blue water gold summed to a cold white (art polish 2, 2026-09-28). */
+const FOUNTAIN_GLOW = 0xeb8c3c;
+/** How far the fountain gem's theme tint is kept from white (systems/theme.ts's subtleTint). At full strength the multiply sank the gem to the stone's own value, so it vanished by day and night alike. */
+const FOUNTAIN_GEM_TINT_STRENGTH = 0.7;
 // Half the arch's display size + room for a prop's own half-extent — batch 1
 // excluded only 44px around a portal, so a prop could land partway inside the
 // sprite. Exclusions test the prop's *centre*, so since the 2026-09-28 art
@@ -648,13 +654,23 @@ export class WorldScene extends Phaser.Scene {
 		if (this.availability.worldArt) {
 			for (const cluster of this.manifest.clusters) {
 				if (cluster === root) continue;
-				lights.push({
-					x: cluster.pos.x,
-					y: cluster.pos.y + FOUNTAIN_WATER_OFFSET_Y,
-					radiusPx: 52,
-					color: PALETTE.gold,
-					alpha: 0.26,
-				});
+				lights.push(
+					{
+						x: cluster.pos.x,
+						y: cluster.pos.y + FOUNTAIN_WATER_OFFSET_Y,
+						radiusPx: 60,
+						color: FOUNTAIN_GLOW,
+						alpha: 0.75,
+						holeStrength: 0.35,
+					},
+					{
+						x: cluster.pos.x,
+						y: cluster.pos.y + FOUNTAIN_GEM_OFFSET_Y,
+						radiusPx: 9,
+						color: this.gemTint(),
+						alpha: 0.35,
+					},
+				);
 			}
 		}
 		// Each arch's preview is its own faint light source — without this the
@@ -1066,8 +1082,8 @@ export class WorldScene extends Phaser.Scene {
 				sprite = this.drawBonfire(cluster.pos);
 			} else if (this.availability.worldArt) {
 				// Drawn unscaled (props density). The world's theme colour goes on
-				// the gem overlay only, at full strength — tinting the whole
-				// sprite would muddy the stone the portal arches share.
+				// the gem overlay only (lightened, see FOUNTAIN_GEM_TINT_STRENGTH) —
+				// tinting the whole sprite would muddy the stone the arches share.
 				const fountain = this.add.sprite(
 					cluster.pos.x,
 					cluster.pos.y,
@@ -1077,7 +1093,7 @@ export class WorldScene extends Phaser.Scene {
 				fountain.setDepth(2).play(WORLD_FOUNTAIN_IDLE_ANIM);
 				this.add
 					.image(cluster.pos.x, cluster.pos.y, WORLD_FOUNTAIN_GEM_KEY)
-					.setTint(this.theme.tint)
+					.setTint(this.gemTint())
 					.setDepth(2.01);
 				sprite = fountain;
 			} else {
@@ -1126,6 +1142,10 @@ export class WorldScene extends Phaser.Scene {
 		const sprite = this.add.sprite(pos.x, pos.y, ASSET_KEYS.portalArchStrip, 0);
 		sprite.setScale(BONFIRE_SCALE).setTint(PALETTE.gold).setDepth(2);
 		return sprite;
+	}
+
+	private gemTint(): number {
+		return subtleTint(this.theme.tint, FOUNTAIN_GEM_TINT_STRENGTH);
 	}
 
 	/** Fills portalWorldPos without creating any sprites — drawGround()'s scatter exclusions need real portal positions before drawPortals() itself runs (see create()'s ordering comment). */

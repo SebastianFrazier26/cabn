@@ -22,6 +22,8 @@ export interface WorldFountainPalette {
 	gemLight: number;
 	gemMid: number;
 	gemDark: number;
+	/** The socket's ring, painted in the (untinted) stone frame so the tinted gem always has a warm edge to read against. */
+	gemBezel: number;
 }
 
 export const WORLD_FOUNTAIN_WIDTH = 56;
@@ -198,7 +200,7 @@ function paintStone(g: Grid, p: WorldFountainPalette): void {
 	for (let y = GEM.cy - GEM.r - 1; y <= GEM.cy + GEM.r + 1; y++) {
 		for (let x = CX - GEM.r - 1; x <= CX + GEM.r + 1; x++) {
 			const d = Math.abs(x - CX) + Math.abs(y - GEM.cy);
-			if (d === GEM.r + 1) setPixel(g, x, y, p.stoneShadow);
+			if (d === GEM.r + 1) setPixel(g, x, y, p.gemBezel);
 			else if (d <= GEM.r) setPixel(g, x, y, p.rune);
 		}
 	}
