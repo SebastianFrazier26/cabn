@@ -266,10 +266,14 @@ describe("owner commits", () => {
 		const log = await git.log({ fs, dir: repoDir, depth: 1 });
 		expect(log[0]?.commit.message).toBe("Edit from the garden\n");
 		expect(log[0]?.commit.author.name).toBe("Wren Hollow");
-		const history = await raw(h.port, "GET", "/world/history.json", {
+		const meta = await raw(h.port, "GET", "/world/git/meta.json", {
 			host: `127.0.0.1:${h.port}`,
 		});
-		expect(history.body).toContain("Edit from the garden");
+		expect(meta.json.branches).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ subject: "Edit from the garden" }),
+			]),
+		);
 	});
 
 	it("asks for an author when the repository has none, then uses the one given", async () => {

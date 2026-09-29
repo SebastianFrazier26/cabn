@@ -1,4 +1,4 @@
-import { sniffMediaFormat } from "@cabn/converter/browser";
+import { sniffMediaFormat } from "@cabn/converter/core";
 import { MEDIA_MAX_FILE_BYTES_LIMIT } from "@cabn/world-schema";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { reducePeaks } from "../systems/waveform.js";

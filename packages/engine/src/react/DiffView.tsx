@@ -1,4 +1,4 @@
-import type { HistoryHunk } from "@cabn/world-schema";
+import type { HistoryHunk } from "@cabn/converter/browser";
 
 const ROW: Record<string, React.CSSProperties> = {
 	"+": {

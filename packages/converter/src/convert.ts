@@ -40,13 +40,9 @@ import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
 import { fnv1a } from "./hash.js";
-import { buildGitHistory } from "./history/gitHistory.js";
 import type { GithubNetwork } from "./history/githubReleases.js";
-import {
-	type GitHistoryInput,
-	GitTreeSource,
-	openGitRepo,
-} from "./history/gitRepo.js";
+import { buildGitDirectory } from "./history/gitPack.js";
+import { type GitHistoryInput, openGitRepo } from "./history/gitRepo.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
 	isImageFormat,
@@ -181,14 +177,15 @@ export interface ConvertOptions {
 	 * `embedCheck: false` forces offline even when this is set.
 	 */
 	embedNetwork?: EmbedCheckNetwork;
-	/** Exact paths to ship metadata-only (see WalkOptions.sealedPaths) — set for git universes. */
+	/** Exact paths to ship metadata-only (see WalkOptions.sealedPaths) — set for git universes (blobs the pack doesn't carry). */
 	sealedPaths?: ReadonlySet<string>;
 	/**
-	 * Git history: history.json, per-commit diffs, alternate branches as
-	 * universes/<slug>/ worlds, and (with `github`) the repo's GitHub
-	 * releases. Needs a git-capable fs, so only the CLI passes it; the
-	 * backend converts uploads without it (and walk() skips `.git` anyway).
-	 * `github` absent means no network request.
+	 * Git history: a read-only git/ directory holding the repository's real
+	 * objects for recent history (the engine reads it with isomorphic-git
+	 * and converts other branches on demand), and releases.json (with
+	 * `github`, the repo's GitHub releases). Needs a git-capable fs, so only
+	 * the CLI passes it; the backend converts uploads without it (and walk()
+	 * skips `.git` anyway). `github` absent means no network request.
 	 */
 	git?: GitHistoryInput & { github?: GithubNetwork };
 	/** Non-fatal notes for the host to print (e.g. why a repository's history was skipped). */
@@ -441,33 +438,20 @@ export async function convert(
 	}
 
 	if (opts.git && cabnConfig?.history?.enabled !== false) {
-		await addGitHistory(bundle, opts, {
+		await addGitDirectory(bundle, opts, {
 			config: cabnConfig?.history,
-			ignore: [...(opts.ignore ?? []), CABN_CONFIG_FILENAME],
-			maxFileBytes,
-			worldFiles: walked.files,
+			// Not CABN_CONFIG_FILENAME: a branch's cabn.json must ship, since converting that branch on demand reads it.
+			ignore: opts.ignore ?? [],
 		});
 	}
 
 	return bundle;
 }
 
-function bundleBytes(bundle: WorldBundle): number {
-	let total = 0;
-	for (const value of bundle.values())
-		total += typeof value === "string" ? value.length : value.byteLength;
-	return total;
-}
-
-async function addGitHistory(
+async function addGitDirectory(
 	bundle: WorldBundle,
 	opts: ConvertOptions,
-	ctx: {
-		config: HistoryConfig | undefined;
-		ignore: string[];
-		maxFileBytes: number;
-		worldFiles: readonly { path: string; content?: Uint8Array }[];
-	},
+	ctx: { config: HistoryConfig | undefined; ignore: string[] },
 ): Promise<void> {
 	const git = opts.git;
 	if (!git) return;
@@ -478,66 +462,21 @@ async function addGitHistory(
 			warn(`git history skipped: ${opened.reason}`);
 		return;
 	}
-	const caps = resolveHistoryCaps(ctx.config);
-	let history: Awaited<ReturnType<typeof buildGitHistory>>;
+	let files: Awaited<ReturnType<typeof buildGitDirectory>>;
 	try {
-		history = await buildGitHistory(opened.repo, {
-			caps,
+		files = await buildGitDirectory(opened.repo, {
+			caps: resolveHistoryCaps(ctx.config),
 			ignore: ctx.ignore,
-			maxFileBytes: ctx.maxFileBytes,
-			worldFiles: ctx.worldFiles,
 			github: git.github,
 			releasesDisabled: ctx.config?.releases === false,
 		});
 	} catch (err) {
-		// isomorphic-git can't read every repository layout (linked worktrees'
-		// shared object store, for one) — a world without history beats no world.
+		// isomorphic-git can't read every repository layout — a world without history beats no world.
 		warn(`git history skipped: ${(err as Error).message}`);
 		return;
 	}
-	if (!history) return;
-
-	const outcome = new Map<string, "built" | "over-budget" | "failed">();
-	let universeBytes = 0;
-	for (const universe of history.universes) {
-		const source = new GitTreeSource(opened.repo, universe.treeOid, {
-			ignore: ctx.ignore,
-			maxFileBytes: ctx.maxFileBytes,
-		});
-		let world: WorldBundle;
-		try {
-			world = await convert(source, {
-				name: opts.name,
-				// Distinct source per universe: its own save slot and its own theme seed (sky/tint).
-				source: `${opts.source}#${universe.branch}`,
-				ignore: opts.ignore,
-				maxFiles: opts.maxFiles,
-				maxFileBytes: opts.maxFileBytes,
-				maxFilesPerCluster: opts.maxFilesPerCluster,
-				now: opts.now,
-				mediaMaxFileBytes: opts.mediaMaxFileBytes,
-				mediaMaxTotalBytes: opts.mediaMaxTotalBytes,
-				embedNetwork: opts.embedNetwork,
-				sealedPaths: source.sealedPaths,
-			});
-		} catch (err) {
-			warn(
-				`universe "${universe.branch}" not built: ${(err as Error).message}`,
-			);
-			outcome.set(universe.branch, "failed");
-			continue;
-		}
-		const size = bundleBytes(world);
-		if (universeBytes + size > caps.maxUniverseTotalBytes) {
-			outcome.set(universe.branch, "over-budget");
-			continue;
-		}
-		universeBytes += size;
-		outcome.set(universe.branch, "built");
-		for (const [key, value] of world)
-			bundle.set(`universes/${universe.slug}/${key}`, value);
-	}
-	for (const [key, value] of history.finalize(outcome)) bundle.set(key, value);
+	if (!files) return;
+	for (const [key, value] of files) bundle.set(key, value);
 }
 
 /** Always written (like media.json) so its presence says "this converter knew about embed checks"; offline entries carry basis "offline" so a reader can tell "assumed" from "checked". */

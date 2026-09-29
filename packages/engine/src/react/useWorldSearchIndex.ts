@@ -1,8 +1,9 @@
-import type { SearchDoc } from "@cabn/converter/browser";
-import { SEARCH_FIELDS, SEARCH_STORE_FIELDS } from "@cabn/converter/browser";
+import type { SearchDoc } from "@cabn/converter/core";
+import { SEARCH_FIELDS, SEARCH_STORE_FIELDS } from "@cabn/converter/core";
 import { SearchIndexFileSchema } from "@cabn/world-schema";
 import MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
+import { resolveRelativeUrl } from "../render/resolveUrl.js";
 
 export type WorldSearchIndex = MiniSearch<SearchDoc>;
 
@@ -16,7 +17,7 @@ export interface WorldSearchIndexState {
 export async function fetchWorldSearchIndex(
 	worldBase: string,
 ): Promise<WorldSearchIndex> {
-	const res = await fetch(`${worldBase}search-index.json`);
+	const res = await fetch(resolveRelativeUrl(worldBase, "search-index.json"));
 	const parsed = SearchIndexFileSchema.parse(await res.json());
 	return MiniSearch.loadJSON<SearchDoc>(JSON.stringify(parsed.index), {
 		fields: [...SEARCH_FIELDS],

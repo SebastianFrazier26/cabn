@@ -368,6 +368,12 @@ importers:
       '@lezer/highlight':
         specifier: 1.2.3
         version: 1.2.3
+      buffer:
+        specifier: 6.0.3
+        version: 6.0.3
+      isomorphic-git:
+        specifier: 1.42.2
+        version: 1.42.2
       minisearch:
         specifier: 7.2.0
         version: 7.2.0

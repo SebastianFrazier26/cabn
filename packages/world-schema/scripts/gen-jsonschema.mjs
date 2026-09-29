@@ -11,9 +11,10 @@ import { z } from "zod";
 import {
 	AssetsFileSchema,
 	CabnConfigSchema,
-	HistoryCommitDiffFileSchema,
-	HistoryIndexFileSchema,
+	GitFilesSchema,
+	GitMetaSchema,
 	MonsterIndexFileSchema,
+	ReleasesFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
 	SignIndexFileSchema,
@@ -32,8 +33,9 @@ const schemas = {
 	shelf: ShelfManifestSchema,
 	"cabn-config": CabnConfigSchema,
 	"monsters-index": MonsterIndexFileSchema,
-	"history-index": HistoryIndexFileSchema,
-	"history-commit-diff": HistoryCommitDiffFileSchema,
+	"git-meta": GitMetaSchema,
+	"git-files": GitFilesSchema,
+	releases: ReleasesFileSchema,
 	"signs-index": SignIndexFileSchema,
 };
 

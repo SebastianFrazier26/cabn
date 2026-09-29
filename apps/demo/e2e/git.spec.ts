@@ -168,6 +168,12 @@ test("git: the rift switches universes and back; releases render safely", async 
 	await expect(page.getByTestId("map-rift")).toBeVisible();
 	await page.keyboard.press("Escape");
 
+	// The pack starts loading when the rift opens; holding it back keeps the
+	// on-demand conversion (which needs it) on its loading swirl long enough to see.
+	await page.route("**/git/objects/pack/*.pack", async (route) => {
+		await new Promise((r) => setTimeout(r, 6000));
+		await route.continue();
+	});
 	await openRift(page, "rift-main");
 	const before = (await state(page))?.playerPos;
 	await holdKey(page, "ArrowLeft", 300);
@@ -196,6 +202,9 @@ test("git: the rift switches universes and back; releases render safely", async 
 		)
 		.getByRole("button", { name: "Travel" })
 		.click();
+	await expect(page.getByTestId("universe-loading")).toBeVisible();
+	await expect(page.getByTestId("universe-loading-swirl")).toBeVisible();
+	await shoot(page, "universe-loading-day");
 	await expect
 		.poll(async () => (await state(page))?.universe, { timeout: 20_000 })
 		.toBe("feature/lantern-festival");
@@ -207,6 +216,22 @@ test("git: the rift switches universes and back; releases render safely", async 
 		.toContain("docs/lantern-festival.md");
 	await page.waitForTimeout(1200);
 	await shoot(page, "universe-feature-day");
+
+	// The universe was built in this browser from the shipped objects; a secret-named file is not shipped.
+	await page.evaluate(() =>
+		(
+			window as unknown as {
+				__cabnStore: { getState(): { setPensievePortalId(id: string): void } };
+			}
+		).__cabnStore
+			.getState()
+			.setPensievePortalId("config/credentials.json"),
+	);
+	await expect(page.getByTestId("pensieve-not-shipped")).toContainText(
+		"Not shipped",
+	);
+	await shoot(page, "pensieve-not-shipped-day");
+	await page.keyboard.press("Escape");
 	await setTimeOfDay(page, "night");
 	await shoot(page, "universe-feature-night");
 	await setTimeOfDay(page, "day");
@@ -268,7 +293,7 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 	await page.keyboard.press("Escape");
 	await expect(pensieve).toHaveCount(0);
 
-	// A file whose every version carries a planted secret: its diffs are withheld, never shown.
+	// History ships as-is: a file with a planted key shows its real diff (its magpie is the warning).
 	await page.evaluate(() =>
 		(
 			window as unknown as {
@@ -278,8 +303,7 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 			.getState()
 			.setPensievePortalId("src/plantNamer.ts"),
 	);
-	await expect(page.getByTestId("pensieve-sealed")).toContainText("Withheld");
-	await shoot(page, "pensieve-sealed-day");
+	await expect(page.getByTestId("pensieve-diff")).toBeVisible();
 	await page.keyboard.press("Escape");
 
 	// Inside a file the pensieve is Alt/Option+H, and Esc closes it without leaving the file.
@@ -305,6 +329,9 @@ test("git: the map timeline highlights the files a commit changed", async ({
 	await setTimeOfDay(page, "day");
 	await page.keyboard.press("m");
 	await expect(page.getByTestId("map-timeline")).toBeVisible();
+	// The map never pulls the pack in by itself.
+	await page.getByTestId("map-timeline-load").click();
+	await expect(page.getByTestId("map-timeline-slider")).toBeVisible();
 	await expect(page.getByTestId("map-portal-changed")).toHaveCount(0);
 	// Newest main commit ("Full bloom") changes nothing; one step older is the README polish.
 	await page.getByRole("button", { name: "Older commit" }).click();

@@ -51,7 +51,7 @@ async function build(rest: string[]): Promise<number> {
 		if (summary.history) {
 			const h = summary.history;
 			console.log(
-				`History: ${h.commits} commits across ${h.branches} branch(es), ${h.tags} tag(s); universes: ${h.universes.length ? h.universes.join(", ") : "none"}; releases: ${h.releases}${h.releaseCount ? ` (${h.releaseCount})` : ""}`,
+				`History: ${h.branches} branch(es), ${h.tags} tag(s), up to ${h.commitsPerBranch} commits per branch${h.halvings ? ` (halved ${h.halvings}x to fit the pack cap)` : ""}; pack ${Math.round(h.packBytes / 1024)} KB, ${h.objects} objects, ${h.notShipped} blob(s) not shipped; releases: ${h.releases}${h.releaseCount ? ` (${h.releaseCount})` : ""}. Publishing this world publishes its git history, author emails included.`,
 			);
 		}
 		for (const warning of summary.warnings) console.warn(`Note: ${warning}`);

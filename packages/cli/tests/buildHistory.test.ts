@@ -56,17 +56,25 @@ async function allOutput(dir: string): Promise<string> {
 }
 
 describe("cabn build of a git repository", () => {
-	it("writes history.json and reports it; --offline records releases as offline", async () => {
+	it("writes the read-only git/ directory and reports it; --offline records releases as offline", async () => {
 		const summary = await runBuild(repoDir, { outDir, offline: true });
 		expect(summary.history).toMatchObject({
-			commits: 1,
 			branches: 1,
+			halvings: 0,
 			releases: "offline",
 		});
-		const history = JSON.parse(
-			await readFile(join(outDir, "history.json"), "utf8"),
+		const meta = JSON.parse(
+			await readFile(join(outDir, "git", "meta.json"), "utf8"),
 		);
-		expect(history.head.branch).toBe("main");
+		expect(meta.head.branch).toBe("main");
+		// The shipped directory is a real repository.
+		const shipped = await git.log({
+			fs,
+			gitdir: join(outDir, "git"),
+			ref: "main",
+		});
+		expect(shipped[0]?.commit.message).toBe("Plant\n");
+		expect(shipped[0]?.commit.author.email).toBe("wren@hollow.example");
 	});
 
 	it("--no-history writes none", async () => {
@@ -76,7 +84,7 @@ describe("cabn build of a git repository", () => {
 			history: false,
 		});
 		expect(summary.history).toBeUndefined();
-		expect(fs.existsSync(join(outDir, "history.json"))).toBe(false);
+		expect(fs.existsSync(join(outDir, "git"))).toBe(false);
 	});
 
 	it("sends GITHUB_TOKEN to api.github.com only in a header, never into the bundle", async () => {

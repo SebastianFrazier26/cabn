@@ -1,6 +1,6 @@
 import type {
 	FileKind,
-	HistoryIndexFile,
+	GitMeta,
 	Position,
 	SignEntry,
 	Species,
@@ -190,7 +190,10 @@ export interface CabnState {
 
 /** The world's git history, as the rift, map timeline and pensieve read it (WorldScene sets it from the bundle's history.json; null for a world without one). */
 export interface GitContext {
-	history: HistoryIndexFile;
+	/** git/meta.json of the main world's bundle (branch/tag summaries); the objects themselves load lazily (systems/git/). */
+	meta: GitMeta;
+	/** This world's meta.generatedAt — every universe converts with the main world's, so its save slot survives reloads. */
+	generatedAt: string;
 	/** Base url of the bundle history.json came from — the main world's, also while visiting a universe. */
 	historyBase: string;
 	/** The branch this world shows: the checked-out branch for the main world, the universe's branch otherwise. */

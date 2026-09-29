@@ -1,7 +1,7 @@
 import type {
 	Cluster,
 	EmbedVerdict,
-	HistoryIndexFile,
+	GitMeta,
 	MediaPreview,
 	Monster,
 	Portal,
@@ -73,6 +73,7 @@ import {
 	propLightWorldPos,
 	propSmokeWorldPos,
 } from "../render/propPlacement.js";
+import { resolveRelativeUrl } from "../render/resolveUrl.js";
 import { Rift } from "../render/rift.js";
 import {
 	BONFIRE_RAW_SIZE_PX,
@@ -171,7 +172,7 @@ export interface WorldSceneData {
 }
 
 export interface WorldGitData {
-	history: HistoryIndexFile;
+	meta: GitMeta;
 	historyBase: string;
 	universe: { slug: string; branch: string } | null;
 }
@@ -726,13 +727,14 @@ export class WorldScene extends Phaser.Scene {
 		}
 		const branch =
 			git.universe?.branch ??
-			git.history.branches.find((b) => b.current)?.name ??
-			git.history.head.branch ??
+			git.meta.branches.find((b) => b.current)?.name ??
+			git.meta.head.branch ??
 			"HEAD";
 		const suffix = git.universe ? `#${git.universe.branch}` : "";
 		const source = this.manifest.meta.source;
 		this.store.getState().setGit({
-			history: git.history,
+			meta: git.meta,
+			generatedAt: this.manifest.meta.generatedAt,
 			historyBase: git.historyBase,
 			branch,
 			universe: git.universe,
@@ -1758,7 +1760,7 @@ export class WorldScene extends Phaser.Scene {
 
 	private loadChunk(cluster: Cluster): void {
 		this.chunkFetchesInFlight.add(cluster.id);
-		fetch(`${this.worldBase}${cluster.chunk}`)
+		fetch(resolveRelativeUrl(this.worldBase, cluster.chunk))
 			.then((res) => res.json())
 			.then((raw) => {
 				const chunk: WorldChunk = WorldChunkSchema.parse(raw);

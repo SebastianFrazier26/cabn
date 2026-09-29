@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
-import {
-	branchCommits,
-	changedPaths,
-	commitSubject,
-	formatCommitDate,
-	shortOid,
-} from "../systems/gitHistory.js";
+import { isRepoLoaded, loadBrowserRepo } from "../systems/git/loadRepo.js";
+import type { CommitChanges, RepoCommit } from "../systems/git/types.js";
 import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
 import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
 import { useCabnStore } from "./useCabnStore.js";
+
+// Only a world with git history ever shows it, and only after the reader loads.
+const MapTimeline = lazy(() =>
+	import("./MapTimeline.js").then((m) => ({ default: m.MapTimeline })),
+);
 
 interface Props {
 	store: StoreApi<CabnStore>;
@@ -24,19 +24,46 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 	const open = useCabnStore(store, (s) => s.mapOpen);
 	const closeRef = useRef<HTMLButtonElement>(null);
 	const git = useCabnStore(store, (s) => s.git);
-	const commits = useMemo(
-		() => (git ? branchCommits(git.history, git.branch) : []),
-		[git],
-	);
+	// null until the git reader loads (lazily: the map itself never pulls the pack in).
+	const [commits, setCommits] = useState<RepoCommit[] | null>(null);
+	const [loadingTimeline, setLoadingTimeline] = useState(false);
 	// Slider position counts from the oldest commit (left) to the newest (right); null = timeline off.
 	const [step, setStep] = useState<number | null>(null);
+	const [changes, setChanges] = useState<CommitChanges | null>(null);
+	const loadTimeline = useMemo(
+		() => () => {
+			if (!git) return;
+			setLoadingTimeline(true);
+			loadBrowserRepo(git.historyBase, git.meta)
+				.then((repo) => repo.log(git.branch))
+				.then(setCommits)
+				.catch(() => setCommits([]))
+				.finally(() => setLoadingTimeline(false));
+		},
+		[git],
+	);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the map opens/closes or the universe changes.
-	useEffect(() => setStep(null), [open, git]);
+	useEffect(() => {
+		setStep(null);
+		setCommits(null);
+		if (open && git && isRepoLoaded(git.historyBase)) loadTimeline();
+	}, [open, git]);
 	const selectedCommit =
-		step === null ? undefined : commits[commits.length - 1 - step];
+		step === null || !commits ? undefined : commits[commits.length - 1 - step];
+	useEffect(() => {
+		setChanges(null);
+		if (!selectedCommit || !git) return;
+		let live = true;
+		loadBrowserRepo(git.historyBase, git.meta)
+			.then((repo) => repo.changes(selectedCommit))
+			.then((c) => live && setChanges(c));
+		return () => {
+			live = false;
+		};
+	}, [selectedCommit, git]);
 	const highlight = useMemo(
-		() => changedPaths(selectedCommit),
-		[selectedCommit],
+		() => new Set(changes?.changes.map((c) => c.path) ?? []),
+		[changes],
 	);
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
@@ -188,13 +215,34 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 							large
 							highlight={highlight}
 						/>
-						{commits.length > 0 && (
-							<MapTimeline
-								commits={commits}
-								step={step}
-								setStep={setStep}
-								worldPaths={map.portals}
-							/>
+						{git && commits === null && (
+							<div
+								data-testid="map-timeline"
+								style={{ padding: "0 12px 8px", fontSize: 12 }}
+							>
+								<button
+									type="button"
+									className="cabn-btn neutral"
+									data-testid="map-timeline-load"
+									disabled={loadingTimeline}
+									onClick={loadTimeline}
+								>
+									{loadingTimeline
+										? "Reading the history…"
+										: "Show the commit timeline"}
+								</button>
+							</div>
+						)}
+						{commits && commits.length > 0 && (
+							<Suspense fallback={null}>
+								<MapTimeline
+									commits={commits}
+									changes={changes}
+									step={step}
+									setStep={setStep}
+									worldPaths={map.portals}
+								/>
+							</Suspense>
 						)}
 						<p style={{ padding: "0 12px", fontSize: 12 }}>
 							Gold: you · cyan squares: files · red: undefeated monsters ·
@@ -223,93 +271,6 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 				</div>
 			)}
 		</>
-	);
-}
-
-function MapTimeline({
-	commits,
-	step,
-	setStep,
-	worldPaths,
-}: {
-	commits: ReturnType<typeof branchCommits>;
-	step: number | null;
-	setStep: (step: number | null) => void;
-	worldPaths: WorldMapSummary["portals"];
-}): React.ReactElement {
-	const last = commits.length - 1;
-	const commit = step === null ? undefined : commits[last - step];
-	const inWorld = new Set(worldPaths.map((p) => p.id));
-	return (
-		<div
-			data-testid="map-timeline"
-			style={{ padding: "0 12px 8px", fontSize: 12 }}
-		>
-			<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-				<span>Timeline</span>
-				<button
-					type="button"
-					className="cabn-btn neutral"
-					aria-label="Older commit"
-					onClick={() => setStep(step === null ? last : Math.max(0, step - 1))}
-				>
-					◀
-				</button>
-				<input
-					type="range"
-					aria-label="Commit timeline"
-					data-testid="map-timeline-slider"
-					min={0}
-					max={last}
-					value={step ?? last}
-					onChange={(e) => setStep(Number(e.target.value))}
-					style={{ flex: 1, accentColor: "var(--cabn-accent-violet)" }}
-				/>
-				<button
-					type="button"
-					className="cabn-btn neutral"
-					aria-label="Newer commit"
-					onClick={() =>
-						setStep(step === null ? last : Math.min(last, step + 1))
-					}
-				>
-					▶
-				</button>
-				<button
-					type="button"
-					className="cabn-btn cancel"
-					disabled={step === null}
-					onClick={() => setStep(null)}
-				>
-					Off
-				</button>
-			</div>
-			{commit ? (
-				<div data-testid="map-timeline-commit" style={{ marginTop: 4 }}>
-					<strong>{commitSubject(commit)}</strong> ·{" "}
-					{formatCommitDate(commit.time)} · {commit.author} ·{" "}
-					{shortOid(commit.oid)} — {commit.changes.length} file(s) changed, gold
-					on the map
-					{commit.changes.some((c) => !inWorld.has(c.path)) && (
-						<span>
-							{" "}
-							(not in this world:{" "}
-							{commit.changes
-								.filter((c) => !inWorld.has(c.path))
-								.map((c) => `${c.path} ${c.status}`)
-								.slice(0, 6)
-								.join(", ")}
-							)
-						</span>
-					)}
-				</div>
-			) : (
-				<div style={{ marginTop: 4, color: "var(--cabn-text-secondary)" }}>
-					Slide through the last {commits.length} commits to see which files
-					each one changed.
-				</div>
-			)}
-		</div>
 	);
 }
 

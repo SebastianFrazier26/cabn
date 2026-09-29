@@ -20,7 +20,7 @@ function App() {
 
 Real code execution (`LocalRunProvider`) is not part of the main entry point — it lives behind `@cabn/engine/local-exec`, meant only for a `cabn serve --allow-exec` host page. Every other consumer, including this package's main export, only ever simulates a run (`TraceProvider`).
 
-The same split applies to repository writes: `CabnGame`'s optional `owner` prop takes an `OwnerCapability`, and the HTTP client that implements it (`createOwnerGitClient`) lives behind `@cabn/engine/owner`, imported only by a `cabn serve --owner` host page. Git history (the rift, universe picker, pensieve and map timeline) needs no capability: it reads the bundle's `history.json` and works in any host.
+The same split applies to repository writes: `CabnGame`'s optional `owner` prop takes an `OwnerCapability`, and the HTTP client that implements it (`createOwnerGitClient`) lives behind `@cabn/engine/owner`, imported only by a `cabn serve --owner` host page. Git history (the rift, universe picker, pensieve and map timeline) needs no capability: it reads the bundle's read-only `git/` directory with isomorphic-git (a lazy chunk, loaded on first use, with a `Buffer` polyfill) and converts other branches in the browser on demand. A host needs no configuration for it, but a bundler must be able to split dynamic imports for it to stay out of the first load.
 
 ## Portal previews
 

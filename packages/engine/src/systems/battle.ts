@@ -15,7 +15,7 @@ import {
 	smellOptionsFromRule,
 	syntaxError,
 	todoMarker,
-} from "@cabn/converter/browser";
+} from "@cabn/converter/core";
 import type { ErrorCode, PortalFile } from "@cabn/world-schema";
 
 /**

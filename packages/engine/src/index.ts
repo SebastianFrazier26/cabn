@@ -36,19 +36,17 @@ export * from "./systems/csv.js";
 export * from "./systems/embedGuard.js";
 export * from "./systems/enchantMd.js";
 export * from "./systems/execution/executionProvider.js";
+export type * from "./systems/git/types.js";
 export * from "./systems/gitHistory.js";
-export * from "./systems/gitStash.js";
 export * from "./systems/guideContent.js";
 export * from "./systems/insertText.js";
 export * from "./systems/lineWindow.js";
-export * from "./systems/markdownLite.js";
 export type {
 	OwnerCapability,
 	OwnerCommitRequest,
 	OwnerGitApi,
 	OwnerGitStatus,
 } from "./systems/ownerApi.js";
-export { OwnerApiError } from "./systems/ownerApi.js";
 export type {
 	OwnerSignSaveRequest,
 	OwnerSignsApi,

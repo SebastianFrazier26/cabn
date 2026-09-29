@@ -4,9 +4,8 @@ import {
 	readTree,
 	type TreeEntry,
 } from "isomorphic-git";
-import { containsLeakedSecret } from "../annotate/leakedSecret.js";
 import type { FileSource, SourceEntry } from "../sources/types.js";
-import { isIgnoredPath, isSecretPath } from "../walk.js";
+import { isIgnoredPath } from "../walk.js";
 
 /**
  * Everything here reads git through isomorphic-git with an fs the host
@@ -168,14 +167,14 @@ export function decodeText(bytes: Uint8Array): string {
 }
 
 /**
- * A commit's tree as a converter source — how an alternate branch becomes a
- * walkable "universe" world. Stricter than DirSource on purpose: a branch
- * tree is history, and history can hold secrets deleted later, so any blob
- * the leaked-secret detector flags (strict mode) is listed but unreadable,
- * and secret-pattern files (.env, *.pem, ...) are unreadable regardless of
- * includeSecrets. `sealedPaths` (filled during the first entries() pass,
+ * A commit's tree as a converter source — how a branch becomes a walkable
+ * "universe" world, in the browser (over the world's git/ pack) or in Node.
+ * It follows the main world's rules: walk() still keeps secret-pattern
+ * files metadata-only. A blob the pack doesn't carry (secret-named, over
+ * the blob cap, ignored — see gitPack.ts) is listed with its recorded size
+ * but unreadable; `sealedPaths` (filled during the first entries() pass,
  * which convert()'s cabn.json lookup always makes before walk()) is what
- * convert() passes on so those files render as sealed chests.
+ * convert() passes on so those render as sealed chests.
  */
 export class GitTreeSource implements FileSource {
 	readonly sealedPaths = new Set<string>();
@@ -183,7 +182,11 @@ export class GitTreeSource implements FileSource {
 	constructor(
 		private readonly repo: OpenedRepo,
 		private readonly treeOid: string,
-		private readonly opts: { ignore: readonly string[]; maxFileBytes: number },
+		private readonly opts: {
+			ignore: readonly string[];
+			/** Sizes of blobs left out of the pack (git/meta.json `omitted`). */
+			omittedSizes?: Readonly<Record<string, { size: number }>>;
+		},
 	) {}
 
 	entries(): AsyncIterable<SourceEntry> {
@@ -202,24 +205,19 @@ export class GitTreeSource implements FileSource {
 				continue;
 			}
 			if (!isRegularBlob(entry)) continue;
-			const bytes = await readBlobBytes(this.repo, entry.oid);
-			if (this.isSealed(path, bytes)) {
+			let bytes: Uint8Array;
+			try {
+				bytes = await readBlobBytes(this.repo, entry.oid);
+			} catch {
 				this.sealedPaths.add(path);
 				yield {
 					path,
-					bytes: bytes.length,
+					bytes: this.opts.omittedSizes?.[entry.oid]?.size ?? 0,
 					read: () => Promise.resolve(new Uint8Array(0)),
 				};
 				continue;
 			}
 			yield { path, bytes: bytes.length, read: () => Promise.resolve(bytes) };
 		}
-	}
-
-	private isSealed(path: string, bytes: Uint8Array): boolean {
-		if (isSecretPath(path)) return true;
-		if (bytes.length > this.opts.maxFileBytes || looksBinary(bytes))
-			return false;
-		return containsLeakedSecret(decodeText(bytes), path, { strict: true });
 	}
 }

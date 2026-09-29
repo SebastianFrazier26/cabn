@@ -1,109 +1,42 @@
-import { reverseApplyHunks } from "@cabn/converter/browser";
-import {
-	HISTORY_DIFF_FILE_PATTERN,
-	type HistoryBranch,
-	type HistoryChange,
-	type HistoryCommit,
-	type HistoryHunk,
-	type HistoryIndexFile,
-	UNIVERSE_WORLD_URL_PATTERN,
-} from "@cabn/world-schema";
+import type { OmittedBlobReason } from "@cabn/world-schema";
 
-/** Pure reads over history.json for the rift, the map timeline and the pensieve. */
-
-export function findBranch(
-	history: HistoryIndexFile,
-	name: string,
-): HistoryBranch | undefined {
-	return history.branches.find((b) => b.name === name);
-}
-
-export function currentBranchName(history: HistoryIndexFile): string {
-	return (
-		history.branches.find((b) => b.current)?.name ??
-		history.head.branch ??
-		"HEAD"
-	);
-}
-
-export function commitsByOid(
-	history: HistoryIndexFile,
-): Map<string, HistoryCommit> {
-	return new Map(history.commits.map((c) => [c.oid, c]));
-}
-
-/** A branch's commits, newest first, as far as history.json carries them. */
-export function branchCommits(
-	history: HistoryIndexFile,
-	branchName: string,
-): HistoryCommit[] {
-	const branch = findBranch(history, branchName);
-	if (!branch) return [];
-	const byOid = commitsByOid(history);
-	return branch.commits.flatMap((oid) => {
-		const commit = byOid.get(oid);
-		return commit ? [commit] : [];
-	});
-}
-
-export interface FileTimelineEntry {
-	commit: HistoryCommit;
-	change: HistoryChange;
-}
-
-/** Every commit on the branch that touched `path`, newest first. */
-export function fileTimeline(
-	history: HistoryIndexFile,
-	branchName: string,
-	path: string,
-): FileTimelineEntry[] {
-	return branchCommits(history, branchName).flatMap((commit) => {
-		const change = commit.changes.find((c) => c.path === path);
-		return change ? [{ commit, change }] : [];
-	});
-}
-
-export function changedPaths(commit: HistoryCommit | undefined): Set<string> {
-	return new Set(commit?.changes.map((c) => c.path) ?? []);
-}
+/** Pure helpers for the rift, map timeline and pensieve; the git reads themselves live in systems/git/. */
 
 export function shortOid(oid: string): string {
 	return oid.slice(0, 7);
 }
 
-export function commitSubject(commit: HistoryCommit): string {
-	return commit.message.split("\n", 1)[0] ?? "";
+export function commitSubject(message: string): string {
+	return message.split("\n", 1)[0] ?? "";
 }
 
 export function formatCommitDate(time: number): string {
 	return new Date(time * 1000).toISOString().slice(0, 10);
 }
 
-/**
- * Resolves a bundle-relative path from history.json against its base, but
- * only when it has the exact shape the converter writes — the schema
- * already enforces this, and the fetch site checks again so no future
- * caller can hand it an arbitrary string.
- */
-export function bundleUrl(
-	base: string,
-	relative: string,
-	kind: "diff" | "universe",
-): string | null {
-	const pattern =
-		kind === "diff" ? HISTORY_DIFF_FILE_PATTERN : UNIVERSE_WORLD_URL_PATTERN;
-	return pattern.test(relative) ? `${base}${relative}` : null;
+function fnv1a(str: string): number {
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < str.length; i++) {
+		hash ^= str.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193);
+	}
+	return hash >>> 0;
+}
+
+/** Stable, url- and key-safe id for a branch's universe (tint, memory-world key, save slot suffix is the branch itself). */
+export function universeSlug(branch: string): string {
+	const base = branch
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 60);
+	return `${base || "branch"}-${fnv1a(branch).toString(16).padStart(8, "0").slice(0, 6)}`;
 }
 
 /** Deterministic per-universe hue from its slug; the main world (null) gets none. */
 export function universeTint(slug: string | null): number | null {
 	if (slug === null) return null;
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < slug.length; i++) {
-		hash ^= slug.charCodeAt(i);
-		hash = Math.imul(hash, 0x01000193);
-	}
-	const hue = (hash >>> 0) % 360;
+	const hue = fnv1a(slug) % 360;
 	return hslToRgb(hue / 360, 0.65, 0.55);
 }
 
@@ -129,32 +62,14 @@ export function cssColor(rgb: number): string {
 	return `#${rgb.toString(16).padStart(6, "0")}`;
 }
 
-/**
- * Rebuilds the file as it stood after `steps.length` newer changes are
- * undone: `current` is the newest version, `steps` the newer-first hunks to
- * reverse. Null when any step is missing (withheld/omitted diff) or doesn't
- * apply — the pensieve then says the version can't be rebuilt rather than
- * showing something wrong.
- */
-export function rebuildVersion(
-	current: string,
-	steps: readonly (readonly HistoryHunk[] | null)[],
-): string | null {
-	let text = current;
-	for (const hunks of steps) {
-		if (!hunks) return null;
-		const previous = reverseApplyHunks(text, hunks);
-		if (previous === null) return null;
-		text = previous;
-	}
-	return text;
-}
-
-export const DIFF_STATE_LABEL: Record<HistoryChange["diff"], string> = {
-	included: "",
-	"sealed-secret": "Withheld: this version may contain a secret.",
-	"sealed-path": "Sealed: secret files are never shown from any commit.",
-	binary: "A binary file changed.",
-	"too-large": "This change is too large to show.",
-	omitted: "Left out to keep the world small.",
-};
+export const NOT_SHIPPED_LABEL: Record<OmittedBlobReason | "unknown", string> =
+	{
+		"secret-name":
+			"Not shipped: files with secret-looking names (.env, keys) are left out of the world's history.",
+		"too-large":
+			"Not shipped: this version is larger than the world's per-file history cap.",
+		ignored: "Not shipped: this folder is one the world ignores.",
+		"pack-cap":
+			"Not shipped: left out to keep the world's history under its size cap.",
+		unknown: "Not shipped with this world.",
+	};

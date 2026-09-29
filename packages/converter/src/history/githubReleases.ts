@@ -1,10 +1,10 @@
 import {
-	type HistoryIndexFile,
 	type HistoryPackage,
 	HistoryPackageSchema,
 	type HistoryRelease,
 	HistoryReleaseSchema,
 	MAX_RELEASE_BODY_CHARS,
+	type ReleasesFile,
 } from "@cabn/world-schema";
 import { z } from "zod";
 
@@ -189,7 +189,7 @@ export async function fetchGithubReleases(
 	net: GithubNetwork,
 	repo: GithubRepoRef,
 	maxReleases: number,
-): Promise<HistoryIndexFile["releases"]> {
+): Promise<Omit<ReleasesFile, "releasesVersion">> {
 	const base = {
 		repo: {
 			owner: repo.owner,
