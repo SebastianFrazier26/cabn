@@ -2417,7 +2417,7 @@ export class WorldScene extends Phaser.Scene {
 		if (!seam) return [];
 		return this.manifest.clusters
 			.filter((c) => seam.layer.clusterIds.has(c.id))
-			.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: this.groundRadius(c) }));
+			.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: this.groundReach(c) }));
 	}
 
 	/** Tells the HUD which layer shows, and raises that layer's objects out of the ground. */
