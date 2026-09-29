@@ -22,6 +22,9 @@ export interface MdSegment {
 	style: MdSegmentStyle;
 	/** Only set on style: "link" segments. */
 	href?: string;
+	/** Source offsets within the line of the characters this segment paints — the hidden markup (`#`, backticks, `**`, a list marker) sits outside every segment, which is what lets a click on painted text find its source column. */
+	from: number;
+	to: number;
 }
 
 export interface EnchantedLine {
@@ -41,15 +44,30 @@ const LIST_ITEM_RE = /^(\s*)(?:[-*+]|\d+\.)\s+(.*)$/;
 const INLINE_RE =
 	/`([^`]+)`|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|\[([^\]]+)\]\(([^)]+)\)/g;
 
-function parseInline(text: string): MdSegment[] {
+function parseInline(text: string, base: number): MdSegment[] {
 	const segments: MdSegment[] = [];
+	const push = (
+		segText: string,
+		style: MdSegmentStyle,
+		from: number,
+		href?: string,
+	) => {
+		const start = base + from;
+		segments.push({
+			text: segText,
+			style,
+			...(href === undefined ? {} : { href }),
+			from: start,
+			to: start + segText.length,
+		});
+	};
 	let lastIndex = 0;
 	INLINE_RE.lastIndex = 0;
 
 	for (const match of text.matchAll(INLINE_RE)) {
 		const index = match.index ?? 0;
 		if (index > lastIndex) {
-			segments.push({ text: text.slice(lastIndex, index), style: "plain" });
+			push(text.slice(lastIndex, index), "plain", lastIndex);
 		}
 
 		const [
@@ -65,27 +83,24 @@ function parseInline(text: string): MdSegment[] {
 			linkHref,
 		] = match;
 		if (code !== undefined) {
-			segments.push({ text: code, style: "code" });
+			push(code, "code", index + 1);
 		} else if (boldItalic1 !== undefined || boldItalic2 !== undefined) {
-			segments.push({
-				text: (boldItalic1 ?? boldItalic2) as string,
-				style: "boldItalic",
-			});
+			push((boldItalic1 ?? boldItalic2) as string, "boldItalic", index + 3);
 		} else if (bold1 !== undefined || bold2 !== undefined) {
-			segments.push({ text: (bold1 ?? bold2) as string, style: "bold" });
+			push((bold1 ?? bold2) as string, "bold", index + 2);
 		} else if (italic1 !== undefined || italic2 !== undefined) {
-			segments.push({ text: (italic1 ?? italic2) as string, style: "italic" });
+			push((italic1 ?? italic2) as string, "italic", index + 1);
 		} else if (linkText !== undefined) {
-			segments.push({ text: linkText, style: "link", href: linkHref });
+			push(linkText, "link", index + 1, linkHref);
 		}
 
 		lastIndex = index + match[0].length;
 	}
 
 	if (lastIndex < text.length) {
-		segments.push({ text: text.slice(lastIndex), style: "plain" });
+		push(text.slice(lastIndex), "plain", lastIndex);
 	}
-	if (segments.length === 0) segments.push({ text, style: "plain" });
+	if (segments.length === 0) push(text, "plain", 0);
 	return segments;
 }
 
@@ -99,13 +114,15 @@ export function enchantMdLine(line: string): EnchantedLine {
 		const style: MdSegmentStyle =
 			level === 1 ? "heading1" : level === 2 ? "heading2" : "heading3";
 		const rest = headingMatch[2] ?? "";
+		// `.*$` runs to the end of the line, so the text starts that far back.
+		const base = line.length - rest.length;
 		return {
 			segments: rest
-				? parseInline(rest).map((s) => ({
+				? parseInline(rest, base).map((s) => ({
 						...s,
 						style: s.style === "plain" ? style : s.style,
 					}))
-				: [{ text: "", style }],
+				: [{ text: "", style, from: base, to: base }],
 			headingLevel: level,
 			isListItem: false,
 		};
@@ -113,12 +130,17 @@ export function enchantMdLine(line: string): EnchantedLine {
 
 	const listMatch = LIST_ITEM_RE.exec(line);
 	if (listMatch) {
+		const rest = listMatch[2] ?? "";
 		return {
-			segments: parseInline(listMatch[2] ?? ""),
+			segments: parseInline(rest, line.length - rest.length),
 			headingLevel: null,
 			isListItem: true,
 		};
 	}
 
-	return { segments: parseInline(line), headingLevel: null, isListItem: false };
+	return {
+		segments: parseInline(line, 0),
+		headingLevel: null,
+		isListItem: false,
+	};
 }

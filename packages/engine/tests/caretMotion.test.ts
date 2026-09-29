@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type CaretLayout,
 	columnFromDisplay,
+	columnFromPaintedSpans,
 	deletionRange,
 	displayColumn,
 	moveCaret,
@@ -217,5 +218,40 @@ describe("wordRangeAt", () => {
 		expect(wordRangeAt(d, 10)).toEqual({ from: 10, to: 11 });
 		expect(wordRangeAt(d, 15)).toEqual({ from: 14, to: 16 });
 		expect(wordRangeAt(doc(""), 0)).toEqual({ from: 0, to: 0 });
+	});
+});
+
+describe("columnFromPaintedSpans", () => {
+	// "`HarvestRecord` is the one": code span painted from x=64, then plain.
+	const line = "`HarvestRecord` is the one";
+	const spans = [
+		{ x: 64, width: 13 * 8, from: 1, to: 14 },
+		{ x: 64 + 13 * 8, width: 11 * 8, from: 15, to: 26 },
+	];
+
+	it("maps a click on painted text to the source column under it, past hidden markup", () => {
+		// The "i" of "is" is painted 14 glyphs in; in source it's column 16.
+		expect(
+			columnFromPaintedSpans(spans, 64 + 14 * 8 + 2, 64, line.length),
+		).toBe(16);
+		expect(columnFromPaintedSpans(spans, 64 + 2, 64, line.length)).toBe(1);
+		// Right half of a glyph rounds to the boundary after it.
+		expect(columnFromPaintedSpans(spans, 64 + 5, 64, line.length)).toBe(2);
+	});
+
+	it("uses each span's own glyph width (a wider heading font)", () => {
+		const heading = [{ x: 64, width: 6 * 12, from: 3, to: 9 }]; // "## Fields"
+		expect(columnFromPaintedSpans(heading, 64 + 3 * 12 + 1, 64, 9)).toBe(6);
+	});
+
+	it("clamps outside the painted text: left of the text column is 0, past the end is the line end", () => {
+		expect(columnFromPaintedSpans(spans, 10, 64, line.length)).toBe(0);
+		expect(columnFromPaintedSpans(spans, 999, 64, line.length)).toBe(
+			line.length,
+		);
+		// Between the text column and the first span (a list bullet): the first painted char.
+		const list = [{ x: 78, width: 40, from: 2, to: 7 }];
+		expect(columnFromPaintedSpans(list, 70, 64, 7)).toBe(2);
+		expect(columnFromPaintedSpans([], 100, 64, 0)).toBe(0);
 	});
 });

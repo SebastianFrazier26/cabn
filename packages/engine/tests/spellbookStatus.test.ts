@@ -1,6 +1,7 @@
 import type { ErrorAnnotation } from "@cabn/converter/browser";
 import { describe, expect, test } from "vitest";
 import {
+	mapSpellbookErrorRows,
 	spellbookStatusLine,
 	toSpellbookErrorRows,
 } from "../src/systems/spellbookStatus.js";
@@ -90,5 +91,22 @@ describe("toSpellbookErrorRows", () => {
 
 	test("empty input yields an empty list", () => {
 		expect(toSpellbookErrorRows([])).toEqual([]);
+	});
+});
+
+describe("mapSpellbookErrorRows", () => {
+	const rows = toSpellbookErrorRows([
+		annotation({ message: "located", loc: { line: 2, col: 0 } }),
+		annotation({ message: "no-loc" }),
+	]);
+
+	test("moves each located row to its mapped line and relabels it", () => {
+		const mapped = mapSpellbookErrorRows(rows, (line) => line + 3);
+		expect(mapped[0]).toMatchObject({ line: 5, displayLine: 6 });
+		expect(mapped[1]).toBe(rows[1]);
+	});
+
+	test("keeps unmoved rows by identity", () => {
+		expect(mapSpellbookErrorRows(rows, (line) => line)[0]).toBe(rows[0]);
 	});
 });

@@ -11,6 +11,7 @@ import {
 	type EditorState,
 	type StateCommand,
 	Text,
+	Transaction,
 	type TransactionSpec,
 } from "@codemirror/state";
 import Phaser from "phaser";
@@ -36,10 +37,12 @@ import { checkMonsterFixed } from "../systems/battle.js";
 import {
 	type CaretLayout,
 	type CaretMotion,
+	columnFromPaintedSpans,
 	type DeleteMotion,
 	deletionRange,
 	displayColumn,
 	moveCaret,
+	type PaintedSpan,
 	pointFromPos,
 	posFromPoint,
 	wordRangeAt,
@@ -56,6 +59,11 @@ import {
 	type FileCaretAction,
 	fileCaretAction,
 } from "../systems/fileCaretKeys.js";
+import {
+	anchoredLine,
+	monsterAnchors,
+	setMonsterAnchors,
+} from "../systems/lineAnchors.js";
 import {
 	computeLineWindow,
 	type LineWindow,
@@ -168,6 +176,8 @@ interface RenderedLine {
 	container: Phaser.GameObjects.Container;
 	/** Raw/enchanted flag + caret-line flag + text — rebuilt only when this changes. */
 	key: string;
+	/** Enchanted lines only: where each run of source text was painted, for placing the caret from a click. */
+	spans?: PaintedSpan[];
 }
 
 export class FileScene extends Phaser.Scene {
@@ -231,6 +241,7 @@ export class FileScene extends Phaser.Scene {
 	private worldFiles = new Set<string>();
 	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
+	private monsterBaseY = new Map<string, number>();
 	private monstersInRange = new Set<string>();
 	/** The monster the currently-open encounter banner/quill session is about, if any — set by clicking a monster or Alt+Enter beside one, cleared once the encounter resolves (fixed or cancelled). */
 	private encounterMonsterId: string | null = null;
@@ -277,6 +288,7 @@ export class FileScene extends Phaser.Scene {
 		this.worldFiles = new Set(data.worldFiles);
 		this.monsterSprites = new Map();
 		this.monsterBobTweens = new Map();
+		this.monsterBaseY = new Map();
 		this.monstersInRange = new Set();
 		this.encounterMonsterId = null;
 		this.exiting = false;
@@ -294,6 +306,7 @@ export class FileScene extends Phaser.Scene {
 		this.caretGraphic = this.add.graphics().setDepth(2.6);
 		this.syncExtent();
 		this.drawExitPortal();
+		this.anchorMonsters();
 		this.buildMonsterSprites();
 		this.createMonsterTooltip();
 		this.setupInput();
@@ -440,7 +453,10 @@ export class FileScene extends Phaser.Scene {
 		this.caretDirty = true;
 		this.blinkEpoch = this.time.now;
 		if (!next || this.exiting) return;
-		if (!prev || prev.doc !== next.doc) this.syncExtent();
+		if (!prev || prev.doc !== next.doc) {
+			this.syncExtent();
+			this.syncMonsterSprites();
+		}
 		const caret = pointFromPos(next.doc, next.selection.main.head, this.layout);
 		this.caretTarget?.setPosition(caret.x, caret.y);
 		this.followCaret();
@@ -524,8 +540,47 @@ export class FileScene extends Phaser.Scene {
 
 	// --- Monsters / battle loop -----------------------------------------
 
+	/** Hands the monsters' annotated lines to the buffer, which maps them through every edit from here on (systems/lineAnchors.ts) — kept out of undo history so Cmd/Ctrl+Z never "undoes" the visit's setup. */
+	private anchorMonsters(): void {
+		if (!this.buffer || this.monsters.length === 0) return;
+		this.commit({
+			effects: setMonsterAnchors.of(
+				this.monsters.map((m) => ({ id: m.id, line: m.error.loc?.line ?? 0 })),
+			),
+			annotations: Transaction.addToHistory.of(false),
+		});
+	}
+
+	/** The monster's line in the buffer as it is now, not as it was annotated — edits above it move it. */
+	private monsterLine(monster: Monster): number {
+		const state = this.buffer;
+		const line = state
+			? anchoredLine(state.field(monsterAnchors, false), state.doc, monster.id)
+			: undefined;
+		return line ?? monster.error.loc?.line ?? 0;
+	}
+
 	private monsterPos(monster: Monster): { x: number; y: number } {
-		return { x: MONSTER_X, y: (monster.error.loc?.line ?? 0) * LINE_HEIGHT };
+		return { x: MONSTER_X, y: this.monsterLine(monster) * LINE_HEIGHT };
+	}
+
+	/** Moves each sprite to its monster's current line; the hover bob tweens an absolute y, so it's restarted around the new one. */
+	private syncMonsterSprites(): void {
+		for (const monster of this.monsters) {
+			const sprite = this.monsterSprites.get(monster.id);
+			const bob = this.monsterBobTweens.get(monster.id);
+			if (!sprite || !bob) continue;
+			const y = this.monsterPos(monster).y;
+			const baseY = this.monsterBaseY.get(monster.id);
+			if (baseY === y) continue;
+			bob.stop();
+			sprite.setY(y);
+			this.monsterBaseY.set(monster.id, y);
+			this.monsterBobTweens.set(
+				monster.id,
+				addHoverBob(this, sprite, monster.species === "will-o-wisp" ? 6 : 3),
+			);
+		}
 	}
 
 	private buildMonsterSprites(): void {
@@ -543,6 +598,7 @@ export class FileScene extends Phaser.Scene {
 			// faint like their WorldScene counterpart, never part of an encounter.
 			if (monster.species === "will-o-wisp") sprite.setAlpha(0.7);
 			this.monsterSprites.set(monster.id, sprite);
+			this.monsterBaseY.set(monster.id, pos.y);
 			this.monsterBobTweens.set(
 				monster.id,
 				addHoverBob(this, sprite, monster.species === "will-o-wisp" ? 6 : 3),
@@ -615,7 +671,7 @@ export class FileScene extends Phaser.Scene {
 		let nearest: { monster: Monster; lines: number } | null = null;
 		for (const monster of this.monsters) {
 			if (monster.species === "will-o-wisp") continue; // cosmetic, never encounterable
-			const lines = Math.abs((monster.error.loc?.line ?? 0) - caretLine);
+			const lines = Math.abs(this.monsterLine(monster) - caretLine);
 			if (lines <= MONSTER_REACH_LINES && (!nearest || lines < nearest.lines)) {
 				nearest = { monster, lines };
 			}
@@ -632,7 +688,7 @@ export class FileScene extends Phaser.Scene {
 				return; // the player already cancelled (Esc) — see update()'s encounter-mode branch
 			}
 			state.openEditor({
-				initialLine: monster.error.loc?.line ?? this.caretLine(),
+				initialLine: this.monsterLine(monster),
 				language: this.file.language,
 			});
 		});
@@ -836,7 +892,7 @@ export class FileScene extends Phaser.Scene {
 		}
 		const state = this.buffer;
 		if (!state) return;
-		const pos = posFromPoint(state.doc, target.point, this.layout);
+		const pos = this.posAtPoint(state.doc, target.point);
 		const now = this.time.now;
 		const isDouble =
 			now - this.lastClick.time < DOUBLE_CLICK_MS && this.lastClick.pos === pos;
@@ -863,13 +919,33 @@ export class FileScene extends Phaser.Scene {
 		const state = this.buffer;
 		if (!state) return;
 		const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-		const pos = posFromPoint(state.doc, world, this.layout);
+		const pos = this.posAtPoint(state.doc, world);
 		if (pos === state.selection.main.head) return;
 		this.commit({
 			selection: EditorSelection.single(this.dragAnchor, pos),
 			userEvent: "select.pointer",
 		});
 	};
+
+	/**
+	 * A click on an enchanted markdown line reads the column off what was
+	 * painted there (systems/caretMotion.ts's columnFromPaintedSpans): the raw
+	 * monospace grid posFromPoint uses doesn't match its wider headings or
+	 * its hidden markup, and the line switches to raw source the moment the
+	 * caret lands on it — so the grid put the caret columns away from the
+	 * glyph that was clicked.
+	 */
+	private posAtPoint(doc: Text, point: { x: number; y: number }): number {
+		const pos = posFromPoint(doc, point, this.layout);
+		const row = Math.floor((point.y + LINE_HEIGHT / 2) / LINE_HEIGHT);
+		if (row < 0 || row >= doc.lines) return pos;
+		const spans = this.activeLines.get(row)?.spans;
+		if (!spans) return pos;
+		const line = doc.line(row + 1);
+		return (
+			line.from + columnFromPaintedSpans(spans, point.x, TEXT_X, line.length)
+		);
+	}
 
 	private onPointerUp = (): void => {
 		this.dragAnchor = null;
@@ -1357,7 +1433,7 @@ export class FileScene extends Phaser.Scene {
 		);
 
 		if (this.runBlockedAtLine === line) return;
-		const blocker = this.monsters.find((m) => m.error.loc?.line === line);
+		const blocker = this.monsters.find((m) => this.monsterLine(m) === line);
 		if (!blocker || !this.runState || this.runState.status === "done") return;
 		this.runBlockedAtLine = line;
 		this.runState = runPlaybackReducer(this.runState, {
@@ -1565,9 +1641,11 @@ export class FileScene extends Phaser.Scene {
 			const existing = this.activeLines.get(index);
 			if (existing?.key === key) continue;
 			existing?.container.destroy();
+			const spans: PaintedSpan[] | undefined = raw ? undefined : [];
 			this.activeLines.set(index, {
-				container: this.buildLine(index, text, raw, current),
+				container: this.buildLine(index, text, current, spans),
 				key,
+				spans,
 			});
 		}
 	}
@@ -1653,11 +1731,12 @@ export class FileScene extends Phaser.Scene {
 		this.caretGraphic.setAlpha(phase % 2 === 0 ? 1 : 0.2);
 	}
 
+	/** `spans` present means draw the line enchanted, recording what went where into it. */
 	private buildLine(
 		index: number,
 		line: string,
-		raw: boolean,
 		current: boolean,
+		spans: PaintedSpan[] | undefined,
 	): Phaser.GameObjects.Container {
 		const y = index * LINE_HEIGHT - LINE_HEIGHT / 2;
 		const objects: Phaser.GameObjects.GameObject[] = [];
@@ -1672,8 +1751,8 @@ export class FileScene extends Phaser.Scene {
 			.setOrigin(1, 0);
 		objects.push(gutter);
 
-		if (!raw) {
-			objects.push(...this.buildMarkdownSegments(line));
+		if (spans) {
+			objects.push(...this.buildMarkdownSegments(line, spans));
 		} else {
 			objects.push(
 				this.add.text(TEXT_X, 0, line.replace(/\t/g, "    "), {
@@ -1688,7 +1767,10 @@ export class FileScene extends Phaser.Scene {
 		return container;
 	}
 
-	private buildMarkdownSegments(line: string): Phaser.GameObjects.GameObject[] {
+	private buildMarkdownSegments(
+		line: string,
+		spans: PaintedSpan[],
+	): Phaser.GameObjects.GameObject[] {
 		const enchanted = enchantMdLine(line);
 		const objects: Phaser.GameObjects.GameObject[] = [];
 		let x = TEXT_X;
@@ -1700,7 +1782,11 @@ export class FileScene extends Phaser.Scene {
 		}
 
 		for (const segment of enchanted.segments) {
-			x = this.appendSegment(objects, segment, x);
+			const next = this.appendSegment(objects, segment, x);
+			if (segment.text !== "") {
+				spans.push({ x, width: next - x, from: segment.from, to: segment.to });
+			}
+			x = next;
 		}
 		return objects;
 	}
