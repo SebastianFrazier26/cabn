@@ -16,6 +16,7 @@ import {
 	buildSignEntry,
 	resolveSignAnchor,
 	type SignWorldIndex,
+	unresolvedSignNear,
 } from "../src/signs.js";
 import { DirSource } from "../src/sources/dir.js";
 
@@ -73,6 +74,23 @@ describe("resolveSignAnchor", () => {
 				clusters: [],
 			}),
 		).toBeNull();
+	});
+});
+
+describe("unresolvedSignNear", () => {
+	const missing = (path: string, text: string) =>
+		unresolvedSignNear(parseSeyn(text, { path }), world);
+
+	test("names a file or folder the world doesn't have", () => {
+		expect(missing("src/a.seyn", "@near gone.ts")).toBe("/src/gone.ts");
+		expect(missing("a.seyn", "@near /nowhere/")).toBe("/nowhere/");
+	});
+
+	test("is undefined when @near resolves or is absent", () => {
+		expect(missing("src/a.seyn", "@near index.ts")).toBeUndefined();
+		expect(missing("a.seyn", "@near /src/")).toBeUndefined();
+		expect(missing("a.seyn", "@near /")).toBeUndefined();
+		expect(missing("a.seyn", "just text")).toBeUndefined();
 	});
 });
 
@@ -155,6 +173,43 @@ describe("convert: .seyn files", () => {
 		const hits = mini.search("bramblewood");
 		expect(hits.map((h) => h.id)).toEqual(["src/index.seyn"]);
 		expect(hits[0]?.name).toBe("Entry point");
+	});
+
+	test("a missing @near target warns through onWarning and still falls back to the fountain", async () => {
+		dir = await mkdtemp(join(tmpdir(), "cabn-signs-"));
+		await mkdir(join(dir, "src"));
+		await writeFile(join(dir, "README.md"), "# readme\n");
+		await writeFile(join(dir, "src", "index.ts"), "export const x = 1;\n");
+		await writeFile(join(dir, "src", "old.seyn"), "@near gone.ts\nstale\n");
+		await writeFile(join(dir, "folder.seyn"), "@near /nowhere/\nlost\n");
+		await writeFile(join(dir, "ok.seyn"), "@near /src/index.ts\nfine\n");
+		await writeFile(join(dir, "plain.seyn"), "no near line\n");
+
+		const warnings: string[] = [];
+		const bundle = await convert(new DirSource(dir), {
+			name: "signs",
+			source: dir,
+			onWarning: (message) => warnings.push(message),
+		});
+		expect(warnings).toEqual([
+			"sign folder.seyn: @near /nowhere/ is not in this world; it stands by the root fountain instead",
+			"sign src/old.seyn: @near /src/gone.ts is not in this world; it stands by the src/ fountain instead",
+		]);
+
+		const manifest = JSON.parse(
+			bundle.get("world.json") as string,
+		) as WorldManifest;
+		const clusterId = (path: string) =>
+			manifest.clusters.find((c) => c.path === path && !c.annexOf)?.id;
+		const signs = parseSignIndex(
+			JSON.parse(bundle.get("signs.json") as string),
+		);
+		expect(signs.map((s) => [s.path, s.anchor])).toEqual([
+			["folder.seyn", { kind: "cluster", id: clusterId(".") }],
+			["ok.seyn", { kind: "portal", id: "src/index.ts" }],
+			["plain.seyn", { kind: "cluster", id: clusterId(".") }],
+			["src/old.seyn", { kind: "cluster", id: clusterId("src") }],
+		]);
 	});
 
 	test("a world without signs still writes an empty signs.json", async () => {

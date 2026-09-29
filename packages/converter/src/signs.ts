@@ -9,6 +9,7 @@ import {
 	type SignIndexFile,
 	SignIndexFileSchema,
 	seynDirOf,
+	seynNearValue,
 	seynPlainText,
 	truncateUtf8,
 } from "@cabn/world-schema";
@@ -62,6 +63,32 @@ export function resolveSignAnchor(
 	return first ? { kind: "cluster", id: first.id } : null;
 }
 
+/**
+ * The `@near` value when it names a file or folder this world doesn't
+ * have (deleted, renamed, ignored, a typo) — resolveSignAnchor then quietly
+ * stands the sign by a fountain instead, which the author should hear about.
+ * Undefined when there's no `@near` or it resolved.
+ */
+export function unresolvedSignNear(
+	doc: SeynDocument,
+	world: SignWorldIndex,
+): string | undefined {
+	const near = doc.near;
+	if (!near) return undefined;
+	if (near.kind === "file" && world.portalIds.has(near.path)) return undefined;
+	if (near.kind === "folder" && clusterForFolder(world, near.path))
+		return undefined;
+	return seynNearValue(near);
+}
+
+function anchorLabel(anchor: SignAnchor, world: SignWorldIndex): string {
+	if (anchor.kind === "portal") return anchor.id;
+	const path = world.clusters.find((c) => c.id === anchor.id)?.path;
+	return path === undefined || path === "."
+		? "the root fountain"
+		: `the ${path}/ fountain`;
+}
+
 const decoder = new TextDecoder("utf-8", { fatal: false });
 
 /** One .seyn file's bytes (or text) -> its signs.json entry, with the source cut at SEYN_MAX_BYTES the same way the parser cuts it. */
@@ -95,6 +122,7 @@ export function buildSignIndex(
 	signFiles: readonly WalkedFile[],
 	portals: readonly { id: string }[],
 	clusters: SignWorldIndex["clusters"],
+	onWarning?: (message: string) => void,
 ): { file: SignIndexFile; searchDocs: SearchDoc[] } {
 	const world: SignWorldIndex = {
 		portalIds: new Set(portals.map((p) => p.id)),
@@ -108,6 +136,11 @@ export function buildSignIndex(
 		if (!file.content) continue;
 		const built = buildSignEntry(file.path, file.content, world);
 		if (!built) continue;
+		const missing = unresolvedSignNear(built.doc, world);
+		if (missing !== undefined)
+			onWarning?.(
+				`sign ${file.path}: @near ${missing} is not in this world; it stands by ${anchorLabel(built.entry.anchor, world)} instead`,
+			);
 		signs.push(built.entry);
 		searchDocs.push(signSearchDoc(file.path, built.doc));
 	}
