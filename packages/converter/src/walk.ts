@@ -40,6 +40,13 @@ export interface WalkOptions {
 	includeSecrets?: boolean;
 	/** Exact paths to treat as metadata-only regardless of name (git universes: blobs the leaked-secret detector flagged). Not affected by includeSecrets. */
 	sealedPaths?: ReadonlySet<string>;
+	/**
+	 * `"exclude"` (default): hidden paths (see isHiddenPath) never reach a
+	 * normal world, like `ls` without `-a`. `"only"`: just the hidden paths,
+	 * for `cabn serve --owner`'s shadow realm. Ignored paths are dropped
+	 * either way, so `.git`/`.venv`/`.next` never appear in either.
+	 */
+	hidden?: "exclude" | "only";
 }
 
 export interface WalkedFile {
@@ -91,6 +98,11 @@ export function isIgnoredPath(
 	return matchesAnySegment(path, [...DEFAULT_IGNORES, ...extra]);
 }
 
+/** Any path segment starting with "." — a dotfile or anything inside a dot-folder. */
+export function isHiddenPath(path: string): boolean {
+	return path.split("/").some((segment) => segment.startsWith("."));
+}
+
 function isSecretFile(path: string, patterns: readonly string[]): boolean {
 	const name = path.split("/").pop() ?? path;
 	return matchesAnySegment(name, patterns);
@@ -108,6 +120,7 @@ export async function walk(
 	const ignore = [...DEFAULT_IGNORES, ...(opts.ignore ?? [])];
 	const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
 	const maxFileBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+	const onlyHidden = opts.hidden === "only";
 
 	const accepted: {
 		path: string;
@@ -116,6 +129,7 @@ export async function walk(
 	}[] = [];
 	for await (const entry of source.entries()) {
 		if (isIgnored(entry.path, ignore)) continue;
+		if (isHiddenPath(entry.path) !== onlyHidden) continue;
 		accepted.push(entry);
 	}
 	// Sort so output is stable regardless of filesystem/zip enumeration order.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { FileSource, SourceEntry } from "../src/sources/types.js";
-import { walk } from "../src/walk.js";
+import { isHiddenPath, walk } from "../src/walk.js";
 
 function fakeSource(files: Record<string, Uint8Array>): FileSource {
 	return {
@@ -15,16 +15,62 @@ function fakeSource(files: Record<string, Uint8Array>): FileSource {
 const utf8 = (s: string) => new TextEncoder().encode(s);
 
 describe("walk", () => {
-	test("drops default-ignored directories but keeps other dotfiles", async () => {
+	// 2026-09-28: dotfiles moved out of normal worlds into the owner-only shadow realm.
+	test("drops default-ignored directories and every hidden path by default", async () => {
 		const source = fakeSource({
 			"src/app.ts": utf8("code"),
 			"node_modules/pkg/index.js": utf8("skip me"),
 			".git/config": utf8("skip me"),
-			".env": utf8("KEEP=1"),
+			".env": utf8("HIDDEN=1"),
+			".github/ci.yml": utf8("hidden"),
+			"src/.eslintrc.json": utf8("{}"),
 		});
 		const result = await walk(source);
-		const paths = result.files.map((f) => f.path).sort();
-		expect(paths).toEqual([".env", "src/app.ts"]);
+		expect(result.files.map((f) => f.path)).toEqual(["src/app.ts"]);
+		const explicit = await walk(source, { hidden: "exclude" });
+		expect(explicit.files.map((f) => f.path)).toEqual(["src/app.ts"]);
+	});
+
+	test('hidden: "only" keeps just hidden paths, still minus ignored ones', async () => {
+		const source = fakeSource({
+			"src/app.ts": utf8("code"),
+			".git/config": utf8("skip me"),
+			".GIT/config": utf8("case-variant: not a DEFAULT_IGNORES match"),
+			".venv/lib/x.py": utf8("skip me"),
+			".next/cache": utf8("skip me"),
+			"node_modules/.bin/x": utf8("skip me"),
+			".env": utf8("HIDDEN=1"),
+			".github/workflows/ci.yml": utf8("hidden"),
+			"src/.eslintrc.json": utf8("{}"),
+		});
+		const result = await walk(source, { hidden: "only" });
+		expect(result.files.map((f) => f.path)).toEqual([
+			".GIT/config",
+			".env",
+			".github/workflows/ci.yml",
+			"src/.eslintrc.json",
+		]);
+		// Secret-named: content-less unless includeSecrets, same as visible files.
+		expect(
+			result.files.find((f) => f.path === ".env")?.content,
+		).toBeUndefined();
+		const withSecrets = await walk(source, {
+			hidden: "only",
+			includeSecrets: true,
+		});
+		expect(withSecrets.files.find((f) => f.path === ".env")?.content).toEqual(
+			utf8("HIDDEN=1"),
+		);
+	});
+
+	test("isHiddenPath: any segment starting with a dot", () => {
+		expect(isHiddenPath(".env")).toBe(true);
+		expect(isHiddenPath(".github/ci.yml")).toBe(true);
+		expect(isHiddenPath("src/.eslintrc.json")).toBe(true);
+		expect(isHiddenPath("a/.b/c.txt")).toBe(true);
+		expect(isHiddenPath("src/app.ts")).toBe(false);
+		expect(isHiddenPath("file.with.dots")).toBe(false);
+		expect(isHiddenPath("dir.d/x")).toBe(false);
 	});
 
 	test("merges user-supplied ignore patterns, including globs", async () => {
@@ -95,7 +141,10 @@ describe("walk", () => {
 			"README.md": utf8("keep me"),
 		});
 		const result = await walk(source);
-		const byPath = new Map(result.files.map((f) => [f.path, f]));
+		const hidden = await walk(source, { hidden: "only" });
+		const byPath = new Map(
+			[...result.files, ...hidden.files].map((f) => [f.path, f]),
+		);
 
 		for (const secretPath of [
 			".env",
@@ -116,7 +165,7 @@ describe("walk", () => {
 	});
 
 	test("includeSecrets: true restores normal content reads for secret-pattern files", async () => {
-		const source = fakeSource({ ".env": utf8("SECRET=1") });
+		const source = fakeSource({ "aws-credentials.txt": utf8("SECRET=1") });
 		const result = await walk(source, { includeSecrets: true });
 		expect(result.files[0]?.content).toEqual(utf8("SECRET=1"));
 	});

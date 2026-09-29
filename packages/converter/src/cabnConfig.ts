@@ -9,6 +9,7 @@ import { markdownToStructuredPreview } from "./markdownPreview.js";
 import { type MediaBudget, mediaFormatForPath } from "./media.js";
 import { buildImagePreview } from "./richPreview.js";
 import type { FileSource, SourceEntry } from "./sources/types.js";
+import { isHiddenPath } from "./walk.js";
 
 const CABN_CONFIG_PATH = "cabn.json";
 const decoder = new TextDecoder("utf-8", { fatal: false });
@@ -74,6 +75,9 @@ export function checkOverrideTargetsExist(
 	portalPaths: ReadonlySet<string>,
 ): void {
 	for (const path of Object.keys(config.previews)) {
+		// A hidden file is left out of every normal world on purpose (walk's
+		// hidden rule), so an override naming one is not a typo.
+		if (isHiddenPath(path)) continue;
 		if (!portalPaths.has(path)) {
 			throw new CabnConfigError(
 				`previews["${path}"] does not match any file in this world (check for a typo, or a path excluded by ignore rules/file caps)`,
@@ -89,6 +93,12 @@ async function readOverrideBytes(
 	entries: Map<string, SourceEntry>,
 	maxFileBytes: number,
 ): Promise<Uint8Array> {
+	// Refused rather than read: a normal world never carries a hidden file's bytes.
+	if (isHiddenPath(src)) {
+		throw new CabnConfigError(
+			`previews["${overriddenPath}"].${fieldLabel} "${src}" is a hidden path; hidden files never appear in a normal world`,
+		);
+	}
 	const entry = entries.get(src);
 	if (!entry) {
 		throw new CabnConfigError(

@@ -47,11 +47,11 @@ describe("convert (DirSource)", () => {
 		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
 		expect(() => validateManifest(manifest)).not.toThrow();
 		expect(manifest.meta.generatedAt).toBe("2026-01-01T00:00:00.000Z");
-		expect(manifest.meta.fileCount).toBe(6);
+		// 2026-09-28: the fixture's .env is hidden, so it is no longer part of a normal world.
+		expect(manifest.meta.fileCount).toBe(5);
 		expect(manifest.portals.map((p) => p.id).sort()).toEqual(
 			[
 				"README.md",
-				".env",
 				"main.py",
 				"pkg/__init__.py",
 				"pkg/sub/helper.py",
@@ -71,30 +71,43 @@ describe("convert (DirSource)", () => {
 		}>(bundle, "chunks/root.json");
 		expect(rootChunk.files["README.md"]?.content).toContain("mini-python");
 
-		// .env matches a default secret pattern: listed (name visible), but its
-		// content must never land in a chunk or the search index.
-		const envPortal = manifest.portals.find((p) => p.id === ".env");
-		expect(envPortal).toBeDefined();
-		expect(envPortal?.preview.lines).toEqual([]);
+		// .env is hidden: neither its name nor its content reaches any bundle file.
+		expect(manifest.portals.find((p) => p.id === ".env")).toBeUndefined();
 		expect(rootChunk.files[".env"]).toBeUndefined();
+		for (const value of bundle.values()) {
+			if (typeof value === "string") expect(value).not.toContain(".env");
+		}
 		const searchIndexRaw = bundle.get("search-index.json");
 		expect(typeof searchIndexRaw === "string" && searchIndexRaw).not.toContain(
 			"DEBUG=true",
 		);
 	});
 
-	test("includeSecrets: true restores .env content in the chunk and search index", async () => {
-		const source = new DirSource(join(FIXTURES, "mini-python"));
-		const bundle = await convert(source, {
-			name: "mini-python",
-			source: "mini-python",
-			now: FIXED_NOW,
-			includeSecrets: true,
-		});
-		const rootChunk = parseBundleEntry<{
-			files: Record<string, { content: string }>;
-		}>(bundle, "chunks/root.json");
-		expect(rootChunk.files[".env"]?.content).toBe("DEBUG=true\n");
+	test("includeSecrets: true restores a visible secret file's content but never brings back a hidden one", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "cabn-secrets-"));
+		try {
+			await writeFile(join(dir, "aws-credentials.txt"), "KEY=visible\n");
+			await writeFile(join(dir, ".env"), "KEY=hidden\n");
+			const bundle = await convert(new DirSource(dir), {
+				name: "secrets",
+				source: "secrets",
+				now: FIXED_NOW,
+				includeSecrets: true,
+			});
+			const rootChunk = parseBundleEntry<{
+				files: Record<string, { content: string }>;
+			}>(bundle, "chunks/root.json");
+			expect(rootChunk.files["aws-credentials.txt"]?.content).toBe(
+				"KEY=visible\n",
+			);
+			expect(rootChunk.files[".env"]).toBeUndefined();
+			for (const value of bundle.values()) {
+				if (typeof value === "string")
+					expect(value).not.toContain("KEY=hidden");
+			}
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	test("skips default-ignored dirs and treats oversized/binary files as metadata-only", async () => {

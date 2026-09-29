@@ -1,0 +1,653 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"layerVersion": {
+			"type": "number",
+			"const": 1
+		},
+		"baseGeneratedAt": {
+			"type": "string",
+			"format": "date-time",
+			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+		},
+		"generatedAt": {
+			"type": "string",
+			"format": "date-time",
+			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+		},
+		"stats": {
+			"type": "object",
+			"properties": {
+				"fileCount": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991
+				},
+				"totalBytes": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991
+				},
+				"truncated": {
+					"type": "boolean"
+				},
+				"skippedFiles": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991
+				}
+			},
+			"required": ["fileCount", "totalBytes", "truncated", "skippedFiles"],
+			"additionalProperties": false
+		},
+		"clusters": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"path": {
+						"type": "string"
+					},
+					"label": {
+						"type": "string"
+					},
+					"pos": {
+						"type": "object",
+						"properties": {
+							"x": {
+								"type": "number"
+							},
+							"y": {
+								"type": "number"
+							}
+						},
+						"required": ["x", "y"],
+						"additionalProperties": false
+					},
+					"biome": {
+						"type": "string",
+						"enum": ["meadow", "grove", "glade"]
+					},
+					"portalIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"chunk": {
+						"type": "string"
+					},
+					"annexOf": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"path",
+					"label",
+					"pos",
+					"biome",
+					"portalIds",
+					"chunk"
+				],
+				"additionalProperties": false
+			}
+		},
+		"paths": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"from": {
+						"type": "string"
+					},
+					"to": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string",
+						"enum": ["trail", "vine"]
+					}
+				},
+				"required": ["from", "to", "kind"],
+				"additionalProperties": false
+			}
+		},
+		"portals": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"clusterId": {
+						"type": "string"
+					},
+					"file": {
+						"type": "object",
+						"properties": {
+							"path": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"kind": {
+								"type": "string",
+								"enum": [
+									"code",
+									"markdown",
+									"config",
+									"data",
+									"image",
+									"binary",
+									"unknown"
+								]
+							},
+							"language": {
+								"type": "string"
+							},
+							"bytes": {
+								"type": "integer",
+								"minimum": 0,
+								"maximum": 9007199254740991
+							},
+							"lines": {
+								"type": "integer",
+								"minimum": 0,
+								"maximum": 9007199254740991
+							},
+							"binary": {
+								"type": "boolean"
+							}
+						},
+						"required": ["path", "name", "kind", "bytes", "binary"],
+						"additionalProperties": false
+					},
+					"preview": {
+						"type": "object",
+						"properties": {
+							"lines": {
+								"maxItems": 12,
+								"type": "array",
+								"items": {
+									"type": "string",
+									"maxLength": 120
+								}
+							},
+							"truncated": {
+								"type": "boolean"
+							}
+						},
+						"required": ["lines", "truncated"],
+						"additionalProperties": false
+					},
+					"richPreview": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "code"
+									},
+									"lines": {
+										"maxItems": 40,
+										"type": "array",
+										"items": {
+											"type": "string",
+											"maxLength": 200
+										}
+									},
+									"language": {
+										"type": "string"
+									},
+									"truncated": {
+										"type": "boolean"
+									}
+								},
+								"required": ["kind", "lines", "truncated"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "markdown"
+									},
+									"nodes": {
+										"maxItems": 24,
+										"type": "array",
+										"items": {
+											"oneOf": [
+												{
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string",
+															"const": "heading"
+														},
+														"level": {
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 6
+														},
+														"text": {
+															"type": "string",
+															"maxLength": 400
+														}
+													},
+													"required": ["type", "level", "text"],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string",
+															"const": "paragraph"
+														},
+														"text": {
+															"type": "string",
+															"maxLength": 400
+														}
+													},
+													"required": ["type", "text"],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string",
+															"const": "list"
+														},
+														"ordered": {
+															"type": "boolean"
+														},
+														"items": {
+															"maxItems": 20,
+															"type": "array",
+															"items": {
+																"type": "string",
+																"maxLength": 400
+															}
+														}
+													},
+													"required": ["type", "ordered", "items"],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string",
+															"const": "code"
+														},
+														"language": {
+															"type": "string"
+														},
+														"text": {
+															"type": "string",
+															"maxLength": 400
+														}
+													},
+													"required": ["type", "text"],
+													"additionalProperties": false
+												}
+											]
+										}
+									},
+									"truncated": {
+										"type": "boolean"
+									}
+								},
+								"required": ["kind", "nodes", "truncated"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "image"
+									},
+									"asset": {
+										"type": "string",
+										"minLength": 1
+									},
+									"bytes": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"width": {
+										"type": "integer",
+										"exclusiveMinimum": 0,
+										"maximum": 9007199254740991
+									},
+									"height": {
+										"type": "integer",
+										"exclusiveMinimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["kind", "asset", "bytes"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "text"
+									},
+									"text": {
+										"type": "string",
+										"maxLength": 2000
+									}
+								},
+								"required": ["kind", "text"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "url"
+									},
+									"url": {
+										"type": "string"
+									},
+									"title": {
+										"type": "string",
+										"maxLength": 200
+									},
+									"fallbackImage": {
+										"type": "string",
+										"minLength": 1
+									}
+								},
+								"required": ["kind", "url"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "sealed"
+									}
+								},
+								"required": ["kind"],
+								"additionalProperties": false
+							}
+						]
+					},
+					"spawns": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				},
+				"required": ["id", "clusterId", "file", "preview", "spawns"],
+				"additionalProperties": false
+			}
+		},
+		"monsters": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"portalId": {
+						"type": "string"
+					},
+					"pathId": {
+						"type": "string"
+					},
+					"species": {
+						"type": "string",
+						"enum": [
+							"ghost",
+							"rot-sprite",
+							"warded-mimic",
+							"gremlin",
+							"ouroboros",
+							"will-o-wisp",
+							"imp",
+							"magpie",
+							"skeleton",
+							"bramble",
+							"shade"
+						]
+					},
+					"error": {
+						"type": "object",
+						"properties": {
+							"code": {
+								"type": "string",
+								"enum": [
+									"NullTypeError",
+									"Corrupted",
+									"InvalidMode",
+									"IoError",
+									"OuroborosError",
+									"WispNote",
+									"SyntaxError",
+									"LeakedSecret",
+									"DeadCode",
+									"CodeSmell",
+									"UnknownBug"
+								]
+							},
+							"rule": {
+								"type": "string"
+							},
+							"message": {
+								"type": "string"
+							},
+							"loc": {
+								"type": "object",
+								"properties": {
+									"line": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"col": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["line", "col"],
+								"additionalProperties": false
+							}
+						},
+						"required": ["code", "rule", "message"],
+						"additionalProperties": false
+					},
+					"tier": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 3
+					}
+				},
+				"required": ["id", "species", "error", "tier"],
+				"additionalProperties": false
+			}
+		},
+		"extendedMonsters": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"portalId": {
+						"type": "string"
+					},
+					"pathId": {
+						"type": "string"
+					},
+					"species": {
+						"type": "string",
+						"enum": [
+							"ghost",
+							"rot-sprite",
+							"warded-mimic",
+							"gremlin",
+							"ouroboros",
+							"will-o-wisp",
+							"imp",
+							"magpie",
+							"skeleton",
+							"bramble",
+							"shade"
+						]
+					},
+					"error": {
+						"type": "object",
+						"properties": {
+							"code": {
+								"type": "string",
+								"enum": [
+									"NullTypeError",
+									"Corrupted",
+									"InvalidMode",
+									"IoError",
+									"OuroborosError",
+									"WispNote",
+									"SyntaxError",
+									"LeakedSecret",
+									"DeadCode",
+									"CodeSmell",
+									"UnknownBug"
+								]
+							},
+							"rule": {
+								"type": "string"
+							},
+							"message": {
+								"type": "string"
+							},
+							"loc": {
+								"type": "object",
+								"properties": {
+									"line": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"col": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["line", "col"],
+								"additionalProperties": false
+							}
+						},
+						"required": ["code", "rule", "message"],
+						"additionalProperties": false
+					},
+					"tier": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 3
+					}
+				},
+				"required": ["id", "species", "error", "tier"],
+				"additionalProperties": false
+			}
+		},
+		"signs": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"path": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 512
+					},
+					"source": {
+						"type": "string",
+						"maxLength": 16384
+					},
+					"anchor": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "portal"
+									},
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["kind", "id"],
+								"additionalProperties": false
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": {
+										"type": "string",
+										"const": "cluster"
+									},
+									"id": {
+										"type": "string"
+									}
+								},
+								"required": ["kind", "id"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"required": ["path", "source", "anchor"],
+				"additionalProperties": false
+			}
+		},
+		"textSha256": {
+			"type": "object",
+			"propertyNames": {
+				"type": "string"
+			},
+			"additionalProperties": {
+				"type": "string",
+				"pattern": "^[0-9a-f]{64}$"
+			}
+		}
+	},
+	"required": [
+		"layerVersion",
+		"baseGeneratedAt",
+		"generatedAt",
+		"stats",
+		"clusters",
+		"paths",
+		"portals",
+		"monsters",
+		"extendedMonsters",
+		"signs",
+		"textSha256"
+	],
+	"additionalProperties": false
+}
