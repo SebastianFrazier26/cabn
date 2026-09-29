@@ -113,7 +113,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<PortalLivePage store={handle.store} bus={handle.bus} />
 					<FileOverlay store={handle.store} />
 					<FileStatusLine store={handle.store} bus={handle.bus} />
-					<PortalPreviewDock store={handle.store} />
+					<PortalPreviewDock store={handle.store} bus={handle.bus} />
 					<ToolHotbar store={handle.store} bus={handle.bus} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />

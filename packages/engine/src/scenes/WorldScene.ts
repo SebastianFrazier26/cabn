@@ -113,7 +113,11 @@ import {
 } from "../systems/clickWalk.js";
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
-import { portalOrbitEllipse } from "../systems/monsterOrbit.js";
+import {
+	monsterClearancePx,
+	type PortalOrbitShape,
+	portalOrbitEllipseFor,
+} from "../systems/monsterOrbit.js";
 import { perfMark } from "../systems/perfMarks.js";
 import {
 	newlyApproached,
@@ -124,7 +128,9 @@ import {
 	pickNearWebPortal,
 	playerOccluderRect,
 	projectWorldRect,
+	type Rect,
 	rectsOverlap,
+	unionRect,
 	urlArchClickAction,
 } from "../systems/portalFx.js";
 import {
@@ -227,6 +233,12 @@ const PATH_MONSTER_LOOP_PX = 70;
 // capped so the already-large ouroboros doesn't swallow the opening.
 const WORLD_MONSTER_SIZE_BOOST = 1.3;
 const WORLD_MONSTER_MAX_PX = 72;
+function worldMonsterPx(drawnSpecies: string, fallbackPx: number): number {
+	return Math.min(
+		(MONSTER_HOVER_SIZE[drawnSpecies] ?? fallbackPx) * WORLD_MONSTER_SIZE_BOOST,
+		WORLD_MONSTER_MAX_PX,
+	);
+}
 const ARCH_OPENING: ArchOpening = {
 	width: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_WIDTH_RATIO,
 	height: PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_HEIGHT_RATIO,
@@ -1394,14 +1406,32 @@ export class WorldScene extends Phaser.Scene {
 			x,
 			y,
 			monster.species,
-			Math.min(
-				(MONSTER_HOVER_SIZE[drawn] ?? fallbackPx) * WORLD_MONSTER_SIZE_BOOST,
-				WORLD_MONSTER_MAX_PX,
-			),
+			worldMonsterPx(drawn, fallbackPx),
 		);
 		sprite.setDepth(MONSTER_DEPTH);
 		this.monsterSprites.set(monster.id, sprite);
 		return { sprite, drawn };
+	}
+
+	/** A url arch's siblings share one orbit sized for the largest of them — defeated ones included, so a revive never reshapes the loop. */
+	private portalOrbitShape(portalId: string, pos: Position): PortalOrbitShape {
+		const portal = this.portalsById.get(portalId);
+		if (!portal || this.previewFor(portal).kind !== "url")
+			return { kind: "arch" };
+		let clearancePx = 0;
+		for (const m of this.manifest.monsters) {
+			if (m.portalId !== portalId) continue;
+			const drawn = renderedMonsterSpecies(this, m.species);
+			clearancePx = Math.max(
+				clearancePx,
+				monsterClearancePx(drawn, worldMonsterPx(drawn, 32)),
+			);
+		}
+		return {
+			kind: "web",
+			opening: openingRect(pos, ARCH_OPENING),
+			clearancePx,
+		};
 	}
 
 	private drawPortalMonster(monster: Monster): void {
@@ -1409,7 +1439,11 @@ export class WorldScene extends Phaser.Scene {
 		if (!portalId) return;
 		const pos = this.portalWorldPos.get(portalId);
 		if (!pos) return;
-		const ellipse = portalOrbitEllipse(pos, PORTAL_ARCH_DISPLAY_SIZE);
+		const ellipse = portalOrbitEllipseFor(
+			pos,
+			PORTAL_ARCH_DISPLAY_SIZE,
+			this.portalOrbitShape(portalId, pos),
+		);
 		const { sprite, drawn } = this.addMonsterSprite(
 			monster,
 			ellipse.cx + ellipse.rx,
@@ -1916,25 +1950,34 @@ export class WorldScene extends Phaser.Scene {
 		const camera = this.cameras.main;
 		const canvas = this.game.canvas;
 		const world = openingRect(pos, ARCH_OPENING);
-		const rect = projectWorldRect(
-			world,
-			{
-				view: {
-					x: camera.worldView.x,
-					y: camera.worldView.y,
-					w: camera.worldView.width,
-					h: camera.worldView.height,
+		const project = (r: Rect) =>
+			projectWorldRect(
+				r,
+				{
+					view: {
+						x: camera.worldView.x,
+						y: camera.worldView.y,
+						w: camera.worldView.width,
+						h: camera.worldView.height,
+					},
+					zoom: camera.zoom,
+					offsetX: camera.x,
+					offsetY: camera.y,
 				},
-				zoom: camera.zoom,
-				offsetX: camera.x,
-				offsetY: camera.y,
-			},
-			{
-				left: canvas.offsetLeft,
-				top: canvas.offsetTop,
-				scaleX: canvas.clientWidth / this.scale.width || 1,
-				scaleY: canvas.clientHeight / this.scale.height || 1,
-			},
+				{
+					left: canvas.offsetLeft,
+					top: canvas.offsetTop,
+					scaleX: canvas.clientWidth / this.scale.width || 1,
+					scaleY: canvas.clientHeight / this.scale.height || 1,
+				},
+			);
+		const rect = project(world);
+		const half = PORTAL_ARCH_DISPLAY_SIZE / 2;
+		const keepout = project(
+			unionRect(
+				{ x: pos.x - half, y: pos.y - half, w: half * 2, h: half * 2 },
+				this.monsterOrbits?.portalReach(id) ?? null,
+			),
 		);
 		const b = this.player.body.getBounds();
 		const occluded = rectsOverlap(
@@ -1945,7 +1988,12 @@ export class WorldScene extends Phaser.Scene {
 		// frame or two after nearWebPortal is set and would otherwise never
 		// hear the rect of a camera that has already stopped moving. It skips
 		// identical rects itself.
-		this.bus.emit("portal:web-rect", { portalId: id, rect, occluded });
+		this.bus.emit("portal:web-rect", {
+			portalId: id,
+			rect,
+			occluded,
+			keepout,
+		});
 	};
 
 	/** A click on a url arch's opening while standing near it opens the page instead of walking (systems/portalFx.ts#urlArchClickAction). The live mini-page normally covers the opening and catches that click in the DOM; this is the path for when it doesn't (dimmed under the player, or still loading). */

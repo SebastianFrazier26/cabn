@@ -4,8 +4,8 @@ import type { CabnBus, CabnEvents } from "../bridge/events.js";
 import type { CabnStore, NearWebPortal } from "../bridge/store.js";
 import { openPortalLink, shouldMountEmbed } from "../systems/embedGuard.js";
 import {
-	DOCK_PAGE_LAYOUT_WIDTH,
 	type DockCandidateState,
+	dockLayoutWidth,
 	liveSlotRect,
 	MINI_PAGE_VIRTUAL_WIDTH,
 	pageScale,
@@ -38,7 +38,8 @@ export const LIVE_SLOT_ATTR = "data-cabn-live-slot";
  *   button over it that opens the url in the player's browser.
  * - dock: once the player is close enough for the dock to show this portal
  *   (shouldDockLivePage), the same element is re-positioned over the dock's
- *   slot, laid out DOCK_PAGE_LAYOUT_WIDTH wide, and made interactive
+ *   slot, laid out DOCK_PAGE_LAYOUT_WIDTH wide (narrower in a narrowed
+ *   dock, see dockLayoutWidth), and made interactive
  *   (scroll, click links inside the page).
  * Moving is only ever a style change. Re-parenting the iframe (a React
  * portal into the dock) would reload the page — every browser reloads an
@@ -188,14 +189,11 @@ function LivePage({
 				return;
 			}
 			setDockedOnce(true);
-			place(
-				liveSlotRect(
-					slot.getBoundingClientRect(),
-					parent.getBoundingClientRect(),
-				),
-				DOCK_PAGE_LAYOUT_WIDTH,
-				false,
+			const rect = liveSlotRect(
+				slot.getBoundingClientRect(),
+				parent.getBoundingClientRect(),
 			);
+			place(rect, dockLayoutWidth(rect.w), false);
 		};
 		raf = requestAnimationFrame(tick);
 		return () => {

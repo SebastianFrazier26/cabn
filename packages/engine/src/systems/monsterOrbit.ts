@@ -35,6 +35,83 @@ export function portalOrbitEllipse(
 	};
 }
 
+export interface OrbitRect {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+/** Which orbit a portal's monsters fly: a web arch carries a DOM live page over its opening that would hide anything passing through it. */
+export type PortalOrbitShape =
+	| { kind: "arch" }
+	| {
+			kind: "web";
+			/** The live page's rect in world space (portalFx.ts#openingRect). */
+			opening: OrbitRect;
+			/** Worst-case reach of a sibling's drawn sprite from its orbit point (monsterClearancePx). */
+			clearancePx: number;
+	  };
+
+/** ry/rx of the web orbit — still flattened so it reads as a 3/4-view loop, but much less than the arch orbit, see webPortalOrbitEllipse. */
+const WEB_ORBIT_FLATTEN = 0.75;
+/** sampleOrbit's nearest-point perspective scale. */
+const MAX_PERSPECTIVE_SCALE = 1.08;
+
+export function portalOrbitEllipseFor(
+	portal: Point,
+	archDisplayPx: number,
+	shape: PortalOrbitShape,
+): OrbitEllipse {
+	return shape.kind === "web"
+		? webPortalOrbitEllipse(shape.opening, shape.clearancePx)
+		: portalOrbitEllipse(portal, archDisplayPx);
+}
+
+/**
+ * A loop around the opening that never enters it, even at a species' most
+ * inward radial wobble: centred on the opening and sized so the smallest
+ * wobbled ellipse still encloses the opening grown by `clearancePx` on every
+ * side. Any closed loop around the arch has to cross above and below the
+ * ~125px-tall opening, so this ends up taller than the arch orbit, not
+ * flatter; the alternative — a flat loop parked wholly below the arch —
+ * stops reading as "around the portal" and sits where the player stands.
+ */
+export function webPortalOrbitEllipse(
+	opening: OrbitRect,
+	clearancePx: number,
+): OrbitEllipse {
+	const hx = opening.w / 2 + clearancePx;
+	const hy = opening.h / 2 + clearancePx;
+	const minRadial = 1 - MAX_RADIAL_WOBBLE;
+	// 1.02: strictly clear of the grown corner rather than tangent to it.
+	const rx = (Math.hypot(hx, hy / WEB_ORBIT_FLATTEN) / minRadial) * 1.02;
+	return {
+		cx: opening.x + opening.w / 2,
+		cy: opening.y + opening.h / 2,
+		rx,
+		ry: rx * WEB_ORBIT_FLATTEN,
+	};
+}
+
+/**
+ * How far a monster's drawn sprite (its axis-aligned bounds) can reach from
+ * its orbit point: half its displayed size at the nearest-point perspective
+ * scale, widened for rotation (a sway tilts it, the ouroboros spins through
+ * 45°), plus the bob.
+ */
+export function monsterClearancePx(species: string, displayPx: number): number {
+	const p = motionProfile(species);
+	const tilt =
+		p.spinRadPerSec > 0 ? Math.PI / 4 : Math.min(p.swayRad, Math.PI / 4);
+	return (
+		(displayPx / 2) *
+			MAX_PERSPECTIVE_SCALE *
+			(Math.cos(tilt) + Math.sin(tilt)) +
+		p.bobPx
+	);
+}
+
 export interface OrbitSample extends Point {
 	/** Lower half of the ellipse — drawn in front of the arch; upper half passes behind it. */
 	inFront: boolean;
@@ -309,6 +386,12 @@ const PROFILES: Record<string, Partial<MotionProfile>> = {
 		},
 	},
 };
+
+/** motionOffset's radialScale never drops below 1 minus this, for any species. */
+export const MAX_RADIAL_WOBBLE = Math.max(
+	BASE.radialWobble,
+	...Object.values(PROFILES).map((p) => p.radialWobble ?? BASE.radialWobble),
+);
 
 /** Unknown species fall back to the shade's drift, matching the sprite fallback (render/monsterSprite.ts). */
 export function motionProfile(species: string): MotionProfile {

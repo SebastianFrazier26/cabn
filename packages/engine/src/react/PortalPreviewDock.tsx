@@ -1,10 +1,18 @@
+import { useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
+import type { CabnBus, CabnEvents } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
 import type { UrlDisplayPreview } from "../systems/archPreview.js";
+import {
+	DOCK_MARGIN_PX,
+	type DockSide,
+	placeDock,
+} from "../systems/dockPlacement.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import {
 	type DockCandidateState,
+	previewDockOpen,
 	shouldDockLivePage,
 } from "../systems/portalFx.js";
 import { LIVE_SLOT_ATTR } from "./PortalLivePage.js";
@@ -14,6 +22,8 @@ import { useCabnStore } from "./useCabnStore.js";
 
 export interface PortalPreviewDockProps {
 	store: StoreApi<CabnStore>;
+	/** Without it the dock never moves off a url arch it covers (see useDockPlacement). */
+	bus?: CabnBus;
 }
 
 /**
@@ -32,44 +42,65 @@ export interface PortalPreviewDockProps {
  */
 export function PortalPreviewDock({
 	store,
+	bus,
 }: PortalPreviewDockProps): React.ReactElement | null {
 	usePortalFxStyles();
 	const focused = useCabnStore(store, (s) => s.focusedPortalPreview);
-	const mode = useCabnStore(store, (s) => s.mode);
+	const open = useCabnStore(store, previewDockOpen);
 	const worldBase = useCabnStore(store, (s) => s.activeWorldBase);
-	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
 	const live = useCabnStore(store, (s) =>
 		shouldDockLivePage(s as DockCandidateState),
 	);
 	const hasHistory = useCabnStore(store, (s) => s.git !== null);
+	const placement = useDockPlacement(
+		bus,
+		open ? (focused?.portalId ?? null) : null,
+		focused?.preview.kind === "url" && live,
+	);
 
-	if (!focused || mode !== "world" || spyglassOpen || worldBase === null)
-		return null;
+	if (!focused || !open || worldBase === null) return null;
 
 	const { preview } = focused;
 	const liveWeb = preview.kind === "url" && live;
 	const compactWeb = preview.kind === "url" && !live && !preview.fallbackImage;
+	const height = liveWeb
+		? "min(640px, 84vh)"
+		: compactWeb
+			? "auto"
+			: "min(380px, 58vh)";
 
 	return (
 		<div
 			key={focused.portalId}
+			ref={placement.ref}
 			data-testid="portal-preview-dock"
+			data-dock-side={placement.side}
 			className="cabn-preview-dock"
 			style={{
 				position: "absolute",
-				right: 16,
-				top: "50%",
-				transform: "translateY(-50%)",
-				width: liveWeb ? "min(480px, 46vw)" : "min(440px, 42vw)",
+				...(placement.side === "left"
+					? // The left edge carries the settings corner above and the
+						// monster counter and hotbar below, all stacked over the dock,
+						// so a dock moved there sits between them rather than
+						// centred.
+						{
+							left: DOCK_MARGIN_PX,
+							top: DOCK_LEFT_TOP_PX,
+							maxHeight: `calc(100% - ${DOCK_LEFT_TOP_PX + DOCK_LEFT_BOTTOM_PX}px)`,
+						}
+					: {
+							right: DOCK_MARGIN_PX,
+							top: "50%",
+							transform: "translateY(-50%)",
+							maxHeight: "84vh",
+						}),
+				width:
+					placement.width ??
+					(liveWeb ? "min(480px, 46vw)" : "min(440px, 42vw)"),
 				// Tall for a docked page (it's a real, scrollable site); shrink-
 				// wrapped for a blocked site with no picture so the card isn't
 				// mostly empty space.
-				height: liveWeb
-					? "min(640px, 84vh)"
-					: compactWeb
-						? "auto"
-						: "min(380px, 58vh)",
-				maxHeight: "84vh",
+				height,
 				display: "flex",
 				flexDirection: "column",
 				// PixelTheme's wrapper is click-through; the dock has a button and
@@ -113,6 +144,69 @@ export function PortalPreviewDock({
 			<DockSparks />
 		</div>
 	);
+}
+
+const DOCK_LEFT_TOP_PX = 104;
+const DOCK_LEFT_BOTTOM_PX = 88;
+
+interface PlacementState {
+	side: DockSide;
+	/** null: the usual responsive CSS width, untouched. */
+	width: number | null;
+}
+
+const USUAL: PlacementState = { side: "right", width: null };
+
+/**
+ * Re-placed from the url arch's per-frame screen rect (WorldScene's
+ * "portal:web-rect", which carries the keepout), so it follows the arch as
+ * the camera does; only a changed result re-renders. Other portal kinds get
+ * no rect and keep the usual spot.
+ */
+function useDockPlacement(
+	bus: CabnBus | undefined,
+	portalId: string | null,
+	liveWeb: boolean,
+): PlacementState & { ref: React.RefObject<HTMLDivElement | null> } {
+	const ref = useRef<HTMLDivElement>(null);
+	const [placement, setPlacement] = useState<PlacementState>(USUAL);
+	const liveWebRef = useRef(liveWeb);
+	liveWebRef.current = liveWeb;
+
+	useEffect(() => {
+		setPlacement(USUAL);
+		if (!bus || !portalId) return;
+		const onRect = (e: CabnEvents["portal:web-rect"]) => {
+			if (e.portalId !== portalId) return;
+			const dock = ref.current;
+			const parent = dock?.offsetParent;
+			if (!dock || !parent) return;
+			// Mirrors the CSS widths below, which are relative to the viewport.
+			const vw = window.innerWidth;
+			const preferred = liveWebRef.current
+				? Math.min(480, 0.46 * vw)
+				: Math.min(440, 0.42 * vw);
+			const box = dock.getBoundingClientRect();
+			const top = parent.getBoundingClientRect().top;
+			const next = placeDock(
+				parent.clientWidth,
+				preferred,
+				{ top: box.top - top, bottom: box.bottom - top },
+				e.keepout,
+			);
+			const width =
+				next.side === "right" && next.width === preferred ? null : next.width;
+			setPlacement((prev) =>
+				prev.side === next.side && prev.width === width
+					? prev
+					: { side: next.side, width },
+			);
+		};
+		bus.on("portal:web-rect", onRect);
+		return () => bus.off("portal:web-rect", onRect);
+	}, [bus, portalId]);
+
+	return { ...placement, ref };
 }
 
 const SPARKS = 10;
