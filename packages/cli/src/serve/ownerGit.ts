@@ -1,7 +1,6 @@
 import * as nodeFs from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { relative, sep } from "node:path";
 import { DEFAULT_MAX_FILE_BYTES, openGitRepo } from "@cabn/converter";
 import {
 	add,
@@ -18,7 +17,7 @@ import {
 	checkOwnerRequest,
 	OwnerPathError,
 	readOwnerJson,
-	resolveOwnerTarget,
+	resolveExistingOwnerFile,
 	sendOwnerJson,
 } from "./ownerAuth.js";
 
@@ -194,31 +193,16 @@ async function confinedWorldFile(
 ): Promise<string> {
 	if (!ctx.worldText().has(path))
 		throw new OwnerGitError(403, `"${path}" is not a text file in this world`);
-	let real: string;
 	try {
-		const target = await resolveOwnerTarget(ctx.dir, path);
-		if (!target.exists)
-			throw new OwnerGitError(404, `"${path}" does not exist on disk`);
-		real = target.absolute;
+		return await resolveExistingOwnerFile(ctx.dir, path, repo.gitdir);
 	} catch (err) {
 		if (err instanceof OwnerPathError)
-			throw new OwnerGitError(403, `"${path}": ${err.message}`);
+			throw new OwnerGitError(
+				err.status === 404 ? 404 : 403,
+				err.message.startsWith('"') ? err.message : `"${path}": ${err.message}`,
+			);
 		throw err;
 	}
-	// resolveOwnerTarget allows a folder symlink that stays inside the root; a commit allows no hop at all.
-	const realRoot = await nodeFs.promises.realpath(ctx.dir);
-	const rel = relative(realRoot, real).split(sep).join("/");
-	if (rel !== path)
-		throw new OwnerGitError(403, `"${path}" is reached through a symlink`);
-	const realGitdir = await nodeFs.promises
-		.realpath(repo.gitdir)
-		.catch(() => repo.gitdir);
-	if (real === realGitdir || real.startsWith(`${realGitdir}${sep}`))
-		throw new OwnerGitError(403, `"${path}" is inside the git directory`);
-	const stat = await nodeFs.promises.lstat(real);
-	if (!stat.isFile())
-		throw new OwnerGitError(403, `"${path}" is not a regular file`);
-	return real;
 }
 
 async function commitEdits(

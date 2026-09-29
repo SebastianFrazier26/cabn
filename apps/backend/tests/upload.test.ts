@@ -111,6 +111,41 @@ describe("POST /v1/worlds: upload handling", () => {
 		expect(() => validateManifest(manifest)).not.toThrow();
 	});
 
+	test("hidden files in an upload never reach the result (2026-09-28)", async () => {
+		const utf8 = (s: string) => new TextEncoder().encode(s);
+		const zip = zipSync({
+			"README.md": utf8("# hello\n"),
+			"src/index.ts": utf8("export const a = 1;\n"),
+			".env": utf8("SHADOW_CANARY_UPLOAD_ENV=1\n"),
+			".github/ci.yml": utf8("on: push # SHADOW_CANARY_UPLOAD_CI\n"),
+			"src/.eslintrc.json": utf8('{"c":"SHADOW_CANARY_UPLOAD_ESLINT"}\n'),
+		});
+		const { body, contentType } = buildMultipartBody([
+			{ fieldName: "file", filename: "upload.zip", content: zip },
+		]);
+		const res = await post(body, contentType);
+		expect(res.statusCode).toBe(200);
+
+		const entries = unzipSync(res.rawPayload);
+		const manifest = JSON.parse(
+			Buffer.from(entries["world.json"] as Uint8Array).toString("utf8"),
+		);
+		expect(manifest.portals.map((p: { id: string }) => p.id).sort()).toEqual([
+			"README.md",
+			"src/index.ts",
+		]);
+		for (const [key, value] of Object.entries(entries)) {
+			expect(
+				key.split("/").some((s) => s.startsWith(".")),
+				key,
+			).toBe(false);
+			const text = Buffer.from(value).toString("utf8");
+			expect(text, key).not.toContain("SHADOW_CANARY");
+			for (const name of [".env", ".github", ".eslintrc"])
+				expect(text, `${key} names ${name}`).not.toContain(name);
+		}
+	});
+
 	test("media ships within the backend's own caps even if cabn.json asks for more", async () => {
 		const png = (size: number) => {
 			const bytes = new Uint8Array(size).fill(7);

@@ -1,7 +1,8 @@
 /**
  * The one gate for `cabn serve --owner`'s owner API: every loopback-only
- * route that writes into the served folder (`/owner/signs/*` in
- * ownerSigns.ts, `/owner/git/*` in ownerGit.ts) shares this session token
+ * route that reads hidden files or writes into the served folder
+ * (`/owner/signs/*` in ownerSigns.ts, `/owner/git/*` in ownerGit.ts,
+ * `/owner/shadow/*` in ownerShadow.ts) shares this session token
  * and these checks. Self-contained on purpose (node built-ins + zod only).
  * Every owner request must pass all of: exact loopback Host (DNS
  * rebinding), no cross-site Sec-Fetch-Site, the per-session owner token in a
@@ -12,9 +13,16 @@
  * are confined to the served root with symlinks refused.
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { lstat, realpath } from "node:fs/promises";
+import {
+	chmod,
+	lstat,
+	realpath,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, dirname, isAbsolute, join, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { z } from "zod";
 
 export const OWNER_TOKEN_HEADER = "x-cabn-owner-token";
@@ -235,6 +243,62 @@ export async function resolveOwnerTarget(
 		if (err instanceof OwnerPathError) throw err;
 		if ((err as NodeJS.ErrnoException).code === "ENOENT")
 			return { absolute, exists: false };
+		throw err;
+	}
+}
+
+/**
+ * resolveOwnerTarget plus what an edit to an existing file needs on top: the
+ * file must exist and be a regular file, be reached with no symlink hop at
+ * all (resolveOwnerTarget allows a folder symlink that stays inside the
+ * root), and not sit inside the git directory (`gitdir` may live anywhere,
+ * e.g. `--git-dir`). Returns the real absolute path.
+ */
+export async function resolveExistingOwnerFile(
+	root: string,
+	relPath: string,
+	gitdir?: string,
+): Promise<string> {
+	const target = await resolveOwnerTarget(root, relPath);
+	if (!target.exists)
+		throw new OwnerPathError(`"${relPath}" does not exist`, 404);
+	const realRoot = await realpath(root);
+	if (relative(realRoot, target.absolute).split(sep).join("/") !== relPath)
+		throw new OwnerPathError(`"${relPath}" is reached through a symlink`);
+	if (gitdir !== undefined) {
+		const realGitdir = await realpath(gitdir).catch(() => gitdir);
+		if (inside(realGitdir, target.absolute))
+			throw new OwnerPathError(`"${relPath}" is inside the git directory`);
+	}
+	const stat = await lstat(target.absolute);
+	if (!stat.isFile())
+		throw new OwnerPathError(`"${relPath}" is not a regular file`);
+	return target.absolute;
+}
+
+/**
+ * Replaces a file's contents atomically: write a fresh temp file beside it,
+ * then rename over it — a reader never sees half a file, and rename replaces
+ * the directory entry itself rather than following whatever it points at.
+ * The original permission bits are carried over (a `.husky` hook keeps its
+ * exec bit); chmod after the write because writeFile's mode is filtered by
+ * the umask.
+ */
+export async function overwriteFileAtomic(
+	target: string,
+	content: string | Uint8Array,
+): Promise<void> {
+	const mode = (await lstat(target)).mode & 0o7777;
+	const temp = join(
+		dirname(target),
+		`.${basename(target)}.${randomBytes(6).toString("hex")}.tmp`,
+	);
+	try {
+		await writeFile(temp, content, { flag: "wx", mode: 0o600 });
+		await chmod(temp, mode);
+		await rename(temp, target);
+	} catch (err) {
+		await rm(temp, { force: true });
 		throw err;
 	}
 }

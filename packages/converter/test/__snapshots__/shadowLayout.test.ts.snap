@@ -1,0 +1,94 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`shadow layout > deterministic: same input, same placement (snapshot) 1`] = `
+{
+  "clusters": [
+    {
+      "id": "root#shadow",
+      "pos": {
+        "x": 664.16,
+        "y": 58.11,
+      },
+    },
+    {
+      "id": "src#shadow",
+      "pos": {
+        "x": -898.79,
+        "y": -557.74,
+      },
+    },
+    {
+      "id": ".github",
+      "pos": {
+        "x": 1267.51,
+        "y": 58.11,
+      },
+    },
+    {
+      "id": ".github--workflows",
+      "pos": {
+        "x": 1865.23,
+        "y": 110.4,
+      },
+    },
+    {
+      "id": ".husky",
+      "pos": {
+        "x": 919.15,
+        "y": 604.93,
+      },
+    },
+    {
+      "id": ".vscode",
+      "pos": {
+        "x": 919.15,
+        "y": -488.71,
+      },
+    },
+    {
+      "id": "src--lib--.cache",
+      "pos": {
+        "x": -1847.06,
+        "y": -58.42,
+      },
+    },
+  ],
+  "paths": [
+    {
+      "from": "root",
+      "kind": "trail",
+      "to": "root#shadow",
+    },
+    {
+      "from": "src",
+      "kind": "trail",
+      "to": "src#shadow",
+    },
+    {
+      "from": "root#shadow",
+      "kind": "vine",
+      "to": ".github",
+    },
+    {
+      "from": ".github",
+      "kind": "vine",
+      "to": ".github--workflows",
+    },
+    {
+      "from": "root#shadow",
+      "kind": "vine",
+      "to": ".husky",
+    },
+    {
+      "from": "root#shadow",
+      "kind": "vine",
+      "to": ".vscode",
+    },
+    {
+      "from": "src--lib",
+      "kind": "vine",
+      "to": "src--lib--.cache",
+    },
+  ],
+}
+`;

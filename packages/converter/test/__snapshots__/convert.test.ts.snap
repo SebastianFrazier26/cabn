@@ -12,7 +12,6 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
       "label": "root",
       "path": ".",
       "portalIds": [
-        ".env",
         "README.md",
         "main.py",
       ],
@@ -65,13 +64,13 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
     },
   ],
   "meta": {
-    "fileCount": 6,
+    "fileCount": 5,
     "generatedAt": "2026-01-01T00:00:00.000Z",
     "name": "mini-python",
     "skippedFiles": 0,
     "source": "mini-python",
     "themeSeed": 354047303,
-    "totalBytes": 516,
+    "totalBytes": 505,
     "truncated": false,
   },
   "monsters": [],
@@ -93,25 +92,6 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
     },
   ],
   "portals": [
-    {
-      "clusterId": "root",
-      "file": {
-        "binary": false,
-        "bytes": 11,
-        "kind": "config",
-        "name": ".env",
-        "path": ".env",
-      },
-      "id": ".env",
-      "preview": {
-        "lines": [],
-        "truncated": true,
-      },
-      "richPreview": {
-        "kind": "sealed",
-      },
-      "spawns": [],
-    },
     {
       "clusterId": "root",
       "file": {

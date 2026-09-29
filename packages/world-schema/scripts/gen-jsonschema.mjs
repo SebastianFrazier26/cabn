@@ -19,6 +19,8 @@ import {
 	ShelfManifestSchema,
 	SignIndexFileSchema,
 	WorldChunkSchema,
+	WorldLayerDeltaSchema,
+	WorldLayerManifestSchema,
 	WorldManifestSchema,
 } from "../dist/index.js";
 
@@ -37,6 +39,8 @@ const schemas = {
 	"git-files": GitFilesSchema,
 	releases: ReleasesFileSchema,
 	"signs-index": SignIndexFileSchema,
+	"world-layer-delta": WorldLayerDeltaSchema,
+	"world-layer-manifest": WorldLayerManifestSchema,
 };
 
 await mkdir(outDir, { recursive: true });

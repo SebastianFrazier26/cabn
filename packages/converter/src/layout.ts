@@ -171,7 +171,7 @@ const ARCH_SLOT_PX = 192; // PORTAL_ARCH_FRAME_SIZE (256) * WORLD_PORTAL_SCALE (
 const PATH_GATE_PX = 96;
 const PORTAL_RING_MIN_RADIUS_PX = 180;
 const CLEARING_OUTER_MARGIN_PX = 90;
-const CLEARING_GAP_PX = 60; // visible gap between two clearings' *edges*, not just their centers
+export const CLEARING_GAP_PX = 60; // visible gap between two clearings' *edges*, not just their centers
 
 export function portalRingBaseRadius(
 	portalCount: number,
@@ -186,7 +186,7 @@ export function portalRingBaseRadius(
 	return Math.max(PORTAL_RING_MIN_RADIUS_PX, circumference / (Math.PI * 2));
 }
 
-function estimatedClearingRadius(
+export function estimatedClearingRadius(
 	portalCount: number,
 	pathCount: number,
 ): number {

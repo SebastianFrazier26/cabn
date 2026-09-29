@@ -342,6 +342,40 @@ describe("convert(): cabn.json integration", () => {
 		).rejects.toThrow(/does-not-exist\.md/);
 	});
 
+	test("an override naming a hidden file is skipped, not a typo error", async () => {
+		const root = await makeWorld({
+			"cabn.json": JSON.stringify({
+				cabnConfigVersion: 1,
+				previews: { ".github/ci.yml": { kind: "text", text: "x" } },
+				allowedEmbedOrigins: [],
+			}),
+			".github/ci.yml": "on: push\n",
+			"a.txt": "hi",
+		});
+		const bundle = await convert(new DirSource(root), {
+			name: "w",
+			source: root,
+			now: FIXED_NOW,
+		});
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		expect(manifest.portals.map((p) => p.id)).toEqual(["a.txt"]);
+	});
+
+	test("refuses an override whose src is a hidden file", async () => {
+		const root = await makeWorld({
+			"cabn.json": JSON.stringify({
+				cabnConfigVersion: 1,
+				previews: { "a.txt": { kind: "markdown", src: ".notes/secret.md" } },
+				allowedEmbedOrigins: [],
+			}),
+			".notes/secret.md": "# hidden\n",
+			"a.txt": "hi",
+		});
+		await expect(
+			convert(new DirSource(root), { name: "w", source: root, now: FIXED_NOW }),
+		).rejects.toThrow(/hidden path/);
+	});
+
 	test("rejects an image override whose src doesn't exist in the source", async () => {
 		const root = await makeWorld({
 			"cabn.json": JSON.stringify({
