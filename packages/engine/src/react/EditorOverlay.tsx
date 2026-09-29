@@ -34,6 +34,7 @@ import {
 	spellbookCompartment,
 } from "../systems/fileBuffer.js";
 import { insertTextAt } from "../systems/insertText.js";
+import { lineMapper } from "../systems/lineAnchors.js";
 import {
 	createIdleRunPlaybackState,
 	currentStep,
@@ -41,6 +42,7 @@ import {
 	runPlaybackReducer,
 } from "../systems/runPlayback.js";
 import {
+	mapSpellbookErrorRows,
 	type SpellbookErrorRow,
 	spellbookStatusLine,
 	toSpellbookErrorRows,
@@ -302,6 +304,12 @@ export function EditorOverlay({
 						store.getState().setActiveFileState(update.state);
 					}
 					if (!update.docChanged) return;
+					const mapLine = lineMapper(
+						update.startState.doc,
+						update.state.doc,
+						update.changes,
+					);
+					setErrorRows((rows) => mapSpellbookErrorRows(rows, mapLine));
 					// Rename's preview holds document offsets; any edit makes them stale.
 					if (dialogRef.current?.kind === "rename") setDialog(null);
 					clearTimeout(debounce);

@@ -295,3 +295,41 @@ export function pointFromPos(
 		column,
 	};
 }
+
+/** One run of painted text on an enchanted markdown line: where it was drawn and which source characters it shows. */
+export interface PaintedSpan {
+	x: number;
+	width: number;
+	/** Source offsets within the line, `to - from` characters painted across `width`. */
+	from: number;
+	to: number;
+}
+
+/**
+ * The source column under world `x` on a line drawn as `spans` (enchanted
+ * markdown), which can't use the raw monospace grid: headings are wider and
+ * the markup (`## `, backticks, `**`, a list marker) isn't painted at all,
+ * so the grid lands columns away from the glyph that was clicked. Every span
+ * is one monospace font, so a glyph is `width / (to - from)` wide. Left of
+ * the text column is column 0 like a raw line; right of the last span is the
+ * line's end.
+ */
+export function columnFromPaintedSpans(
+	spans: readonly PaintedSpan[],
+	x: number,
+	textX: number,
+	lineLength: number,
+): number {
+	if (x < textX) return 0;
+	const first = spans[0];
+	if (!first || x <= first.x) return first?.from ?? 0;
+	for (const span of spans) {
+		if (x >= span.x + span.width) continue;
+		const chars = span.to - span.from;
+		if (chars <= 0) return span.from;
+		const glyph = span.width / chars;
+		const col = span.from + Math.round((x - span.x) / glyph);
+		return Math.min(Math.max(col, span.from), span.to);
+	}
+	return lineLength;
+}

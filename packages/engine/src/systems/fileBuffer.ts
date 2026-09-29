@@ -5,6 +5,7 @@ import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { detectIndentUnit } from "./editorFormat.js";
+import { monsterAnchors } from "./lineAnchors.js";
 
 /**
  * The open file's one edit buffer, shared by the file view's inline caret
@@ -25,6 +26,7 @@ export function createFileBufferState(content: string): EditorState {
 		doc: content,
 		extensions: [
 			history(),
+			monsterAnchors,
 			indentUnit.of(detectIndentUnit(content)),
 			spellbookCompartment.of([]),
 		],

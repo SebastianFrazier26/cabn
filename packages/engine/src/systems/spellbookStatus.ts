@@ -82,3 +82,15 @@ export function toSpellbookErrorRows(
 			return a.line - b.line;
 		});
 }
+
+/** Carries the rows' lines through an edit (systems/lineAnchors.ts's lineMapper) so they follow their code on every keystroke, not only once the debounced re-annotate lands. */
+export function mapSpellbookErrorRows(
+	rows: readonly SpellbookErrorRow[],
+	mapLine: (line: number) => number,
+): SpellbookErrorRow[] {
+	return rows.map((row) => {
+		if (row.line === undefined) return row;
+		const line = mapLine(row.line);
+		return line === row.line ? row : { ...row, line, displayLine: line + 1 };
+	});
+}
