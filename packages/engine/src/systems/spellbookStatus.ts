@@ -1,4 +1,4 @@
-import type { ErrorAnnotation } from "@cabn/converter/browser";
+import type { ErrorAnnotation } from "@cabn/converter/core";
 import type { RunStatus } from "./runPlayback.js";
 
 /** The spellbook's own inline run never reaches "blocked" (that's FileScene's

@@ -148,30 +148,20 @@
 					"minimum": 0,
 					"maximum": 500
 				},
-				"maxUniverses": {
-					"type": "integer",
-					"minimum": 0,
-					"maximum": 8
-				},
 				"maxReleases": {
 					"type": "integer",
 					"minimum": 0,
 					"maximum": 100
 				},
-				"maxDiffBytesPerFile": {
+				"maxPackBytes": {
 					"type": "integer",
-					"minimum": 1024,
-					"maximum": 524288
+					"minimum": 1048576,
+					"maximum": 209715200
 				},
-				"maxTotalBytes": {
+				"maxBlobBytes": {
 					"type": "integer",
-					"minimum": 65536,
-					"maximum": 33554432
-				},
-				"maxUniverseTotalBytes": {
-					"type": "integer",
-					"minimum": 0,
-					"maximum": 262144000
+					"minimum": 16384,
+					"maximum": 26214400
 				},
 				"releases": {
 					"type": "boolean"

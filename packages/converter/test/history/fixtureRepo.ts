@@ -130,6 +130,8 @@ export async function createStandardFixture(): Promise<FixtureRepo> {
 			"lanterns.md": "# Lanterns\n\nHang them at dusk.\n",
 			"README.md": "# Lantern Garden\n\nA tiny garden with lanterns.\n",
 			"src/secret.js": `export const k = "${FAKE_AWS_KEY}";\n`,
+			"deploy.pem":
+				"-----BEGIN FAKE KEY-----\nnot real\n-----END FAKE KEY-----\n",
 		},
 		"Hang lanterns",
 		4,

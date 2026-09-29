@@ -17,11 +17,13 @@ import {
 import {
 	EMBED_INDEX_FILENAME,
 	type FindingsSummary,
-	HISTORY_INDEX_FILENAME,
+	GIT_META_FILENAME,
 	MONSTER_INDEX_FILENAME,
 	parseEmbedIndex,
-	parseHistoryIndex,
+	parseGitMeta,
 	parseMonsterIndex,
+	parseReleasesFile,
+	RELEASES_FILENAME,
 } from "@cabn/world-schema";
 
 export interface BuildSummary {
@@ -46,10 +48,14 @@ export interface BuildSummary {
 }
 
 export interface HistorySummary {
-	commits: number;
+	/** Commits in the shipped pack (all branches, deduplicated by the pack itself). */
+	packBytes: number;
+	objects: number;
 	branches: number;
 	tags: number;
-	universes: string[];
+	commitsPerBranch: number;
+	halvings: number;
+	notShipped: number;
 	releases: string;
 	releaseCount: number;
 }
@@ -166,17 +172,25 @@ export function cliGitInput(
 export function historySummary(
 	bundle: Map<string, Uint8Array | string>,
 ): HistorySummary | undefined {
-	const raw = bundle.get(HISTORY_INDEX_FILENAME);
+	const raw = bundle.get(GIT_META_FILENAME);
 	if (typeof raw !== "string") return undefined;
-	const history = parseHistoryIndex(JSON.parse(raw));
-	if (!history) return undefined;
+	const meta = parseGitMeta(JSON.parse(raw));
+	if (!meta) return undefined;
+	const rawReleases = bundle.get(RELEASES_FILENAME);
+	const releases =
+		typeof rawReleases === "string"
+			? parseReleasesFile(JSON.parse(rawReleases))
+			: null;
 	return {
-		commits: history.commits.length,
-		branches: history.branches.length,
-		tags: history.tags.length,
-		universes: history.branches.flatMap((b) => (b.universe ? [b.name] : [])),
-		releases: history.releases.source,
-		releaseCount: history.releases.items.length,
+		packBytes: meta.pack.bytes,
+		objects: meta.pack.objects,
+		branches: meta.branches.length,
+		tags: meta.tags.length,
+		commitsPerBranch: meta.pack.commitsPerBranch,
+		halvings: meta.pack.halvings,
+		notShipped: Object.keys(meta.omitted).length,
+		releases: releases?.source ?? "none",
+		releaseCount: releases?.items.length ?? 0,
 	};
 }
 

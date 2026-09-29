@@ -1,15 +1,15 @@
 import {
 	EMBED_INDEX_FILENAME,
 	type EmbedVerdict,
-	HISTORY_INDEX_FILENAME,
-	type HistoryIndexFile,
+	GIT_META_FILENAME,
+	type GitMeta,
 	MEDIA_INDEX_FILENAME,
 	type MediaPreview,
 	MONSTER_INDEX_FILENAME,
 	type Monster,
 	mergeMonsterIndex,
 	parseEmbedIndex,
-	parseHistoryIndex,
+	parseGitMeta,
 	parseMediaIndex,
 	parseMonsterIndex,
 	parseSignIndex,
@@ -19,6 +19,7 @@ import {
 	validateShelf,
 } from "@cabn/world-schema";
 import Phaser from "phaser";
+import { resolveBundleUrl, resolveRelativeUrl } from "../render/resolveUrl.js";
 
 export type BootSceneData =
 	| {
@@ -58,7 +59,7 @@ export class BootScene extends Phaser.Scene {
 		if ("shelfUrl" in this.target) {
 			this.load.json("shelf-manifest", this.target.shelfUrl);
 		} else {
-			this.load.json("world-manifest", this.target.worldUrl);
+			this.load.json("world-manifest", resolveBundleUrl(this.target.worldUrl));
 		}
 	}
 
@@ -90,12 +91,12 @@ export class BootScene extends Phaser.Scene {
 		const { returnTo, shelfIndex, universe } = this.target;
 		const historyBase = universe?.historyBase ?? worldBase;
 		Promise.all([
-			loadMediaIndex(`${worldBase}${MEDIA_INDEX_FILENAME}`),
-			loadMonsterIndex(`${worldBase}${MONSTER_INDEX_FILENAME}`),
-			loadEmbedIndex(`${worldBase}${EMBED_INDEX_FILENAME}`),
-			loadSignIndex(`${worldBase}${SIGN_INDEX_FILENAME}`),
-			loadHistoryIndex(`${historyBase}${HISTORY_INDEX_FILENAME}`),
-		]).then(([media, extraMonsters, embeds, signs, history]) => {
+			loadMediaIndex(resolveRelativeUrl(worldBase, MEDIA_INDEX_FILENAME)),
+			loadMonsterIndex(resolveRelativeUrl(worldBase, MONSTER_INDEX_FILENAME)),
+			loadEmbedIndex(resolveRelativeUrl(worldBase, EMBED_INDEX_FILENAME)),
+			loadSignIndex(resolveRelativeUrl(worldBase, SIGN_INDEX_FILENAME)),
+			loadGitMeta(resolveRelativeUrl(historyBase, GIT_META_FILENAME)),
+		]).then(([media, extraMonsters, embeds, signs, gitMeta]) => {
 			if (!this.scene.isActive()) return;
 			// Merged here, once, so every scene and HUD piece downstream sees one
 			// `manifest.monsters` and never needs to know monsters.json exists.
@@ -108,10 +109,10 @@ export class BootScene extends Phaser.Scene {
 				...(shelfIndex !== undefined ? { shelfIndex } : {}),
 				embeds,
 				signs,
-				...(history
+				...(gitMeta
 					? {
 							git: {
-								history,
+								meta: gitMeta,
 								historyBase,
 								universe: universe
 									? { slug: universe.slug, branch: universe.branch }
@@ -153,12 +154,12 @@ async function loadMonsterIndex(url: string): Promise<Monster[]> {
 	}
 }
 
-/** history.json: same optional/advisory contract — no history just means no rift, timeline or pensieve. */
-async function loadHistoryIndex(url: string): Promise<HistoryIndexFile | null> {
+/** git/meta.json: same optional/advisory contract — no git directory just means no rift, timeline or pensieve. */
+async function loadGitMeta(url: string): Promise<GitMeta | null> {
 	try {
 		const res = await fetch(url);
 		if (!res.ok) return null;
-		return parseHistoryIndex(await res.json());
+		return parseGitMeta(await res.json());
 	} catch {
 		return null;
 	}

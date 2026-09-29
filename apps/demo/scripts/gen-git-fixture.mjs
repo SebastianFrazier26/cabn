@@ -7,6 +7,9 @@
 // dates, content derived from the committed sample files), so the commit
 // ids — and therefore the built world — are the same on every machine.
 //
+// The world ships these objects as they are (real ids, author emails): the
+// fixture authors use example.invalid-style addresses for that reason.
+//
 // Objects are written directly (writeBlob/writeTree/writeCommit), never
 // through a work tree: the work tree is sample-project/ itself, and its
 // files must stay exactly as committed in this repo.
@@ -20,8 +23,8 @@ const encoder = new TextEncoder();
 const DAY = 86400;
 const START = Date.UTC(2026, 5, 1, 9, 0, 0) / 1000;
 const AUTHORS = [
-	{ name: "Wren Hollow", email: "wren@lantern-garden.example" },
-	{ name: "Bramble Finch", email: "bramble@lantern-garden.example" },
+	{ name: "Wren Hollow", email: "wren@lantern-garden.invalid" },
+	{ name: "Bramble Finch", email: "bramble@lantern-garden.invalid" },
 ];
 
 /** The canned GitHub API the demo build uses instead of the network — see build-world.mjs. */
@@ -104,9 +107,11 @@ function appendText(buf, extra) {
 	return encoder.encode(`${new TextDecoder().decode(buf)}${extra}`);
 }
 
-// A key-shaped value assembled at runtime so this repo's own source never
-// contains one; the converter must withhold every diff that shows it.
-const FAKE_WEATHER_KEY = ["AKIA", "LG7Q2WN4XK9PR3TV"].join("");
+// History ships as-is, so the hosted demo's pack holds every version of every
+// ordinary file: the "oops" commit uses an obvious placeholder rather than
+// anything key-shaped. A secret-NAMED file (config/credentials.json on the
+// festival branch, .env on main) shows the one thing that is left out.
+const FAKE_WEATHER_KEY = "your-weather-key-here";
 
 async function writeFiles(gitdir, files) {
 	const root = { dirs: new Map(), blobs: [] };
@@ -286,6 +291,12 @@ export async function createSampleHistory(sampleDir) {
 	await tag("v1.0.0", c7, "Full bloom — the demo garden as it ships");
 
 	const festival = new Map(s5);
+	festival.set(
+		"config/credentials.json",
+		encoder.encode(
+			'{ "festivalTicketsApi": "left-out-of-the-world-by-name" }\n',
+		),
+	);
 	festival.set(
 		"docs/lantern-festival.md",
 		encoder.encode(

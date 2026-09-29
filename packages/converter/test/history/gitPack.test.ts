@@ -1,0 +1,406 @@
+import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import * as fs from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import {
+	type GitMeta,
+	parseGitFiles,
+	parseGitMeta,
+	parseReleasesFile,
+	type WorldManifest,
+} from "@cabn/world-schema";
+import * as git from "isomorphic-git";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { convert, type WorldBundle } from "../../src/convert.js";
+import type { GithubFetch } from "../../src/history/githubReleases.js";
+import { GitTreeSource, type OpenedRepo } from "../../src/history/gitRepo.js";
+import { DirSource } from "../../src/sources/dir.js";
+import {
+	AUTHOR_EMAIL,
+	createFixtureRepo,
+	createStandardFixture,
+	ENV_SECRET_VALUE,
+	FAKE_AWS_KEY,
+	type FixtureRepo,
+} from "./fixtureRepo.js";
+
+const NOW = () => new Date("2026-09-28T00:00:00.000Z");
+const decoder = new TextDecoder();
+
+async function convertRepo(
+	repo: FixtureRepo,
+	extra: Partial<Parameters<typeof convert>[1]> = {},
+): Promise<WorldBundle> {
+	return convert(new DirSource(repo.dir), {
+		name: "garden",
+		source: repo.dir,
+		now: NOW,
+		git: { fs, dir: repo.dir },
+		...extra,
+	});
+}
+
+function metaOf(bundle: WorldBundle): GitMeta {
+	const parsed = parseGitMeta(
+		JSON.parse(bundle.get("git/meta.json") as string),
+	);
+	if (!parsed) throw new Error("git/meta.json failed its own schema");
+	return parsed;
+}
+
+/** Writes the bundle's git/ files to disk so isomorphic-git (and real git) can read them like any bare repository. */
+async function materialize(bundle: WorldBundle): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), "cabn-shipped-git-"));
+	const files = parseGitFiles(
+		JSON.parse(bundle.get("git/files.json") as string),
+	);
+	if (!files) throw new Error("git/files.json failed its own schema");
+	for (const rel of files.files) {
+		const value = bundle.get(`git/${rel}`);
+		if (value === undefined)
+			throw new Error(`files.json lists missing git/${rel}`);
+		await mkdir(dirname(join(dir, rel)), { recursive: true });
+		await writeFile(join(dir, rel), value);
+	}
+	return dir;
+}
+
+function systemGit(): boolean {
+	try {
+		execFileSync("git", ["--version"], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+describe("the shipped git directory", () => {
+	let repo: FixtureRepo;
+	let bundle: WorldBundle;
+	let shipped: string;
+	let meta: GitMeta;
+
+	beforeAll(async () => {
+		repo = await createStandardFixture();
+		bundle = await convertRepo(repo);
+		shipped = await materialize(bundle);
+		meta = metaOf(bundle);
+	});
+	afterAll(async () => {
+		await repo.cleanup();
+		await rm(shipped, { recursive: true, force: true });
+	});
+
+	test("files.json lists exactly the git files, and the bundle adds nothing else to world.json", () => {
+		const files = parseGitFiles(
+			JSON.parse(bundle.get("git/files.json") as string),
+		);
+		expect(files?.files).toEqual(
+			expect.arrayContaining(["HEAD", "config", "packed-refs"]),
+		);
+		expect(
+			files?.files.filter((f) => f.startsWith("objects/pack/")),
+		).toHaveLength(2);
+		const manifest = JSON.parse(
+			bundle.get("world.json") as string,
+		) as WorldManifest;
+		expect(manifest.cabnVersion).toBe(1);
+		expect([...bundle.keys()].some((k) => k.startsWith("universes/"))).toBe(
+			false,
+		);
+		expect(bundle.has("history.json")).toBe(false);
+	});
+
+	test("it is a real repository: same commit ids, full author identity, readable by isomorphic-git", async () => {
+		const sourceLog = await git.log({ fs, dir: repo.dir, ref: "main" });
+		const shippedLog = await git.log({ fs, gitdir: shipped, ref: "main" });
+		expect(shippedLog.map((c) => c.oid)).toEqual(sourceLog.map((c) => c.oid));
+		expect(shippedLog[0]?.commit.author.email).toBe(AUTHOR_EMAIL);
+		expect(await git.currentBranch({ fs, gitdir: shipped })).toBe("main");
+		expect((await git.listBranches({ fs, gitdir: shipped })).sort()).toEqual([
+			"feature/lanterns",
+			"main",
+		]);
+		expect((await git.listTags({ fs, gitdir: shipped })).sort()).toEqual([
+			"v0.1.0",
+			"v0.2.0",
+		]);
+		const tagOid = await git.resolveRef({
+			fs,
+			gitdir: shipped,
+			ref: "refs/tags/v0.2.0",
+		});
+		expect(
+			(await git.readTag({ fs, gitdir: shipped, oid: tagOid })).tag.message,
+		).toBe("Second harvest\n");
+	});
+
+	test("history ships as-is, secrets in ordinary files included", async () => {
+		const watered = (await git.log({ fs, gitdir: shipped, ref: "main" })).find(
+			(c) => c.commit.message.startsWith("Water"),
+		);
+		const { blob } = await git.readBlob({
+			fs,
+			gitdir: shipped,
+			oid: watered?.oid as string,
+			filepath: "src/config.js",
+		});
+		expect(decoder.decode(blob)).toContain(FAKE_AWS_KEY);
+	});
+
+	test("secret-named files are not shipped from any commit; their trees still point at them", async () => {
+		const planted = (await git.log({ fs, gitdir: shipped, ref: "main" })).find(
+			(c) => c.commit.message.startsWith("Plant"),
+		);
+		const tree = await git.readTree({
+			fs,
+			gitdir: shipped,
+			oid: planted?.commit.tree as string,
+		});
+		const env = tree.tree.find((e) => e.path === ".env");
+		expect(env).toBeDefined();
+		await expect(
+			git.readBlob({ fs, gitdir: shipped, oid: env?.oid as string }),
+		).rejects.toThrow();
+		expect(meta.omitted[env?.oid as string]).toMatchObject({
+			reason: "secret-name",
+		});
+		const packs = [...bundle.entries()].filter(([k]) => k.endsWith(".pack"));
+		expect(decoder.decode(packs[0]?.[1] as Uint8Array)).not.toContain(
+			ENV_SECRET_VALUE,
+		);
+	});
+
+	test("ignored folders are left out of the pack", async () => {
+		const notes = (await git.log({ fs, gitdir: shipped, ref: "main" })).find(
+			(c) => c.commit.message.startsWith("Add notes"),
+		);
+		const tree = await git.readTree({
+			fs,
+			gitdir: shipped,
+			oid: notes?.commit.tree as string,
+		});
+		const nm = tree.tree.find((e) => e.path === "node_modules");
+		await expect(
+			git.readTree({ fs, gitdir: shipped, oid: nm?.oid as string }),
+		).rejects.toThrow();
+	});
+
+	test("meta.json summarises branches (current first) and tags", () => {
+		expect(meta.head.branch).toBe("main");
+		expect(meta.branches.map((b) => [b.name, b.current, b.commits])).toEqual([
+			["main", true, 4],
+			["feature/lanterns", false, 5],
+		]);
+		expect(meta.branches[1]).toMatchObject({
+			subject: "Hang lanterns",
+			author: "Wren Hollow",
+		});
+		expect(meta.tags.find((t) => t.name === "v0.2.0")).toMatchObject({
+			annotated: true,
+		});
+		expect(meta.pack.halvings).toBe(0);
+	});
+
+	test.skipIf(!systemGit())(
+		"real git accepts the pack and walks the history",
+		() => {
+			const idx = parseGitFiles(
+				JSON.parse(bundle.get("git/files.json") as string),
+			)?.files.find((f) => f.endsWith(".idx")) as string;
+			execFileSync("git", ["verify-pack", join(shipped, idx)], {
+				stdio: "pipe",
+			});
+			// Real git only recognises a git dir that has refs/; files.json can't carry an empty folder, and isomorphic-git doesn't need one.
+			fs.mkdirSync(join(shipped, "refs"), { recursive: true });
+			const out = execFileSync(
+				"git",
+				["--git-dir", shipped, "log", "--format=%s", "main"],
+				{
+					encoding: "utf8",
+				},
+			);
+			expect(out.trim().split("\n")).toHaveLength(4);
+		},
+	);
+
+	test("a branch converts as a universe from the shipped objects, with unshipped blobs sealed", async () => {
+		const head = await git.resolveRef({
+			fs,
+			gitdir: shipped,
+			ref: "refs/heads/feature/lanterns",
+		});
+		const { commit } = await git.readCommit({ fs, gitdir: shipped, oid: head });
+		const opened: OpenedRepo = {
+			fs,
+			root: shipped,
+			gitdir: shipped,
+			prefix: "",
+			cache: {},
+		};
+		const source = new GitTreeSource(opened, commit.tree, {
+			ignore: [],
+			omittedSizes: meta.omitted,
+		});
+		const world = await convert(source, {
+			name: "garden",
+			source: `${repo.dir}#feature/lanterns`,
+			now: NOW,
+			sealedPaths: source.sealedPaths,
+		});
+		const manifest = JSON.parse(
+			world.get("world.json") as string,
+		) as WorldManifest;
+		const ids = manifest.portals.map((p) => p.id);
+		expect(ids).toContain("lanterns.md");
+		expect(ids).toContain("deploy.pem");
+		expect(
+			manifest.portals.find((p) => p.id === "deploy.pem")?.richPreview,
+		).toEqual({
+			kind: "sealed",
+		});
+		// Same rules as the main world: an ordinary file with a key in it is readable (and gets a magpie).
+		expect(
+			manifest.portals.find((p) => p.id === "src/secret.js")?.richPreview?.kind,
+		).not.toBe("sealed");
+	});
+});
+
+describe("caps and options", () => {
+	const repos: FixtureRepo[] = [];
+	afterEach(async () => {
+		for (const r of repos.splice(0)) await r.cleanup();
+	});
+	async function standard() {
+		const r = await createStandardFixture();
+		repos.push(r);
+		return r;
+	}
+	const config = (repo: FixtureRepo, history: object) =>
+		writeFile(
+			join(repo.dir, "cabn.json"),
+			JSON.stringify({ cabnConfigVersion: 1, history }),
+		);
+
+	test("maxCommitsPerBranch sets a shallow boundary git itself respects", async () => {
+		const repo = await standard();
+		// No tags: they would pull older commits back in and close the gap.
+		await config(repo, { maxCommitsPerBranch: 2, maxTags: 0 });
+		const bundle = await convertRepo(repo);
+		expect(bundle.has("git/shallow")).toBe(true);
+		const shipped = await materialize(bundle);
+		try {
+			expect(await git.log({ fs, gitdir: shipped, ref: "main" })).toHaveLength(
+				2,
+			);
+			expect(metaOf(bundle).branches[0]).toMatchObject({
+				commits: 2,
+				truncated: true,
+			});
+		} finally {
+			await rm(shipped, { recursive: true, force: true });
+		}
+	});
+
+	test("maxBlobBytes leaves big blobs out as too-large", async () => {
+		const repo = await standard();
+		await repo.commit(
+			{ "big.bin": randomBytes(40 * 1024).toString("hex") },
+			"Big",
+			6,
+		);
+		await config(repo, { maxBlobBytes: 16 * 1024 });
+		const meta = metaOf(await convertRepo(repo));
+		expect(
+			Object.values(meta.omitted).some(
+				(o) => o.reason === "too-large" && o.size === 80 * 1024,
+			),
+		).toBe(true);
+	});
+
+	test("the boundary halves until the pack fits maxPackBytes, and says so", async () => {
+		const repo = await createFixtureRepo();
+		repos.push(repo);
+		for (let n = 0; n < 8; n++)
+			await repo.commit(
+				{ "noise.txt": randomBytes(300 * 1024).toString("base64") },
+				`rev ${n}`,
+				n,
+			);
+		await config(repo, { maxPackBytes: 1024 * 1024 });
+		const bundle = await convertRepo(repo);
+		const meta = metaOf(bundle);
+		expect(meta.pack.halvings).toBeGreaterThan(0);
+		expect(meta.pack.commitsPerBranch).toBeLessThan(200);
+		expect(meta.pack.bytes).toBeLessThanOrEqual(1024 * 1024);
+	});
+
+	test("history.enabled=false and a non-root directory get no git/", async () => {
+		const repo = await standard();
+		const sub = await convert(new DirSource(join(repo.dir, "src")), {
+			name: "src",
+			source: "src",
+			git: { fs, dir: join(repo.dir, "src") },
+		});
+		expect(sub.has("git/files.json")).toBe(false);
+		await config(repo, { enabled: false });
+		expect((await convertRepo(repo)).has("git/files.json")).toBe(false);
+	});
+
+	test("releases.json: none without a github remote, offline without a fetch, filled with one", async () => {
+		const repo = await standard();
+		const releasesOf = (b: WorldBundle) =>
+			parseReleasesFile(JSON.parse(b.get("releases.json") as string));
+		expect(releasesOf(await convertRepo(repo))?.source).toBe("none");
+		await git.addRemote({
+			fs,
+			dir: repo.dir,
+			remote: "origin",
+			url: "git@github.com:wren/garden.git",
+		});
+		expect(releasesOf(await convertRepo(repo))?.source).toBe("offline");
+		const fetch: GithubFetch = async () => ({
+			ok: true,
+			status: 200,
+			json: async () => [
+				{
+					tag_name: "v0.2.0",
+					name: "Second harvest",
+					body: "notes",
+					html_url: "https://github.com/wren/garden/releases/tag/v0.2.0",
+					assets: [],
+				},
+				{ tag_name: "evil", html_url: "https://evil.example/", assets: [] },
+			],
+		});
+		const r = releasesOf(
+			await convertRepo(repo, {
+				git: { fs, dir: repo.dir, github: { fetch } },
+			}),
+		);
+		expect(r?.source).toBe("github");
+		expect(r?.items.map((i) => i.tagName)).toEqual(["v0.2.0"]);
+	});
+
+	test("an unreadable .git pointer warns and skips history", async () => {
+		const other = await createFixtureRepo();
+		repos.push(other);
+		await fs.promises.rm(join(other.dir, ".git"), { recursive: true });
+		await writeFile(
+			join(other.dir, ".git"),
+			"gitdir: /nonexistent/worktrees/x\n",
+		);
+		await writeFile(join(other.dir, "b.txt"), "b\n");
+		const warnings: string[] = [];
+		const bundle = await convert(new DirSource(other.dir), {
+			name: "b",
+			source: other.dir,
+			git: { fs, dir: other.dir },
+			onWarning: (m) => warnings.push(m),
+		});
+		expect(bundle.has("git/files.json")).toBe(false);
+		expect(warnings.join("\n")).toMatch(/git history skipped/);
+	});
+});

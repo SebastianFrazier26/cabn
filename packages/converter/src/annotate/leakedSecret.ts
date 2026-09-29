@@ -241,28 +241,6 @@ function scanGenericAssignments(content: string, hits: Hit[]): void {
 }
 
 /**
- * Whether `content` holds anything the magpie would flag. `strict` also runs
- * the generic "secret-ish name = high-entropy value" pattern in test and
- * example files — git history uses it, because a withheld diff costs a
- * reader a little context while a leaked one can't be recalled.
- */
-export function containsLeakedSecret(
-	content: string,
-	path: string,
-	opts: { strict?: boolean } = {},
-): boolean {
-	const hits: Hit[] = [];
-	scanPrivateKeys(content, hits);
-	scanProviders(content, hits);
-	scanConnectionStrings(content, hits);
-	if (hits.length > 0) return true;
-	if (opts.strict || (!isTestFile(path) && !isExampleFile(path))) {
-		scanGenericAssignments(content, hits);
-	}
-	return hits.length > 0;
-}
-
-/**
  * LeakedSecret/magpie: hard-coded credentials. Two tiers of evidence:
  *  - well-known provider prefixes (AWS, GitHub, Anthropic, OpenAI, Slack,
  *    Stripe, Google), PEM private-key blocks, and database/queue connection

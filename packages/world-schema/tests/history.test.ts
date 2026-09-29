@@ -2,72 +2,84 @@ import { describe, expect, test } from "vitest";
 import {
 	CabnConfigSchema,
 	DEFAULT_HISTORY_MAX_COMMITS_PER_BRANCH,
-	HISTORY_INDEX_VERSION,
-	parseHistoryCommitDiff,
-	parseHistoryIndex,
+	GIT_FORMAT_VERSION,
+	parseGitFiles,
+	parseGitMeta,
+	parseReleasesFile,
 	resolveHistoryCaps,
 } from "../src/index.js";
 
 const oid = "a".repeat(40);
 
-function index(overrides: Record<string, unknown> = {}) {
+function meta(overrides: Record<string, unknown> = {}) {
 	return {
-		historyVersion: HISTORY_INDEX_VERSION,
+		gitVersion: GIT_FORMAT_VERSION,
 		head: { branch: "main", oid },
-		commits: [
-			{
-				oid,
-				parents: [],
-				author: "Wren",
-				time: 1780000000,
-				message: "Plant",
-				changes: [{ path: "a.md", status: "added", diff: "included" }],
-				diffFile: `history/commits/${oid}.json`,
-			},
-		],
 		branches: [
 			{
 				name: "main",
+				ref: "refs/heads/main",
 				head: oid,
 				current: true,
 				remote: false,
-				commits: [oid],
+				commits: 3,
 				truncated: false,
+				subject: "Plant",
+				author: "Wren",
+				time: 1780000000,
 			},
 		],
 		tags: [],
-		releases: { source: "none", items: [], packages: [] },
-		dirtyPaths: [],
-		truncated: { branches: false, tags: false, omittedDiffs: 0 },
+		pack: { bytes: 100, objects: 5, commitsPerBranch: 200, halvings: 0 },
+		omitted: { [oid]: { reason: "secret-name", size: 12 } },
+		truncated: { branches: false, tags: false },
 		...overrides,
 	};
 }
 
-describe("history.json", () => {
-	test("parses what the converter writes", () => {
-		expect(parseHistoryIndex(index())?.head.branch).toBe("main");
+describe("git/meta.json", () => {
+	test("parses what the converter writes; rejects garbage and future versions", () => {
+		expect(parseGitMeta(meta())?.head.branch).toBe("main");
+		expect(parseGitMeta(meta({ gitVersion: 2 }))).toBeNull();
+		expect(parseGitMeta("nope")).toBeNull();
+		expect(
+			parseGitMeta(
+				meta({ omitted: { [oid]: { reason: "because", size: 1 } } }),
+			),
+		).toBeNull();
 	});
+});
 
-	test("rejects a future version and garbage instead of throwing", () => {
-		expect(parseHistoryIndex(index({ historyVersion: 2 }))).toBeNull();
-		expect(parseHistoryIndex("nope")).toBeNull();
-		expect(parseHistoryIndex(null)).toBeNull();
+describe("git/files.json", () => {
+	test("only the exact git files the converter writes", () => {
+		const name = "b".repeat(40);
+		expect(
+			parseGitFiles({
+				gitVersion: 1,
+				files: [
+					"HEAD",
+					"config",
+					"packed-refs",
+					"shallow",
+					`objects/pack/pack-${name}.pack`,
+					`objects/pack/pack-${name}.idx`,
+				],
+			}),
+		).not.toBeNull();
+		for (const bad of [
+			"../world.json",
+			"//evil.example/x",
+			"objects/ab/cdef",
+			"refs/heads/main",
+			"https://evil.example/pack",
+			`objects/pack/pack-${name}.pack/../../x`,
+		])
+			expect(parseGitFiles({ gitVersion: 1, files: [bad] }), bad).toBeNull();
 	});
+});
 
-	test("pins fetched paths to the bundle", () => {
-		const commits = index().commits;
-		const evil = [{ ...commits[0], diffFile: "https://evil.example/x.json" }];
-		expect(parseHistoryIndex(index({ commits: evil }))).toBeNull();
-		const upward = [{ ...commits[0], diffFile: "../history/commits/x.json" }];
-		expect(parseHistoryIndex(index({ commits: upward }))).toBeNull();
-		const branch = {
-			...index().branches[0],
-			universe: { slug: "x", worldUrl: "//evil.example/world.json" },
-		};
-		expect(parseHistoryIndex(index({ branches: [branch] }))).toBeNull();
-	});
-
-	test("release links must be https://github.com/", () => {
+describe("releases.json", () => {
+	test("links must be https://github.com/", () => {
 		const release = {
 			tagName: "v1",
 			name: "One",
@@ -77,36 +89,15 @@ describe("history.json", () => {
 			url: "javascript:alert(1)",
 			assets: [],
 		};
-		const releases = { source: "github", items: [release], packages: [] };
-		expect(parseHistoryIndex(index({ releases }))).toBeNull();
+		const file = {
+			releasesVersion: 1,
+			source: "github",
+			items: [release],
+			packages: [],
+		};
+		expect(parseReleasesFile(file)).toBeNull();
 		release.url = "https://github.com/wren/garden/releases/tag/v1";
-		expect(parseHistoryIndex(index({ releases }))).not.toBeNull();
-	});
-
-	test("commit diff files", () => {
-		expect(
-			parseHistoryCommitDiff({
-				historyVersion: 1,
-				oid,
-				files: [
-					{
-						path: "a.md",
-						hunks: [
-							{
-								oldStart: 0,
-								oldLines: 0,
-								newStart: 1,
-								newLines: 1,
-								lines: ["+a"],
-							},
-						],
-					},
-				],
-			}),
-		).not.toBeNull();
-		expect(
-			parseHistoryCommitDiff({ historyVersion: 1, oid: "x", files: [] }),
-		).toBeNull();
+		expect(parseReleasesFile(file)).not.toBeNull();
 	});
 });
 
@@ -115,23 +106,27 @@ describe("cabn.json history", () => {
 		expect(resolveHistoryCaps(undefined).maxCommitsPerBranch).toBe(
 			DEFAULT_HISTORY_MAX_COMMITS_PER_BRANCH,
 		);
-		const ok = CabnConfigSchema.safeParse({
-			cabnConfigVersion: 1,
-			history: { maxCommitsPerBranch: 50, maxUniverses: 0, releases: false },
-		});
-		expect(ok.success).toBe(true);
+		expect(
+			CabnConfigSchema.safeParse({
+				cabnConfigVersion: 1,
+				history: {
+					maxCommitsPerBranch: 50,
+					maxPackBytes: 5 * 1024 * 1024,
+					releases: false,
+				},
+			}).success,
+		).toBe(true);
 		for (const bad of [
 			{ maxCommitsPerBranch: 0 },
-			{ maxCommitsPerBranch: 5000 },
-			{ maxUniverses: 9 },
-			{ maxTotalBytes: 1 },
-			{ maxDiffBytesPerFile: 10 * 1024 * 1024 },
+			{ maxPackBytes: 1024 },
+			{ maxPackBytes: 1024 * 1024 * 1024 },
+			{ maxBlobBytes: 100 },
+			{ maxUniverses: 3 },
 			{ unknownKey: true },
-		]) {
+		])
 			expect(
 				CabnConfigSchema.safeParse({ cabnConfigVersion: 1, history: bad })
 					.success,
 			).toBe(false);
-		}
 	});
 });

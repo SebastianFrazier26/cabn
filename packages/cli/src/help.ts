@@ -9,7 +9,7 @@ export function helpText(): string {
 		"Usage:",
 		"  cabn build <dir|zipfile> [-o outDir] [--include-secrets] [--offline] [--findings file]... [--no-history] [--git-dir path]",
 		"                                          Convert a source into a world bundle",
-		"                                          (a git repository root also gets its recent history, branch universes and",
+		"                                          (a git repository root also ships its recent git history, author emails included, and",
 		"                                          GitHub releases; --no-history skips that, --git-dir reads another git directory;",
 		"                                          (--include-secrets reads .env/*.pem/etc content instead of leaving them metadata-only;",
 		"                                          --findings turns an ESLint JSON or SARIF results file into monsters, repeatable;",

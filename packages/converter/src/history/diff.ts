@@ -1,4 +1,11 @@
-import type { HistoryHunk } from "@cabn/world-schema";
+/** One unified-diff hunk; each line is prefixed " ", "+" or "-". */
+export interface HistoryHunk {
+	oldStart: number;
+	oldLines: number;
+	newStart: number;
+	newLines: number;
+	lines: string[];
+}
 
 export const DIFF_CONTEXT_LINES = 3;
 /**
@@ -198,36 +205,4 @@ export function diffText(oldText: string, newText: string): TextDiff | null {
 		else if (op.kind === "-") deletions++;
 	}
 	return { hunks: toHunks(ops), additions, deletions };
-}
-
-/**
- * Undo a diff: given the new text and its hunks, rebuild the old text. The
- * engine uses the same algorithm to rebuild past versions from the current
- * file; exported here so the converter's tests pin the round trip.
- */
-export function reverseApplyHunks(
-	newText: string,
-	hunks: readonly HistoryHunk[],
-): string | null {
-	const lines = splitLines(newText);
-	const out: string[] = [];
-	let cursor = 0;
-	for (const hunk of hunks) {
-		const start = hunk.newLines === 0 ? hunk.newStart : hunk.newStart - 1;
-		if (start < cursor || start > lines.length) return null;
-		out.push(...lines.slice(cursor, start));
-		let at = start;
-		for (const raw of hunk.lines) {
-			const kind = raw[0];
-			const body = raw.slice(1);
-			if (kind === "+" || kind === " ") {
-				if (lines[at] !== body) return null;
-				at++;
-			}
-			if (kind === "-" || kind === " ") out.push(body);
-		}
-		cursor = at;
-	}
-	out.push(...lines.slice(cursor));
-	return out.length === 0 ? "" : `${out.join("\n")}\n`;
 }

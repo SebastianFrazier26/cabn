@@ -34,3 +34,28 @@ export function useModalKeys(open: boolean, onClose: () => void): void {
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [open, onClose]);
 }
+
+/** What a git panel shows while its lazy chunk loads: the same dim backdrop, so the click visibly landed. */
+export function GitPanelFallback({
+	seedKey,
+}: {
+	seedKey: string;
+}): React.ReactElement {
+	return (
+		<div
+			style={{
+				position: "absolute",
+				inset: 0,
+				zIndex: 13,
+				pointerEvents: "auto",
+				background: "#0009",
+				display: "grid",
+				placeItems: "center",
+			}}
+		>
+			<span data-loading={seedKey} style={{ color: "#fff", fontSize: 12 }}>
+				…
+			</span>
+		</div>
+	);
+}

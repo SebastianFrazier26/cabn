@@ -3,6 +3,7 @@ import {
 	fetchWorldSearchIndex,
 	type WorldSearchIndex,
 } from "../react/useWorldSearchIndex.js";
+import { resolveRelativeUrl } from "../render/resolveUrl.js";
 import type { PetFileInfo, PetWorldAccess } from "./tools.js";
 
 /**
@@ -37,7 +38,7 @@ export function createPetWorldAccess(source: PetWorldSource): PetWorldAccess {
 	const loadChunk = (chunk: string): Promise<Record<string, string>> => {
 		const cached = chunkCache.get(chunk);
 		if (cached) return cached;
-		const pending = doFetch(`${source.worldBase}${chunk}`)
+		const pending = doFetch(resolveRelativeUrl(source.worldBase, chunk))
 			.then((res) => res.json())
 			.then((raw) => {
 				const parsed = WorldChunkSchema.parse(raw);

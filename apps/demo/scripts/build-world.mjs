@@ -22,7 +22,7 @@ const assetsOutDir = join(demoRoot, "public", "assets");
 // the built-in annotators' monsters. It lives outside sample-project
 // so it isn't itself a portal.
 //
-// The sample world also carries git history (branches as universes, tags,
+// The sample world also carries git history (branches as on-demand universes, tags,
 // releases, file history) from a generated fixture repository — see
 // gen-git-fixture.mjs — with canned GitHub releases instead of a network
 // request. The notes vault has none: without `history: false` it would
@@ -79,7 +79,7 @@ async function main() {
 				await fixture?.cleanup();
 			}
 			const history = summary.history
-				? `, ${summary.history.commits} commits, universes: ${summary.history.universes.join(", ") || "none"}`
+				? `, git: ${summary.history.branches} branches, ${Math.round(summary.history.packBytes / 1024)} KB pack`
 				: "";
 			console.log(
 				`cabn demo: built "${world.name}" world -> ${summary.clusters} clusters, ${summary.portals} portals, ${summary.monsters} monsters${history} (${summary.elapsedMs}ms)`,

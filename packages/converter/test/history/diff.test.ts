@@ -4,7 +4,6 @@ import { convert } from "../../src/convert.js";
 import {
 	diffLines,
 	diffText,
-	reverseApplyHunks,
 	splitLines,
 	toHunks,
 } from "../../src/history/diff.js";
@@ -20,6 +19,32 @@ function mulberry32(seed: number) {
 		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
 		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 	};
+}
+
+/** Forward application, only to check the hunks (the pensieve reads real past versions, so production never needs it). */
+function applyHunks(
+	oldText: string,
+	hunks: readonly { oldStart: number; oldLines: number; lines: string[] }[],
+): string {
+	const lines = splitLines(oldText);
+	const out: string[] = [];
+	let cursor = 0;
+	for (const hunk of hunks) {
+		const start = hunk.oldLines === 0 ? hunk.oldStart : hunk.oldStart - 1;
+		out.push(...lines.slice(cursor, start));
+		let at = start;
+		for (const raw of hunk.lines) {
+			const kind = raw[0];
+			if (kind === " " || kind === "-") {
+				expect(lines[at]).toBe(raw.slice(1));
+				at++;
+			}
+			if (kind === " " || kind === "+") out.push(raw.slice(1));
+		}
+		cursor = at;
+	}
+	out.push(...lines.slice(cursor));
+	return out.length ? `${out.join("\n")}\n` : "";
 }
 
 describe("line diff", () => {
@@ -62,13 +87,11 @@ describe("line diff", () => {
 				lines: ["+a", "+b"],
 			},
 		]);
-		expect(
-			reverseApplyHunks("a\nb\n", diffText("", "a\nb\n")?.hunks ?? []),
-		).toBe("");
-		expect(reverseApplyHunks("", diffText("a\n", "")?.hunks ?? [])).toBe("a\n");
+		expect(applyHunks("", diffText("", "a\nb\n")?.hunks ?? [])).toBe("a\nb\n");
+		expect(applyHunks("a\n", diffText("a\n", "")?.hunks ?? [])).toBe("");
 	});
 
-	test("random edits always round-trip through reverseApplyHunks", () => {
+	test("random edits: applying the hunks to the old text gives the new text", () => {
 		const rand = mulberry32(42);
 		for (let round = 0; round < 200; round++) {
 			const base = Array.from(
@@ -87,13 +110,8 @@ describe("line diff", () => {
 			const newText = edited.length ? `${edited.join("\n")}\n` : "";
 			const diff = diffText(oldText, newText);
 			expect(diff).not.toBeNull();
-			expect(reverseApplyHunks(newText, diff?.hunks ?? [])).toBe(oldText);
+			expect(applyHunks(oldText, diff?.hunks ?? [])).toBe(newText);
 		}
-	});
-
-	test("reverseApplyHunks refuses hunks that don't match the text", () => {
-		const diff = diffText("a\nb\n", "a\nc\n");
-		expect(reverseApplyHunks("a\nzzz\n", diff?.hunks ?? [])).toBeNull();
 	});
 
 	test("an enormous rewrite gives up instead of burning memory", () => {

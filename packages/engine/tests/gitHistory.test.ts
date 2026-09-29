@@ -1,14 +1,9 @@
-import { diffText } from "@cabn/converter/browser";
-import type { HistoryCommit, HistoryIndexFile } from "@cabn/world-schema";
 import { describe, expect, test } from "vitest";
 import { createCabnStore } from "../src/bridge/store.js";
 import {
-	branchCommits,
-	bundleUrl,
-	changedPaths,
-	currentBranchName,
-	fileTimeline,
-	rebuildVersion,
+	commitSubject,
+	shortOid,
+	universeSlug,
 	universeTint,
 } from "../src/systems/gitHistory.js";
 import {
@@ -23,102 +18,29 @@ import {
 	safeHref,
 } from "../src/systems/markdownLite.js";
 
-const oid = (n: number) => n.toString(16).padStart(40, "0");
-
-function commit(n: number, paths: string[], time = n): HistoryCommit {
-	return {
-		oid: oid(n),
-		parents: n > 1 ? [oid(n - 1)] : [],
-		author: "Wren",
-		time,
-		message: `commit ${n}`,
-		changes: paths.map((path) => ({
-			path,
-			status: "modified",
-			diff: "included",
-		})),
-	};
-}
-
-const history: HistoryIndexFile = {
-	historyVersion: 1,
-	head: { branch: "main", oid: oid(3) },
-	commits: [
-		commit(3, ["a.md"]),
-		commit(2, ["b.md"]),
-		commit(1, ["a.md", "b.md"]),
-		commit(9, ["c.md"]),
-	],
-	branches: [
-		{
-			name: "main",
-			head: oid(3),
-			current: true,
-			remote: false,
-			commits: [oid(3), oid(2), oid(1)],
-			truncated: false,
-		},
-		{
-			name: "side",
-			head: oid(9),
-			current: false,
-			remote: false,
-			commits: [oid(9), oid(1)],
-			truncated: false,
-		},
-	],
+const meta = {
+	gitVersion: 1 as const,
+	head: { branch: "main", oid: "a".repeat(40) },
+	branches: [],
 	tags: [],
-	releases: { source: "none", items: [], packages: [] },
-	dirtyPaths: [],
-	truncated: { branches: false, tags: false, omittedDiffs: 0 },
+	pack: { bytes: 0, objects: 0, commitsPerBranch: 200, halvings: 0 },
+	omitted: {},
+	truncated: { branches: false, tags: false },
 };
 
-describe("history reads", () => {
-	test("branch commits and file timelines follow the branch, newest first", () => {
-		expect(currentBranchName(history)).toBe("main");
-		expect(branchCommits(history, "main").map((c) => c.message)).toEqual([
-			"commit 3",
-			"commit 2",
-			"commit 1",
-		]);
-		expect(
-			fileTimeline(history, "main", "a.md").map((e) => e.commit.oid),
-		).toEqual([oid(3), oid(1)]);
-		expect(
-			fileTimeline(history, "side", "a.md").map((e) => e.commit.oid),
-		).toEqual([oid(1)]);
-		expect(fileTimeline(history, "nope", "a.md")).toEqual([]);
-		expect([...changedPaths(history.commits[2])]).toEqual(["a.md", "b.md"]);
-	});
-
-	test("bundle urls only resolve converter-shaped paths", () => {
-		expect(bundleUrl("/w/", `history/commits/${oid(1)}.json`, "diff")).toBe(
-			`/w/history/commits/${oid(1)}.json`,
+describe("git helpers", () => {
+	test("universe slugs and tints are deterministic; the main world has no tint", () => {
+		expect(universeSlug("feature/lanterns")).toMatch(
+			/^feature-lanterns-[0-9a-f]{6}$/,
 		);
-		expect(bundleUrl("/w/", "//evil.example/x.json", "diff")).toBeNull();
-		expect(bundleUrl("/w/", "../x/world.json", "universe")).toBeNull();
-		expect(
-			bundleUrl("/w/", "universes/side-abc123/world.json", "universe"),
-		).toBe("/w/universes/side-abc123/world.json");
-	});
-
-	test("universe tints are deterministic and absent for the main world", () => {
+		expect(universeSlug("feature/lanterns")).toBe(
+			universeSlug("feature/lanterns"),
+		);
 		expect(universeTint(null)).toBeNull();
-		expect(universeTint("side-abc123")).toBe(universeTint("side-abc123"));
-		expect(universeTint("side-abc123")).not.toBe(universeTint("other-def456"));
-	});
-
-	test("rebuildVersion undoes newer diffs, and refuses a missing step", () => {
-		const v1 = "one\ntwo\n";
-		const v2 = "one\n2\n";
-		const v3 = "zero\none\n2\n";
-		const d2 = diffText(v1, v2)?.hunks ?? [];
-		const d3 = diffText(v2, v3)?.hunks ?? [];
-		expect(rebuildVersion(v3, [])).toBe(v3);
-		expect(rebuildVersion(v3, [d3])).toBe(v2);
-		expect(rebuildVersion(v3, [d3, d2])).toBe(v1);
-		expect(rebuildVersion(v3, [d3, null])).toBeNull();
-		expect(rebuildVersion("unrelated\n", [d3])).toBeNull();
+		expect(universeTint("a-1")).toBe(universeTint("a-1"));
+		expect(universeTint("a-1")).not.toBe(universeTint("b-2"));
+		expect(commitSubject("Plant\n\nbody")).toBe("Plant");
+		expect(shortOid("abcdef0123")).toBe("abcdef0");
 	});
 });
 
@@ -207,7 +129,8 @@ describe("browser stash", () => {
 
 describe("store git state", () => {
 	const ctx = {
-		history,
+		meta,
+		generatedAt: "2026-09-28T00:00:00.000Z",
 		historyBase: "/w/",
 		branch: "main",
 		universe: null,
