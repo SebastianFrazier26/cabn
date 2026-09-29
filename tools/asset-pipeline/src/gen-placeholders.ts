@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { RGB } from "./color.js";
 import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { defeatFrames, hitFrame } from "./monster-fx.js";
 import { manifestJsonPath, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type PixelMap, renderPixelMap } from "./pixelmap.js";
@@ -116,10 +117,7 @@ async function main() {
 		console.log(`${map.name}: rendered ${map.width}x${map.height}`);
 	}
 
-	await writeFile(
-		manifestJsonPath,
-		`${JSON.stringify(manifest, null, "\t")}\n`,
-	);
+	await writeJsonFile(manifestJsonPath, manifest);
 }
 
 main().catch((err) => {

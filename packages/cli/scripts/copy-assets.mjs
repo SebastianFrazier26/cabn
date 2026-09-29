@@ -7,8 +7,9 @@
 // fallbacks outside this checkout. Listed explicitly, not the whole 20MB
 // assets/generated/ tree, since most of it (recovered/, soften-calibration/,
 // the crisp non-"_soft" and "@8x" originals) is never fetched at runtime —
-// see packages/engine/src/assetPaths.ts and systems/tools.ts for the
-// definitive list of paths a running game ever requests.
+// packages/engine/src/assetPaths.ts is the definitive list of paths a running
+// game ever requests, and tests/serve/bundled-assets.test.ts walks its
+// exports to fail the build if this list falls behind.
 import { cp, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,6 +86,87 @@ export const PLACEHOLDERS = [
 		`${slug}_defeat1_soft.png`,
 		`${slug}_defeat2_soft.png`,
 	]),
+	"portal_arch_variants_soft.png",
+	// World art (assetPaths.ts WORLD_ART_BIOMES, DECAL_SHEET_PATH,
+	// PATH_STAMP_COUNT, PROP_NAMES, CASTLE_KEEP/WORLD_FOUNTAIN/SHELF_CABIN).
+	...["meadow", "grove", "glade"].map((biome) => `${biome}_tiles_soft.png`),
+	"decals_soft.png",
+	...[0, 1, 2].map((i) => `path_stamp_${i}_soft.png`),
+	...[
+		"fence",
+		"hedge",
+		"lamp_post",
+		"tree_small",
+		"tree_large",
+		"bush",
+		"well",
+		"signpost",
+		"flower_pot",
+		"stone_wall",
+		"cottage",
+		"flower_bed",
+		"bench",
+		"castle_keep",
+		"world_fountain_strip",
+		"world_fountain_gem",
+		"shelf_cabin",
+	].map((name) => `prop_${name}_soft.png`),
+	"fx_spark.png",
+	// React UI art (assetPaths.ts UI_ICON_NAMES, UI_TOOL_ICON_NAMES,
+	// UI_SCREEN_NAMES, UI_SPARKLE_COLORS) — ToolHotbar, SpellbookToolbar, the
+	// tool screens; ui_icon_sign is listed above with the signpost.
+	...["spyglass", "orb", "bag", "quill", "wand", "key"].map(
+		(name) => `ui_icon_${name}_soft.png`,
+	),
+	...[
+		"find",
+		"replace",
+		"rename",
+		"format",
+		"comment",
+		"goto",
+		"symbol",
+		"fold",
+		"unfold",
+		"save",
+	].map((name) => `ui_tool_${name}_soft.png`),
+	...["orb", "spyglass", "satchel", "satchel_flap"].map(
+		(name) => `ui_screen_${name}_soft.png`,
+	),
+	...["cyan", "gold", "violet"].map((color) => `ui_sparkle_${color}@8x.png`),
+	// Atmosphere (assetPaths.ts atmosphereAssetEntries).
+	...[
+		"pine",
+		"oak",
+		"blossom_oak",
+		"shrub",
+		"rock_small",
+		"boulder",
+		"berry_shrub",
+		"flower_patch",
+		"reeds",
+		"mushroom",
+		"fallen_log",
+		"stump",
+		"ruin",
+		"windmill",
+		"windmill_sails",
+		"pond",
+		"waymarker",
+	].map((name) => `scenery_${name}_soft.png`),
+	...["castle", "watchtower", "village", "hill", "treeline"].flatMap(
+		(piece) => [
+			`skyline_${piece}_day_soft.png`,
+			`skyline_${piece}_night_soft.png`,
+		],
+	),
+	"sky_day.png",
+	"sky_night.png",
+	"sky_moon_soft.png",
+	"sky_star_soft.png",
+	"path_edge_disc_soft.png",
+	"path_bed_disc_soft.png",
+	...[0, 1, 2, 3].map((i) => `path_cobble_${i}_soft.png`),
 ];
 
 async function copyInto(subdir, files) {

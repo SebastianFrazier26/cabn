@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
 	colorDistance,
@@ -8,6 +8,7 @@ import {
 	type WeightedColor,
 } from "./color.js";
 import { loadRawRgba, writeRawRgbaPng } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { medianCut } from "./median-cut.js";
 import {
 	generatedDir,
@@ -184,10 +185,9 @@ async function main() {
 
 	const palette = {
 		colors: allColors,
-		generatedAt: new Date().toISOString(),
 		sources,
 	};
-	await writeFile(paletteJsonPath, `${JSON.stringify(palette, null, "\t")}\n`);
+	await writeJsonFile(paletteJsonPath, palette);
 
 	const swatchSize = 32;
 	const width = allColors.length * swatchSize;
