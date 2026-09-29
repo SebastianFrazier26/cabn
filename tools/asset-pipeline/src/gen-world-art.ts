@@ -86,6 +86,7 @@ const PALETTE = {
 	woodLight: 63,
 	terracotta: 64,
 	lanternGlow: 65,
+	brass: 25,
 	steelGray: 28,
 	paleGhostBlue: 30,
 	slateBlue: 31,
@@ -418,9 +419,14 @@ const WORLD_FOUNTAIN_PALETTE: WorldFountainPalette = {
 	waterDeep: PALETTE.periwinkle,
 	waterLight: PALETTE.paleGhostBlue,
 	sparkle: PALETTE.cream,
+	// Art polish 2 (2026-09-28): the gem's tones were cream/stone/steel, and
+	// the engine's multiply tint sank the dark two into the column's own
+	// value. They now sit a step lighter, in a brass bezel instead of a
+	// shadow ring, so the tinted gem has an edge to read against.
 	gemLight: PALETTE.cream,
 	gemMid: PALETTE.stoneLight,
-	gemDark: PALETTE.steelGray,
+	gemDark: PALETTE.stoneMid,
+	gemBezel: PALETTE.brass,
 };
 
 // Roof matches the cottage prop's autumn-orange pair so the scattered

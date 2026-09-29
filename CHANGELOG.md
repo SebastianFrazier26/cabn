@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-28 — Art polish 2
+
+- **Will-o'-wisp**: the flame is now pale ghost blue, wisp green and bone white instead of sky blue and cyan, so the night grade can darken it but no longer erase it against the grass. The cream core, sleepy face, navy outline and TODO note are unchanged; its hit and defeat frames were regenerated from the new idle.
+- **Defeat effects**: the gold sparkles and floating "Fixed!" text are gone from `FileScene`; the hit flash and defeat poof are the only defeat effect. Species without poof frames still get the old fade-and-grow tween. README and the user guide describe the poof.
+- **Pets at night**: each pet now carries a faint cream light pool (the same `createLightPool`/`updateLightPool` path as Wren's lantern), faded in with the day/night blend, so dark-coated pets keep their silhouette at night.
+- **Ferret**: Onyx is redrawn so it reads as a ferret, not a dog: a long, low, tubular body on one-cell legs, small rounded ears, a wedge head with a pale face, dark mask patches round the eyes and a pink nose, black legs and a long tail. All four frames kept.
+- **Fountains**: the night glow is lantern amber (`0xeb8c3c`) instead of gold, and cuts a weaker hole in the night grade (new optional `holeStrength` on light pools), so the pale water no longer blooms to a cold blue-white. The gem sits in a brass bezel, its tones are a step lighter, the theme tint on it is lightened (`subtleTint` at 0.7), and it gets a small light pool in its own colour at night, so it reads by day and night.
+- **Root clearing layout (not changed, needs a decision)**: the top and bottom root arches sit outside the clearing because the clearing ground is an ellipse (height 0.65 of width) while the arch ring is a circle. Two prototypes (not committed as code) are shot in the review folder: `option-a-round-clearing-*` (clearing ground made circular: every arch inside, but clearings grow taller and crowd neighbours) and `option-b-squashed-ring-*` (ring squashed to the ellipse: arches inside, but top and bottom arches crowd the hub and the rift, and busy clusters stack arches).
+- **Screenshots**: `assets/generated/review/art-polish-2/` has before/after shots of the wisp (day, night), the defeat sequence, all six pets (day, night), a fountain close-up (day and night) and the root clearing (day). `apps/demo/e2e/art-polish.spec.ts` takes them with `CABN_REVIEW_SHOTS=1` (and `CABN_REVIEW_PREFIX`), and asserts that a defeat creates no "Fixed!" text or sparkle circles.
+
 ## 2026-09-28 — AI pet: redact, don't withhold, a magpie-guarded file
 
 - An undefeated magpie (leaked-secret monster) used to make `read_file` and `propose_edit` refuse a file outright. It now sends the file with only the secret values swapped for a fixed `«redacted secret»` marker, so the pet can still help with the rest of it; the tool result also tells the model how many secrets it redacted. Once the secret is actually removed (the magpie defeated), the file goes through untouched, as before.
@@ -66,7 +76,7 @@ Supersedes the same-day "Git multiverse" entry's representation, universe prebui
   - The ghost was left unchanged.
 - **Battle frames for all 11 species**: one hit frame (colours bleached toward white, outline hot red) and a three-frame defeat poof (the monster breaking up with puffs bursting at its edges, then a full cloud, then scattering puffs and sparkles). `tools/asset-pipeline/src/monster-fx.ts` derives them from each species' idle0 at exactly its size, so swapping textures never changes a fitted sprite's size. `pnpm -F @cabn/asset-pipeline placeholders && … soften` renders them as `<slug>_hit_soft.png` and `<slug>_defeat{0,1,2}_soft.png`. Running it twice gives byte-identical output.
 - **Engine** (`assetPaths.ts`, `PreloadScene`, `render/monsterSprite.ts`, `FileScene`): the frames load as optional assets and register as `monster-hit-<species>` / `monster-defeat-<species>` animations only when every frame loaded.
-  - When a fix defeats a monster, the hit frame flashes, the poof plays at 10fps, then the sprite fades out. The sparkles and "Fixed!" text still play alongside it.
+  - When a fix defeats a monster, the hit frame flashes, the poof plays at 10fps, then the sprite fades out. The sparkles and "Fixed!" text still play alongside it (removed later the same day, see "Art polish 2").
   - A save that doesn't fix the encountered monster flashes its hit frame during the existing shrug. A run blocked by a monster still only shrugs.
   - If a species' frames are missing, it falls back to the old tween-only fade and shrug.
   - `copy-assets.mjs` bundles the 44 new files for `cabn serve`.

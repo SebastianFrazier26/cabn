@@ -137,7 +137,9 @@ export function attachAtmosphere(
 			}
 			eraser
 				.setScale(pool.baseScale * HOLE_RADIUS_RATIO * zoom * flicker)
-				.setAlpha(HOLE_STRENGTH * eased * flicker);
+				.setAlpha(
+					HOLE_STRENGTH * (pool.opts.holeStrength ?? 1) * eased * flicker,
+				);
 			grade.erase(eraser, sx, sy);
 			wash.erase(eraser, sx, sy);
 		}

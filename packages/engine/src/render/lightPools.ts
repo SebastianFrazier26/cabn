@@ -18,6 +18,8 @@ export interface LightPoolOptions {
 	/** 0xRRGGBB — additive blend means this is closer to "how warm" than "what color" once mixed with whatever's underneath. */
 	color: number;
 	alpha?: number;
+	/** Scales how much of the night grade this light erases (render/atmosphere.ts), 0..1, default 1. A light over pale-blue water wants less: at full strength the hole bared the water's own blue, which the bloom then blew out to a cold white. */
+	holeStrength?: number;
 	/** The bonfire and lanterns flicker; a plain window doesn't (a window is lit or not; a flame flickers). */
 	flicker?: boolean;
 }

@@ -8,13 +8,24 @@ import {
 	petTextureKey,
 } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
+import { PALETTE } from "../palette.js";
 import { PET_PROVIDERS, type PetSpecies } from "../pets/providers.js";
 import type { Interactable } from "../systems/clickWalk.js";
+import {
+	DAY_NIGHT_CROSSFADE_MS,
+	stepBlend,
+	targetBlend,
+} from "../systems/dayNight.js";
 import {
 	initialPetFollow,
 	type PetFollowState,
 	stepPetFollow,
 } from "../systems/petFollow.js";
+import {
+	createLightPool,
+	type LightPool,
+	updateLightPool,
+} from "./lightPools.js";
 
 const DISPLAY = PET_FRAME_SIZE * PET_SCALE;
 /** Enter talks to the pet within this distance — it trails ~30px behind, so it's in reach whenever nothing nearer (a portal, a sign, Wren, the bonfire) claims Enter first. */
@@ -25,6 +36,14 @@ const PLAYER_DEPTH = 5;
 const PUBLISH_EPSILON = 2;
 const IDLE_FRAMES = [0, 0, 0, 0, 0, 1];
 const WALK_FRAMES = [2, 3];
+// Same mechanism as Wren's lantern (render/guideNpc.ts): an additive light
+// pool above the night grade, faded in with the day/night blend. The pet is
+// small and mostly dark-coated, so the grade swallowed it; a faint cream
+// halo keeps its silhouette without reading as a light source of its own.
+const GLOW_RADIUS_PX = DISPLAY * 0.85;
+const GLOW_ALPHA = 0.28;
+/** Light pools are indexed for their flicker phase; the pet's never flickers, so any stable index. */
+const GLOW_POOL_INDEX = 11;
 
 function idleAnimKey(species: PetSpecies): string {
 	return `${petTextureKey(species)}-idle`;
@@ -56,12 +75,15 @@ export class PetCompanion {
 	private bobOffset = { y: 0 };
 	private published = { x: Number.NaN, y: Number.NaN };
 	private unsubscribe: (() => void) | null = null;
+	private glow: LightPool | null = null;
+	private blend: number;
 
 	constructor(
 		private readonly scene: Phaser.Scene,
 		private readonly opts: PetCompanionOptions,
 	) {
 		this.follow = initialPetFollow(opts.playerPos());
+		this.blend = targetBlend(opts.store.getState().timeOfDay);
 		this.syncProvider();
 		this.unsubscribe = opts.store.subscribe((state, prev) => {
 			if (state.petProvider !== prev.petProvider) this.syncProvider();
@@ -145,6 +167,19 @@ export class PetCompanion {
 			? this.scene.add.sprite(x, y, key, 0).setScale(PET_SCALE)
 			: this.scene.add.sprite(x, y, FX_SPARK_KEY).setScale(0.6);
 		if (!hasArt) return;
+		if (this.scene.textures.exists(FX_SPARK_KEY)) {
+			this.glow = createLightPool(
+				this.scene,
+				{
+					x,
+					y,
+					radiusPx: GLOW_RADIUS_PX,
+					color: PALETTE.cream,
+					alpha: GLOW_ALPHA,
+				},
+				GLOW_POOL_INDEX,
+			);
+		}
 		if (!this.scene.anims.exists(idleAnimKey(species))) {
 			this.scene.anims.create({
 				key: idleAnimKey(species),
@@ -185,6 +220,8 @@ export class PetCompanion {
 		this.bob = null;
 		this.sprite?.destroy();
 		this.sprite = null;
+		this.glow?.sprite.destroy();
+		this.glow = null;
 		this.published = { x: Number.NaN, y: Number.NaN };
 		this.opts.store.getState().setPetNpc(null);
 	}
@@ -197,6 +234,17 @@ export class PetCompanion {
 		this.follow = stepPetFollow(this.follow, player, delta);
 		const floatY = this.species === "whale" ? -10 + this.bobOffset.y : 0;
 		sprite.setPosition(this.follow.pos.x, this.follow.pos.y + floatY);
+		if (this.glow) {
+			this.blend = stepBlend(
+				this.blend,
+				targetBlend(this.opts.store.getState().timeOfDay),
+				delta,
+				DAY_NIGHT_CROSSFADE_MS,
+				this.opts.reducedMotion,
+			);
+			this.glow.sprite.setPosition(sprite.x, sprite.y);
+			updateLightPool(this.glow, this.blend, 1);
+		}
 		sprite.setFlipX(this.follow.facingLeft);
 		sprite.setDepth(
 			PLAYER_DEPTH + (this.follow.pos.y - 16 > player.y ? 0.01 : -0.01),

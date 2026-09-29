@@ -106,7 +106,7 @@ Every problem cabn finds in a world's files when it builds the world becomes a m
 
 1. Enter the monster's file and click it, or place the caret within two lines and press `Alt+Enter` (`Option+Enter` on macOS). A banner names the monster and shows the error. (`Esc` backs out before the book opens.)
 2. The spellbook opens on the offending line. Fix the problem and save.
-3. Saving re-checks every monster in that file. A fixed bug's monster fades away with a "Fixed!" sparkle. If the fix didn't take, it shrugs off the hit and gives you a hint, and the book stays open so you can try again.
+3. Saving re-checks every monster in that file. A fixed bug's monster flashes and vanishes in a puff of smoke. If the fix didn't take, it shrugs off the hit and gives you a hint, and the book stays open so you can try again.
 
 Will-o'-wisps never fight: remove the `TODO` (or `FIXME`, `XXX`, `HACK`) and save, and the wisp drifts away. When the last monster in a world falls, you get a victory toast.
 
