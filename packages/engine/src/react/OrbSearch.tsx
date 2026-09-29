@@ -10,8 +10,12 @@ import {
 	searchFileLines,
 	toWorldSearchHits,
 } from "../systems/search.js";
+import { isStaleSignHit, syncSignSearchDocs } from "../systems/signSearch.js";
 import { useCabnStore } from "./useCabnStore.js";
-import { useWorldSearchIndex } from "./useWorldSearchIndex.js";
+import {
+	useWorldSearchIndex,
+	type WorldSearchIndex,
+} from "./useWorldSearchIndex.js";
 
 export interface OrbSearchProps {
 	store: StoreApi<CabnStore>;
@@ -113,6 +117,25 @@ export function OrbSearch({
 		if (open) inputRef.current?.focus();
 	}, [open, playToken]);
 
+	// Only owner mode writes signs at runtime; a read-only world's index and
+	// signs.json come from the same build, so they're left untouched there.
+	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const signs = useCabnStore(store, (s) => s.signs);
+	const syncedSigns = useRef<{
+		index: WorldSearchIndex | null;
+		sources: Map<string, string>;
+	}>({ index: null, sources: new Map() });
+	const liveSignPaths = useMemo(() => {
+		if (!ownerSigns || !index) return null;
+		const synced = syncedSigns.current;
+		if (synced.index !== index) {
+			synced.index = index;
+			synced.sources = new Map();
+		}
+		synced.sources = syncSignSearchDocs(index, signs, synced.sources);
+		return new Set(signs.map((s) => s.path));
+	}, [ownerSigns, index, signs]);
+
 	const previewLineByPortalId = useMemo(
 		() => new Map(portals.map((p) => [p.id, p.previewLine] as const)),
 		[portals],
@@ -128,13 +151,25 @@ export function OrbSearch({
 		// path/name are stored fields spread on at runtime (SEARCH_STORE_FIELDS),
 		// so they're pulled out explicitly rather than trying to widen the
 		// library's own result type.
-		const rawResults = index.search(query, WORLD_SEARCH_OPTIONS).map((r) => ({
-			id: r.id,
-			path: r.path as string,
-			name: r.name as string,
-		}));
+		const rawResults = index
+			.search(query, WORLD_SEARCH_OPTIONS)
+			.filter(
+				(r) => !liveSignPaths || !isStaleSignHit(String(r.id), liveSignPaths),
+			)
+			.map((r) => ({
+				id: r.id,
+				path: r.path as string,
+				name: r.name as string,
+			}));
 		return toWorldSearchHits(rawResults, previewLineByPortalId);
-	}, [query, scope, index, activeFileDoc, previewLineByPortalId]);
+	}, [
+		query,
+		scope,
+		index,
+		activeFileDoc,
+		previewLineByPortalId,
+		liveSignPaths,
+	]);
 
 	if (!open) return null;
 

@@ -80,6 +80,16 @@ export function buildSignEntry(
 	return { entry: { path, source, anchor }, doc };
 }
 
+/** A sign's search-index.json doc; the engine builds the same doc for a sign saved live in owner mode. */
+export function signSearchDoc(path: string, doc: SeynDocument): SearchDoc {
+	return {
+		id: path,
+		path,
+		name: doc.title ?? path.slice(path.lastIndexOf("/") + 1),
+		content: seynPlainText(doc),
+	};
+}
+
 /** Every walked .seyn file -> signs.json plus a search doc per sign. A sign whose content walk() didn't read (over maxFileBytes) is skipped rather than shipped empty. */
 export function buildSignIndex(
 	signFiles: readonly WalkedFile[],
@@ -99,12 +109,7 @@ export function buildSignIndex(
 		const built = buildSignEntry(file.path, file.content, world);
 		if (!built) continue;
 		signs.push(built.entry);
-		searchDocs.push({
-			id: file.path,
-			path: file.path,
-			name: built.doc.title ?? file.path.slice(file.path.lastIndexOf("/") + 1),
-			content: seynPlainText(built.doc),
-		});
+		searchDocs.push(signSearchDoc(file.path, built.doc));
 	}
 	return {
 		file: SignIndexFileSchema.parse({
