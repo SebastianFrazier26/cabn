@@ -1,8 +1,9 @@
 /**
  * Who owns the keyboard right now, judged from the DOM's focused element:
- * - "text": a text field or editor (orb search input, CodeMirror), or a
- *   focused iframe (the docked live web page). Every key belongs to it; the
- *   game must not see any of them.
+ * - "text": a text field or editor (orb search input, CodeMirror), a
+ *   focused iframe (the docked live web page), or anything inside a panel
+ *   marked with KEYBOARD_OWNER_ATTR. Every key belongs to it; the game must
+ *   not see any of them.
  * - "control": a focused button/link. The game can keep walking on WASD, but
  *   Enter/Space also activate the control natively, so world interaction on
  *   Enter would double-fire.
@@ -16,7 +17,18 @@ export interface FocusCandidate {
 	isContentEditable?: boolean;
 	type?: string;
 	getAttribute?(name: string): string | null;
+	closest?(selector: string): unknown;
 }
+
+/**
+ * Marks a text-input panel (pet chat, pet setup, sign editor) whose whole
+ * area owns the keyboard, not just its text fields: clicking the chat's log
+ * or one of its buttons moved focus off the textarea, and L/F/B or WASD then
+ * reached the hotbar and the player behind the open panel. The panel root
+ * also needs tabIndex={-1} so a click on its non-focusable parts focuses the
+ * root instead of dropping focus to <body>.
+ */
+export const KEYBOARD_OWNER_ATTR = "data-cabn-keyboard-owner";
 
 const NON_TEXT_INPUT_TYPES = new Set([
 	"button",
@@ -35,6 +47,7 @@ export function classifyFocus(
 ): FocusOwner {
 	if (!el) return "none";
 	if (el.isContentEditable) return "text";
+	if (el.closest?.(`[${KEYBOARD_OWNER_ATTR}]`)) return "text";
 	const tag = (el.tagName ?? "").toUpperCase();
 	if (tag === "TEXTAREA" || tag === "SELECT") return "text";
 	// Keys typed while a cross-origin page has focus never reach this window,

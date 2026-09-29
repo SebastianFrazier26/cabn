@@ -151,6 +151,8 @@ function SignEditorPanel({
 			<div
 				className="cabn-panel cabn-sign-editor"
 				role="dialog"
+				tabIndex={-1}
+				data-cabn-keyboard-owner=""
 				aria-label={isNew ? "New sign" : `Edit ${draft.path}`}
 				data-testid="sign-editor"
 			>

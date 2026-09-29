@@ -120,6 +120,7 @@ const PIXEL_THEME_CSS = `
 	content: ""; position: absolute; top: -3px; width: 8px; height: 8px;
 	background: var(--cabn-accent-yellow); border: 2px solid var(--cabn-border-outer); border-radius: 2px; transform: rotate(45deg);
 }
+[data-cabn-keyboard-owner]:focus { outline: none; }
 .cabn-panel::before { left: 10px; }
 .cabn-panel::after { right: 10px; }
 .cabn-panel-title { font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--cabn-border-outer); }

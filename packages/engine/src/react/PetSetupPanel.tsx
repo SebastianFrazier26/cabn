@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import { petPortraitPath } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -82,6 +82,13 @@ export function PetSetupPanel({
 		setLocalModels(null);
 		setStatus(null);
 	}, [selected]);
+
+	const panelRef = useRef<HTMLDivElement>(null);
+	// Opened from the corner button, which blurs itself, so nothing inside is
+	// focused yet and the keyboard-owner marker wouldn't apply.
+	useEffect(() => {
+		panelRef.current?.focus({ preventScroll: true });
+	}, []);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -222,8 +229,11 @@ export function PetSetupPanel({
 	return (
 		<div className="cabn-pet-backdrop">
 			<div
+				ref={panelRef}
 				className="cabn-panel cabn-pet-panel"
 				role="dialog"
+				tabIndex={-1}
+				data-cabn-keyboard-owner=""
 				aria-modal="true"
 				aria-label="AI pet"
 				data-testid="cabn-pet-panel"
