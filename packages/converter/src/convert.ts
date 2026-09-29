@@ -381,7 +381,12 @@ export async function convert(
 	};
 	validateManifest(manifest);
 
-	const signIndex = buildSignIndex(signFiles, portals, clusters);
+	const signIndex = buildSignIndex(
+		signFiles,
+		portals,
+		clusters,
+		opts.onWarning,
+	);
 	for (const sign of signIndex.searchDocs) searchDocs.push(sign);
 
 	const searchIndex: SearchIndexFile = buildSearchIndex(searchDocs);

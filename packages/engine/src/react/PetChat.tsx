@@ -109,6 +109,8 @@ export function PetChat({
 		<div
 			className="cabn-panel cabn-pet-chat"
 			role="dialog"
+			tabIndex={-1}
+			data-cabn-keyboard-owner=""
 			aria-label={`${config.petName} chat`}
 			data-testid="cabn-pet-chat"
 		>

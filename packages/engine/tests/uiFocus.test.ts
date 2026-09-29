@@ -3,6 +3,7 @@ import {
 	activeFocusOwner,
 	classifyFocus,
 	type FocusCandidate,
+	KEYBOARD_OWNER_ATTR,
 } from "../src/systems/uiFocus.js";
 
 function el(
@@ -51,6 +52,21 @@ describe("classifyFocus", () => {
 
 	it("honours an ARIA textbox role", () => {
 		expect(classifyFocus(el("DIV", {}, { role: "textbox" }))).toBe("text");
+	});
+
+	it("gives the whole keyboard to anything inside a keyboard-owner panel", () => {
+		const inPanel = (tagName: string, extra: Partial<FocusCandidate> = {}) =>
+			el(tagName, {
+				closest: (selector) =>
+					selector === `[${KEYBOARD_OWNER_ATTR}]` ? {} : null,
+				...extra,
+			});
+		expect(classifyFocus(inPanel("BUTTON"))).toBe("text");
+		expect(classifyFocus(inPanel("INPUT", { type: "checkbox" }))).toBe("text");
+		expect(classifyFocus(inPanel("DIV"))).toBe("text");
+		expect(classifyFocus(el("BUTTON", { closest: () => null }))).toBe(
+			"control",
+		);
 	});
 
 	it("is case-insensitive on tag names", () => {

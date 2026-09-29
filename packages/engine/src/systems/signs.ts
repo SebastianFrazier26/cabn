@@ -285,3 +285,37 @@ export function standInFront(
 	const dy = kind === "portal" ? 124 : kind === "cluster" ? 86 : 74;
 	return { x: target.x, y: target.y + dy };
 }
+
+/**
+ * The sign editor's "Stands beside" filter: every whitespace-separated term
+ * must appear in the target (case-insensitive). Targets whose own name
+ * starts with the first term come first, then ones with a path segment
+ * starting with it, then the rest, each group in the given order. Only the
+ * first `limit` come back — a big world has thousands of files, and the
+ * list is for narrowing down, not scrolling.
+ */
+export function filterSignTargets(
+	targets: readonly string[],
+	query: string,
+	limit: number,
+): { matches: string[]; total: number } {
+	const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+	const first = terms[0];
+	if (first === undefined)
+		return { matches: targets.slice(0, limit), total: targets.length };
+	const ranked: [string[], string[], string[]] = [[], [], []];
+	for (const target of targets) {
+		const lower = target.toLowerCase();
+		if (!terms.every((t) => lower.includes(t))) continue;
+		const trimmed = lower.endsWith("/") ? lower.slice(0, -1) : lower;
+		const name = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+		const rank = name.startsWith(first)
+			? 0
+			: lower.includes(`/${first}`)
+				? 1
+				: 2;
+		ranked[rank].push(target);
+	}
+	const all = ranked.flat();
+	return { matches: all.slice(0, limit), total: all.length };
+}

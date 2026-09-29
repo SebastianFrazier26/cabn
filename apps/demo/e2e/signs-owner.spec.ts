@@ -8,7 +8,8 @@ import { expect, test } from "@playwright/test";
 // Owner mode end to end, against a real `cabn serve` of a temp copy of the
 // CLI's serve fixture (not the demo's vite preview, which has no owner mode):
 // the sign item is in the hotbar, placing shows a ghost, the editor saves a
-// .seyn file to disk, the world shows it live, and edit/delete round-trip.
+// .seyn file to disk, the world and the orb search show it live (and after
+// a reload), and edit/delete round-trip.
 // CABN_REVIEW_SHOTS=1 writes the placing-flow screenshots to
 // assets/generated/review/signs/.
 
@@ -78,6 +79,31 @@ async function shoot(page: import("@playwright/test").Page, name: string) {
 	await page.screenshot({ path: join(SHOTS_DIR, `${name}.png`) });
 }
 
+/** Opens the orb, types the query, and returns the listed result paths (closing the orb again unless asked not to). */
+async function orbSearch(
+	page: import("@playwright/test").Page,
+	query: string,
+	opts: { keepOpen?: boolean } = {},
+): Promise<string[]> {
+	await page.locator('[data-tool="orb"]').click();
+	const input = page.getByPlaceholder("search the world...");
+	await expect(input).toBeFocused();
+	await input.fill(query);
+	const content = page.locator(".cabn-crystal-ball-content");
+	await expect(
+		content.locator("li").first().or(content.getByText("no matches")),
+	).toBeVisible();
+	const rows = await content.locator("li").allInnerTexts();
+	if (!opts.keepOpen) {
+		await page.keyboard.press("Escape");
+		await expect(input).toBeHidden();
+		// The focus gate hands the keyboard back to Phaser on its next step;
+		// an Enter sent sooner than that would be dropped.
+		await page.waitForTimeout(250);
+	}
+	return rows;
+}
+
 test("owner: place a sign, it lands on disk and in the world, edit and delete it", async ({
 	page,
 }) => {
@@ -112,6 +138,34 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	await expect(page.getByTestId("sign-placing")).toBeHidden();
 	const path = await page.getByTestId("sign-editor-file").inputValue();
 	expect(path).toMatch(/^[A-Za-z0-9][A-Za-z0-9._ -]*\.seyn$/);
+
+	// "Stands beside" filters as you type; Escape closes only its list, and
+	// typed letters (the l in "hello") never reach the hotbar.
+	const near = page.getByTestId("sign-editor-near");
+	const nearList = page.getByTestId("sign-editor-near-list");
+	const originalNear = await near.inputValue();
+	await near.click();
+	await expect(nearList.getByRole("option")).toHaveCount(7);
+	await near.pressSequentially("hello");
+	await expect(nearList.getByRole("option")).toHaveText([
+		"/hello.js",
+		"/hello.py",
+	]);
+	await page.waitForTimeout(400);
+	await shoot(page, "owner-2a-near-picker");
+	await page.keyboard.press("Escape");
+	await expect(nearList).toBeHidden();
+	await expect(editor).toBeVisible();
+	await expect(page.locator(".cabn-spyglass-frame")).toHaveCount(0);
+	await near.fill("py hel");
+	await page.keyboard.press("Enter");
+	await expect(nearList).toBeHidden();
+	await expect(near).toHaveValue("/hello.py");
+	await near.click();
+	await nearList
+		.getByRole("option", { name: originalNear, exact: true })
+		.click();
+	await expect(near).toHaveValue(originalNear);
 	await page
 		.getByTestId("sign-editor-text")
 		.fill(
@@ -150,6 +204,21 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	);
 	expect(served.signs.map((s: { path: string }) => s.path)).toContain(path);
 
+	// Orb search finds it without a server restart.
+	expect(await orbSearch(page, "inside")).toContain(path);
+
+	// After a reload too, though the served search-index.json predates the
+	// sign; picking the hit walks back to it.
+	await page.reload();
+	await expect(slot).toBeVisible({ timeout: 20_000 });
+	await page.waitForTimeout(1500);
+	expect(await orbSearch(page, "inside", { keepOpen: true })).toContain(path);
+	await page
+		.locator(".cabn-crystal-ball-content li", { hasText: path })
+		.click();
+	await expect(popup).toBeVisible({ timeout: 15_000 });
+	await expect(popup).toHaveAttribute("data-sign-path", path);
+
 	// Edit: same file, new text.
 	await page.keyboard.down("Enter");
 	await page.waitForTimeout(150);
@@ -164,6 +233,8 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	await expect(editor).toBeHidden();
 	await expect.poll(async () => readFile(onDisk, "utf8")).toContain("Edited.");
 	await expect(popup).toContainText("Edited.", { timeout: 15_000 });
+	expect(await orbSearch(page, "edited")).toContain(path);
+	expect(await orbSearch(page, "inside")).not.toContain(path);
 
 	// Delete, with its confirmation step.
 	await page.keyboard.down("Enter");
@@ -177,6 +248,7 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 		.poll(async () => (await stat(onDisk).catch(() => null)) === null)
 		.toBe(true);
 	await expect(popup).toBeHidden();
+	expect(await orbSearch(page, "edited")).not.toContain(path);
 
 	expect(pageErrors).toEqual([]);
 });

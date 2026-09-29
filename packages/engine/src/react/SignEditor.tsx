@@ -10,6 +10,7 @@ import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, SignDraft } from "../bridge/store.js";
 import { isValidSignFileName, type SignLinkWorld } from "../systems/signs.js";
+import { SignTargetPicker } from "./SignTargetPicker.js";
 import { SignView } from "./SignView.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -122,13 +123,19 @@ function SignEditorPanel({
 		}
 	}, [store, bus, problem, saving, fileName, content, isNew]);
 
-	// Capture phase, like the reader: Phaser and the hotbar never see keys
-	// typed here. Only Escape and Ctrl/Cmd+S are consumed outright.
+	// Capture phase so Escape and Ctrl/Cmd+S win over everything else. Other
+	// keys pass through untouched: stopping them here also kept them from
+	// React's own handlers (the target picker's arrows and Enter), and the
+	// panel's keyboard-owner marker already keeps them from Phaser and the
+	// hotbar.
 	const handlers = useRef({ save, cancel });
 	handlers.current = { save, cancel };
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
+			const picking =
+				(event.target as Element | null)?.getAttribute?.("aria-expanded") ===
+				"true";
+			if (event.key === "Escape" && !picking) {
 				event.preventDefault();
 				event.stopPropagation();
 				handlers.current.cancel();
@@ -138,9 +145,7 @@ function SignEditorPanel({
 				event.preventDefault();
 				event.stopPropagation();
 				void handlers.current.save();
-				return;
 			}
-			event.stopPropagation();
 		};
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -151,6 +156,8 @@ function SignEditorPanel({
 			<div
 				className="cabn-panel cabn-sign-editor"
 				role="dialog"
+				tabIndex={-1}
+				data-cabn-keyboard-owner=""
 				aria-label={isNew ? "New sign" : `Edit ${draft.path}`}
 				data-testid="sign-editor"
 			>
@@ -169,20 +176,16 @@ function SignEditorPanel({
 								spellCheck={false}
 							/>
 						</label>
-						<label className="cabn-sign-field">
+						{/* Not a <label>: it would forward clicks on the picker's
+						    options to the input and reopen the list. */}
+						<div className="cabn-sign-field">
 							Stands beside
-							<select
-								data-testid="sign-editor-near"
+							<SignTargetPicker
 								value={near}
-								onChange={(e) => setNear(e.target.value)}
-							>
-								{targets.map((t) => (
-									<option key={t} value={t}>
-										{t}
-									</option>
-								))}
-							</select>
-						</label>
+								targets={targets}
+								onChange={setNear}
+							/>
+						</div>
 						<div className="cabn-sign-field-row">
 							<label className="cabn-sign-field">
 								<span>

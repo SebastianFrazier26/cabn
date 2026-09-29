@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-28 — Playtest UX fixes
+
+- **Text panels keep the keyboard.** With the pet chat, the pet setup panel or the sign editor focused, hotbar keys (L, F, B, Q, R, P) and walking no longer fire behind them, even after clicking the chat's log or one of its buttons. The panels are marked as keyboard owners, which the existing focus gate and the hotbar both honour.
+- **Live signs are searchable.** In owner mode (`cabn serve --owner`) a sign saved or deleted from the editor shows up in (or drops out of) orb search straight away, and after a reload too. The orb patches its loaded index from the live sign list instead of the server rebuilding `search-index.json`.
+- **"Stands beside" filters as you type.** The sign editor's target is a combobox: type to narrow files and folders (name matches first), arrows and Enter to pick, Escape closes just the list. It lists at most 60 matches, so big worlds stay usable.
+- **Missing `@near` targets warn.** When a sign names a file or folder the world doesn't have (or an `@near` that isn't a file or folder at all), `cabn build` and `cabn serve` now print a note saying where the sign stands instead. Where it stands is unchanged.
+
 ## 2026-09-28 — Bundled serve art and deterministic asset generation
 
 - **`cabn serve` outside this checkout now has all its art.** `packages/cli/scripts/copy-assets.mjs` bundled only part of what the engine loads, so a published `@cabn/cli` showed an empty hotbar and fell back to tinted placeholders for most of the world. It now also bundles the hotbar item icons (`ui_icon_*`), the spellbook toolbar icons (`ui_tool_*`), the tool-screen frames (`ui_screen_*`), the sparkle particles (`ui_sparkle_*`), the portal-type overlay sheet, the biome tile sheets, decals, path stamps, every prop (castle keep, world fountain and its gem, shelf cabin included), `fx_spark`, and the full atmosphere set (scenery, skyline, sky, moon, star, path-ribbon pieces).

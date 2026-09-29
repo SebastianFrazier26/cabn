@@ -641,3 +641,59 @@ test("pets: every provider's out-of-credits message, all six pets, remember + fo
 
 	expect(errors).toEqual([]);
 });
+
+test("pets: hotbar and walk keys stay out while the chat or setup panel has focus", async ({
+	page,
+}) => {
+	test.setTimeout(60_000);
+	const errors = collectErrors(page);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.goto("/?e2e=1");
+	await expect(page.locator("canvas").first()).toBeVisible();
+	await page.waitForTimeout(1500);
+	const spyglassOpen = () =>
+		page.evaluate(
+			() =>
+				(
+					window as unknown as {
+						__cabnStore: { getState(): { spyglassOpen: boolean } };
+					}
+				).__cabnStore.getState().spyglassOpen,
+		);
+	const expectKeysSwallowed = async () => {
+		const before = (await state(page))?.playerPos;
+		await page.keyboard.press("l");
+		await holdKey(page, "d", 400);
+		await page.waitForTimeout(150);
+		expect(await spyglassOpen()).toBe(false);
+		expect((await state(page))?.playerPos).toEqual(before);
+	};
+
+	await storeCall(page, "setPetProvider", "anthropic");
+	await storeCall(page, "setPetChatOpen", true);
+	const chat = page.getByTestId("cabn-pet-chat");
+	await expect(chat).toBeVisible();
+	await expect(page.getByTestId("cabn-pet-input")).toBeFocused();
+	await expectKeysSwallowed();
+	// Clicking the log (not a text field) used to drop focus to <body>.
+	await chat.click({ position: { x: 20, y: 60 } });
+	await expectKeysSwallowed();
+	await page.getByTestId("cabn-pet-send").focus();
+	await expectKeysSwallowed();
+
+	await storeCall(page, "setPetChatOpen", false);
+	await storeCall(page, "setPetPanelOpen", true);
+	const panel = page.getByTestId("cabn-pet-panel");
+	await expect(panel).toBeVisible();
+	await expectKeysSwallowed();
+	await panel.click({ position: { x: 30, y: 10 } });
+	await expectKeysSwallowed();
+	await page.keyboard.press("Escape");
+	await expect(panel).toBeHidden();
+
+	// Closed: the same key reaches the hotbar again.
+	await page.locator("canvas").first().click();
+	await page.keyboard.press("l");
+	await expect.poll(spyglassOpen).toBe(true);
+	expect(errors).toEqual([]);
+});
