@@ -72,28 +72,33 @@ const CAT: PetTemplate = {
 	frames: LEGGED_FRAMES("E", "b", "b", "l"),
 };
 
-// OpenAI: a black ferret — charcoal coat, pale face mask, dark paws.
+// OpenAI: a black ferret — charcoal coat, pale forehead, nose bridge and
+// muzzle, a dark mask patch round each eye, black legs and tail, pink nose. Art
+// polish 2 (2026-09-28): the first draft stood tall on long legs with a
+// short body and pricked ears and read as a dog, so it is now what makes a
+// ferret a ferret — a long, low, tubular body (3 cells tall, 8 long) on
+// one-cell legs, small rounded ears, a wedge head and a long sagging tail.
 const FERRET: PetTemplate = {
-	legend: { b: 60, s: 31, m: 29, d: 67, n: 36, E: 58, t: 31, p: 31 },
+	legend: { b: 60, s: 31, m: 29, d: 67, n: 36, E: 0, t: 0, k: 0 },
 	rows: [
 		"................",
 		"................",
 		"................",
 		"................",
+		"................",
 		"..........b..b..",
-		".........bbbbbb.",
-		".........dEddEd.",
-		".........mmmmmn.",
-		"..ttbbbbbbbmmm..",
-		".ttbbbbbbbbbbb..",
-		".t.sbbbbbbbbbs..",
-		"...bb.....bb....",
-		"...11.....22....",
-		"...33.....44....",
+		"..........bmmmb.",
+		"..........dEmEd.",
+		".....bbbbbbmmmn.",
+		".tttbbbbbbbbmm..",
+		".t..sbbbbbbbs...",
+		"....11.....22...",
+		"....33.....44...",
+		"................",
 		"................",
 		"................",
 	],
-	frames: LEGGED_FRAMES("E", "d", "b", "p"),
+	frames: LEGGED_FRAMES("E", "d", "k", "k"),
 };
 
 // Gemini: a blue bird — sky-blue body, deep blue wing, a violet crest for
