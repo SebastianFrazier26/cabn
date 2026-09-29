@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-28 — Bundled serve art and deterministic asset generation
+
+- **`cabn serve` outside this checkout now has all its art.** `packages/cli/scripts/copy-assets.mjs` bundled only part of what the engine loads, so a published `@cabn/cli` showed an empty hotbar and fell back to tinted placeholders for most of the world. It now also bundles the hotbar item icons (`ui_icon_*`), the spellbook toolbar icons (`ui_tool_*`), the tool-screen frames (`ui_screen_*`), the sparkle particles (`ui_sparkle_*`), the portal-type overlay sheet, the biome tile sheets, decals, path stamps, every prop (castle keep, world fountain and its gem, shelf cabin included), `fx_spark`, and the full atmosphere set (scenery, skyline, sky, moon, star, path-ribbon pieces).
+- `tests/serve/bundled-assets.test.ts` now builds its expected list by walking every export of the engine's `assetPaths.ts` (path strings, path objects, `*Entries()` helpers, and every `*Path(x)` helper over its engine-defined domain) rather than a hand-picked list. A new path helper with no known domain fails the test too, so an unbundled future asset can't slip past it.
+
 ## 2026-09-28 — Git multiverse
 
 - **Git history in the world.** Building a git repository root adds its recent history as additive sidecars: `history.json` (branches, tags, commits with author names and changed files, GitHub releases) and one `history/commits/<oid>.json` diff file per commit. `world.json` is unchanged and `CABN_VERSION` stays 1; older engines never request the new files. The history is a precomputed JSON view, not a git packfile, because withheld blobs would break git's content hashes and diffs are far smaller than blobs. Read at build time by isomorphic-git 1.42.2 (MIT, exact pin); the browser never loads it (about 80 KB gzipped avoided; the new UI is about 12 KB gzipped).
