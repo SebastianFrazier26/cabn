@@ -6,14 +6,20 @@ import {
 	runPetTurn,
 } from "../../src/pets/agentLoop.js";
 import { PET_PROVIDERS, type PetProviderId } from "../../src/pets/providers.js";
+import { REDACTION_MARKER } from "../../src/pets/secretRedaction.js";
 import type { PetWorldAccess } from "../../src/pets/tools.js";
+
+// Assembled at runtime (see converter/test/annotate/leakedSecret.test.ts) so
+// this key-shaped string never sits in the file as a contiguous literal.
+const j = (...parts: string[]) => parts.join("");
+const FAKE_KEY = j("sk-", "ant-", "AaBbCcDdEeFf00112233445566");
 
 const FILES: Record<string, string | null> = {
 	"src/server.ts":
 		"const port = 3000;\nexport function start() {\n  listen(port);\n}\n",
 	"README.md": "# garden\nA tiny garden app.\n",
 	"assets/logo.png": null,
-	"src/secret.ts": 'const token = "hunter2";\n',
+	"src/secret.ts": `const token = "${FAKE_KEY}";\n`,
 };
 
 function fakeWorld(): PetWorldAccess {
@@ -202,7 +208,7 @@ describe("runPetTurn — Anthropic dialect", () => {
 		expect(String(results[1]?.content)).toContain("not found");
 	});
 
-	it("withheld and binary files are refused without their content", async () => {
+	it("a magpie-guarded file is sent redacted (not withheld); binary and unknown paths are still refused", async () => {
 		const { fetchFn, calls } = scriptedFetch([
 			{
 				json: {
@@ -235,10 +241,11 @@ describe("runPetTurn — Anthropic dialect", () => {
 			"q",
 			deps("anthropic", fetchFn),
 		);
-		expect(outcome.cited).toEqual([]);
+		expect(outcome.cited).toEqual(["src/secret.ts"]);
 		const sent = JSON.stringify(calls[1]?.body);
-		expect(sent).not.toContain("hunter2");
-		expect(sent).toContain("magpie");
+		expect(sent).not.toContain(FAKE_KEY);
+		expect(sent).toContain(REDACTION_MARKER);
+		expect(sent).toContain("1 hard-coded secret");
 		expect(sent).toContain("binary");
 		expect(sent).toContain("No file");
 	});

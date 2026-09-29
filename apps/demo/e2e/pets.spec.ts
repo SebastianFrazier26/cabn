@@ -32,6 +32,20 @@ const SERVER_TS = readFileSync(
 	join(here, "..", "sample-project", "src", "server.ts"),
 	"utf8",
 );
+const PLANT_NAMER_TS = readFileSync(
+	join(here, "..", "sample-project", "src", "plantNamer.ts"),
+	"utf8",
+);
+// Pulled from the fixture's own text rather than retyped, so this stays the
+// exact value plantNamer.ts plants for its magpie (see that file's comment:
+// not a real credential) instead of a second, driftable copy of it.
+function plantedSecret(name: string): string {
+	const value = new RegExp(`${name} = "([^"]+)"`).exec(PLANT_NAMER_TS)?.[1];
+	if (!value) throw new Error(`plantNamer.ts fixture has no ${name}`);
+	return value;
+}
+const PLANTED_ANTHROPIC_KEY = plantedSecret("ANTHROPIC_API_KEY");
+const PLANTED_WEBHOOK_SECRET = plantedSecret("GARDEN_WEBHOOK_SECRET");
 
 // Deliberately not key-shaped (the bundle check rejects sk-… literals anywhere they'd ship).
 const FAKE_KEY = "e2e-fake-key-7Qm2Zp9";
@@ -456,6 +470,82 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 	]);
 
 	expect(leaks).toEqual([]);
+	expect(errors).toEqual([]);
+});
+
+test("pets: a magpie-guarded file reaches the pet redacted, never with its planted secret", async ({
+	page,
+}) => {
+	test.setTimeout(60_000);
+	const errors = collectErrors(page);
+	const mock = await mockProviders(page);
+	await enterFirstWorld(page);
+
+	await page.evaluate(
+		([k]) => sessionStorage.setItem("cabn:pet-key:anthropic", k),
+		[FAKE_KEY],
+	);
+	await storeCall(page, "setPetProvider", "anthropic");
+	await expect
+		.poll(async () => (await state(page))?.petNpc ?? null, { timeout: 10_000 })
+		.not.toBeNull();
+	await storeCall(page, "setPetChatOpen", true);
+	const chat = page.getByTestId("cabn-pet-chat");
+	await expect(chat).toBeVisible();
+
+	// plantNamer.ts has an undefeated magpie in a fresh save; the pet still
+	// reads it, just not the two secrets it's guarding.
+	mock.replies.push(
+		{
+			json: {
+				content: [
+					{ type: "text", text: "Let me peek." },
+					{
+						type: "tool_use",
+						id: "tu_plant",
+						name: "read_file",
+						input: { path: "src/plantNamer.ts" },
+					},
+				],
+				stop_reason: "tool_use",
+			},
+		},
+		{
+			json: {
+				content: [
+					{ type: "text", text: "Meow! That file calls a naming API." },
+				],
+				stop_reason: "end_turn",
+			},
+		},
+	);
+	const before = mock.captured.length;
+	await page.getByTestId("cabn-pet-input").fill("What does plantNamer.ts do?");
+	await page.getByTestId("cabn-pet-input").press("Enter");
+	await expect(chat.getByTestId("cabn-pet-message").last()).toContainText(
+		"naming API",
+		{ timeout: 10_000 },
+	);
+
+	const sentBodies = mock.captured.slice(before).map((c) => c.body);
+	const sent = JSON.stringify(sentBodies);
+	expect(sent).not.toContain(PLANTED_ANTHROPIC_KEY);
+	expect(sent).not.toContain(PLANTED_WEBHOOK_SECRET);
+
+	const toolResultMessages = (sentBodies[1]?.messages ?? []) as Array<{
+		content?: Array<{ content: string; tool_use_id: string }>;
+	}>;
+	const toolResult = toolResultMessages[2]?.content ?? [];
+	expect(toolResult[0]?.tool_use_id).toBe("tu_plant");
+	const parsed = JSON.parse(toolResult[0]?.content ?? "{}");
+	expect(parsed.secrets_redacted).toBe(2);
+	// The rest of the file — including the non-secret half of the redacted
+	// lines — still reaches the model; only the two secret values are gone.
+	expect(parsed.content).toContain("ANTHROPIC_API_KEY");
+	expect(parsed.content).toContain("suggestName");
+	expect(parsed.content).toContain("api.anthropic.com/v1/messages");
+	expect(parsed.content.match(/«redacted secret»/g)?.length).toBe(2);
+
 	expect(errors).toEqual([]);
 });
 
