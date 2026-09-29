@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { FX_SPARK_KEY } from "../assetPaths.js";
 import type { TimeOfDay } from "../systems/timeOfDay.js";
+import type { WorldParticleSkin } from "../systems/worldLayer.js";
 
 export interface EffectBounds {
 	minX: number;
@@ -16,6 +17,8 @@ export interface WorldEffectsOptions {
 	chimneyPositions?: readonly { x: number; y: number }[];
 	/** Skips motion (or substitutes a static equivalent) per effect — see each create* function's own comment for which it does. Injectable so tests don't need a real `window.matchMedia`; scene call sites pass `prefersReducedMotion()` from systems/reducedMotion.ts. */
 	reducedMotion: boolean;
+	/** A world skin's particle colours; omitted, today's. */
+	particles?: WorldParticleSkin | null;
 }
 
 export interface WorldEffectsHandle {
@@ -25,6 +28,14 @@ export interface WorldEffectsHandle {
 const AMBIENT_DEPTH = 6; // above the player (5) — fireflies/motes drift in front of everything
 const EMBER_DEPTH = 5.7; // above the night grade (render/atmosphere.ts) so embers glow instead of being darkened with the scene
 const SMOKE_DEPTH = 4.5;
+
+export const DEFAULT_PARTICLES: WorldParticleSkin = {
+	firefly: 0xffe9a8,
+	mote: 0xeaf2d0,
+	embers: [0xffb04a, 0xff7a3c],
+	smoke: 0xcfd0c8,
+	dust: 0xc8b89a,
+};
 
 function randomInBounds(bounds: EffectBounds) {
 	return {
@@ -38,6 +49,7 @@ function createFireflies(
 	scene: Phaser.Scene,
 	bounds: EffectBounds,
 	reducedMotion: boolean,
+	color: number,
 ): Phaser.GameObjects.GameObject {
 	if (reducedMotion) {
 		const container = scene.add.container(0, 0);
@@ -46,7 +58,7 @@ function createFireflies(
 			const y = Phaser.Math.Between(bounds.minY, bounds.maxY);
 			const dot = scene.add.image(x, y, FX_SPARK_KEY);
 			dot
-				.setTint(0xffe9a8)
+				.setTint(color)
 				.setBlendMode(Phaser.BlendModes.ADD)
 				.setScale(0.6)
 				.setAlpha(0.7);
@@ -65,7 +77,7 @@ function createFireflies(
 		speedY: { min: -10, max: 10 },
 		scale: { start: 0.7, end: 0.2 },
 		alpha: { start: 0, end: 0.8, ease: "Sine.easeInOut" },
-		tint: 0xffe9a8,
+		tint: color,
 		blendMode: Phaser.BlendModes.ADD,
 		frequency: 450,
 		quantity: 1,
@@ -78,6 +90,7 @@ function createFireflies(
 function createDayMotes(
 	scene: Phaser.Scene,
 	bounds: EffectBounds,
+	color: number,
 ): Phaser.GameObjects.Particles.ParticleEmitter {
 	const pos = randomInBounds(bounds);
 	const emitter = scene.add.particles(0, 0, FX_SPARK_KEY, {
@@ -88,7 +101,7 @@ function createDayMotes(
 		speedY: { min: 4, max: 14 },
 		scale: { start: 0.35, end: 0.15 },
 		alpha: { start: 0, end: 0.35, ease: "Sine.easeInOut" },
-		tint: 0xeaf2d0,
+		tint: color,
 		frequency: 600,
 		quantity: 1,
 	});
@@ -99,6 +112,7 @@ function createDayMotes(
 function createEmbers(
 	scene: Phaser.Scene,
 	pos: { x: number; y: number },
+	colors: readonly number[],
 ): Phaser.GameObjects.Particles.ParticleEmitter {
 	const emitter = scene.add.particles(pos.x, pos.y, FX_SPARK_KEY, {
 		lifespan: { min: 900, max: 1600 },
@@ -106,7 +120,7 @@ function createEmbers(
 		speedX: { min: -8, max: 8 },
 		scale: { start: 0.5, end: 0 },
 		alpha: { start: 0.9, end: 0 },
-		tint: [0xffb04a, 0xff7a3c],
+		tint: [...colors],
 		blendMode: Phaser.BlendModes.ADD,
 		frequency: 220,
 		quantity: 1,
@@ -118,6 +132,7 @@ function createEmbers(
 function createChimneySmoke(
 	scene: Phaser.Scene,
 	pos: { x: number; y: number },
+	color: number,
 ): Phaser.GameObjects.Particles.ParticleEmitter {
 	const emitter = scene.add.particles(pos.x, pos.y, FX_SPARK_KEY, {
 		lifespan: { min: 2200, max: 3400 },
@@ -125,7 +140,7 @@ function createChimneySmoke(
 		speedX: { min: -4, max: 4 },
 		scale: { start: 0.5, end: 1.4 },
 		alpha: { start: 0.35, end: 0 },
-		tint: 0xcfd0c8,
+		tint: color,
 		frequency: 900,
 		quantity: 1,
 	});
@@ -146,19 +161,27 @@ export function attachWorldEffects(
 	options: WorldEffectsOptions,
 ): WorldEffectsHandle {
 	const objects: Phaser.GameObjects.GameObject[] = [];
+	const colors = options.particles ?? DEFAULT_PARTICLES;
 
 	if (options.timeOfDay === "night") {
-		objects.push(createFireflies(scene, options.bounds, options.reducedMotion));
+		objects.push(
+			createFireflies(
+				scene,
+				options.bounds,
+				options.reducedMotion,
+				colors.firefly,
+			),
+		);
 	} else if (!options.reducedMotion) {
-		objects.push(createDayMotes(scene, options.bounds));
+		objects.push(createDayMotes(scene, options.bounds, colors.mote));
 	}
 
 	if (options.bonfirePos && !options.reducedMotion) {
-		objects.push(createEmbers(scene, options.bonfirePos));
+		objects.push(createEmbers(scene, options.bonfirePos, colors.embers));
 	}
 	if (!options.reducedMotion) {
 		for (const pos of options.chimneyPositions ?? []) {
-			objects.push(createChimneySmoke(scene, pos));
+			objects.push(createChimneySmoke(scene, pos, colors.smoke));
 		}
 	}
 

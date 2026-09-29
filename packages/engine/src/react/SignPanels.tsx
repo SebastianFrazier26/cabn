@@ -8,6 +8,7 @@ import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, SignDraft } from "../bridge/store.js";
 import type { SignLinkWorld } from "../systems/signs.js";
+import { signWriterFor } from "../systems/worldLayer.js";
 import { SignEditor } from "./SignEditor.js";
 import { SignView, useSignStyles } from "./SignView.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -164,11 +165,12 @@ function SignReader({
 		store.getState().setSignDraft(draft);
 	};
 	const remove = async () => {
-		if (!owner) return;
+		const writer = signWriterFor(store.getState(), sign.path);
+		if (!writer) return;
 		setBusy(true);
 		setError(null);
 		try {
-			await owner.remove(sign.path);
+			await writer.remove(sign.path);
 			store.getState().removeSign(sign.path);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));

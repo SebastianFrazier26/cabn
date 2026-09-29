@@ -29,19 +29,25 @@ function entrySource(opts: HostPageOptions): string {
 		: "";
 	const ownerWiring = opts.owner
 		? [
-				'import { createOwnerGitClient, createServeOwnerSigns } from "@cabn/engine/owner";',
+				'import { createOwnerGitClient, createServeOwnerSigns, createShadowLayer } from "@cabn/engine/owner";',
 				"const ownerOpts = { baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ };",
-				"const owner = { git: createOwnerGitClient(ownerOpts), signs: createServeOwnerSigns(ownerOpts) };",
+				"const owner = { git: createOwnerGitClient(ownerOpts), signs: createServeOwnerSigns(ownerOpts), layers: [createShadowLayer(ownerOpts)] };",
 			].join("\n")
 		: "const owner = undefined;";
+	// Same opt-in hook as the demo's App.tsx: only a page loaded with ?e2e=1
+	// (the owner e2e) gets the store on window. The owner token is already a
+	// page global, so this exposes nothing a script on the page couldn't read.
 	return `
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
 ${ownerWiring}
+const onGameReady = new URLSearchParams(window.location.search).get("e2e") === "1"
+	? (handle) => { window.__cabnStore = handle?.store; window.__cabnBus = handle?.bus; window.__cabnGame = handle?.game; }
+	: undefined;
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner, onGameReady }));
 `;
 }
 

@@ -365,6 +365,8 @@ describe("shadow save", () => {
 		expect(res.status).toBe(409);
 		expect(res.json.currentSha256).toBe(sha("CHANGED=1\n"));
 		expect(await readFile(join(dir, ".env"), "utf8")).toBe("CHANGED=1\n");
+		// The stale cache was dropped, so a reload sees the file as it is now.
+		expect((await manifestOf(h)).textSha256[".env"]).toBe(sha("CHANGED=1\n"));
 	});
 
 	it("refuses a path reached through a symlink", async () => {

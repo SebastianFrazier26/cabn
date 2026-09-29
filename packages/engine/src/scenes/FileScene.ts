@@ -93,6 +93,14 @@ export interface FileSceneData {
 	monsters: Monster[];
 	/** Every file path in the world — brokenImport's re-check needs it, same as convert()-time (see annotate/types.ts's AnnotateContext). */
 	worldFiles: string[];
+	/**
+	 * Set for a world layer's file (systems/worldLayer.ts): a save goes
+	 * wherever the layer keeps the file, and only counts — buffer marked
+	 * saved, monsters re-checked — once that write has landed.
+	 */
+	saveToDisk?: (content: string) => Promise<boolean>;
+	/** The active world skin's parchment colour, if it has one. */
+	parchmentTint?: number;
 }
 
 // A vertical parchment scroll beside a line-numbered page of the file's
@@ -240,6 +248,10 @@ export class FileScene extends Phaser.Scene {
 
 	private monsters: Monster[] = [];
 	private worldFiles = new Set<string>();
+	private saveToDisk: FileSceneData["saveToDisk"];
+	/** Bumped per init(): the scene instance is reused for every file, so an async save outcome checks it still belongs to this visit. */
+	private visit = 0;
+	private parchmentTint: number | undefined;
 	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
 	private monsterBaseY = new Map<string, number>();
@@ -287,6 +299,9 @@ export class FileScene extends Phaser.Scene {
 		this.highlightGraphic = null;
 		this.monsters = [...data.monsters];
 		this.worldFiles = new Set(data.worldFiles);
+		this.visit++;
+		this.saveToDisk = data.saveToDisk;
+		this.parchmentTint = data.parchmentTint;
 		this.monsterSprites = new Map();
 		this.monsterBobTweens = new Map();
 		this.monsterBaseY = new Map();
@@ -509,7 +524,7 @@ export class FileScene extends Phaser.Scene {
 		const height = this.totalHeight();
 		const g = this.backingGraphic;
 		g.clear();
-		g.fillStyle(PALETTE.parchment, 1);
+		g.fillStyle(this.parchmentTint ?? PALETTE.parchment, 1);
 		g.fillRect(
 			SCROLL_MIN_X,
 			-EXIT_MARGIN,
@@ -1493,6 +1508,34 @@ export class FileScene extends Phaser.Scene {
 		content: string;
 	}): void => {
 		if (portalId !== this.portalId) return;
+		const toDisk = this.saveToDisk;
+		if (toDisk) {
+			const visit = this.visit;
+			const { file, worldFiles } = this;
+			const monsters = [...this.monsters];
+			void toDisk(content).then((saved) => {
+				if (!saved) return;
+				// Left meanwhile (a save-and-leave): the world still hears
+				// which monsters the saved text defeated.
+				if (visit !== this.visit || this.exiting) {
+					for (const monster of monsters) {
+						if (
+							checkMonsterFixed(
+								{ code: monster.error.code, rule: monster.error.rule },
+								file,
+								content,
+								worldFiles,
+							)
+						)
+							this.bus.emit("monster:defeated", { monsterId: monster.id });
+					}
+					return;
+				}
+				this.store.getState().setActivePortalContent(content);
+				this.resolveMonstersAfterSave(content);
+			});
+			return;
+		}
 		this.store.getState().setActivePortalContent(content);
 		this.resolveMonstersAfterSave(content);
 	};

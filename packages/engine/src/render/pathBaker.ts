@@ -51,6 +51,8 @@ export function bakePaths(
 	scene: Phaser.Scene,
 	bounds: WorldBounds,
 	segments: readonly PathSegment[],
+	/** A world skin's multiply tint (systems/worldLayer.ts). */
+	tint?: number,
 ): Phaser.GameObjects.RenderTexture {
 	const width = bounds.maxX - bounds.minX;
 	const height = bounds.maxY - bounds.minY;
@@ -90,6 +92,7 @@ export function bakePaths(
 	}
 
 	for (const image of stampImages.values()) image.destroy();
+	if (tint !== undefined) rt.setTint(tint);
 	return rt;
 }
 
@@ -109,6 +112,7 @@ export function bakePathRibbons(
 	scene: Phaser.Scene,
 	bounds: WorldBounds,
 	segments: readonly PathSegment[],
+	tint?: number,
 ): { rt: Phaser.GameObjects.RenderTexture; plan: RibbonPlan } {
 	const width = bounds.maxX - bounds.minX;
 	const height = bounds.maxY - bounds.minY;
@@ -147,5 +151,6 @@ export function bakePathRibbons(
 	edge.destroy();
 	bed.destroy();
 	for (const image of cobbleImages) image.destroy();
+	if (tint !== undefined) rt.setTint(tint);
 	return { rt, plan };
 }

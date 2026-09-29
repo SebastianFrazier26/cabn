@@ -227,12 +227,16 @@ async function saveHiddenFile(
 	const { gitdir } = await ctx.shadow.repo();
 	const real = await resolveExistingOwnerFile(ctx.dir, path, gitdir);
 	const current = sha256Hex(await readFile(real));
-	if (current !== baseSha256)
+	if (current !== baseSha256) {
+		// The cached layer holds the old text too: without this a
+		// "reload from disk" would be served the same stale copy.
+		ctx.shadow.clear();
 		throw new ShadowRouteError(
 			409,
 			`"${path}" changed on disk since it was loaded; reload the shadow realm`,
 			{ currentSha256: current },
 		);
+	}
 	await overwriteFileAtomic(real, content);
 	// Contents, previews and monsters all changed: recompute on next request.
 	ctx.shadow.clear();

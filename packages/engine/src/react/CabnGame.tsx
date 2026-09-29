@@ -13,6 +13,7 @@ import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
 import { FileStatusLine } from "./FileStatusLine.js";
 import { GuideDialog } from "./GuideDialog.js";
+import { LayerSaveNotice } from "./LayerSaveNotice.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { Pensieve } from "./Pensieve.js";
@@ -79,6 +80,12 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 		handle.store.getState().setOwnerSigns(signsApi ?? null);
 	}, [handle, signsApi]);
 
+	const layers = owner?.layers;
+	useEffect(() => {
+		if (!handle) return;
+		handle.store.getState().setWorldLayers(layers ?? []);
+	}, [handle, layers]);
+
 	useEffect(() => {
 		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
 	}, [pdfWorkerUrl]);
@@ -131,6 +138,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<PetLayer store={handle.store} bus={handle.bus} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
+					<LayerSaveNotice store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />
 				</PixelTheme>
 			)}

@@ -18,6 +18,12 @@ export const ENCOUNTER_REVEAL_MS = 160;
 /** Scroll-unroll/page-turn wipe for entering or leaving a file portal — matches STYLE.md's "scroll-unroll (~340ms)" motion-table entry. */
 export const PORTAL_WIPE_MS = 340;
 
+/** World layer toggle: a coloured pulse (the layer skin's colour) that peaks while WorldScene restarts, then clears so the layer's rise is visible. */
+export const LAYER_PULSE_IN_MS = 240;
+export const LAYER_PULSE_OUT_MS = 360;
+/** How long a layer's objects take to rise out of (or sink into) the ground. */
+export const LAYER_RISE_MS = 700;
+
 /** Flat fade every transition kind collapses to under prefers-reduced-motion, per IMPLEMENTATION-PLAN.md/STYLE.md's "reduced by default, enhanced under :no-preference" rule — short enough to still register as *a* transition beat, not long enough to feel like a stall. */
 export const REDUCED_MOTION_FADE_MS = 150;
 
@@ -51,8 +57,24 @@ export function portalTransitionTotalMs(reducedMotion: boolean): number {
 	return reducedMotion ? REDUCED_MOTION_FADE_MS : PORTAL_WIPE_MS;
 }
 
+/** How long WorldScene waits after announcing a layer switch before restarting — the pulse's rise, so the cut lands under it. */
+export function layerTransitionDelayMs(reducedMotion: boolean): number {
+	return reducedMotion ? REDUCED_MOTION_FADE_MS : LAYER_PULSE_IN_MS;
+}
+
+export function layerTransitionTotalMs(reducedMotion: boolean): number {
+	return reducedMotion
+		? REDUCED_MOTION_FADE_MS * 2
+		: LAYER_PULSE_IN_MS + LAYER_PULSE_OUT_MS;
+}
+
+/** Rise/sink time for a layer's objects: none under reduced motion (they just appear or go). */
+export function layerRiseMs(reducedMotion: boolean): number {
+	return reducedMotion ? 0 : LAYER_RISE_MS;
+}
+
 /** Every transition kind this milestone ships, keyed the same way SceneTransitionOverlay.tsx names its play state. */
-export type SceneTransitionKind = "cabin" | "encounter" | "portal";
+export type SceneTransitionKind = "cabin" | "encounter" | "portal" | "layer";
 
 /** Single lookup used by both the scene code (to size a delay) and the overlay (to size a CSS animation), so "how long does kind X take" is asked in exactly one place. */
 export function sceneTransitionTotalMs(
@@ -66,5 +88,7 @@ export function sceneTransitionTotalMs(
 			return encounterIntroTotalMs(reducedMotion);
 		case "portal":
 			return portalTransitionTotalMs(reducedMotion);
+		case "layer":
+			return layerTransitionTotalMs(reducedMotion);
 	}
 }

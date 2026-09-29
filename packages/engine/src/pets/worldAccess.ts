@@ -4,6 +4,7 @@ import {
 	type WorldSearchIndex,
 } from "../react/useWorldSearchIndex.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
+import { isHiddenPath } from "../systems/worldLayer.js";
 import type { PetFileInfo, PetWorldAccess } from "./tools.js";
 
 /**
@@ -30,8 +31,14 @@ export interface PetWorldSource {
 const CHUNK_CACHE_LIMIT = 8;
 const SEARCH_OPTIONS = { prefix: true, fuzzy: 0.2 };
 
+/**
+ * Pets never see hidden (dot) paths. WorldScene already hands them only the
+ * base world, which has none; this is the second lock, in case a layer's
+ * files ever reach the source by mistake.
+ */
 export function createPetWorldAccess(source: PetWorldSource): PetWorldAccess {
 	const doFetch = source.fetch ?? fetch;
+	const files = source.files.filter((f) => !isHiddenPath(f.path));
 	const chunkCache = new Map<string, Promise<Record<string, string>>>();
 	let searchIndex: Promise<WorldSearchIndex> | null = null;
 
@@ -58,9 +65,10 @@ export function createPetWorldAccess(source: PetWorldSource): PetWorldAccess {
 	};
 
 	return {
-		files: () => source.files,
+		files: () => files,
 		withheld: (path) => source.withheld(path),
 		async readText(path) {
+			if (isHiddenPath(path)) return null;
 			const loaded = source.loadedText(path);
 			if (loaded !== undefined) return loaded;
 			const chunk = source.chunkFor(path);
@@ -78,8 +86,9 @@ export function createPetWorldAccess(source: PetWorldSource): PetWorldAccess {
 			const index = await searchIndex;
 			return index
 				.search(query, SEARCH_OPTIONS)
-				.slice(0, limit)
-				.map((r) => ({ path: String(r.path ?? r.id) }));
+				.map((r) => ({ path: String(r.path ?? r.id) }))
+				.filter((r) => !isHiddenPath(r.path))
+				.slice(0, limit);
 		},
 	};
 }

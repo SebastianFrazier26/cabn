@@ -14,6 +14,7 @@ import {
 import { createStore, type StoreApi } from "zustand/vanilla";
 import type { PetProviderId } from "../pets/providers.js";
 import type { PetProposal, PetWorldAccess } from "../pets/tools.js";
+import type { PixelThemeTokens } from "../react/pixelThemeTokens.js";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
@@ -24,6 +25,7 @@ import {
 	type TimeOfDay,
 	type TimeOfDayOverride,
 } from "../systems/timeOfDay.js";
+import type { WorldLayerProvider } from "../systems/worldLayer.js";
 import type { WorldMapSummary } from "../systems/worldMap.js";
 
 export type CabnMode = "world" | "file" | "editor" | "encounter" | "run";
@@ -62,6 +64,8 @@ export interface PortalSummary {
 	previewLine: string;
 	/** True once a quill edit has been saved for this portal — WorldScene recomputes this whenever its save data changes, so the spyglass can offer a per-file "reset" action. */
 	edited: boolean;
+	/** Set on a portal an active world layer added (systems/worldLayer.ts); absent for base portals. */
+	layer?: true;
 }
 
 /** The portal the player is standing at in the world, as the expanded preview dock (react/PortalPreviewDock.tsx) needs it — WorldScene sets this on approach and clears it on leaving, so the dock (and any live url embed inside it) mounts and unmounts with it. */
@@ -186,6 +190,21 @@ export interface CabnState {
 	petWorld: PetWorldAccess | null;
 	petMessages: PetChatMessage[];
 	petProposals: PetProposal[];
+	/** World layers the host offers (CabnGame's `owner.layers`); empty in hosted builds and the demo. */
+	worldLayers: WorldLayerProvider[];
+	/** The layer the current world shows, if any. Never persisted: every reload starts without one. */
+	activeLayerId: string | null;
+	/** The active layer's HUD palette (react/pixelTheme.tsx), or null for the normal day/night one. */
+	layerUiTokens: PixelThemeTokens | null;
+	/** A layer file save that didn't land (react/LayerSaveNotice.tsx). */
+	layerSaveIssue: LayerSaveIssue | null;
+}
+
+export interface LayerSaveIssue {
+	portalId: string;
+	message: string;
+	/** The file changed where it lives since it was loaded: offer to reload it. */
+	conflict: boolean;
 }
 
 /** The world's git history, as the rift, map timeline and pensieve read it (WorldScene sets it from the bundle's history.json; null for a world without one). */
@@ -315,6 +334,10 @@ export interface CabnActions {
 	setPetProposalStatus(id: string, status: PetProposal["status"]): void;
 	/** New provider, new world or "forget": the conversation starts over. */
 	clearPetConversation(): void;
+	setWorldLayers(layers: WorldLayerProvider[]): void;
+	/** WorldScene, once it has (re)started with or without a layer. An id no offered provider has clears it. */
+	setActiveLayer(layerId: string | null): void;
+	setLayerSaveIssue(issue: LayerSaveIssue | null): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -369,6 +392,10 @@ const initialState: CabnState = {
 	petWorld: null,
 	petMessages: [],
 	petProposals: [],
+	worldLayers: [],
+	activeLayerId: null,
+	layerUiTokens: null,
+	layerSaveIssue: null,
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -419,6 +446,9 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				petWorld: null,
 				petMessages: [],
 				petProposals: [],
+				activeLayerId: null,
+				layerUiTokens: null,
+				layerSaveIssue: null,
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -593,5 +623,33 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				),
 			}),
 		clearPetConversation: () => set({ petMessages: [], petProposals: [] }),
+		setWorldLayers: (worldLayers) => {
+			const active = get().activeLayerId;
+			const keep = active !== null && worldLayers.some((l) => l.id === active);
+			set(
+				keep
+					? { worldLayers }
+					: { worldLayers, activeLayerId: null, layerUiTokens: null },
+			);
+		},
+		setActiveLayer: (layerId) => {
+			const provider =
+				layerId === null
+					? undefined
+					: get().worldLayers.find((l) => l.id === layerId);
+			set(
+				provider
+					? {
+							activeLayerId: provider.id,
+							layerUiTokens: provider.skin.uiTokens,
+						}
+					: {
+							activeLayerId: null,
+							layerUiTokens: null,
+							layerSaveIssue: null,
+						},
+			);
+		},
+		setLayerSaveIssue: (layerSaveIssue) => set({ layerSaveIssue }),
 	}));
 }

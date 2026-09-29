@@ -23,6 +23,8 @@ export interface WorldSearchHit {
 	path: string;
 	name: string;
 	previewLine: string;
+	/** Found in the active world layer's index rather than the world's own. */
+	layer?: true;
 }
 
 export interface FileSearchHit {

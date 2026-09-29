@@ -3,6 +3,9 @@ import {
 	cabinTransitionDelayMs,
 	cabinTransitionTotalMs,
 	encounterIntroTotalMs,
+	layerRiseMs,
+	layerTransitionDelayMs,
+	layerTransitionTotalMs,
 	portalTransitionTotalMs,
 	sceneTransitionTotalMs,
 } from "../src/systems/sceneTransition.js";
@@ -68,5 +71,24 @@ describe("sceneTransitionTotalMs", () => {
 		expect(sceneTransitionTotalMs("portal", false)).toBe(
 			portalTransitionTotalMs(false),
 		);
+	});
+});
+
+describe("layer transition timing", () => {
+	it("stays under the 700ms budget and cuts while the pulse peaks", () => {
+		expect(layerTransitionTotalMs(false)).toBeLessThanOrEqual(
+			MAX_TRANSITION_MS,
+		);
+		expect(layerTransitionDelayMs(false)).toBeLessThan(
+			layerTransitionTotalMs(false),
+		);
+		expect(sceneTransitionTotalMs("layer", false)).toBe(
+			layerTransitionTotalMs(false),
+		);
+	});
+	it("collapses to the flat fade, with no rise, under reduced motion", () => {
+		expect(layerTransitionTotalMs(true)).toBe(cabinTransitionTotalMs(true));
+		expect(layerRiseMs(true)).toBe(0);
+		expect(layerRiseMs(false)).toBeGreaterThan(0);
 	});
 });

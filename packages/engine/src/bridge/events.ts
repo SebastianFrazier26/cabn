@@ -79,6 +79,12 @@ export type CabnEvents = {
 	"sign:place-here": Record<string, never>;
 	/** The pet chat's "review in spellbook" -> WorldScene: open this file (the chat then opens the spellbook on it). */
 	"pet:open-file": { portalId: string };
+	/** A layer's hotbar item -> WorldScene: turn this world layer on, or off if it's the one showing. */
+	"layer:toggle": { layerId: string };
+	/** WorldScene, the moment it commits to switching layers (before its restart) -> SceneTransitionOverlay. `color` is the layer skin's transition colour (null: the plain fade). */
+	"layer:changed": { layerId: string | null; color: number | null };
+	/** LayerSaveNotice's "reload from disk" -> WorldScene: refetch that layer file and show it as it is now. */
+	"layer:reload-file": { portalId: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

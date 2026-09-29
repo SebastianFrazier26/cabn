@@ -1,4 +1,5 @@
 import type { OwnerSignsApi } from "./ownerSigns.js";
+import type { WorldLayerProvider } from "./worldLayer.js";
 
 /**
  * The owner capability a `cabn serve --owner` host page hands CabnGame.
@@ -36,6 +37,8 @@ export interface OwnerGitApi {
 export interface OwnerCapability {
 	git?: OwnerGitApi;
 	signs?: OwnerSignsApi;
+	/** World layers the owner can toggle (systems/worldLayer.ts). */
+	layers?: WorldLayerProvider[];
 }
 
 /** A refused owner request: the server's message, plus `needsAuthor` when the repo has no user.name/email. */

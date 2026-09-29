@@ -52,6 +52,8 @@ export function ToolHotbar({
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
 	const [signTool] = useState(createSignTool);
 	const owner = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
+	const activeLayerId = useCabnStore(store, (s) => s.activeLayerId);
 	const signPlacing = useCabnStore(store, (s) => s.signPlacing);
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
 	const mode = useCabnStore(store, (s) => s.mode);
@@ -96,6 +98,16 @@ export function ToolHotbar({
 				if (currentMode !== "world") return;
 				event.preventDefault();
 				signTool.onUse({ store, bus });
+				return;
+			}
+			const layerTool = store
+				.getState()
+				.worldLayers.flatMap((layer) => layer.tools)
+				.find((tool) => tool.hotkey.toLowerCase() === key);
+			if (layerTool) {
+				if (currentMode !== "world" || event.repeat) return;
+				event.preventDefault();
+				layerTool.onUse({ store, bus });
 				return;
 			}
 			const toolId = HOTKEY_TOOL_IDS[key];
@@ -151,6 +163,21 @@ export function ToolHotbar({
 					onUse={() => signTool.onUse({ store, bus })}
 				/>
 			)}
+			{mode === "world" &&
+				worldLayers.flatMap((layer) =>
+					layer.tools.map((tool) => (
+						<HotbarSlot
+							key={`${layer.id}:${tool.id}`}
+							tool={tool}
+							badge={null}
+							selected={activeLayerId === layer.id}
+							showLabel={false}
+							writing={false}
+							extraClass="layer-tool"
+							onUse={() => tool.onUse({ store, bus })}
+						/>
+					)),
+				)}
 		</div>
 	);
 }
@@ -162,8 +189,10 @@ function HotbarSlot({
 	showLabel,
 	writing,
 	onUse,
+	extraClass,
 }: {
 	tool: Tool;
+	extraClass?: string;
 	badge: number | null;
 	selected: boolean;
 	showLabel: boolean;
@@ -184,7 +213,7 @@ function HotbarSlot({
 			}}
 			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
 			data-tool={tool.id}
-			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
+			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}${extraClass ? ` ${extraClass}` : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
 			<img src={tool.icon} alt={tool.name} />

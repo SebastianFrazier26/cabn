@@ -42,6 +42,17 @@ describe("bundleHostApp", () => {
 		expect(withoutExec).not.toContain("x-cabn-token");
 		expect(withExec).toContain("x-cabn-token");
 	});
+
+	it("only references the shadow realm client with owner mode on", async () => {
+		const plain = await bundleHostApp({ token: "abc123", allowExec: false });
+		const owner = await bundleHostApp({
+			token: "abc123",
+			allowExec: false,
+			owner: true,
+		});
+		expect(plain).not.toContain("/owner/shadow/");
+		expect(owner).toContain("/owner/shadow/");
+	});
 }, 20_000);
 
 describe("hostPageHtml", () => {

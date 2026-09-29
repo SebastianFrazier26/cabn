@@ -11,8 +11,10 @@ import {
 	toWorldSearchHits,
 } from "../systems/search.js";
 import { isStaleSignHit, syncSignSearchDocs } from "../systems/signSearch.js";
+import { isHiddenPath } from "../systems/worldLayer.js";
 import { useCabnStore } from "./useCabnStore.js";
 import {
+	useLayerSearchIndex,
 	useWorldSearchIndex,
 	type WorldSearchIndex,
 } from "./useWorldSearchIndex.js";
@@ -83,6 +85,14 @@ export function OrbSearch({
 		activeWorldBase,
 		open && scope === "world",
 	);
+	const activeLayerId = useCabnStore(store, (s) => s.activeLayerId);
+	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
+	const layer = useMemo(
+		() => worldLayers.find((l) => l.id === activeLayerId) ?? null,
+		[worldLayers, activeLayerId],
+	);
+	const layerSearch = useLayerSearchIndex(layer, open && scope === "world");
+	const layerIndex = layerSearch.index;
 
 	useEffect(() => {
 		if (!open) setQuery("");
@@ -121,20 +131,34 @@ export function OrbSearch({
 	// signs.json come from the same build, so they're left untouched there.
 	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
 	const signs = useCabnStore(store, (s) => s.signs);
-	const syncedSigns = useRef<{
-		index: WorldSearchIndex | null;
-		sources: Map<string, string>;
-	}>({ index: null, sources: new Map() });
-	const liveSignPaths = useMemo(() => {
-		if (!ownerSigns || !index) return null;
-		const synced = syncedSigns.current;
-		if (synced.index !== index) {
-			synced.index = index;
-			synced.sources = new Map();
-		}
-		synced.sources = syncSignSearchDocs(index, signs, synced.sources);
-		return new Set(signs.map((s) => s.path));
-	}, [ownerSigns, index, signs]);
+	const syncedSigns = useRef<SignSync>({ index: null, sources: new Map() });
+	const syncedLayerSigns = useRef<SignSync>({
+		index: null,
+		sources: new Map(),
+	});
+	// Hidden-folder signs belong to the layer's own index, never the world's.
+	const [baseSigns, layerSigns] = useMemo(
+		() =>
+			[
+				signs.filter((s) => !isHiddenPath(s.path)),
+				signs.filter((s) => isHiddenPath(s.path)),
+			] as const,
+		[signs],
+	);
+	const liveSignPaths = useMemo(
+		() =>
+			ownerSigns && index
+				? syncSigns(syncedSigns.current, index, baseSigns)
+				: null,
+		[ownerSigns, index, baseSigns],
+	);
+	const liveLayerSignPaths = useMemo(
+		() =>
+			layerIndex
+				? syncSigns(syncedLayerSigns.current, layerIndex, layerSigns)
+				: null,
+		[layerIndex, layerSigns],
+	);
 
 	const previewLineByPortalId = useMemo(
 		() => new Map(portals.map((p) => [p.id, p.previewLine] as const)),
@@ -151,24 +175,38 @@ export function OrbSearch({
 		// path/name are stored fields spread on at runtime (SEARCH_STORE_FIELDS),
 		// so they're pulled out explicitly rather than trying to widen the
 		// library's own result type.
-		const rawResults = index
-			.search(query, WORLD_SEARCH_OPTIONS)
-			.filter(
-				(r) => !liveSignPaths || !isStaleSignHit(String(r.id), liveSignPaths),
-			)
-			.map((r) => ({
-				id: r.id,
-				path: r.path as string,
-				name: r.name as string,
-			}));
-		return toWorldSearchHits(rawResults, previewLineByPortalId);
+		const run = (
+			from: WorldSearchIndex,
+			live: ReadonlySet<string> | null,
+			isLayer: boolean,
+		) =>
+			from
+				.search(query, WORLD_SEARCH_OPTIONS)
+				.filter((r) => !live || !isStaleSignHit(String(r.id), live))
+				.map((r) => ({
+					id: r.id,
+					path: r.path as string,
+					name: r.name as string,
+					score: r.score,
+					isLayer,
+				}));
+		const rawResults = [
+			...run(index, liveSignPaths, false),
+			...(layerIndex ? run(layerIndex, liveLayerSignPaths, true) : []),
+		].sort((a, b) => b.score - a.score);
+		const hits = toWorldSearchHits(rawResults, previewLineByPortalId);
+		return hits.map((hit, i) =>
+			rawResults[i]?.isLayer ? { ...hit, layer: true as const } : hit,
+		);
 	}, [
 		query,
 		scope,
 		index,
+		layerIndex,
 		activeFileDoc,
 		previewLineByPortalId,
 		liveSignPaths,
+		liveLayerSignPaths,
 	]);
 
 	if (!open) return null;
@@ -249,6 +287,7 @@ export function OrbSearch({
 							<SearchHitRow
 								key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
 								hit={hit}
+								layerLabel={layer?.label ?? null}
 								onSelect={() => select(hit)}
 							/>
 						))}
@@ -318,11 +357,31 @@ function Status({ text }: { text: string }): React.ReactElement {
 	);
 }
 
+interface SignSync {
+	index: WorldSearchIndex | null;
+	sources: Map<string, string>;
+}
+
+function syncSigns(
+	synced: SignSync,
+	index: WorldSearchIndex,
+	signs: Parameters<typeof syncSignSearchDocs>[1],
+): Set<string> {
+	if (synced.index !== index) {
+		synced.index = index;
+		synced.sources = new Map();
+	}
+	synced.sources = syncSignSearchDocs(index, signs, synced.sources);
+	return new Set(signs.map((s) => s.path));
+}
+
 function SearchHitRow({
 	hit,
+	layerLabel,
 	onSelect,
 }: {
 	hit: SearchHit;
+	layerLabel: string | null;
 	onSelect: () => void;
 }): React.ReactElement {
 	const title = hit.kind === "world" ? hit.path : `line ${hit.line + 1}`;
@@ -352,6 +411,11 @@ function SearchHitRow({
 			>
 				<strong className="cabn-clip-line" style={{ fontSize: 13 }}>
 					{title}
+					{hit.kind === "world" && hit.layer && (
+						<span className="cabn-layer-badge" data-testid="layer-badge">
+							{layerLabel ?? "layer"}
+						</span>
+					)}
 				</strong>
 				{snippet && (
 					<span
