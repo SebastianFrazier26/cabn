@@ -55,6 +55,7 @@ import {
 	bakePathRibbons,
 	bakePaths,
 	type PathSegment,
+	type WorldBounds,
 } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import { PetCompanion } from "../render/petCompanion.js";
@@ -82,6 +83,7 @@ import {
 	WORLD_PORTAL_SCALE,
 } from "../render/scale.js";
 import { SignLayer } from "../render/signposts.js";
+import { computeWorldBounds as sharedComputeWorldBounds } from "../render/worldBounds.js";
 import {
 	attachSky,
 	boundsWithSky,
@@ -194,7 +196,6 @@ const SUMMONED_WALK_SPEED = 320;
 /** How long a click-walk that arrived at a portal waits for that cluster's chunk fetch before giving up (entering needs the file's content). */
 const ARRIVAL_CHUNK_WAIT_MS = 3000;
 const MAX_LOADED_CHUNKS = 8;
-const WORLD_MARGIN = 500;
 // Measured from portal_arch_strip_soft.png's alpha channel (2026-09-28): the
 // transparent opening spans x 68-192 and y 86-256 of each 256px frame, i.e.
 // it runs to the frame's bottom edge, well below the sprite's centre. Inset a
@@ -1560,34 +1561,12 @@ export class WorldScene extends Phaser.Scene {
 		});
 	};
 
-	/** One shared bounds calc for the camera, the ground field bake, and the path bake — the three used to each compute a slightly different box, which is exactly how a field baked for one area and a camera clamped to another used to leave a sliver of void at the edge. */
-	private computeWorldBounds(): {
-		minX: number;
-		minY: number;
-		maxX: number;
-		maxY: number;
-	} {
-		const xs = this.manifest.clusters.map((c) => c.pos.x);
-		const ys = this.manifest.clusters.map((c) => c.pos.y);
-		// A world with few clusters clustered near the origin (e.g. two
-		// clusters directly north/south of each other) can have bounds
-		// narrower than the actual browser viewport — the camera can't scroll
-		// past its own bounds, so on a wide window that used to show the
-		// M10b batch-2 continuous ground field ending in a hard black edge
-		// mid-screen rather than reaching it. Margin grows with the viewport
-		// (half its width/height + padding) so the field/camera bounds always
-		// comfortably exceed whatever's actually on screen.
-		const margin = Math.max(
-			WORLD_MARGIN,
-			this.scale.width / 2 + 150,
-			this.scale.height / 2 + 150,
+	/** One shared bounds calc for the camera, the ground field bake, and the path bake — the three used to each compute a slightly different box, which is exactly how a field baked for one area and a camera clamped to another used to leave a sliver of void at the edge. See render/worldBounds.ts for why half the viewport, no more, is both correct and what keeps the bake itself small. */
+	private computeWorldBounds(): WorldBounds {
+		return sharedComputeWorldBounds(
+			this.manifest.clusters.map((c) => c.pos),
+			{ width: this.scale.width, height: this.scale.height },
 		);
-		return {
-			minX: Math.min(0, ...xs) - margin,
-			maxX: Math.max(0, ...xs) + margin,
-			minY: Math.min(0, ...ys) - margin,
-			maxY: Math.max(0, ...ys) + margin,
-		};
 	}
 
 	private setupCamera(): void {

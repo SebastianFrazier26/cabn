@@ -32,6 +32,7 @@ import {
 	bakePathRibbons,
 	bakePaths,
 	type PathSegment,
+	type WorldBounds,
 } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
 import {
@@ -55,6 +56,7 @@ import {
 	SHELF_CABIN_SCALE,
 	WIZARD_TOWER_SCALE,
 } from "../render/scale.js";
+import { computeWorldBounds as sharedComputeWorldBounds } from "../render/worldBounds.js";
 import {
 	attachSky,
 	boundsWithSky,
@@ -94,7 +96,6 @@ const CABIN_ARRIVE_RADIUS = 40;
 const LABEL_GAP_PX = 6;
 /** Above the player (depth 5), below the night grade (5.5): a label the player walks past stays readable instead of being covered, and still dims with the scene at night. */
 const LABEL_DEPTH = 5.2;
-const WORLD_MARGIN = 400;
 /** Clear space between the player's physics body and the tower's edge — see playerController.ts's body.setSize(24, 16). */
 const TOWER_SPAWN_CLEARANCE = 24;
 /** How far out the tower's own "clearing" (meadow patch + flower ring) extends. */
@@ -385,30 +386,12 @@ export class ShelfScene extends Phaser.Scene {
 		return sprite;
 	}
 
-	/** Shared by the field bake, the path bake, and the camera — one box, not three slightly different ones (see WorldScene's identical method for why that used to matter). */
-	private computeWorldBounds(): {
-		minX: number;
-		minY: number;
-		maxX: number;
-		maxY: number;
-	} {
-		const xs = this.cabins.map((c) => c.pos.x);
-		const ys = this.cabins.map((c) => c.pos.y);
-		// See WorldScene's identical computeWorldBounds for why this grows
-		// with the viewport rather than staying a flat margin — the shelf's
-		// own two-cabin demo layout is exactly the narrow-bounds case that
-		// used to show the ground field ending in a hard black edge.
-		const margin = Math.max(
-			WORLD_MARGIN,
-			this.scale.width / 2 + 150,
-			this.scale.height / 2 + 150,
+	/** Shared by the field bake, the path bake, and the camera — one box, not three slightly different ones (see WorldScene's identical method, and render/worldBounds.ts, for why that used to matter and why half the viewport is the right margin). */
+	private computeWorldBounds(): WorldBounds {
+		return sharedComputeWorldBounds(
+			this.cabins.map((c) => c.pos),
+			{ width: this.scale.width, height: this.scale.height },
 		);
-		return {
-			minX: Math.min(0, ...xs) - margin,
-			maxX: Math.max(0, ...xs) + margin,
-			minY: Math.min(0, ...ys) - margin,
-			maxY: Math.max(0, ...ys) + margin,
-		};
 	}
 
 	/**
