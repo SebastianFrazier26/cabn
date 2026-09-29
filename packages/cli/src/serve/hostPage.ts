@@ -5,7 +5,7 @@ import * as esbuild from "esbuild";
 export interface HostPageOptions {
 	token: string;
 	allowExec: boolean;
-	/** `cabn serve --owner`: wires the owner git client into CabnGame. Absent from every other page. */
+	/** `cabn serve --owner`: wires @cabn/engine/owner (signs + git clients) into CabnGame. Off, the bundle never references that module. */
 	owner?: boolean;
 }
 
@@ -29,8 +29,9 @@ function entrySource(opts: HostPageOptions): string {
 		: "";
 	const ownerWiring = opts.owner
 		? [
-				'import { createOwnerGitClient } from "@cabn/engine/owner";',
-				"const owner = { git: createOwnerGitClient({ baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ }) };",
+				'import { createOwnerGitClient, createServeOwnerSigns } from "@cabn/engine/owner";',
+				"const ownerOpts = { baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ };",
+				"const owner = { git: createOwnerGitClient(ownerOpts), signs: createServeOwnerSigns(ownerOpts) };",
 			].join("\n")
 		: "const owner = undefined;";
 	return `
@@ -78,6 +79,12 @@ export async function bundleHostApp(opts: HostPageOptions): Promise<string> {
 	return output.text;
 }
 
+/**
+ * The owner token goes only into this page's inline script — never the URL
+ * (unlike the exec token, it isn't printed, so it doesn't end up in terminal
+ * scrollback or browser history). JSON.stringify of a hex string can't close
+ * the <script> element.
+ */
 export function hostPageHtml(token: string, ownerToken?: string): string {
 	const ownerScript = ownerToken
 		? `\n<script>window.__CABN_OWNER_TOKEN__ = ${JSON.stringify(ownerToken)};</script>`

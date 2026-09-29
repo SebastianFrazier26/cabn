@@ -12,6 +12,18 @@ export interface WorldSearchIndexState {
 	loading: boolean;
 }
 
+/** One fetch + parse of a world's search-index.json; also used by the pet's search tool. */
+export async function fetchWorldSearchIndex(
+	worldBase: string,
+): Promise<WorldSearchIndex> {
+	const res = await fetch(`${worldBase}search-index.json`);
+	const parsed = SearchIndexFileSchema.parse(await res.json());
+	return MiniSearch.loadJSON<SearchDoc>(JSON.stringify(parsed.index), {
+		fields: [...SEARCH_FIELDS],
+		storeFields: [...SEARCH_STORE_FIELDS],
+	});
+}
+
 /**
  * Fetches and parses a world's search-index.json (minisearch's own toJSON
  * round-tripped through @cabn/world-schema's SearchIndexFileSchema) only
@@ -35,18 +47,9 @@ export function useWorldSearchIndex(
 		setLoading(true);
 		setError(null);
 
-		fetch(`${worldBase}search-index.json`)
-			.then((res) => res.json())
-			.then((raw) => {
+		fetchWorldSearchIndex(worldBase)
+			.then((mini) => {
 				if (cancelled) return;
-				const parsed = SearchIndexFileSchema.parse(raw);
-				const mini = MiniSearch.loadJSON<SearchDoc>(
-					JSON.stringify(parsed.index),
-					{
-						fields: [...SEARCH_FIELDS],
-						storeFields: [...SEARCH_STORE_FIELDS],
-					},
-				);
 				loadedForBase.current = worldBase;
 				setIndex(mini);
 			})

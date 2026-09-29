@@ -13,7 +13,7 @@ Under active reboot. The original Rust prototype is parked on the `rust-prototyp
 | `packages/world-schema` | `@cabn/world-schema` | Zod schemas + types for the world bundle (`world.json`, chunks, search index, assets), plus `validateManifest` |
 | `packages/converter` | `@cabn/converter` | `convert()`: directory/zipfile -> validated world bundle (walk, classify, layout, cluster/annex split, search index, error annotation -> monsters); `buildShelf()`: many worlds -> a shelf manifest |
 | `packages/engine` | `@cabn/engine` | Phaser 3 game engine: boot/preload/world/shelf/file scenes, a zustand+mitt React bridge (`CabnGame` and its HUD: `ToolHotbar`, `SpyglassPanel`, `OrbSearch`, `BagTray`, `EditorOverlay`, `SettingsCorner`, `FileOverlay`, `MonsterCounter`, `EncounterBanner`, `RunOverlay`), walkable world with lazy chunk loading, in-arch portal previews, a shelf hub listing every converted world, a parchment file view you edit in place with a real text caret (shared buffer, undo history and save path with the quill) and enchanted markdown, a CodeMirror-backed quill editor with bag paste, monster sprites (hovering near portals/paths in the world, standing beside their line in a file) with a click-or-`Alt`+`Enter` fix-to-defeat battle loop, localStorage-backed save persistence (file edits, player position, visited clusters, bag slots, defeated monsters), a pluggable `ExecutionProvider` (`TraceProvider` heuristic by default and always in a hosted build; `LocalRunProvider`, real execution, only reachable via `@cabn/engine/local-exec` from a `cabn serve --allow-exec` host page) driving the wand tool's run parchment, and a soft bloom+vignette glow post-effect (always on where WebGL is available) |
-| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec]` |
+| `packages/cli` | `@cabn/cli` | `cabn build <dir\|zipfile>`, `cabn inspect <bundleDir>`, `cabn shelf <bundleDir...>`, and `cabn serve <dir> [--allow-exec] [--owner]` |
 | `apps/backend` | `@cabn/backend` | Authenticated Fastify upload/convert API — `POST /v1/worlds` (zip in, world bundle zip out) and `GET /healthz` |
 | `apps/demo` | `@cabn/demo` | Vite + React demo app — converts `sample-project/` and `notes-vault/` into two worlds, builds a shelf listing both, and renders it as a walkable `CabnGame` shelf; also home to the Playwright browser smoke test (`e2e/`) |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Sprite/asset build tooling |
@@ -139,6 +139,14 @@ cabn serve ./my-project --allow-exec
 
 will print a loud warning banner and the URL to open.
 
+### Signs (`.seyn`)
+
+A `.seyn` file is a short note that stands in the world as a wooden signpost beside the arch or fountain it describes, instead of becoming a portal: a title line, paragraphs, `- ` bullets, `*emphasis*`, and `[[links]]` to files, folders, other signs and `https://` pages. Walk up to one and a popup shows it; `Enter` or a click opens it in full. An internal link walks you to its target and highlights it; a web link opens in a new tab (`noopener noreferrer`). Keep signs next to the files they describe (`src/index.seyn` beside `src/index.ts`). The format is specified in [`docs/SEYN.md`](docs/SEYN.md); the converter lists signs in a `signs.json` beside `world.json` (older engines ignore it and show the world without signs), and sign text is searchable with the orb.
+
+Everyone sees signs, hosted builds included. **Only the world owner can place, edit or delete them**, and only on a local `cabn serve` page: that page's hotbar has a sign item (`P`) no other page ever gets. Pick it, click where the sign should stand (the nearest arch or fountain becomes its target; `Enter` puts it beside you, `Esc` cancels), write it in the small editor with a live preview, and save. The file is written into `<dir>` and the sign appears at once, with no restart. A sign's reader also gets Edit and Delete buttons on that page.
+
+Saves go through an owner API that exists only in `cabn serve`, not in the hosted demo or any other build. Each request needs a random per-session owner token that is put only into the page itself (never into the printed URL). The request's `Host` must be exactly `127.0.0.1:<port>` or `localhost:<port>`, and its `Origin` must be present and match. The body must be JSON (schema-checked, size-capped). The server writes only `.seyn` files (16 KiB max) inside the served folder: no absolute paths, `..`, hidden or ignored folders (`.git`, `node_modules`, `dist`…), symlinked folders pointing outside, or symlinks at the target. It never runs a shell. New files are created exclusively, so they never clobber an existing file; edits go to a temp file that is renamed over the old one. Owner mode is off unless you pass `--owner` (see below): without it the page is read-only, with no sign item and no owner routes at all.
+
 ### Monsters
 
 Every error a world's files have gets annotated at conversion time and spawns a monster, one species per error code. Tier is severity, from 0 (cosmetic) to 3. When a file has two or more real bugs, each of them goes up one tier.
@@ -208,7 +216,9 @@ What ships, and what never does:
 
 The reading is done by [isomorphic-git](https://isomorphic-git.org/) (MIT, pinned 1.42.2) at build time. The browser never loads it: the precomputed view needs no git reader, which keeps ~80 KB gzipped of isomorphic-git out of the page; the history UI itself is about 12 KB gzipped.
 
-### `cabn serve --owner` — committing from the game
+### `cabn serve --owner` — owner mode: signs and git
+
+`--owner` is the one owner switch, off by default. It turns on both the sign item above and the git Owner tab below, behind the same per-session token and the same gate (`packages/cli/src/serve/ownerAuth.ts`). Plain `cabn serve` answers 404 on every `/owner/` route and its page carries no owner client.
 
 ```sh
 cabn serve ./my-repo --owner
@@ -217,6 +227,9 @@ cabn serve ./my-repo --owner
 With `--owner`, the page's rift gets an **Owner** tab that works on the real repository through isomorphic-git in the serve process: commit your saved in-game edits (pick the files, write a message), create a branch (optionally switching to it), and switch branches. **Nothing is ever pushed or fetched** — no remote operation exists in the code. The author comes from the repository's own git config (`user.name`/`user.email`); if it has none, the page asks. Owner mode is off by default and loopback-only; every owner request needs a per-session token (separate from the page token, only written into an owner-mode page), an exact `127.0.0.1`/`localhost` Host, an Origin naming this server on every write (browsers send no Origin on a same-origin GET, so the one read-only route accepts `Sec-Fetch-Site: same-origin` instead; any cross-site `Sec-Fetch-Site` is refused), `Content-Type: application/json` on writes, and a zod-validated body. Writes are confined to text files the world was converted from — no traversal, no symlink hops, nothing under `.git` — and refuse to overwrite a file that changed on disk since conversion, or to commit when other changes are already staged. Switching branches refuses a dirty working tree.
 
 Every owner action reconverts the world and reloads the page, which starts a fresh save slot. So edits that aren't part of the action are first set aside in an **in-browser stash** keyed by repository and branch: unticked files when committing, everything when switching (under the branch you're leaving) or creating a branch (under the new branch if you switch to it, like git carries uncommitted changes). The Owner tab offers the stash back whenever you're on its branch. If you have saved edits when you pick a branch to switch to, the page first says so and asks before stashing them.
+### AI pets (bring your own key)
+
+Below it, **Pet** lets a player bring their own Claude, OpenAI, Gemini, Qwen or DeepSeek key (or a local Ollama) and get a pixel pet that follows them and answers questions about the world's files: it reads raw files, searches, and proposes edits that are applied only after the player accepts a diff in the spellbook. Provider calls go straight from the browser to the provider with plain `fetch` (no SDKs); the key lives only in that browser (session storage by default, local storage only on opt-in) and never reaches the backend, the host page's server or `cabn serve`. The demo's postbuild also fails if a key-shaped string (`sk-…`, Google, GitHub, AWS keys, private key blocks) lands in the bundle. The player's side is in [the guide](docs/USER_GUIDE.md#ai-pets-bring-your-own-key); the code is `packages/engine/src/pets/` (provider table in `providers.ts`, agent loop in `agentLoop.ts`). A host page with a Content-Security-Policy needs the providers' API origins in `connect-src`.
 
 ## Backend API
 

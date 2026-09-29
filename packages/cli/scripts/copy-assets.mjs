@@ -49,6 +49,8 @@ export const PLACEHOLDERS = [
 	"npc_guide_strip_soft.png",
 	"npc_guide_bubble_soft.png",
 	"npc_guide_portrait_soft.png",
+	"prop_seyn_sign_soft.png",
+	"ui_icon_sign_soft.png",
 	"imp_idle0_soft.png",
 	"imp_idle1_soft.png",
 	"magpie_idle0_soft.png",
@@ -59,6 +61,30 @@ export const PLACEHOLDERS = [
 	"bramble_idle1_soft.png",
 	"shade_idle0_soft.png",
 	"shade_idle1_soft.png",
+	// AI pets (assetPaths.ts petStripPath/petPortraitPath, pets/providers.ts species).
+	...["cat", "ferret", "bird", "llama", "owl", "whale"].flatMap((species) => [
+		`pet_${species}_strip_soft.png`,
+		`pet_${species}_portrait_soft.png`,
+	]),
+	// Battle frames (assetPaths.ts BATTLE_FX_MONSTER_SPECIES): hit + 3 defeat.
+	...[
+		"ghost",
+		"rot_sprite",
+		"warded_mimic",
+		"gremlin",
+		"ouroboros",
+		"will_o_wisp",
+		"imp",
+		"magpie",
+		"skeleton",
+		"bramble",
+		"shade",
+	].flatMap((slug) => [
+		`${slug}_hit_soft.png`,
+		`${slug}_defeat0_soft.png`,
+		`${slug}_defeat1_soft.png`,
+		`${slug}_defeat2_soft.png`,
+	]),
 ];
 
 async function copyInto(subdir, files) {

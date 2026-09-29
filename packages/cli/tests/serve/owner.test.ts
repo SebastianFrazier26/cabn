@@ -134,15 +134,7 @@ async function post(
 }
 
 describe("owner mode is opt-in", () => {
-	it("without --owner there is no token in the page and no owner route", async () => {
-		const h = await serveOwner({ owner: false });
-		const page = await raw(h.port, "GET", "/", { host: `127.0.0.1:${h.port}` });
-		expect(page.body).not.toContain("__CABN_OWNER_TOKEN__");
-		expect(h.ownerToken).toBeUndefined();
-		const res = await raw(h.port, "GET", "/owner/git/status", ownerHeaders(h));
-		expect(res.status).toBe(404);
-	});
-
+	// Plain `cabn serve` (no owner routes, no client) is covered for both route groups in ownerSigns.test.ts.
 	it("with --owner the page carries a separate token and the host app wires the owner client", async () => {
 		const h = await serveOwner();
 		const page = await raw(h.port, "GET", "/", { host: `127.0.0.1:${h.port}` });
@@ -154,6 +146,9 @@ describe("owner mode is opt-in", () => {
 			host: `127.0.0.1:${h.port}`,
 		});
 		expect(app.body).toContain("x-cabn-owner-token");
+		// One token serves both clients.
+		expect(app.body).toContain("/owner/signs/save");
+		expect(app.body).toContain("/owner/git/");
 	});
 
 	it("refuses a non-loopback host", async () => {

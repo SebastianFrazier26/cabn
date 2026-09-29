@@ -1,3 +1,5 @@
+import type { OwnerSignsApi } from "./ownerSigns.js";
+
 /**
  * The owner capability a `cabn serve --owner` host page hands CabnGame.
  * Only the shape lives in the main entry; the HTTP client that implements
@@ -33,6 +35,7 @@ export interface OwnerGitApi {
 
 export interface OwnerCapability {
 	git?: OwnerGitApi;
+	signs?: OwnerSignsApi;
 }
 
 /** A refused owner request: the server's message, plus `needsAuthor` when the repo has no user.name/email. */

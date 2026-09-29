@@ -58,6 +58,7 @@ import {
 	runEditorCommand,
 	spellbookToolExtensions,
 } from "./editorTools.js";
+import { PetProposalReview } from "./PetProposalReview.js";
 import { RunConsole, toRunConsoleSnapshot } from "./RunConsole.js";
 import {
 	GoToLineDialog,
@@ -765,7 +766,11 @@ export function EditorOverlay({
 							<Mote key={`${m.left}-${m.top}`} mote={m} />
 						))}
 					</div>
-					<div className="cabn-spellbook-page right">
+					<div
+						className="cabn-spellbook-page right"
+						style={{ position: "relative" }}
+					>
+						<PetProposalReview store={store} />
 						<div className="cabn-spellbook-page-header">
 							<span>Errors ({errorRows.length})</span>
 						</div>

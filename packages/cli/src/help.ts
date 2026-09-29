@@ -21,8 +21,9 @@ export function helpText(): string {
 		"                                          Convert <dir> in memory and serve it as a walkable game, bound to",
 		"                                          127.0.0.1 only. --allow-exec enables REAL code execution of files",
 		"                                          you run with the wand tool — only pass it for code you trust.",
-		"                                          --owner lets the page commit your in-game edits and create/switch",
-		"                                          branches in the real repository (local only; never push/fetch).",
+		"                                          --owner turns on owner mode: the page can write .seyn signs into <dir>,",
+		"                                          commit your in-game edits and create/switch branches in the real",
+		"                                          repository (local only; never push/fetch). Off by default.",
 		"  cabn --version                         Print the CLI version",
 		"  cabn --help                            Show this help text",
 	].join("\n");

@@ -79,6 +79,37 @@ export const ANIMATED_MONSTER_SPECIES = [
 	"shade",
 ] as const;
 
+// Battle frames (2026-09-28): one hit flash + a three-frame defeat poof per
+// species, ghost included, derived from each idle0 by tools/asset-pipeline's
+// monster-fx.ts at the idle frame's exact size. Optional: FileScene falls
+// back to its old tween-only shrug/fade when a species' frames didn't load.
+export const MONSTER_DEFEAT_FRAME_COUNT = 3;
+
+export const BATTLE_FX_MONSTER_SPECIES = [
+	"ghost",
+	...ANIMATED_MONSTER_SPECIES,
+] as const;
+
+function monsterSlug(species: string): string {
+	return MONSTER_FILE_SLUG[species] ?? species;
+}
+
+export function monsterHitKey(species: string): string {
+	return `monster-${species}-hit`;
+}
+
+export function monsterHitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_hit_soft.png`;
+}
+
+export function monsterDefeatKey(species: string, frame: number): string {
+	return `monster-${species}-defeat${frame}`;
+}
+
+export function monsterDefeatPath(species: string, frame: number): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_defeat${frame}_soft.png`;
+}
+
 function bonfireFrameKey(index: number): string {
 	return `bonfire-frame-${index}`;
 }
@@ -208,6 +239,28 @@ export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
 export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
 export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
 
+// The .seyn signpost (tools/asset-pipeline's pixelmaps/signpost.ts): the
+// guide NPC's 24x32 grid and density, drawn 48x64 like her.
+// Optional: without it render/signposts.ts draws a small wooden board itself.
+export const SIGNPOST_KEY = "seyn-signpost";
+export const SIGNPOST_PATH = `${ASSET_BASE}/placeholders/prop_seyn_sign_soft.png`;
+
+// AI pets (tools/asset-pipeline's pixelmaps/pets.ts): four frames (idle,
+// blink, walk A, walk B) on a 16x16 grid at cellSize 16, drawn at the
+// player's 0.125 scale. Optional, like the guide: a missing strip draws a
+// tinted spark instead.
+export const PET_FRAME_SIZE = 256;
+export const PET_SCALE = 0.125;
+export function petTextureKey(species: string): string {
+	return `pet-${species}`;
+}
+export function petStripPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_strip_soft.png`;
+}
+export function petPortraitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_portrait_soft.png`;
+}
+
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
 // dot, not pixel art, so it isn't run through soften() the way everything
@@ -230,6 +283,7 @@ export const UI_ICON_NAMES = [
 	"quill",
 	"wand",
 	"key",
+	"sign",
 ] as const;
 export type UiIconName = (typeof UI_ICON_NAMES)[number];
 

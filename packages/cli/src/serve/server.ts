@@ -23,8 +23,9 @@ import {
 	runScript,
 } from "./execRunner.js";
 import { bundleHostApp, hostPageHtml } from "./hostPage.js";
-import { createOwnerSession, type OwnerSession } from "./ownerAuth.js";
+import { generateOwnerToken } from "./ownerAuth.js";
 import { handleOwnerGit, type OwnerGitContext } from "./ownerGit.js";
+import { handleOwnerSignsRoute } from "./ownerSigns.js";
 import { runtimeForPath } from "./runtime.js";
 import {
 	constantTimeEqual,
@@ -45,9 +46,12 @@ export interface ServeOptions {
 	/** Skip the build-time framability check for url previews and the GitHub releases request. */
 	offline?: boolean;
 	/**
-	 * Owner mode: the page may commit in-game edits and create/switch
-	 * branches in the real repository through the token-gated /owner/ API.
-	 * Off by default; loopback only, like --allow-exec.
+	 * Owner mode (`--owner`, off by default, loopback only like
+	 * --allow-exec): one per-session owner token, and the token-gated owner
+	 * routes — signs (`/owner/signs/*`: write/delete .seyn files) and git
+	 * (`/owner/git/*`: commit in-game edits, create/switch branches in the
+	 * real repository, never push or fetch). Off, neither route group exists
+	 * and the host page carries no owner client.
 	 */
 	owner?: boolean;
 	/** false: serve without git history (`--no-history`). */
@@ -61,8 +65,8 @@ export interface ServeHandle {
 	server: Server;
 	url: string;
 	token: string;
-	/** Only in owner mode. */
-	ownerToken?: string;
+	/** Undefined with owner mode off. Never printed — it lives only in the host page. */
+	ownerToken: string | undefined;
 	port: number;
 	close(): Promise<void>;
 }
@@ -129,6 +133,7 @@ interface ServeContext {
 	host: string;
 	port: number;
 	token: string;
+	ownerToken: string | undefined;
 	allowExec: boolean;
 	bundle: WorldBundle;
 	hostAppJs: string;
@@ -369,12 +374,17 @@ async function handleRequest(
 		return;
 	}
 	// Same "absent, not forbidden" rule as /exec: without --owner these routes don't exist.
-	if (
-		ctx.owner &&
-		url.pathname.startsWith("/owner/git/") &&
-		(await handleOwnerGit(req, res, url.pathname, ctx.owner))
-	) {
-		return;
+	if (ctx.ownerToken && url.pathname.startsWith("/owner/")) {
+		const handled =
+			(ctx.owner &&
+				(await handleOwnerGit(req, res, url.pathname, ctx.owner))) ||
+			(await handleOwnerSignsRoute(req, res, url.pathname, {
+				dir: ctx.dir,
+				port: ctx.port,
+				ownerToken: ctx.ownerToken,
+				bundle: ctx.bundle,
+			}));
+		if (handled) return;
 	}
 
 	res.writeHead(404);
@@ -442,21 +452,20 @@ export async function startServe(
 			onWarning: (message) => console.warn(`cabn serve: ${message}`),
 		});
 	const bundle = await convertWorld();
-	const ownerSession: OwnerSession | undefined = opts.owner
-		? createOwnerSession()
-		: undefined;
+	const ownerToken = opts.owner ? generateOwnerToken() : undefined;
 	const hostAppJs = await bundleHostApp({
 		token,
 		allowExec,
-		owner: ownerSession !== undefined,
+		owner: ownerToken !== undefined,
 	});
-	const html = hostPageHtml(token, ownerSession?.token);
+	const html = hostPageHtml(token, ownerToken);
 
 	const ctx: ServeContext = {
 		dir: resolvedDir,
 		host,
 		port,
 		token,
+		ownerToken,
 		allowExec,
 		bundle,
 		hostAppJs,
@@ -467,12 +476,12 @@ export async function startServe(
 		owner: undefined,
 	};
 	let worldText = worldTextFromBundle(bundle);
-	if (ownerSession) {
+	if (ownerToken) {
 		ctx.owner = {
 			dir: resolvedDir,
 			...(opts.gitDir ? { gitdir: resolvePath(opts.gitDir) } : {}),
 			port: () => ctx.port,
-			session: ownerSession,
+			ownerToken,
 			worldText: () => worldText,
 			reconvert: async () => {
 				const next = await convertWorld();
@@ -511,9 +520,9 @@ export async function startServe(
 			`\n\u001b[31m\u001b[1mREAL CODE EXECUTION ENABLED for ${resolvedDir} — only use with code you trust.\u001b[0m\n`,
 		);
 	}
-	if (ownerSession) {
+	if (ownerToken) {
 		console.log(
-			`\u001b[33mOwner mode: this page can commit edits and create/switch branches in ${resolvedDir} (never push or fetch).\u001b[0m`,
+			`\u001b[33mOwner mode: this page can edit signs, commit edits and create/switch branches in ${resolvedDir} (never push or fetch).\u001b[0m`,
 		);
 	}
 	console.log(`cabn serve: ${url}`);
@@ -522,7 +531,7 @@ export async function startServe(
 		server,
 		url,
 		token,
-		...(ownerSession ? { ownerToken: ownerSession.token } : {}),
+		ownerToken,
 		port: ctx.port,
 		close: () =>
 			new Promise((resolveClose) => {

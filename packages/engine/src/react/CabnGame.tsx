@@ -6,6 +6,7 @@ import {
 } from "../game.js";
 import { configureMedia } from "../render/mediaSources.js";
 import type { OwnerCapability } from "../systems/ownerApi.js";
+import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
@@ -15,12 +16,14 @@ import { GuideDialog } from "./GuideDialog.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { Pensieve } from "./Pensieve.js";
+import { PetLayer } from "./PetLayer.js";
 import { PortalLivePage } from "./PortalLivePage.js";
 import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
 import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
+import { Signs } from "./SignPanels.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
 import { UniverseBadge } from "./UniverseBadge.js";
@@ -48,11 +51,14 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	pdfWorkerUrl?: string;
 	/**
 	 * Owner capability — only `cabn serve --owner`'s host page passes one
-	 * (see `@cabn/engine/owner`). With it the rift's picker gains an Owner
-	 * tab that commits edits and creates/switches branches in the real
-	 * repository. A hosted build never passes it.
+	 * (built by `@cabn/engine/owner` against its loopback owner API). `git`
+	 * gives the rift's picker an Owner tab (commit edits, create/switch
+	 * branches in the real repository); `signs` gives the sign item and edit
+	 * controls. A hosted build or the demo never passes it.
 	 */
 	owner?: OwnerCapability;
+	/** Older spelling of `owner.signs`, still accepted; `owner.signs` wins when both are given. */
+	ownerSigns?: OwnerSignsApi;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -65,7 +71,13 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady, pdfWorkerUrl, owner } = props;
+	const { onGameReady, pdfWorkerUrl, owner, ownerSigns } = props;
+	const signsApi = owner?.signs ?? ownerSigns;
+
+	useEffect(() => {
+		if (!handle) return;
+		handle.store.getState().setOwnerSigns(signsApi ?? null);
+	}, [handle, signsApi]);
 
 	useEffect(() => {
 		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
@@ -115,6 +127,8 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<UniverseBadge store={handle.store} />
 					<UniversePicker store={handle.store} bus={handle.bus} owner={owner} />
 					<Pensieve store={handle.store} />
+					<Signs store={handle.store} bus={handle.bus} />
+					<PetLayer store={handle.store} bus={handle.bus} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />

@@ -16,11 +16,11 @@ import {
 import { z } from "zod";
 import {
 	checkOwnerRequest,
-	type OwnerSession,
+	OwnerPathError,
 	readOwnerJson,
+	resolveOwnerTarget,
 	sendOwnerJson,
 } from "./ownerAuth.js";
-import { PathConfinementError, resolveConfinedPath } from "./security.js";
 
 /**
  * The owner's git writes, run by isomorphic-git inside this Node process on
@@ -28,6 +28,9 @@ import { PathConfinementError, resolveConfinedPath } from "./security.js";
  * branches. Nothing here talks to a remote — no push, fetch, pull or clone
  * is imported, and no isomorphic-git http client exists in this package.
  */
+/** Commit bodies carry whole files, so they get more room than the shared 128 KB default. */
+const OWNER_GIT_COMMIT_MAX_BYTES = 2 * 1024 * 1024;
+
 export const OWNER_GIT_ROUTES = {
 	status: "/owner/git/status",
 	commit: "/owner/git/commit",
@@ -39,29 +42,27 @@ export interface OwnerGitContext {
 	dir: string;
 	gitdir?: string;
 	port(): number;
-	session: OwnerSession;
+	/** The serve session's one owner token (shared with the signs routes). */
+	ownerToken: string;
 	/** World path -> the text the current world was converted from (text portals only). */
 	worldText(): ReadonlyMap<string, string>;
 	/** Re-converts the served world after a write, so the page reloads into it. */
 	reconvert(): Promise<void>;
 }
 
-// Case-insensitive: macOS and Windows file systems treat ".GIT" as ".git".
-function hasGitSegment(path: string): boolean {
-	return path.split("/").some((s) => s.toLowerCase() === ".git");
-}
-
+// Shape only; resolveOwnerTarget (ownerAuth.ts) is the confinement authority.
 const WorldPathSchema = z
 	.string()
 	.min(1)
-	.max(1024)
+	.max(512)
 	.refine(
 		(p) =>
 			!p.startsWith("/") &&
 			!p.includes("\\") &&
-			!p.includes("\0") &&
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting them is the point
+			!/[\u0000-\u001F\u007F]/.test(p) &&
 			p.split("/").every((s) => s.length > 0 && s !== "." && s !== "..") &&
-			!hasGitSegment(p),
+			!p.split("/").some((s) => s.toLowerCase() === ".git"),
 		"must be a relative world path outside .git",
 	);
 
@@ -195,12 +196,16 @@ async function confinedWorldFile(
 		throw new OwnerGitError(403, `"${path}" is not a text file in this world`);
 	let real: string;
 	try {
-		real = await resolveConfinedPath(ctx.dir, path);
+		const target = await resolveOwnerTarget(ctx.dir, path);
+		if (!target.exists)
+			throw new OwnerGitError(404, `"${path}" does not exist on disk`);
+		real = target.absolute;
 	} catch (err) {
-		if (err instanceof PathConfinementError)
-			throw new OwnerGitError(403, `"${path}" is outside the world`);
+		if (err instanceof OwnerPathError)
+			throw new OwnerGitError(403, `"${path}": ${err.message}`);
 		throw err;
 	}
+	// resolveOwnerTarget allows a folder symlink that stays inside the root; a commit allows no hop at all.
 	const realRoot = await nodeFs.promises.realpath(ctx.dir);
 	const rel = relative(realRoot, real).split(sep).join("/");
 	if (rel !== path)
@@ -307,14 +312,13 @@ export async function handleOwnerGit(
 		([, p]) => p === pathname,
 	)?.[0];
 	if (!route) return false;
-	const gate = checkOwnerRequest(req, ctx.session, ctx.port());
+	const gate = checkOwnerRequest(req, {
+		port: ctx.port(),
+		token: ctx.ownerToken,
+		method: route === "status" ? "GET" : "POST",
+	});
 	if (!gate.ok) {
-		sendOwnerJson(res, gate.status, { error: gate.message });
-		return true;
-	}
-	const expected = route === "status" ? "GET" : "POST";
-	if (req.method !== expected) {
-		sendOwnerJson(res, 405, { error: `use ${expected}` });
+		sendOwnerJson(res, gate.status, { error: gate.reason });
 		return true;
 	}
 	try {
@@ -322,26 +326,30 @@ export async function handleOwnerGit(
 		if (route === "status") {
 			result = await serialized(() => status(ctx));
 		} else if (route === "commit") {
-			const body = await readOwnerJson(req, CommitBodySchema);
-			if (!body.ok) return sendError(res, body.status, body.message);
+			const body = await readOwnerJson(
+				req,
+				CommitBodySchema,
+				OWNER_GIT_COMMIT_MAX_BYTES,
+			);
+			if (!body.ok) return sendError(res, body.status, body.reason);
 			result = await serialized(async () => {
-				const out = await commitEdits(ctx, body.value);
+				const out = await commitEdits(ctx, body.data);
 				await ctx.reconvert();
 				return out;
 			});
 		} else if (route === "branch") {
 			const body = await readOwnerJson(req, BranchBodySchema);
-			if (!body.ok) return sendError(res, body.status, body.message);
+			if (!body.ok) return sendError(res, body.status, body.reason);
 			result = await serialized(async () => {
-				const out = await createBranch(ctx, body.value);
+				const out = await createBranch(ctx, body.data);
 				await ctx.reconvert();
 				return out;
 			});
 		} else {
 			const body = await readOwnerJson(req, CheckoutBodySchema);
-			if (!body.ok) return sendError(res, body.status, body.message);
+			if (!body.ok) return sendError(res, body.status, body.reason);
 			result = await serialized(async () => {
-				const out = await switchBranch(ctx, body.value);
+				const out = await switchBranch(ctx, body.data);
 				await ctx.reconvert();
 				return out;
 			});

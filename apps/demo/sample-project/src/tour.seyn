@@ -1,0 +1,10 @@
+@near index.ts
+# Start here
+
+*index.ts* wires the whole API together. From here:
+
+- Requests are answered in [[server.ts]]
+- Routes grow in [[routes/|the routes folder]]
+- Scraps become soil in [[compost.ts|the compost heap]]
+
+Lost? [[/welcome.seyn|Back to the welcome sign]].

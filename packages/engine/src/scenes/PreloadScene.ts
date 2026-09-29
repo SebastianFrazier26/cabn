@@ -2,6 +2,7 @@ import type {
 	EmbedVerdict,
 	MediaPreview,
 	ShelfManifest,
+	SignEntry,
 	WorldManifest,
 } from "@cabn/world-schema";
 import Phaser from "phaser";
@@ -10,6 +11,7 @@ import {
 	ASSET_KEYS,
 	ASSET_PATHS,
 	atmosphereAssetEntries,
+	BATTLE_FX_MONSTER_SPECIES,
 	BIOME_TILE_FRAME_SIZE,
 	BONFIRE_FRAME_COUNT,
 	biomeTileSheetKey,
@@ -21,10 +23,15 @@ import {
 	DECAL_SHEET_PATH,
 	FX_SPARK_KEY,
 	FX_SPARK_PATH,
+	MONSTER_DEFEAT_FRAME_COUNT,
 	MONSTER_GHOST_KEY,
 	MONSTER_GHOST_PATH,
+	monsterDefeatKey,
+	monsterDefeatPath,
 	monsterFrameKey,
 	monsterFramePath,
+	monsterHitKey,
+	monsterHitPath,
 	OPTIONAL_ASSET_KEYS,
 	OPTIONAL_ASSET_PATHS,
 	PATH_STAMP_COUNT,
@@ -50,6 +57,7 @@ import {
 	WORLD_FOUNTAIN_PATH,
 } from "../assetPaths.js";
 import { preloadGuideNpcAssets } from "../render/guideNpc.js";
+import { preloadSignAssets } from "../render/signposts.js";
 import type { WorldGitData } from "./WorldScene.js";
 
 export type PreloadSceneData =
@@ -61,6 +69,7 @@ export type PreloadSceneData =
 			shelfIndex?: number;
 			embeds?: ReadonlyMap<string, EmbedVerdict>;
 			git?: WorldGitData;
+			signs?: readonly SignEntry[];
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 
@@ -69,6 +78,14 @@ export const BONFIRE_IDLE_ANIM = "bonfire-idle";
 
 export function monsterIdleAnim(species: string): string {
 	return `monster-idle-${species}`;
+}
+
+export function monsterHitAnim(species: string): string {
+	return `monster-hit-${species}`;
+}
+
+export function monsterDefeatAnim(species: string): string {
+	return `monster-defeat-${species}`;
 }
 
 /** Which of the not-yet-shipped art assets actually loaded this run — see assetPaths.ts. */
@@ -152,6 +169,15 @@ export class PreloadScene extends Phaser.Scene {
 				monsterFramePath(species, 1),
 			);
 		}
+		for (const species of BATTLE_FX_MONSTER_SPECIES) {
+			this.load.image(monsterHitKey(species), monsterHitPath(species));
+			for (let i = 0; i < MONSTER_DEFEAT_FRAME_COUNT; i++) {
+				this.load.image(
+					monsterDefeatKey(species, i),
+					monsterDefeatPath(species, i),
+				);
+			}
+		}
 
 		for (const biome of WORLD_ART_BIOMES) {
 			this.load.spritesheet(
@@ -181,6 +207,7 @@ export class PreloadScene extends Phaser.Scene {
 		this.load.image(WORLD_FOUNTAIN_GEM_KEY, WORLD_FOUNTAIN_GEM_PATH);
 		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
 		preloadGuideNpcAssets(this.load);
+		preloadSignAssets(this.load);
 		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
 		for (const [key, path] of atmosphereAssetEntries()) {
 			this.load.image(key, path);
@@ -243,6 +270,31 @@ export class PreloadScene extends Phaser.Scene {
 				frameRate: 3,
 				repeat: -1,
 			});
+		}
+
+		// Registered as animations (even the one-frame hit) so render/
+		// monsterSprite.ts can test anims.exists() — a texture key alone can't
+		// tell a real load from the SPA-fallback miss loaded() guards against.
+		for (const species of BATTLE_FX_MONSTER_SPECIES) {
+			if (this.loaded(monsterHitKey(species))) {
+				this.anims.create({
+					key: monsterHitAnim(species),
+					frames: [{ key: monsterHitKey(species) }],
+					frameRate: 1,
+				});
+			}
+			const defeatKeys = Array.from(
+				{ length: MONSTER_DEFEAT_FRAME_COUNT },
+				(_, i) => monsterDefeatKey(species, i),
+			);
+			if (defeatKeys.every((key) => this.loaded(key))) {
+				this.anims.create({
+					key: monsterDefeatAnim(species),
+					frames: defeatKeys.map((key) => ({ key })),
+					frameRate: 10,
+					repeat: 0,
+				});
+			}
 		}
 
 		const worldArtKeys = [

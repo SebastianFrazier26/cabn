@@ -1,3 +1,4 @@
+import type { SeynLinkTarget } from "@cabn/world-schema";
 import mitt, { type Emitter } from "mitt";
 
 // Bridge rule: state that must survive a re-render or be queried later lives
@@ -70,6 +71,12 @@ export type CabnEvents = {
 		universe: { slug: string; branch: string } | null;
 		restoreOverrides?: Record<string, string>;
 	};
+	/** A sign's internal link was clicked (SignReader/SignPopup) -> render/signposts.ts: walk the player to that portal/fountain/sign and highlight it. */
+	"sign:follow-link": { target: SeynLinkTarget };
+	/** The owner's placement banner (Enter) -> render/signposts.ts: put the new sign where the player stands. */
+	"sign:place-here": Record<string, never>;
+	/** The pet chat's "review in spellbook" -> WorldScene: open this file (the chat then opens the spellbook on it). */
+	"pet:open-file": { portalId: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

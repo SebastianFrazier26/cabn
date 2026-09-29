@@ -16,6 +16,7 @@ import {
 	MonsterIndexFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
+	SignIndexFileSchema,
 	WorldChunkSchema,
 	WorldManifestSchema,
 } from "../dist/index.js";
@@ -33,6 +34,7 @@ const schemas = {
 	"monsters-index": MonsterIndexFileSchema,
 	"history-index": HistoryIndexFileSchema,
 	"history-commit-diff": HistoryCommitDiffFileSchema,
+	"signs-index": SignIndexFileSchema,
 };
 
 await mkdir(outDir, { recursive: true });

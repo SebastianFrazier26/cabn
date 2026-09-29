@@ -49,6 +49,10 @@ export type {
 	OwnerGitStatus,
 } from "./systems/ownerApi.js";
 export { OwnerApiError } from "./systems/ownerApi.js";
+export type {
+	OwnerSignSaveRequest,
+	OwnerSignsApi,
+} from "./systems/ownerSigns.js";
 export * from "./systems/runPlayback.js";
 export * from "./systems/save.js";
 export * from "./systems/search.js";

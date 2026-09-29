@@ -2,6 +2,7 @@ import type {
 	FileKind,
 	HistoryIndexFile,
 	Position,
+	SignEntry,
 	Species,
 } from "@cabn/world-schema";
 import { isolateHistory } from "@codemirror/commands";
@@ -11,9 +12,12 @@ import {
 	type Text,
 } from "@codemirror/state";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import type { PetProviderId } from "../pets/providers.js";
+import type { PetProposal, PetWorldAccess } from "../pets/tools.js";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
+import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 import {
 	resolveTimeOfDay,
@@ -157,6 +161,31 @@ export interface CabnState {
 	pensievePortalId: string | null;
 	/** Where the rift stands (render/rift.ts publishes it) — the map draws it; null without one. */
 	riftPos: Position | null;
+	/** Every sign in the current world — signs.json at load, plus the owner's saves since. render/signposts.ts draws exactly this list. */
+	signs: SignEntry[];
+	/** The sign the player is standing at (small popup, react/SignPopup.tsx). */
+	focusedSignPath: string | null;
+	/** The sign open in the full reader (react/SignReader.tsx); the player holds still meanwhile. */
+	openSignPath: string | null;
+	/** Set only by a host page that passes CabnGame's `ownerSigns` (a local `cabn serve`); null in hosted builds and the demo, which then show no sign item and no edit controls. */
+	ownerSigns: OwnerSignsApi | null;
+	/** The owner picked the sign item and is choosing where the new sign stands. */
+	signPlacing: boolean;
+	/** The owner's sign editor (react/SignEditor.tsx), open while non-null. */
+	signDraft: SignDraft | null;
+	/** Folder path -> its (non-annex) cluster id, for resolving sign links to folders; render/signposts.ts fills it per world. */
+	folderClusters: Record<string, string>;
+	/** The provider whose pet follows the player (react/PetLayer.tsx picks it; keys never live in the store — see pets/keyStore.ts). */
+	petProvider: PetProviderId | null;
+	petPanelOpen: boolean;
+	/** True while the pet's chat is open — WorldScene holds the player still, like the guide. */
+	petChatOpen: boolean;
+	/** The pet sprite in the current world (render/petCompanion.ts publishes it); null outside worlds. */
+	petNpc: { pos: Position } | null;
+	/** The current world's files as the pet may read them — WorldScene publishes it on create and clears it on shutdown. */
+	petWorld: PetWorldAccess | null;
+	petMessages: PetChatMessage[];
+	petProposals: PetProposal[];
 }
 
 /** The world's git history, as the rift, map timeline and pensieve read it (WorldScene sets it from the bundle's history.json; null for a world without one). */
@@ -172,6 +201,28 @@ export interface GitContext {
 	worldId: string;
 	/** The main world's meta.source, shared by every universe of it (the in-browser stash key). */
 	rootSource: string;
+}
+
+export interface SignDraft {
+	/** The sign being edited; null for a new one (the editor then asks for a file name). */
+	path: string | null;
+	near: { kind: "file" | "folder"; path: string };
+	offset: Position | null;
+	body: string;
+	/** Default file name offered for a new sign. */
+	suggestedPath: string;
+}
+
+export interface PetChatMessage {
+	id: string;
+	role: "player" | "pet";
+	text: string;
+	/** Files the pet read or proposed changes to for this answer. */
+	cited?: string[];
+	proposalIds?: string[];
+	/** A link the in-character error message ends with (billing/key console). */
+	link?: { href: string; label: string };
+	error?: boolean;
 }
 
 export interface GuideNpcSummary {
@@ -239,6 +290,28 @@ export interface CabnActions {
 	setUniverseOpen(open: boolean): void;
 	setPensievePortalId(portalId: string | null): void;
 	setRiftPos(pos: Position | null): void;
+	/** A world's signs and its folder -> cluster map, together, at world start. */
+	setSigns(signs: SignEntry[], folderClusters?: Record<string, string>): void;
+	/** Adds or replaces (by path) one sign — the owner's save, applied live. */
+	upsertSign(sign: SignEntry): void;
+	removeSign(path: string): void;
+	setFocusedSign(path: string | null): void;
+	setOpenSign(path: string | null): void;
+	setOwnerSigns(api: OwnerSignsApi | null): void;
+	/** Ignored without the owner capability, or outside world mode. */
+	setSignPlacing(placing: boolean): void;
+	/** Ignored without the owner capability. Always ends placement. */
+	setSignDraft(draft: SignDraft | null): void;
+	setPetProvider(provider: PetProviderId | null): void;
+	setPetPanelOpen(open: boolean): void;
+	setPetChatOpen(open: boolean): void;
+	setPetNpc(pet: { pos: Position } | null): void;
+	setPetWorld(world: PetWorldAccess | null): void;
+	addPetMessage(message: PetChatMessage): void;
+	addPetProposals(proposals: PetProposal[]): void;
+	setPetProposalStatus(id: string, status: PetProposal["status"]): void;
+	/** New provider, new world or "forget": the conversation starts over. */
+	clearPetConversation(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -279,6 +352,20 @@ const initialState: CabnState = {
 	universeOpen: false,
 	pensievePortalId: null,
 	riftPos: null,
+	signs: [],
+	focusedSignPath: null,
+	openSignPath: null,
+	ownerSigns: null,
+	signPlacing: false,
+	signDraft: null,
+	folderClusters: {},
+	petProvider: null,
+	petPanelOpen: false,
+	petChatOpen: false,
+	petNpc: null,
+	petWorld: null,
+	petMessages: [],
+	petProposals: [],
 };
 
 export function createCabnStore(): StoreApi<CabnStore> {
@@ -292,7 +379,9 @@ export function createCabnStore(): StoreApi<CabnStore> {
 					mapOpen &&
 					get().worldMap !== null &&
 					get().mode === "world" &&
-					!get().guideOpen,
+					!get().guideOpen &&
+					get().openSignPath === null &&
+					get().signDraft === null,
 			}),
 		setVisitedClusterIds: (visitedClusterIds) => set({ visitedClusterIds }),
 		clearWorldContext: () =>
@@ -316,6 +405,17 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				universeOpen: false,
 				pensievePortalId: null,
 				riftPos: null,
+				signs: [],
+				focusedSignPath: null,
+				openSignPath: null,
+				signPlacing: false,
+				signDraft: null,
+				folderClusters: {},
+				petChatOpen: false,
+				petNpc: null,
+				petWorld: null,
+				petMessages: [],
+				petProposals: [],
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -442,5 +542,53 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		},
 		setPensievePortalId: (pensievePortalId) => set({ pensievePortalId }),
 		setRiftPos: (riftPos) => set({ riftPos }),
+		setSigns: (signs, folderClusters) =>
+			set(folderClusters ? { signs, folderClusters } : { signs }),
+		upsertSign: (sign) =>
+			set((state) => ({
+				signs: [...state.signs.filter((s) => s.path !== sign.path), sign],
+			})),
+		removeSign: (path) =>
+			set((state) => ({
+				signs: state.signs.filter((s) => s.path !== path),
+				focusedSignPath:
+					state.focusedSignPath === path ? null : state.focusedSignPath,
+				openSignPath: state.openSignPath === path ? null : state.openSignPath,
+			})),
+		setFocusedSign: (focusedSignPath) => set({ focusedSignPath }),
+		setOpenSign: (openSignPath) => set({ openSignPath }),
+		setOwnerSigns: (ownerSigns) =>
+			set(
+				ownerSigns
+					? { ownerSigns }
+					: { ownerSigns, signPlacing: false, signDraft: null },
+			),
+		setSignPlacing: (signPlacing) =>
+			set({
+				signPlacing:
+					signPlacing && get().ownerSigns !== null && get().mode === "world",
+			}),
+		setSignDraft: (signDraft) =>
+			set({
+				signDraft: get().ownerSigns !== null ? signDraft : null,
+				signPlacing: false,
+			}),
+		setPetProvider: (petProvider) => set({ petProvider }),
+		setPetPanelOpen: (petPanelOpen) => set({ petPanelOpen }),
+		setPetChatOpen: (petChatOpen) =>
+			set({ petChatOpen, mapOpen: petChatOpen ? false : get().mapOpen }),
+		setPetNpc: (petNpc) => set({ petNpc }),
+		setPetWorld: (petWorld) => set({ petWorld }),
+		addPetMessage: (message) =>
+			set({ petMessages: [...get().petMessages, message] }),
+		addPetProposals: (proposals) =>
+			set({ petProposals: [...get().petProposals, ...proposals] }),
+		setPetProposalStatus: (id, status) =>
+			set({
+				petProposals: get().petProposals.map((p) =>
+					p.id === id ? { ...p, status } : p,
+				),
+			}),
+		clearPetConversation: () => set({ petMessages: [], petProposals: [] }),
 	}));
 }
