@@ -242,6 +242,19 @@ describe("isValidSignFileName", () => {
 	])("%j -> %s", (path, ok) => {
 		expect(isValidSignFileName(path)).toBe(ok);
 	});
+
+	test.each([
+		[".github/notes.seyn", true],
+		[".vscode/a/b.seyn", true],
+		[".GIT/x.seyn", false],
+		[".git/x.seyn", false],
+		["./x.seyn", false],
+		["../x.seyn", false],
+		["src/notes.seyn", true],
+	])("with a layer showing, %j -> %s", (path, ok) => {
+		expect(isValidSignFileName(path, { allowHidden: true })).toBe(ok);
+		if (path.startsWith(".")) expect(isValidSignFileName(path)).toBe(false);
+	});
 });
 
 describe("links", () => {

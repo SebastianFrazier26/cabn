@@ -28,6 +28,8 @@ export interface BakeClusterGroundParams {
 	/** Evenly-spaced flower decals right at the clearing's edge — the "ring of flowers" the clearing-marking brief asks for, on top of (not instead of) the scattered interior decals. 0 skips the ring. */
 	ringFlowerCount?: number;
 	seed: number;
+	/** A world skin's multiply tint (systems/worldLayer.ts); omitted, the art's own colours. */
+	tint?: number;
 }
 
 // decals.ts's buildDecals() order: 0 = flower-pink, 1 = flower-blue.
@@ -112,5 +114,6 @@ export function bakeClusterGround(
 		);
 	}
 
+	if (params.tint !== undefined) rt.setTint(params.tint);
 	return rt;
 }

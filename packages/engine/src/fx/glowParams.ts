@@ -70,6 +70,13 @@ export const NIGHT_GLOW_PARAMS: GlowParams = {
 	brightness: 1,
 };
 
+/** The day/night presets, or a world skin's replacement pair (systems/worldLayer.ts). */
+export function glowPresets(
+	override?: { day: GlowParams; night: GlowParams } | null,
+): { day: GlowParams; night: GlowParams } {
+	return override ?? { day: DAY_GLOW_PARAMS, night: NIGHT_GLOW_PARAMS };
+}
+
 /** Field-wise lerp, used to cross-fade the day/night presets alongside the grade layer. */
 export function lerpGlowParams(
 	a: GlowParams,

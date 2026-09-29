@@ -9,8 +9,9 @@ import type {
 	SignEntry,
 	WorldChunk,
 	WorldManifest,
+	WorldPath,
 } from "@cabn/world-schema";
-import { WorldChunkSchema } from "@cabn/world-schema";
+import { WorldChunkSchema, worldLayerIssues } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
@@ -96,10 +97,10 @@ import {
 	effectiveRichPreview,
 } from "../systems/archPreview.js";
 import {
-	ARCH_VARIANT_GLOW,
 	type ArchVariant,
 	archVariantFor,
 	archVariantFrame,
+	archVariantGlow,
 } from "../systems/archVariant.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
@@ -146,15 +147,30 @@ import {
 	withVisitedCluster,
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
-import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
+import {
+	cabinTransitionDelayMs,
+	layerRiseMs,
+	layerTransitionDelayMs,
+} from "../systems/sceneTransition.js";
 import { subtleTint, type Theme, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
+import {
+	type ActiveWorldLayer,
+	DEFAULT_SKIN,
+	editorSaveTarget,
+	inLayerClearing,
+	isHiddenPath,
+	type LayerClearing,
+	type RingGeometry,
+	type WorldSkin,
+} from "../systems/worldLayer.js";
 import { summarizeWorldMap } from "../systems/worldMap.js";
 import {
 	type AssetAvailability,
 	BONFIRE_IDLE_ANIM,
 	PORTAL_IDLE_ANIM,
 } from "./PreloadScene.js";
+import { WorldLayerSeam } from "./worldLayerSeam.js";
 
 export interface WorldSceneData {
 	manifest: WorldManifest;
@@ -172,6 +188,10 @@ export interface WorldSceneData {
 	signs?: readonly SignEntry[];
 	/** history.json (BootScene) — absent for a world without git history. */
 	git?: WorldGitData;
+	/** A world layer to show over this world (systems/worldLayer.ts) — only ever set by WorldScene's own layer toggle restart. */
+	layer?: ActiveWorldLayer;
+	/** Where the player stands after a layer toggle restart, instead of the saved spot. */
+	spawnAt?: Position;
 }
 
 export interface WorldGitData {
@@ -310,6 +330,12 @@ export class WorldScene extends Phaser.Scene {
 	private signEntries: readonly SignEntry[] = [];
 	private signs: SignLayer | null = null;
 	private pet: PetCompanion | null = null;
+	private initData!: WorldSceneData;
+	/** The world as its bundle has it; `manifest` is this plus the active layer, if any. */
+	private baseManifest!: WorldManifest;
+	private layerSeam: WorldLayerSeam | null = null;
+	private skin: WorldSkin = DEFAULT_SKIN;
+	private layerSwitching = false;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
 	private store!: StoreApi<CabnStore>;
@@ -377,11 +403,22 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	init(data: WorldSceneData): void {
-		this.manifest = data.manifest;
+		this.initData = data;
+		this.baseManifest = data.manifest;
+		this.layerSeam = data.layer
+			? WorldLayerSeam.create(data.manifest, data.layer)
+			: null;
+		this.manifest = this.layerSeam?.manifest ?? data.manifest;
+		this.skin = this.layerSeam?.skin ?? DEFAULT_SKIN;
+		this.layerSwitching = false;
+		this.resetWorldState();
 		this.worldBase = data.worldBase;
 		this.media = data.media ?? new Map();
 		this.embeds = data.embeds ?? new Map();
-		this.signEntries = data.signs ?? [];
+		this.signEntries = [
+			...(data.signs ?? []),
+			...(this.layerSeam?.signs ?? []),
+		];
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		this.shelfIndex = data.shelfIndex;
@@ -414,18 +451,27 @@ export class WorldScene extends Phaser.Scene {
 
 		this.worldId = computeWorldId(this.manifest.meta);
 		this.save = loadSave(this.worldId);
+		this.layerSeam?.openSlot(this.worldId);
 		this.theme = themeFromSeed(this.manifest.meta.themeSeed ?? 0);
 
 		// Portal positions and the player spawn point both have to exist before
 		// drawGround() runs — its decal/prop scatter must exclude them — so
 		// they're computed (not yet rendered) ahead of everything else.
 		this.computePortalPositions();
+		this.layerSeam?.computeRoutes((id) => this.ringGeometry(id));
 		this.store
 			.getState()
-			.setWorldMap(summarizeWorldMap(this.manifest, this.portalWorldPos));
-		this.store.getState().setVisitedClusterIds([...this.save.visitedClusters]);
+			.setWorldMap(
+				summarizeWorldMap(
+					this.manifest,
+					this.portalWorldPos,
+					this.layerSeam?.layer ?? null,
+				),
+			);
+		this.publishVisitedClusters();
 		const spawn = this.resolveSpawnPos();
 
+		const beforeBake = new Set(this.children.list);
 		perfMark("cabn:world:bake-start");
 		this.drawGround(spawn);
 		perfMark("cabn:world:ground-baked");
@@ -443,11 +489,11 @@ export class WorldScene extends Phaser.Scene {
 		});
 		this.drawMonsters();
 		this.guideNpc = GuideNpc.spawn(this, {
-			manifest: this.manifest,
+			manifest: this.baseManifest,
 			shelfIndex: this.shelfIndex,
 			store: this.store,
 			spawn: this.defaultSpawnPos(),
-			portalPositions: this.portalWorldPos.values(),
+			portalPositions: this.basePortalPositions(),
 			bonfireWidth: this.bonfireDisplayWidth(),
 			reducedMotion: prefersReducedMotion(),
 			talked: () => this.save.guideTalked === true,
@@ -458,11 +504,11 @@ export class WorldScene extends Phaser.Scene {
 		});
 		this.publishGitContext();
 		this.rift = Rift.spawn(this, {
-			manifest: this.manifest,
+			manifest: this.baseManifest,
 			store: this.store,
 			bus: this.bus,
 			spawn: this.defaultSpawnPos(),
-			portalPositions: this.portalWorldPos.values(),
+			portalPositions: this.basePortalPositions(),
 			bonfireWidth: this.bonfireDisplayWidth(),
 			guidePos: this.guideNpc?.pos ?? null,
 			reducedMotion: prefersReducedMotion(),
@@ -480,6 +526,7 @@ export class WorldScene extends Phaser.Scene {
 		});
 		this.createPlayer(spawn);
 		this.spawnSigns();
+		this.raiseLayer(beforeBake);
 		this.setupInput();
 		this.pet = new PetCompanion(this, {
 			store: this.store,
@@ -492,6 +539,7 @@ export class WorldScene extends Phaser.Scene {
 		this.publishMonsterIndex();
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
+		this.setupLayerListeners();
 		this.setupAmbientEffects();
 		perfMark("cabn:world:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -584,6 +632,10 @@ export class WorldScene extends Phaser.Scene {
 
 	/** What the pet may read (pets/worldAccess.ts): effective text, save overrides included; files an undefeated magpie guards stay in the browser. */
 	private publishPetWorld(): void {
+		// Pets only ever see the base world: never a layer's files or text.
+		const basePortals = new Map(
+			this.baseManifest.portals.map((p) => [p.id, p] as const),
+		);
 		const magpieGuarded = (path: string): boolean =>
 			(this.portalMonsterIds.get(path) ?? []).some((id) => {
 				const monster = this.monstersById.get(id);
@@ -595,20 +647,20 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setPetWorld(
 			createPetWorldAccess({
 				worldBase: this.worldBase,
-				files: this.manifest.portals.map((p) => ({
+				files: this.baseManifest.portals.map((p) => ({
 					path: p.file.path,
 					bytes: p.file.bytes,
 					kind: p.file.kind,
 				})),
 				loadedText: (path) => {
-					const portal = this.portalsById.get(path);
+					const portal = basePortals.get(path);
 					return portal
 						? this.effectiveChunkContents.get(portal.clusterId)?.[path]
 						: undefined;
 				},
 				savedOverride: (path) => this.save.fileOverrides[path]?.content,
 				chunkFor: (path) => {
-					const portal = this.portalsById.get(path);
+					const portal = basePortals.get(path);
 					return portal
 						? this.clustersById.get(portal.clusterId)?.chunk
 						: undefined;
@@ -636,6 +688,7 @@ export class WorldScene extends Phaser.Scene {
 			}
 		}
 
+		const warmLight = this.skin.lightColor ?? PALETTE.gold;
 		const lights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
 			const pos = propLightWorldPos(prop);
 			if (!pos) return [];
@@ -644,7 +697,7 @@ export class WorldScene extends Phaser.Scene {
 					x: pos.x,
 					y: pos.y,
 					radiusPx: 44,
-					color: PALETTE.gold,
+					color: warmLight,
 					alpha: 0.7,
 					flicker: prop.name === "lamp-post",
 				},
@@ -655,7 +708,7 @@ export class WorldScene extends Phaser.Scene {
 				x: root.pos.x,
 				y: root.pos.y,
 				radiusPx: 120,
-				color: PALETTE.gold,
+				color: warmLight,
 				alpha: 0.75,
 				flicker: true,
 			});
@@ -705,13 +758,14 @@ export class WorldScene extends Phaser.Scene {
 				x: pos.x,
 				y: pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_PLAQUE_Y_OFFSET_RATIO,
 				radiusPx: PORTAL_ARCH_DISPLAY_SIZE * 0.12,
-				color: ARCH_VARIANT_GLOW[variant],
+				color: archVariantGlow(variant, this.skin.archTint),
 				alpha: 0.35,
 			});
 		}
 		this.atmosphere = attachAtmosphere(this, this.store, {
 			lights,
 			reducedMotion,
+			skin: this.skin,
 		});
 		if (this.availability.atmosphereArt) {
 			this.sky = attachSky(
@@ -720,6 +774,7 @@ export class WorldScene extends Phaser.Scene {
 				this.worldId,
 				this.atmosphere,
 				reducedMotion,
+				this.skin.skylineTint ?? undefined,
 			);
 		}
 
@@ -733,6 +788,7 @@ export class WorldScene extends Phaser.Scene {
 				bonfirePos: root?.pos,
 				chimneyPositions,
 				reducedMotion,
+				particles: this.skin.particles,
 			});
 		};
 		rebuild();
@@ -788,6 +844,9 @@ export class WorldScene extends Phaser.Scene {
 						this.save.fileOverrides,
 					)[0] ?? "",
 				edited: portal.id in this.save.fileOverrides,
+				...(this.layerSeam?.isLayerPortal(portal.id)
+					? { layer: true as const }
+					: {}),
 			})),
 		);
 	}
@@ -859,7 +918,7 @@ export class WorldScene extends Phaser.Scene {
 	private pathExclusionsForCluster(cluster: Cluster): ScatterExclusion[] {
 		const exclusions: ScatterExclusion[] = [];
 		const radius = this.groundRadius(cluster) + PATH_CORRIDOR_EXCLUSION_RADIUS;
-		for (const path of this.manifest.paths) {
+		for (const path of this.ringPaths(cluster.id)) {
 			if (path.from !== cluster.id && path.to !== cluster.id) continue;
 			const otherId = path.from === cluster.id ? path.to : path.from;
 			const other = this.clustersById.get(otherId);
@@ -956,6 +1015,7 @@ export class WorldScene extends Phaser.Scene {
 			this.computeWorldBounds(),
 			biomeTileSheetKey("meadow"),
 			FIELD_SEED,
+			this.skin.groundTint ?? undefined,
 		)) {
 			field.setDepth(0);
 		}
@@ -979,6 +1039,7 @@ export class WorldScene extends Phaser.Scene {
 				decalCount: DECALS_PER_CLUSTER,
 				ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
 				seed: 20260928,
+				tint: this.skin.groundTint ?? undefined,
 			}).setDepth(0.5);
 
 			tintOverlay.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
@@ -1020,25 +1081,43 @@ export class WorldScene extends Phaser.Scene {
 		}
 
 		const segments: PathSegment[] = [];
+		const layerSegments: PathSegment[] = [];
 		for (const path of this.manifest.paths) {
 			const from = this.clustersById.get(path.from);
 			const to = this.clustersById.get(path.to);
 			if (!from || !to) continue;
-			segments.push({
-				id: `${path.from}::${path.to}`,
-				from: from.pos,
-				to: to.pos,
-			});
+			const id = `${path.from}::${path.to}`;
+			const points = this.pathPolyline(path, from, to);
+			const into = this.layerSeam?.isLayerPath(path) ? layerSegments : segments;
+			for (let i = 1; i < points.length; i++) {
+				const a = points[i - 1];
+				const b = points[i];
+				if (a && b)
+					into.push({
+						id: points.length > 2 ? `${id}#${i}` : id,
+						from: a,
+						to: b,
+					});
+			}
 		}
-		if (segments.length === 0) return;
-
-		// Same bounds as the ground field/camera (computeWorldBounds), not a
-		// tighter box hugging just the path endpoints — a mismatch there used
-		// to leave the path's own bake canvas clipping a stamp right at its edge.
-		if (this.availability.atmosphereArt) {
-			bakePathRibbons(this, this.computeWorldBounds(), segments).rt.setDepth(1);
-		} else {
-			bakePaths(this, this.computeWorldBounds(), segments).setDepth(1);
+		// A layer's paths bake on their own canvas: the base ribbon (its
+		// junction plazas included) stays exactly as it is without the layer,
+		// and the layer's can rise and sink with it.
+		this.layerPathBake = null;
+		for (const [list, isLayer] of [
+			[segments, false],
+			[layerSegments, true],
+		] as const) {
+			if (list.length === 0) continue;
+			const tint = this.skin.pathTint ?? undefined;
+			// Same bounds as the ground field/camera (computeWorldBounds), not a
+			// tighter box hugging just the path endpoints — a mismatch there used
+			// to leave the path's own bake canvas clipping a stamp right at its edge.
+			const rt = this.availability.atmosphereArt
+				? bakePathRibbons(this, this.computeWorldBounds(), list, tint).rt
+				: bakePaths(this, this.computeWorldBounds(), list, tint);
+			rt.setDepth(1);
+			if (isLayer) this.layerPathBake = rt;
 		}
 	}
 
@@ -1064,13 +1143,19 @@ export class WorldScene extends Phaser.Scene {
 			const from = this.clustersById.get(path.from);
 			const to = this.clustersById.get(path.to);
 			if (!from || !to) continue;
-			segments.push({
-				ax: from.pos.x,
-				ay: from.pos.y,
-				bx: to.pos.x,
-				by: to.pos.y,
-				halfWidth: EDGE_SCENERY_PATH_HALF_WIDTH,
-			});
+			const points = this.pathPolyline(path, from, to);
+			for (let i = 1; i < points.length; i++) {
+				const a = points[i - 1];
+				const b = points[i];
+				if (!a || !b) continue;
+				segments.push({
+					ax: a.x,
+					ay: a.y,
+					bx: b.x,
+					by: b.y,
+					halfWidth: EDGE_SCENERY_PATH_HALF_WIDTH,
+				});
+			}
 		}
 		this.edgeDressing = dressEdges({
 			scene: this,
@@ -1087,7 +1172,7 @@ export class WorldScene extends Phaser.Scene {
 	// one per cluster.
 	private drawClusters(): void {
 		for (const cluster of this.manifest.clusters) {
-			const isRoot = cluster.path === ".";
+			const isRoot = cluster === this.rootCluster();
 			let sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
 
 			if (isRoot) {
@@ -1164,7 +1249,7 @@ export class WorldScene extends Phaser.Scene {
 	private computePortalPositions(): void {
 		for (const cluster of this.manifest.clusters) {
 			const pathAngles: number[] = [];
-			for (const path of this.manifest.paths) {
+			for (const path of this.ringPaths(cluster.id)) {
 				if (path.from !== cluster.id && path.to !== cluster.id) continue;
 				const other = this.clustersById.get(
 					path.from === cluster.id ? path.to : path.from,
@@ -1229,6 +1314,7 @@ export class WorldScene extends Phaser.Scene {
 					ASSET_KEYS.portalArchStrip,
 				);
 				sprite.setScale(WORLD_PORTAL_SCALE).setDepth(3);
+				if (this.skin.archTint !== null) sprite.setTint(this.skin.archTint);
 				sprite.play(PORTAL_IDLE_ANIM);
 				this.portalSprites.set(portalId, sprite);
 				const portal = this.portalsById.get(portalId);
@@ -1267,6 +1353,7 @@ export class WorldScene extends Phaser.Scene {
 			.image(pos.x, pos.y, PORTAL_VARIANT_SHEET_KEY, frame)
 			.setScale(WORLD_PORTAL_SCALE)
 			.setDepth(ARCH_VARIANT_DEPTH);
+		if (this.skin.archTint !== null) overlay.setTint(this.skin.archTint);
 		this.portalVariantOverlays.set(portalId, overlay);
 	}
 
@@ -1354,7 +1441,7 @@ export class WorldScene extends Phaser.Scene {
 	// for why a world-space path monster doesn't fit that flow).
 	private drawMonsters(): void {
 		for (const monster of this.manifest.monsters) {
-			if (this.save.defeatedMonsterIds.includes(monster.id)) continue;
+			if (this.isDefeated(monster.id)) continue;
 			if (monster.portalId) this.drawPortalMonster(monster);
 			else if (monster.pathId) this.drawPathMonster(monster);
 		}
@@ -1447,7 +1534,12 @@ export class WorldScene extends Phaser.Scene {
 				...(m.pathId !== undefined ? { pathId: m.pathId } : {}),
 			})),
 		);
-		this.store.getState().setDefeatedMonsterIds(this.save.defeatedMonsterIds);
+		this.store
+			.getState()
+			.setDefeatedMonsterIds([
+				...this.save.defeatedMonsterIds,
+				...(this.layerSeam?.defeatedMonsters() ?? []),
+			]);
 	}
 
 	/**
@@ -1463,7 +1555,13 @@ export class WorldScene extends Phaser.Scene {
 	 * been drawn yet at this point in create()'s ordering).
 	 */
 	private resolveSpawnPos(): Position {
-		return this.save.playerPositions.world ?? this.defaultSpawnPos();
+		return (
+			this.initData.spawnAt ??
+			(this.layerSeam
+				? this.layerSeam.savedPosition()
+				: this.save.playerPositions.world) ??
+			this.defaultSpawnPos()
+		);
 	}
 
 	/** Where a fresh save starts — also kept clear of the guide NPC, whatever the current save says. */
@@ -1768,14 +1866,8 @@ export class WorldScene extends Phaser.Scene {
 
 	private loadChunk(cluster: Cluster): void {
 		this.chunkFetchesInFlight.add(cluster.id);
-		fetch(resolveRelativeUrl(this.worldBase, cluster.chunk))
-			.then((res) => res.json())
-			.then((raw) => {
-				const chunk: WorldChunk = WorldChunkSchema.parse(raw);
-				const files: Record<string, string> = {};
-				for (const [path, file] of Object.entries(chunk.files)) {
-					files[path] = file.content;
-				}
+		this.fetchChunkFiles(cluster)
+			.then((files) => {
 				this.chunkContents.set(cluster.id, files);
 				this.refreshEffectiveChunk(cluster.id);
 
@@ -2066,10 +2158,7 @@ export class WorldScene extends Phaser.Scene {
 			this.persistPlayerPos();
 			const monsters = (this.portalMonsterIds.get(target) ?? [])
 				.map((id) => this.monstersById.get(id))
-				.filter(
-					(m): m is Monster =>
-						m !== undefined && !this.save.defeatedMonsterIds.includes(m.id),
-				);
+				.filter((m): m is Monster => m !== undefined && !this.isDefeated(m.id));
 			this.scene.switch("file", {
 				portalId: target,
 				file: portal.file,
@@ -2077,15 +2166,25 @@ export class WorldScene extends Phaser.Scene {
 				returnSceneKey: "world",
 				monsters,
 				worldFiles: [...this.worldFiles],
+				...(this.layerSeam?.isLayerPortal(target)
+					? { saveToDisk: (text: string) => this.saveLayerFile(target, text) }
+					: {}),
+				...(this.skin.parchmentTint !== null
+					? { parchmentTint: this.skin.parchmentTint }
+					: {}),
 			});
 		}
 	}
 
 	private persistPlayerPos(): void {
-		this.save = withPlayerPosition(this.save, "world", {
-			x: this.player.body.x,
-			y: this.player.body.y,
-		});
+		const pos = { x: this.player.body.x, y: this.player.body.y };
+		// A spot inside the layer must not become where a reload (which is
+		// always without the layer) puts the player.
+		if (this.layerSeam) {
+			this.layerSeam.recordPosition(pos);
+			return;
+		}
+		this.save = withPlayerPosition(this.save, "world", pos);
 		persistSave(this.save);
 	}
 
@@ -2125,6 +2224,319 @@ export class WorldScene extends Phaser.Scene {
 		);
 	}
 
+	// --- World layer ---------------------------------------------------
+	// Everything layer-specific lives in scenes/worldLayerSeam.ts; these are
+	// the scene's hooks into it. Without a layer each one reduces to the
+	// plain base-world behaviour.
+
+	private layerPathBake: Phaser.GameObjects.RenderTexture | null = null;
+
+	/** Phaser reuses this scene object across starts and restarts: nothing from the last world (or the last layer) may carry over. */
+	private resetWorldState(): void {
+		this.clustersById = new Map();
+		this.portalsById = new Map();
+		this.portalWorldPos = new Map();
+		this.portalRingRadii = new Map();
+		this.portalSprites = new Map();
+		this.portalVariantOverlays = new Map();
+		this.portalVariants = new Map();
+		this.portalPathById = new Map();
+		this.worldFiles = new Set();
+		this.monstersById = new Map();
+		this.portalMonsterIds = new Map();
+		this.monsterSprites = new Map();
+		this.chunkContents = new Map();
+		this.effectiveChunkContents = new Map();
+		this.chunkLoadOrder = [];
+		this.editedMarkers = new Map();
+		this.placedProps = [];
+		this.focusedPortalId = null;
+		this.nearWebPortalId = null;
+		this.portalsInRange = new Set();
+		this.petOpenPending = null;
+		this.layerPathBake = null;
+	}
+
+	private ringPaths(clusterId: string): WorldPath[] {
+		return (
+			this.layerSeam?.ringPaths(clusterId) ??
+			this.manifest.paths.filter(
+				(p) => p.from === clusterId || p.to === clusterId,
+			)
+		);
+	}
+
+	private ringGeometry(clusterId: string): RingGeometry | undefined {
+		const cluster = this.clustersById.get(clusterId);
+		const radius = this.portalRingRadii.get(clusterId);
+		if (!cluster || radius === undefined) return undefined;
+		const archAngles = cluster.portalIds.flatMap((id) => {
+			const pos = this.portalWorldPos.get(id);
+			return pos
+				? [Math.atan2(pos.y - cluster.pos.y, pos.x - cluster.pos.x)]
+				: [];
+		});
+		return { radius, archAngles };
+	}
+
+	private pathPolyline(
+		path: WorldPath,
+		from: Cluster,
+		to: Cluster,
+	): Position[] {
+		return this.layerSeam?.polyline(path, from, to) ?? [from.pos, to.pos];
+	}
+
+	/** A layer cluster's chunk comes from its provider, never from under worldBase. */
+	private fetchChunkFiles(cluster: Cluster): Promise<Record<string, string>> {
+		if (this.layerSeam?.layer.clusterIds.has(cluster.id))
+			return this.layerSeam.fetchChunkFiles(cluster.id);
+		return fetch(resolveRelativeUrl(this.worldBase, cluster.chunk))
+			.then((res) => res.json())
+			.then((raw) => {
+				const chunk: WorldChunk = WorldChunkSchema.parse(raw);
+				const files: Record<string, string> = {};
+				for (const [path, file] of Object.entries(chunk.files)) {
+					files[path] = file.content;
+				}
+				return files;
+			});
+	}
+
+	/** The guide and the rift stand where they would without a layer. */
+	private basePortalPositions(): Position[] {
+		return this.baseManifest.portals.flatMap((p) => {
+			const pos = this.portalWorldPos.get(p.id);
+			return pos ? [pos] : [];
+		});
+	}
+
+	private isDefeated(monsterId: string): boolean {
+		return (
+			this.save.defeatedMonsterIds.includes(monsterId) ||
+			(this.layerSeam?.defeatedMonsters().includes(monsterId) ?? false)
+		);
+	}
+
+	private publishVisitedClusters(): void {
+		this.store
+			.getState()
+			.setVisitedClusterIds([
+				...this.save.visitedClusters,
+				...(this.layerSeam?.visitedClusters() ?? []),
+			]);
+	}
+
+	private layerDustPoints(): Position[] {
+		const seam = this.layerSeam;
+		if (!seam) return [];
+		const points: Position[] = [];
+		for (const cluster of this.manifest.clusters) {
+			if (!seam.layer.clusterIds.has(cluster.id)) continue;
+			points.push(cluster.pos);
+			for (const id of cluster.portalIds) {
+				const pos = this.portalWorldPos.get(id);
+				if (pos) points.push(pos);
+			}
+		}
+		return points.slice(0, 32);
+	}
+
+	private layerClearings(): LayerClearing[] {
+		const seam = this.layerSeam;
+		if (!seam) return [];
+		return this.manifest.clusters
+			.filter((c) => seam.layer.clusterIds.has(c.id))
+			.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: this.groundRadius(c) }));
+	}
+
+	/** Tells the HUD which layer shows, and raises that layer's objects out of the ground. */
+	private raiseLayer(before: ReadonlySet<Phaser.GameObjects.GameObject>): void {
+		const seam = this.layerSeam;
+		this.store.getState().setActiveLayer(seam?.id ?? null);
+		if (!seam) return;
+		seam.collect(
+			this,
+			before,
+			this.layerClearings(),
+			this.layerPathBake ? [this.layerPathBake] : [],
+		);
+		seam.rise(
+			this,
+			layerRiseMs(prefersReducedMotion()),
+			this.layerDustPoints(),
+		);
+	}
+
+	private setupLayerListeners(): void {
+		this.bus.on("layer:toggle", this.onLayerToggle);
+		this.bus.on("layer:reload-file", this.onLayerReloadFile);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.bus.off("layer:toggle", this.onLayerToggle);
+			this.bus.off("layer:reload-file", this.onLayerReloadFile);
+			const seam = this.layerSeam;
+			if (!seam) return;
+			// Copies of a layer file's text leave with the layer.
+			const state = this.store.getState();
+			for (const slot of state.bagSlots)
+				if (seam.isLayerPortal(slot.sourcePortalId))
+					state.removeBagSlot(slot.id);
+		});
+	}
+
+	private onLayerToggle = ({ layerId }: { layerId: string }): void => {
+		const state = this.store.getState();
+		if (
+			this.layerSwitching ||
+			this.returningToShelf ||
+			state.mode !== "world" ||
+			state.mapOpen ||
+			state.guideOpen ||
+			state.universeOpen ||
+			state.petChatOpen ||
+			state.openSignPath !== null ||
+			state.signDraft !== null
+		)
+			return;
+		if (this.layerSeam?.id === layerId) {
+			this.layerSwitching = true;
+			this.walker.cancel();
+			this.switchLayer(null);
+			return;
+		}
+		const provider = state.worldLayers.find((l) => l.id === layerId);
+		if (!provider) return;
+		this.layerSwitching = true;
+		this.walker.cancel();
+		provider
+			.load()
+			.then((manifest) => {
+				if (!this.sys.isActive() && !this.sys.isSleeping()) return;
+				const issues = worldLayerIssues(this.baseManifest, manifest);
+				if (issues.length > 0) {
+					this.layerSwitching = false;
+					this.store.getState().setLayerSaveIssue({
+						portalId: "",
+						message: `That layer no longer fits this world (${issues[0]}). Reload the page to rebuild it.`,
+						conflict: false,
+					});
+					return;
+				}
+				this.switchLayer({ provider, manifest });
+			})
+			.catch((err) => {
+				this.layerSwitching = false;
+				this.store.getState().setLayerSaveIssue({
+					portalId: "",
+					message: `The layer wouldn't open: ${err instanceof Error ? err.message : String(err)}`,
+					conflict: false,
+				});
+			});
+	};
+
+	/** Restarts this scene with `next` shown (or none), keeping the player where they stand; the layer's objects sink first when leaving. */
+	private switchLayer(next: ActiveWorldLayer | null): void {
+		const reducedMotion = prefersReducedMotion();
+		this.persistPlayerPos();
+		const here = { x: this.player.body.x, y: this.player.body.y };
+		// Leaving from inside a layer clearing, the ground there is about to
+		// vanish: go back to where the layer was entered (the world's saved spot).
+		const standingInLayer =
+			!next &&
+			this.layerSeam !== null &&
+			inLayerClearing(here, this.layerClearings());
+		const spawnAt = standingInLayer ? undefined : here;
+		const color = (next?.provider.skin ?? this.skin).transitionColor;
+		const restart = (): void => {
+			const { layer: _layer, spawnAt: _spawnAt, ...rest } = this.initData;
+			this.scene.restart({
+				...rest,
+				// Signs the owner wrote this visit live only in the store.
+				signs: this.store.getState().signs.filter((s) => !isHiddenPath(s.path)),
+				...(next ? { layer: next } : {}),
+				...(spawnAt ? { spawnAt } : {}),
+			} satisfies WorldSceneData);
+		};
+		const announce = (): void => {
+			this.bus.emit("layer:changed", {
+				layerId: next?.provider.id ?? null,
+				color,
+			});
+			this.time.delayedCall(layerTransitionDelayMs(reducedMotion), restart);
+		};
+		if (!next && this.layerSeam)
+			this.layerSeam.sink(
+				this,
+				layerRiseMs(reducedMotion),
+				this.layerDustPoints(),
+				announce,
+			);
+		else announce();
+	}
+
+	/** FileScene's saveToDisk for a layer file: resolves true once the provider has written it. */
+	private async saveLayerFile(
+		portalId: string,
+		content: string,
+	): Promise<boolean> {
+		const seam = this.layerSeam;
+		const portal = this.portalsById.get(portalId);
+		if (!seam || !portal) return false;
+		const result = await seam.saveFile(portal.file.path, content);
+		if (!result.ok) {
+			this.store.getState().setLayerSaveIssue({
+				portalId,
+				message: result.message,
+				conflict: result.conflict,
+			});
+			return false;
+		}
+		if (this.layerSeam !== seam) return true;
+		this.store.getState().setLayerSaveIssue(null);
+		const files = this.chunkContents.get(portal.clusterId);
+		if (files) {
+			this.chunkContents.set(portal.clusterId, {
+				...files,
+				[portal.file.path]: content,
+			});
+			this.refreshEffectiveChunk(portal.clusterId);
+		}
+		const fresh = seam.portal(portalId);
+		if (fresh) {
+			this.portalsById.set(portalId, fresh);
+			const index = this.manifest.portals.findIndex((p) => p.id === portalId);
+			if (index >= 0) this.manifest.portals[index] = fresh;
+		}
+		this.publishPortalIndex();
+		this.refreshPortalPreview(portalId);
+		return true;
+	}
+
+	private onLayerReloadFile = ({ portalId }: { portalId: string }): void => {
+		const seam = this.layerSeam;
+		const portal = this.portalsById.get(portalId);
+		if (!seam || !portal) return;
+		void seam
+			.refreshManifest()
+			.then(() => seam.fetchChunkFiles(portal.clusterId))
+			.then((files) => {
+				if (this.layerSeam !== seam) return;
+				this.chunkContents.set(portal.clusterId, files);
+				this.refreshEffectiveChunk(portal.clusterId);
+				const text = files[portal.file.path] ?? "";
+				if (this.store.getState().activePortalId !== portalId) return;
+				this.store.getState().setActivePortalContent(text);
+				this.bus.emit("file:content-reset", { portalId, content: text });
+			})
+			.catch((err) => {
+				this.store.getState().setLayerSaveIssue({
+					portalId,
+					message: `Couldn't reload ${portal.file.path}: ${err instanceof Error ? err.message : String(err)}`,
+					conflict: false,
+				});
+			});
+	};
+
 	// --- Save persistence ---------------------------------------------
 	// WorldScene owns `this.save` for the whole session (it outlives FileScene
 	// switches — see the M4 scene.switch/wake comment above) so it's the
@@ -2142,7 +2554,13 @@ export class WorldScene extends Phaser.Scene {
 		this.bus.on("monster:defeated", this.onMonsterDefeated);
 		this.unsubscribeBagSlots = this.store.subscribe((state, prev) => {
 			if (state.bagSlots === prev.bagSlots) return;
-			this.save = withBagSlots(this.save, state.bagSlots);
+			// A copy of a layer file's text never reaches browser storage.
+			this.save = withBagSlots(
+				this.save,
+				state.bagSlots.filter(
+					(s) => !this.layerSeam?.isLayerPortal(s.sourcePortalId),
+				),
+			);
 			persistSave(this.save);
 		});
 		this.events.once(
@@ -2167,9 +2585,13 @@ export class WorldScene extends Phaser.Scene {
 	}: {
 		clusterId: string;
 	}): void => {
+		if (this.layerSeam?.recordVisit(clusterId)) {
+			this.publishVisitedClusters();
+			return;
+		}
 		if (this.save.visitedClusters.includes(clusterId)) return;
 		this.save = withVisitedCluster(this.save, clusterId);
-		this.store.getState().setVisitedClusterIds([...this.save.visitedClusters]);
+		this.publishVisitedClusters();
 		persistSave(this.save);
 	};
 
@@ -2180,6 +2602,10 @@ export class WorldScene extends Phaser.Scene {
 		portalId: string;
 		content: string;
 	}): void => {
+		// A layer file is written by its provider (FileScene's saveToDisk ->
+		// saveLayerFile), never into the save's overrides.
+		if (editorSaveTarget(portalId, this.layerSeam?.layer ?? null) === "layer")
+			return;
 		this.save = withFileOverride(
 			this.save,
 			portalId,
@@ -2217,6 +2643,11 @@ export class WorldScene extends Phaser.Scene {
 
 	/** FileScene resolved a battle in this monster's favor (its originating annotator no longer flags anything with the same rule) — drop it from the save and every scene that renders it. */
 	private onMonsterDefeated = ({ monsterId }: { monsterId: string }): void => {
+		if (this.layerSeam?.recordDefeat(monsterId)) {
+			this.removeMonsterSprite(monsterId);
+			this.publishMonsterIndex();
+			return;
+		}
 		if (this.save.defeatedMonsterIds.includes(monsterId)) return;
 		this.save = withDefeatedMonster(this.save, monsterId);
 		persistSave(this.save);
@@ -2226,7 +2657,11 @@ export class WorldScene extends Phaser.Scene {
 
 	private onResetWorld = (): void => {
 		const resetPortalIds = Object.keys(this.save.fileOverrides);
-		const revivedMonsterIds = [...this.save.defeatedMonsterIds];
+		const revivedMonsterIds = [
+			...this.save.defeatedMonsterIds,
+			...(this.layerSeam?.defeatedMonsters() ?? []),
+		];
+		this.layerSeam?.resetSlot();
 		this.save = emptySaveData(this.worldId);
 		this.store.getState().setVisitedClusterIds([]);
 		clearSave(this.worldId);

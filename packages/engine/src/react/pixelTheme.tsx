@@ -16,6 +16,7 @@ import { useCabnStore } from "./useCabnStore.js";
 // inside a host page, not a full page it owns, so it must never reach past
 // its own container into the host's global `:root`/`body` styles.
 const STYLE_ELEMENT_ID = "cabn-pixel-theme-style";
+const LAYER_STYLE_ELEMENT_ID = "cabn-pixel-layer-style";
 
 /** The `--cabn-*` custom-property declarations shared by both theme blocks — generated from pixelThemeTokens.ts (the tested source of truth) rather than typed twice, so the CSS this actually ships and the contrast test can never drift apart. */
 function tokenDeclarations(tokens: PixelThemeTokens): string {
@@ -659,6 +660,27 @@ const PIXEL_THEME_CSS = `
 	100% { opacity: 0; }
 }
 .cabn-transition-fade.play { animation: cabn-fade-in-out linear forwards; }
+/* An active world layer's entries (search results, spyglass rows). */
+.cabn-layer-badge {
+	display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px;
+	font-size: 10px; line-height: 15px; vertical-align: middle;
+	background: var(--cabn-layer-badge-bg, #b3202c); color: var(--cabn-layer-badge-text, #fff3ef);
+}
+.cabn-hotbar-slot.layer-tool img { filter: hue-rotate(-40deg) saturate(1.6); }
+/* A world layer switch: a radial pulse in the layer's colour, peaking (40%)
+   while WorldScene restarts under it. Never fully opaque, so the layer's
+   objects rising out of the ground read through its tail. */
+.cabn-transition-layer {
+	position: absolute; inset: 0; pointer-events: none; background: #000;
+	-webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.55) 0%, #000 75%);
+	mask-image: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.55) 0%, #000 75%);
+}
+@keyframes cabn-layer-pulse {
+	0% { opacity: 0; }
+	40% { opacity: 0.85; }
+	100% { opacity: 0; }
+}
+.cabn-transition-layer.play { animation: cabn-layer-pulse ease-out forwards; }
 
 .cabn-transition-bars { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .cabn-transition-bars .bar { position: absolute; left: 0; right: 0; height: 52%; background: var(--cabn-border-outer, #221a4d); }
@@ -691,6 +713,31 @@ const PIXEL_THEME_CSS = `
 `;
 
 let styleInjected = false;
+
+/**
+ * The active world layer's palette (store.layerUiTokens) as its own style
+ * element, rewritten when the layer changes. `[data-layer][data-theme]`
+ * outranks the day and night blocks, so it wins in both.
+ */
+function applyLayerStyle(tokens: PixelThemeTokens | null): void {
+	if (typeof document === "undefined") return;
+	let style = document.getElementById(LAYER_STYLE_ELEMENT_ID);
+	if (!tokens) {
+		style?.remove();
+		return;
+	}
+	if (!style) {
+		style = document.createElement("style");
+		style.id = LAYER_STYLE_ELEMENT_ID;
+		document.head.appendChild(style);
+	}
+	style.textContent = `.cabn-pixel-root[data-layer][data-theme] {${tokenDeclarations(tokens)}
+	--cabn-inset-tint: rgba(255, 255, 255, 0.06);
+	--cabn-editor-gutter-border: rgba(0, 0, 0, 0.35);
+	--cabn-layer-badge-bg: ${toCssColor(tokens.accentPink)};
+	--cabn-layer-badge-text: ${toCssColor(tokens.text)};
+}`;
+}
 
 /** Idempotent — safe to call from multiple mounted <PixelTheme> instances (e.g. two CabnGame widgets, or a test remounting one) since the stylesheet's content never varies per-instance. */
 function ensurePixelThemeStyleInjected(): void {
@@ -725,10 +772,17 @@ export function PixelTheme({
 	children,
 }: PixelThemeProps): React.ReactElement {
 	const timeOfDay = useCabnStore(store, (s) => s.timeOfDay);
+	const layerId = useCabnStore(store, (s) => s.activeLayerId);
+	const layerTokens = useCabnStore(store, (s) => s.layerUiTokens);
 
 	useEffect(() => {
 		ensurePixelThemeStyleInjected();
 	}, []);
+
+	useEffect(() => {
+		applyLayerStyle(layerTokens);
+		return () => applyLayerStyle(null);
+	}, [layerTokens]);
 
 	return (
 		// pointerEvents: "none" so this always-present, full-bleed wrapper never
@@ -741,6 +795,7 @@ export function PixelTheme({
 		<div
 			className="cabn-pixel-root"
 			data-theme={timeOfDay}
+			data-layer={layerId !== null && layerTokens ? layerId : undefined}
 			style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
 		>
 			{children}

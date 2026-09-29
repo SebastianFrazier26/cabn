@@ -3,18 +3,17 @@ import type { StoreApi } from "zustand/vanilla";
 import { FX_SPARK_KEY } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
 import { attachGlow, updateGlowParams } from "../fx/GlowPipeline.js";
-import {
-	DAY_GLOW_PARAMS,
-	lerpGlowParams,
-	NIGHT_GLOW_PARAMS,
-} from "../fx/glowParams.js";
+import { glowPresets, lerpGlowParams } from "../fx/glowParams.js";
 import {
 	DAY_NIGHT_CROSSFADE_MS,
 	easeBlend,
 	gradeColorAt,
+	lerp,
+	lerpColor,
 	stepBlend,
 	targetBlend,
 } from "../systems/dayNight.js";
+import type { WorldSkin } from "../systems/worldLayer.js";
 import {
 	createLightPool,
 	type LightPool,
@@ -44,6 +43,8 @@ const OVERHANG_PX = 2;
 export interface AtmosphereOptions {
 	lights: readonly LightPoolOptions[];
 	reducedMotion: boolean;
+	/** A world skin's grade, wash and glow; omitted (or null fields), today's. */
+	skin?: Pick<WorldSkin, "grade" | "wash" | "glow">;
 }
 
 export type BlendListener = (blend: number) => void;
@@ -107,8 +108,20 @@ export function attachAtmosphere(
 	scene.textures.get(FX_SPARK_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
 	const eraser = scene.make.image({ key: FX_SPARK_KEY }, false);
 
-	const glowParams = () =>
-		lerpGlowParams(DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS, eased);
+	const skin = options.skin;
+	const presets = glowPresets(skin?.glow);
+	const glowParams = () => lerpGlowParams(presets.day, presets.night, eased);
+	const gradeColor = (): number =>
+		skin?.grade
+			? lerpColor(skin.grade.day, skin.grade.night, easeBlend(rawBlend))
+			: gradeColorAt(rawBlend);
+	const washAlpha = (): number =>
+		skin?.wash
+			? lerp(skin.wash.dayAlpha, skin.wash.nightAlpha, eased)
+			: eased > 0.001
+				? WASH_ALPHA * eased
+				: 0;
+	const washColor = skin?.wash?.color ?? WASH_COLOR;
 	attachGlow(scene, glowParams);
 
 	const redraw = (): void => {
@@ -116,10 +129,11 @@ export function attachAtmosphere(
 		const view = camera.worldView;
 		const zoom = camera.zoom || 1;
 		grade.clear();
-		grade.fill(gradeColorAt(rawBlend), 1);
+		grade.fill(gradeColor(), 1);
 		wash.clear();
-		wash.setVisible(eased > 0.001);
-		if (eased > 0.001) wash.fill(WASH_COLOR, WASH_ALPHA * eased);
+		const alpha = washAlpha();
+		wash.setVisible(alpha > 0);
+		if (alpha > 0) wash.fill(washColor, alpha);
 		for (const pool of pools) {
 			const flicker = poolFlicker(pool, now, options.reducedMotion);
 			updateLightPool(pool, eased, flicker);

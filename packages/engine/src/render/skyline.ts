@@ -54,6 +54,8 @@ export interface SkylineOptions {
 	seed: string;
 	atmosphere: AtmosphereHandle;
 	reducedMotion: boolean;
+	/** A world skin's multiply tint on the sky, moon and skyline pieces (systems/worldLayer.ts). */
+	tint?: number;
 }
 
 export interface SkylineHandle {
@@ -198,6 +200,18 @@ export function attachSkyline(
 				.setDepth(LAYER_DEPTH[el.layer] + (variant === "night" ? 0.001 : 0));
 			objects.push(image);
 			if (variant === "night") nightTwins.push(image);
+		}
+	}
+
+	if (opts.tint !== undefined) {
+		const tint = opts.tint;
+		for (const object of objects) {
+			if (
+				object instanceof Phaser.GameObjects.Image &&
+				object.blendMode !== Phaser.BlendModes.ADD &&
+				object.texture.key !== SKY_STAR_KEY
+			)
+				object.setTint(tint);
 		}
 	}
 

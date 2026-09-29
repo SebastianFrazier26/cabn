@@ -12,7 +12,8 @@ import type {
 
 /**
  * `@cabn/engine/owner` — the clients for `cabn serve --owner`'s loopback
- * owner API: signs (`/owner/signs/*`) and git (`/owner/git/*`), one token.
+ * owner API: signs (`/owner/signs/*`), git (`/owner/git/*`) and the shadow
+ * realm (`/owner/shadow/*`, as a world layer), one token.
  * A separate subpath (like ./local-exec) so only the local host page ever
  * bundles it: hosted builds and the demo import the main entry, which has
  * no reference to this module or to the owner token it carries.
@@ -114,6 +115,15 @@ export function createOwnerGitClient(opts: OwnerGitClientOptions): OwnerGitApi {
 	};
 }
 
+// The shadow realm (hidden files) — owner-only, so reachable from this
+// entry alone; the main entry has only the neutral world-layer seam.
+export {
+	createOwnerShadowClient,
+	type OwnerShadowClientOptions,
+} from "./shadow/client.js";
+export { createShadowLayer, SHADOW_LAYER_ID } from "./shadow/provider.js";
+export { SHADOW_SKIN } from "./shadow/skin.js";
+export { CRIMSON_TOKENS } from "./shadow/tokens.js";
 export type {
 	OwnerCapability,
 	OwnerCommitRequest,
@@ -121,3 +131,4 @@ export type {
 	OwnerGitStatus,
 } from "./systems/ownerApi.js";
 export { OwnerApiError } from "./systems/ownerApi.js";
+export type { WorldLayerProvider } from "./systems/worldLayer.js";

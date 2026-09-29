@@ -140,12 +140,14 @@ export function attachSky(
 	seed: string,
 	atmosphere: AtmosphereHandle,
 	reducedMotion: boolean,
+	skylineTint?: number,
 ): { destroy(): void } {
 	const skyline = attachSkyline(scene, {
 		bounds,
 		seed,
 		atmosphere,
 		reducedMotion,
+		...(skylineTint !== undefined ? { tint: skylineTint } : {}),
 	});
 	const clouds = attachCloudShadows(
 		scene,

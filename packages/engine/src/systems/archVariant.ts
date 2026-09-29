@@ -229,6 +229,14 @@ export const ARCH_VARIANT_GLOW: Record<ArchVariant, number> = {
 };
 
 /** Overlay-sheet frame for a variant, or null for the plain base arch. */
+/** The plaque light's colour: a world skin's arch tint when it has one, else the variant's rune colour. */
+export function archVariantGlow(
+	variant: ArchVariant,
+	skinTint: number | null = null,
+): number {
+	return skinTint ?? ARCH_VARIANT_GLOW[variant];
+}
+
 export function archVariantFrame(variant: ArchVariant): number | null {
 	if (variant === "generic") return null;
 	return ARCH_VARIANTS.indexOf(variant);

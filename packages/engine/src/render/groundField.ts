@@ -53,6 +53,8 @@ export function bakeGroundField(
 	bounds: FieldBounds,
 	fieldSheetKey: string,
 	seed: number,
+	/** A world skin's multiply tint (systems/worldLayer.ts); omitted, the art's own colours. */
+	tint?: number,
 ): Phaser.GameObjects.RenderTexture[] {
 	const { startCol, endCol, startRow, endRow } = computeChunkRange(
 		bounds,
@@ -92,6 +94,7 @@ export function bakeGroundField(
 					);
 				}
 			}
+			if (tint !== undefined) rt.setTint(tint);
 			chunks.push(rt);
 		}
 	}

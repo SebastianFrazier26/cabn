@@ -10,6 +10,7 @@ import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, SignDraft } from "../bridge/store.js";
 import { isValidSignFileName, type SignLinkWorld } from "../systems/signs.js";
+import { signWriterFor } from "../systems/worldLayer.js";
 import { SignTargetPicker } from "./SignTargetPicker.js";
 import { SignView } from "./SignView.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -40,6 +41,7 @@ function SignEditorPanel({
 	const portals = useCabnStore(store, (s) => s.portals);
 	const folders = useCabnStore(store, (s) => s.folderClusters);
 	const signs = useCabnStore(store, (s) => s.signs);
+	const layerActive = useCabnStore(store, (s) => s.activeLayerId !== null);
 	const isNew = draft.path === null;
 	const [near, setNear] = useState(seynNearValue(draft.near));
 	const [autoSpot, setAutoSpot] = useState(draft.offset === null);
@@ -91,7 +93,7 @@ function SignEditorPanel({
 	);
 
 	const problem = (() => {
-		if (!isValidSignFileName(fileName))
+		if (!isValidSignFileName(fileName, { allowHidden: layerActive }))
 			return "File name: letters, digits, . _ - and spaces, ending in .seyn, inside the world";
 		if (isNew && signs.some((s) => s.path === fileName))
 			return "A sign with that file name already exists";
@@ -106,7 +108,7 @@ function SignEditorPanel({
 	);
 
 	const save = useCallback(async () => {
-		const api = store.getState().ownerSigns;
+		const api = signWriterFor(store.getState(), fileName);
 		if (!api || problem || saving) return;
 		setSaving(true);
 		setError(null);

@@ -2,9 +2,11 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import { toCssColor } from "../palette.js";
 import { isRepoLoaded, loadBrowserRepo } from "../systems/git/loadRepo.js";
 import type { CommitChanges, RepoCommit } from "../systems/git/types.js";
 import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
+import { LAYER_FALLBACK_COLOR } from "../systems/worldLayer.js";
 import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -289,6 +291,10 @@ function MapDrawing({
 	const rift = useCabnStore(store, (s) => s.riftPos);
 	const visited = useCabnStore(store, (s) => s.visitedClusterIds);
 	const defeated = useCabnStore(store, (s) => s.defeatedMonsterIds);
+	const layerTokens = useCabnStore(store, (s) => s.layerUiTokens);
+	const layerColor = toCssColor(
+		layerTokens?.accentPink ?? LAYER_FALLBACK_COLOR,
+	);
 	const width = large ? 720 : 200;
 	const height = large ? 400 : 140;
 	const project = useMemo(
@@ -317,7 +323,7 @@ function MapDrawing({
 						y1={from.y}
 						x2={to.x}
 						y2={to.y}
-						stroke="#b3a178"
+						stroke={p.layer ? layerColor : "#b3a178"}
 						strokeWidth={large ? 3 : 1}
 						strokeDasharray={p.kind === "import" ? "4 3" : undefined}
 					/>
@@ -332,7 +338,9 @@ function MapDrawing({
 							cy={p.y}
 							r={large ? 24 : 9}
 							fill={visited.includes(c.id) ? "#668763" : "#354a3d"}
-							stroke="#a1b58b"
+							stroke={c.layer ? layerColor : "#a1b58b"}
+							strokeWidth={c.layer ? 3 : 1}
+							data-layer={c.layer ? "" : undefined}
 						/>
 						<title>
 							{c.label}
@@ -382,11 +390,12 @@ function MapDrawing({
 							}}
 							data-testid={large ? "map-portal" : undefined}
 							data-portal-id={p.id}
+							data-layer={p.layer ? "" : undefined}
 							x={point.x - 5}
 							y={point.y - 5}
 							width={10}
 							height={10}
-							fill="#71d6d9"
+							fill={p.layer ? layerColor : "#71d6d9"}
 							style={{ cursor: "pointer" }}
 							onClick={() => {
 								if (store.getState().guideOpen) return;

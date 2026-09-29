@@ -209,15 +209,22 @@ export function suggestSignPath(
  * The same rule `cabn serve`'s owner API enforces — checked in the editor
  * too so a bad name is caught before a round trip: a relative path of plain
  * segments ending in a `.seyn` file name that starts with a letter or digit.
+ * `allowHidden` (only while a world layer is showing) also admits hidden
+ * folders, never `.git`.
  */
-export function isValidSignFileName(path: string): boolean {
+export function isValidSignFileName(
+	path: string,
+	opts: { allowHidden?: boolean } = {},
+): boolean {
 	if (path.length === 0 || path.length > 512) return false;
 	const segments = path.split("/");
 	const file = segments.pop() ?? "";
 	if (!/^[A-Za-z0-9][A-Za-z0-9._ -]{0,100}\.seyn$/.test(file)) return false;
-	return segments.every(
-		(s) =>
-			/^[A-Za-z0-9_][A-Za-z0-9._ -]{0,100}$/.test(s) && s !== "node_modules",
+	return segments.every((s) =>
+		opts.allowHidden && s.startsWith(".")
+			? /^\.[A-Za-z0-9_][A-Za-z0-9._ -]{0,100}$/.test(s) &&
+				s.toLowerCase() !== ".git"
+			: /^[A-Za-z0-9_][A-Za-z0-9._ -]{0,100}$/.test(s) && s !== "node_modules",
 	);
 }
 

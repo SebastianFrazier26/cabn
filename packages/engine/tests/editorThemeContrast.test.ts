@@ -4,6 +4,7 @@ import {
 	NIGHT_TOKENS,
 	type PixelThemeTokens,
 } from "../src/react/pixelThemeTokens.js";
+import { CRIMSON_TOKENS } from "../src/shadow/tokens.js";
 
 /** WCAG 2.x relative-luminance contrast ratio for two opaque 0xRRGGBB sRGB colors. */
 function contrastRatio(a: number, b: number): number {
@@ -61,6 +62,15 @@ describe("pixel-theme editor contrast", () => {
 
 	describe("night", () => {
 		test.each(editorPairs(NIGHT_TOKENS))(
+			"%s clears WCAG AA (4.5:1) for text",
+			(_role, fg, bg) => {
+				expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+			},
+		);
+	});
+
+	describe("crimson (world layer)", () => {
+		test.each(editorPairs(CRIMSON_TOKENS))(
 			"%s clears WCAG AA (4.5:1) for text",
 			(_role, fg, bg) => {
 				expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);

@@ -1,16 +1,19 @@
 import type { Position, WorldManifest } from "@cabn/world-schema";
+import { type LayerIds, worldPathId } from "./worldLayer.js";
 
 export interface MapMarker {
 	id: string;
 	label: string;
 	pos: Position;
+	/** Added by the active world layer (drawn in its colour). */
+	layer?: true;
 }
 
 /** Scene-owned coordinates, copied once: React never reads Phaser objects. */
 export interface WorldMapSummary {
 	name: string;
 	clusters: MapMarker[];
-	paths: { from: Position; to: Position; kind: string }[];
+	paths: { from: Position; to: Position; kind: string; layer?: true }[];
 	portals: MapMarker[];
 	monsters: MapMarker[];
 }
@@ -18,25 +21,45 @@ export interface WorldMapSummary {
 export function summarizeWorldMap(
 	manifest: WorldManifest,
 	portalPositions: ReadonlyMap<string, Position>,
+	layer: LayerIds | null = null,
 ): WorldMapSummary {
 	const clusters = new Map(manifest.clusters.map((c) => [c.id, c.pos]));
+	const mark = (isLayer: boolean | undefined) =>
+		isLayer ? { layer: true as const } : {};
 	return {
 		name: manifest.meta.name,
 		clusters: manifest.clusters.map((c) => ({
 			id: c.id,
 			label: c.label,
 			pos: { ...c.pos },
+			...mark(layer?.clusterIds.has(c.id)),
 		})),
 		paths: manifest.paths.flatMap((p) => {
 			const from = clusters.get(p.from);
 			const to = clusters.get(p.to);
 			return from && to
-				? [{ from: { ...from }, to: { ...to }, kind: p.kind }]
+				? [
+						{
+							from: { ...from },
+							to: { ...to },
+							kind: p.kind,
+							...mark(layer?.pathIds.has(worldPathId(p))),
+						},
+					]
 				: [];
 		}),
 		portals: manifest.portals.flatMap((p) => {
 			const pos = portalPositions.get(p.id);
-			return pos ? [{ id: p.id, label: p.file.path, pos: { ...pos } }] : [];
+			return pos
+				? [
+						{
+							id: p.id,
+							label: p.file.path,
+							pos: { ...pos },
+							...mark(layer?.portalIds.has(p.id)),
+						},
+					]
+				: [];
 		}),
 		monsters: manifest.monsters.flatMap((m) => {
 			let pos = m.portalId ? portalPositions.get(m.portalId) : undefined;
@@ -53,6 +76,7 @@ export function summarizeWorldMap(
 							id: m.id,
 							label: `${m.species}: ${m.error.message}`,
 							pos: { ...pos },
+							...mark(layer?.monsterIds.has(m.id)),
 						},
 					]
 				: [];
