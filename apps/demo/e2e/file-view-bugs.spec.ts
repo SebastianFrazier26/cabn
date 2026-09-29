@@ -358,6 +358,9 @@ test("monsters follow their code as lines are inserted and deleted above them", 
 	await page.keyboard.press("Alt+KeyQ");
 	await expect.poll(async () => (await state(page))?.mode).toBe("editor");
 	await expect(page.locator(".cm-content")).toBeFocused();
+	// Past CodeMirror's 500ms history grouping delay, so the Backspace is its
+	// own undo step instead of merging into the Enter it deletes.
+	await page.waitForTimeout(600);
 	await page.keyboard.press("Backspace");
 	await page.waitForTimeout(200);
 	await page.keyboard.press("Escape");
