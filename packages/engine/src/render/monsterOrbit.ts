@@ -6,6 +6,7 @@ import {
 	motionOffset,
 	motionProfile,
 	type OrbitEllipse,
+	type OrbitRect,
 	orbitAngle,
 	type Point,
 	pathFigureEight,
@@ -122,6 +123,27 @@ export class MonsterOrbits {
 			if (!visible) continue;
 			this.step(entry, t, deltaMs);
 		}
+	}
+
+	/** World-space box this portal's live monsters can reach (orbit at full wobble plus sprite and bob), or null when none orbit it. */
+	portalReach(portalId: string): OrbitRect | null {
+		let x0 = Number.POSITIVE_INFINITY;
+		let y0 = Number.POSITIVE_INFINITY;
+		let x1 = Number.NEGATIVE_INFINITY;
+		let y1 = Number.NEGATIVE_INFINITY;
+		for (const { anchor, profile, sprite } of this.entries.values()) {
+			if (anchor.kind !== "portal" || anchor.portalId !== portalId) continue;
+			const { cx, cy, rx, ry } = anchor.ellipse;
+			const k = 1 + profile.radialWobble;
+			const pad =
+				Math.max(sprite.displayWidth, sprite.displayHeight) * 0.75 +
+				profile.bobPx;
+			x0 = Math.min(x0, cx - rx * k - pad);
+			x1 = Math.max(x1, cx + rx * k + pad);
+			y0 = Math.min(y0, cy - ry * k - pad);
+			y1 = Math.max(y1, cy + ry * k + pad);
+		}
+		return x0 <= x1 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
 	}
 
 	destroy(): void {

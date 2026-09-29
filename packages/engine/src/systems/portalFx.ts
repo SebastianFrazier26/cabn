@@ -254,6 +254,18 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
 	);
 }
 
+export function unionRect(a: Rect, b: Rect | null): Rect {
+	if (!b) return a;
+	const x = Math.min(a.x, b.x);
+	const y = Math.min(a.y, b.y);
+	return {
+		x,
+		y,
+		w: Math.max(a.x + a.w, b.x + b.w) - x,
+		h: Math.max(a.y + a.h, b.y + b.h) - y,
+	};
+}
+
 /** Two projected rects equal to the half-pixel — skips re-styling the DOM on frames the camera didn't actually move it. */
 export function sameRect(a: Rect | null, b: Rect): boolean {
 	if (!a) return false;
@@ -336,6 +348,24 @@ export function miniPageScale(openingCssWidth: number): number {
  */
 export const DOCK_PAGE_LAYOUT_WIDTH = 640;
 
+/**
+ * A dock narrowed to clear the arch (dockPlacement.ts) would shrink a
+ * 640-wide layout past readable, so its page lays out narrower instead,
+ * down to the mini-page's phone width, keeping the scale at or above this
+ * (16px text ~10px). 0.65 rather than higher so a full-width dock's slot
+ * (~446px at 1280) still gets the unchanged 640 layout.
+ */
+export const DOCK_MIN_PAGE_SCALE = 0.65;
+
+export function dockLayoutWidth(slotCssWidth: number): number {
+	return Math.round(
+		Math.min(
+			DOCK_PAGE_LAYOUT_WIDTH,
+			Math.max(MINI_PAGE_VIRTUAL_WIDTH, slotCssWidth / DOCK_MIN_PAGE_SCALE),
+		),
+	);
+}
+
 export function pageScale(cssWidth: number, layoutWidth: number): number {
 	return cssWidth > 0 && layoutWidth > 0 ? cssWidth / layoutWidth : 0;
 }
@@ -366,6 +396,21 @@ export function shouldDockLivePage(s: DockCandidateState): boolean {
 		focused.portalId === s.nearWebPortal.portalId &&
 		focused.preview.kind === "url" &&
 		!focused.preview.embedBlocked
+	);
+}
+
+/** PortalPreviewDock's own visibility rule, shared so the minimap can yield the dock's corner while it's up. */
+export function previewDockOpen(s: {
+	mode: string;
+	spyglassOpen: boolean;
+	focusedPortalPreview: unknown;
+	activeWorldBase: string | null;
+}): boolean {
+	return (
+		s.focusedPortalPreview !== null &&
+		s.mode === "world" &&
+		!s.spyglassOpen &&
+		s.activeWorldBase !== null
 	);
 }
 

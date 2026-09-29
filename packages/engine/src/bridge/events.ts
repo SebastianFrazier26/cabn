@@ -20,6 +20,8 @@ export type CabnEvents = {
 		portalId: string;
 		rect: { x: number; y: number; w: number; h: number };
 		occluded: boolean;
+		/** Same space: the arch sprite plus the reach of any monsters orbiting it — what the preview dock keeps clear of (systems/dockPlacement.ts). */
+		keepout: { x: number; y: number; w: number; h: number };
 	};
 	"cluster:enter": { clusterId: string };
 	"chunk:loaded": { clusterId: string };

@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { MONSTER_HOVER_SIZE } from "../src/render/scale.js";
 import {
+	MAX_RADIAL_WOBBLE,
+	monsterClearancePx,
 	motionOffset,
 	motionProfile,
 	orbitAngle,
 	pathFigureEight,
 	portalOrbitEllipse,
+	portalOrbitEllipseFor,
 	portalOrbitSeed,
 	resolveMonsterSpecies,
 	sampleOrbit,
 	staticOrbitAngle,
+	webPortalOrbitEllipse,
 } from "../src/systems/monsterOrbit.js";
+import {
+	openingRect,
+	projectWorldRect,
+	rectsOverlap,
+} from "../src/systems/portalFx.js";
 
 const TAU = Math.PI * 2;
 const ARCH = 192;
@@ -173,5 +183,110 @@ describe("resolveMonsterSpecies", () => {
 		);
 		expect(resolveMonsterSpecies("mystery", () => false)).toBe("ghost");
 		expect(resolveMonsterSpecies("imp", (s) => s === "ghost")).toBe("ghost");
+	});
+});
+
+describe("web-arch orbit", () => {
+	// WorldScene's ARCH_OPENING for the 2x world arch: 0.47 x 0.65 of the
+	// frame, centred 0.17 below the sprite centre. The live mini-page's iframe
+	// is this rect projected to the screen (projectWebPortal), so clearing it
+	// in world space clears the iframe at any camera or zoom.
+	const portal = { x: 300, y: 400 };
+	const opening = openingRect(portal, {
+		width: ARCH * 0.47,
+		height: ARCH * 0.65,
+		offsetY: ARCH * 0.17,
+	});
+	// WorldScene's worldMonsterPx.
+	const worldPx = (species: string) =>
+		Math.min((MONSTER_HOVER_SIZE[species] ?? 32) * 1.3, 72);
+	const inside = (p: { x: number; y: number }) =>
+		p.x >= opening.x &&
+		p.x <= opening.x + opening.w &&
+		p.y >= opening.y &&
+		p.y <= opening.y + opening.h;
+
+	it("leaves every other arch on today's orbit", () => {
+		expect(portalOrbitEllipseFor(portal, ARCH, { kind: "arch" })).toEqual(
+			portalOrbitEllipse(portal, ARCH),
+		);
+	});
+
+	it("the arch orbit does cross the opening, which is why web arches need their own", () => {
+		expect(
+			inside(sampleOrbit(portalOrbitEllipse(portal, ARCH), Math.PI / 2)),
+		).toBe(true);
+	});
+
+	it("every point of the path sits outside the opening, at any radial wobble", () => {
+		const e = portalOrbitEllipseFor(portal, ARCH, {
+			kind: "web",
+			opening,
+			clearancePx: 0,
+		});
+		for (const radial of [1 - MAX_RADIAL_WOBBLE, 1, 1 + MAX_RADIAL_WOBBLE]) {
+			for (let i = 0; i < 720; i++) {
+				expect(inside(sampleOrbit(e, (i / 720) * TAU, 1, radial))).toBe(false);
+			}
+		}
+	});
+
+	it.each(Object.keys(MONSTER_HOVER_SIZE))(
+		"a %s's drawn bounds never touch the opening or the on-screen iframe over many laps",
+		(species) => {
+			const px = worldPx(species);
+			const e = portalOrbitEllipseFor(portal, ARCH, {
+				kind: "web",
+				opening,
+				clearancePx: monsterClearancePx(species, px),
+			});
+			const profile = motionProfile(species);
+			const camera = {
+				view: { x: 120, y: 200, w: 1024, h: 768 },
+				zoom: 1.5,
+				offsetX: 0,
+				offsetY: 0,
+			};
+			const canvas = { left: 0, top: 55, scaleX: 1, scaleY: 1 };
+			const iframe = projectWorldRect(opening, camera, canvas);
+			// Mirrors render/monsterOrbit.ts's step(): orbit sample + species offset.
+			for (let i = 0; i < 1500; i++) {
+				const t = i * 0.037;
+				const m = motionOffset(profile, t, 0.37);
+				const s = sampleOrbit(
+					e,
+					orbitAngle(0, 1, t, 0.55, 1, 0),
+					1,
+					m.radialScale,
+				);
+				const half =
+					((px * s.scale) / 2) *
+					(Math.abs(Math.cos(m.rotation)) + Math.abs(Math.sin(m.rotation)));
+				const bounds = {
+					x: s.x - half,
+					y: s.y + m.dy - half,
+					w: half * 2,
+					h: half * 2,
+				};
+				expect(rectsOverlap(bounds, opening)).toBe(false);
+				expect(
+					rectsOverlap(projectWorldRect(bounds, camera, canvas), iframe),
+				).toBe(false);
+			}
+		},
+	);
+
+	it("is centred on the opening and still a flattened loop", () => {
+		const e = webPortalOrbitEllipse(opening, 40);
+		expect(e.cx).toBeCloseTo(opening.x + opening.w / 2);
+		expect(e.cy).toBeCloseTo(opening.y + opening.h / 2);
+		expect(e.ry).toBeLessThan(e.rx);
+	});
+
+	it("gives spinning and swaying sprites more clearance than half their size", () => {
+		expect(monsterClearancePx("ouroboros", 72)).toBeGreaterThan(
+			36 * 1.08 * Math.SQRT2,
+		);
+		expect(monsterClearancePx("bramble", 40)).toBeGreaterThan(20 * 1.08 + 2);
 	});
 });

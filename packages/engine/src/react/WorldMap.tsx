@@ -4,6 +4,7 @@ import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { isRepoLoaded, loadBrowserRepo } from "../systems/git/loadRepo.js";
 import type { CommitChanges, RepoCommit } from "../systems/git/types.js";
+import { previewDockOpen } from "../systems/portalFx.js";
 import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
 import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -22,6 +23,8 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 	const map = useCabnStore(store, (s) => s.worldMap);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const open = useCabnStore(store, (s) => s.mapOpen);
+	// The dock's header sits in the minimap's corner; M still opens the full map.
+	const dockOpen = useCabnStore(store, previewDockOpen);
 	const closeRef = useRef<HTMLButtonElement>(null);
 	const git = useCabnStore(store, (s) => s.git);
 	// null until the git reader loads (lazily: the map itself never pulls the pack in).
@@ -128,6 +131,7 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 				className="cabn-panel"
 				data-testid="world-minimap"
 				style={{
+					display: dockOpen ? "none" : undefined,
 					position: "absolute",
 					right: 16,
 					top: 66,
