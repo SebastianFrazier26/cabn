@@ -58,6 +58,7 @@ import {
 } from "../assetPaths.js";
 import { preloadGuideNpcAssets } from "../render/guideNpc.js";
 import { preloadSignAssets } from "../render/signposts.js";
+import { perfMark } from "../systems/perfMarks.js";
 import type { WorldGitData } from "./WorldScene.js";
 
 export type PreloadSceneData =
@@ -117,6 +118,7 @@ export class PreloadScene extends Phaser.Scene {
 	}
 
 	preload(): void {
+		perfMark("cabn:preload:queue-start");
 		this.load.on(
 			Phaser.Loader.Events.FILE_LOAD_ERROR,
 			(file: { key: string }) => {
@@ -227,6 +229,7 @@ export class PreloadScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		perfMark("cabn:preload:queue-complete");
 		this.anims.create({
 			key: PORTAL_IDLE_ANIM,
 			frames: this.anims.generateFrameNumbers(ASSET_KEYS.portalArchStrip, {
@@ -332,6 +335,7 @@ export class PreloadScene extends Phaser.Scene {
 			portalVariants: this.loaded(PORTAL_VARIANT_SHEET_KEY),
 		};
 
+		perfMark("cabn:preload:create-end");
 		if ("shelfManifest" in this.target) {
 			this.scene.start("shelf", { ...this.target, availability });
 		} else {

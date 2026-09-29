@@ -35,6 +35,7 @@ import {
 } from "../systems/fileBuffer.js";
 import { insertTextAt } from "../systems/insertText.js";
 import { lineMapper } from "../systems/lineAnchors.js";
+import { perfMark } from "../systems/perfMarks.js";
 import {
 	createIdleRunPlaybackState,
 	currentStep,
@@ -266,6 +267,7 @@ export function EditorOverlay({
 
 	useEffect(() => {
 		if (!isOpen || !hostRef.current || !portalId) return;
+		perfMark("cabn:spellbook:open-start");
 
 		const openedPortalId = portalId;
 		const { activePortalContent, activeFileState, editorLanguage } =
@@ -335,6 +337,7 @@ export function EditorOverlay({
 				}),
 			});
 			view.focus();
+			perfMark("cabn:spellbook:view-ready");
 
 			viewRef.current = view;
 		});

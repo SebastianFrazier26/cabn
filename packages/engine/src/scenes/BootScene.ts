@@ -20,6 +20,7 @@ import {
 } from "@cabn/world-schema";
 import Phaser from "phaser";
 import { resolveBundleUrl, resolveRelativeUrl } from "../render/resolveUrl.js";
+import { perfMark } from "../systems/perfMarks.js";
 
 export type BootSceneData =
 	| {
@@ -48,6 +49,9 @@ export class BootScene extends Phaser.Scene {
 
 	init(data: BootSceneData): void {
 		this.target = data;
+		perfMark(
+			"shelfUrl" in data ? "cabn:boot:shelf-start" : "cabn:boot:world-start",
+		);
 	}
 
 	preload(): void {
@@ -74,6 +78,7 @@ export class BootScene extends Phaser.Scene {
 				0,
 				this.target.shelfUrl.lastIndexOf("/") + 1,
 			);
+			perfMark("cabn:boot:shelf-manifest-ready");
 			this.scene.start("preload", {
 				shelfManifest,
 				shelfBase,
@@ -98,6 +103,7 @@ export class BootScene extends Phaser.Scene {
 			loadGitMeta(resolveRelativeUrl(historyBase, GIT_META_FILENAME)),
 		]).then(([media, extraMonsters, embeds, signs, gitMeta]) => {
 			if (!this.scene.isActive()) return;
+			perfMark("cabn:boot:sidecars-ready");
 			// Merged here, once, so every scene and HUD piece downstream sees one
 			// `manifest.monsters` and never needs to know monsters.json exists.
 			const manifest = mergeMonsterIndex(baseManifest, extraMonsters);
