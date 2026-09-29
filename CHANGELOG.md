@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-28 — Playtest UX fixes
+
+- **Text panels keep the keyboard.** With the pet chat, the pet setup panel or the sign editor focused, hotbar keys (L, F, B, Q, R, P) and walking no longer fire behind them, even after clicking the chat's log or one of its buttons. The panels are marked as keyboard owners, which the existing focus gate and the hotbar both honour.
+- **Live signs are searchable.** In owner mode (`cabn serve --owner`) a sign saved or deleted from the editor shows up in (or drops out of) orb search straight away, and after a reload too. The orb patches its loaded index from the live sign list instead of the server rebuilding `search-index.json`.
+- **"Stands beside" filters as you type.** The sign editor's target is a combobox: type to narrow files and folders (name matches first), arrows and Enter to pick, Escape closes just the list. It lists at most 60 matches, so big worlds stay usable.
+- **Missing `@near` targets warn.** When a sign names a file or folder the world doesn't have, `cabn build` and `cabn serve` now print a note saying where the sign stands instead. Where it stands is unchanged.
+
 ## 2026-09-28 — Git multiverse
 
 - **Git history in the world.** Building a git repository root adds its recent history as additive sidecars: `history.json` (branches, tags, commits with author names and changed files, GitHub releases) and one `history/commits/<oid>.json` diff file per commit. `world.json` is unchanged and `CABN_VERSION` stays 1; older engines never request the new files. The history is a precomputed JSON view, not a git packfile, because withheld blobs would break git's content hashes and diffs are far smaller than blobs. Read at build time by isomorphic-git 1.42.2 (MIT, exact pin); the browser never loads it (about 80 KB gzipped avoided; the new UI is about 12 KB gzipped).
