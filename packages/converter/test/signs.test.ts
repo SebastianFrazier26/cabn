@@ -86,6 +86,12 @@ describe("unresolvedSignNear", () => {
 		expect(missing("a.seyn", "@near /nowhere/")).toBe("/nowhere/");
 	});
 
+	test("gives the raw text of an @near that isn't a file or folder", () => {
+		expect(missing("a.seyn", "@near https://example.com/")).toBe(
+			"https://example.com/",
+		);
+	});
+
 	test("is undefined when @near resolves or is absent", () => {
 		expect(missing("src/a.seyn", "@near index.ts")).toBeUndefined();
 		expect(missing("a.seyn", "@near /src/")).toBeUndefined();

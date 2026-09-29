@@ -65,7 +65,8 @@ export function resolveSignAnchor(
 
 /**
  * The `@near` value when it names a file or folder this world doesn't
- * have (deleted, renamed, ignored, a typo) — resolveSignAnchor then quietly
+ * have (deleted, renamed, ignored, a typo), or the raw text of one that
+ * isn't a file or folder at all — resolveSignAnchor then quietly
  * stands the sign by a fountain instead, which the author should hear about.
  * Undefined when there's no `@near` or it resolved.
  */
@@ -75,10 +76,12 @@ export function unresolvedSignNear(
 ): string | undefined {
 	const near = doc.near;
 	if (!near) return undefined;
-	if (near.kind === "file" && world.portalIds.has(near.path)) return undefined;
-	if (near.kind === "folder" && clusterForFolder(world, near.path))
-		return undefined;
-	return seynNearValue(near);
+	if (near.kind === "file")
+		return world.portalIds.has(near.path) ? undefined : seynNearValue(near);
+	if (near.kind === "folder")
+		return clusterForFolder(world, near.path) ? undefined : seynNearValue(near);
+	// The parser only ever produces file, folder or invalid for @near.
+	return near.kind === "invalid" ? near.raw : undefined;
 }
 
 function anchorLabel(anchor: SignAnchor, world: SignWorldIndex): string {
