@@ -240,6 +240,35 @@ function scanGenericAssignments(content: string, hits: Hit[]): void {
 	}
 }
 
+export interface LeakedSecretSpan {
+	start: number;
+	end: number;
+	kind: string;
+}
+
+/**
+ * Every secret span in `content`, using the identical detection the
+ * `leakedSecret` annotator below runs — a caller that has
+ * to redact rather than just detect needs this to line up exactly with
+ * which files spawn a magpie in the first place. Unlike the annotator, this
+ * isn't capped at `MAX_SECRETS_PER_FILE`: a 6th secret still has to be
+ * redacted even though it wouldn't get its own monster.
+ */
+export function findLeakedSecretSpans(
+	content: string,
+	path: string,
+): LeakedSecretSpan[] {
+	const hits: Hit[] = [];
+	scanPrivateKeys(content, hits);
+	scanProviders(content, hits);
+	scanConnectionStrings(content, hits);
+	if (!isTestFile(path) && !isExampleFile(path)) {
+		scanGenericAssignments(content, hits);
+	}
+	hits.sort((a, b) => a.start - b.start);
+	return hits.map(({ start, end, kind }) => ({ start, end, kind }));
+}
+
 /**
  * LeakedSecret/magpie: hard-coded credentials. Two tiers of evidence:
  *  - well-known provider prefixes (AWS, GitHub, Anthropic, OpenAI, Slack,

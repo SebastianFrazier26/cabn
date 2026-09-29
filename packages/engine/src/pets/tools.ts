@@ -1,4 +1,9 @@
 import type { PetToolCall, PetToolResult, PetToolSpec } from "./adapters.js";
+import {
+	REDACTION_MARKER,
+	redactSecrets,
+	touchesRedactedSpan,
+} from "./secretRedaction.js";
 
 /**
  * The pet's four powers, run locally over the world's own files: list,
@@ -146,6 +151,25 @@ function cite(ctx: ToolRunContext, path: string): void {
 	if (!ctx.cited.includes(path)) ctx.cited.push(path);
 }
 
+/**
+ * `withheld` used to be the only guard on a magpie-flagged file: block it
+ * outright. Now the redaction scan (same patterns the magpie uses) is the
+ * real gate — a file with secrets in it gets sent redacted regardless of
+ * `withheld`, and `withheld` only still blocks outright when the scan finds
+ * nothing, which keeps a future non-secret withholding reason from silently
+ * turning into a pass-through.
+ */
+function guardWithheld(
+	ctx: ToolRunContext,
+	call: PetToolCall,
+	path: string,
+	secretCount: number,
+): PetToolResult | null {
+	if (secretCount > 0) return null;
+	const withheld = ctx.world.withheld(path);
+	return withheld ? fail(call, withheld) : null;
+}
+
 export async function runPetTool(
 	call: PetToolCall,
 	ctx: ToolRunContext,
@@ -172,16 +196,20 @@ export async function runPetTool(
 					call,
 					`No file "${path}" in this world. Use list_files or search.`,
 				);
-			const withheld = ctx.world.withheld(path);
-			if (withheld) return fail(call, withheld);
 			const text = await ctx.world.readText(path);
 			if (text === null)
 				return fail(
 					call,
 					`"${path}" is binary or unreadable; only text files can be read.`,
 				);
+			const { text: safeText, count: secretsRedacted } = redactSecrets(
+				text,
+				path,
+			);
+			const blocked = guardWithheld(ctx, call, path, secretsRedacted);
+			if (blocked) return blocked;
 			cite(ctx, path);
-			const lines = text.split("\n");
+			const lines = safeText.split("\n");
 			const start = Math.max(1, int(call.args.start_line) ?? 1);
 			const end = Math.min(
 				lines.length,
@@ -202,6 +230,12 @@ export async function runPetTool(
 				end_line: lastLine,
 				truncated,
 				content,
+				...(secretsRedacted > 0
+					? {
+							secrets_redacted: secretsRedacted,
+							note: `${secretsRedacted} hard-coded secret${secretsRedacted === 1 ? "" : "s"} in this file ${secretsRedacted === 1 ? "was" : "were"} replaced with ${REDACTION_MARKER} before it reached you.`,
+						}
+					: {}),
 			});
 		}
 		case "search": {
@@ -219,8 +253,6 @@ export async function runPetTool(
 				return fail(call, "propose_edit needs old_text and new_text strings.");
 			if (!known(ctx, path))
 				return fail(call, `No file "${path}" in this world.`);
-			const withheld = ctx.world.withheld(path);
-			if (withheld) return fail(call, withheld);
 			const text = await ctx.world.readText(path);
 			if (text === null) return fail(call, `"${path}" is not a text file.`);
 			if (text.length > ctx.limits.maxProposalFileChars)
@@ -235,8 +267,22 @@ export async function runPetTool(
 						? "old_text was not found in the file. Read the file again and copy the exact text."
 						: `old_text appears ${occurrences} times; include more surrounding lines so it matches once.`,
 				);
-			cite(ctx, path);
 			const index = text.indexOf(oldText);
+			// Matched against the real text, so a hunk built from the redacted
+			// view (old_text containing the marker) already fails to match above
+			// in the common case; this also catches the narrower case where
+			// old_text is real text that merely overlaps a secret's line — a
+			// proposal is never allowed to touch that line at all (see
+			// secretRedaction.ts for why rejecting beats re-inserting the secret).
+			const { spans: secretSpans } = redactSecrets(text, path);
+			if (touchesRedactedSpan(text, secretSpans, index, index + oldText.length))
+				return fail(
+					call,
+					"That range includes a hard-coded secret this file's magpie is guarding. Proposals can't touch those lines — remove the secret (or ask the player to edit that line directly) first.",
+				);
+			const blocked = guardWithheld(ctx, call, path, secretSpans.length);
+			if (blocked) return blocked;
+			cite(ctx, path);
 			const proposal: PetProposal = {
 				id: ctx.newProposalId(),
 				path,
