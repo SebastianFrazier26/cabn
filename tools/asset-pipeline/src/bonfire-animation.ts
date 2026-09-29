@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import type { RGB } from "./color.js";
@@ -8,6 +8,7 @@ import {
 	upscaleNearest,
 	writeRawRgbaPng,
 } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { manifestJsonPath, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { renderPixelMap } from "./pixelmap.js";
 import { bonfireFrame } from "./pixelmaps/bonfire.js";
@@ -88,10 +89,7 @@ async function main() {
 		path.join(placeholdersDir, "bonfire_strip_soft.png"),
 	);
 
-	await writeFile(
-		manifestJsonPath,
-		`${JSON.stringify(manifest, null, "\t")}\n`,
-	);
+	await writeJsonFile(manifestJsonPath, manifest);
 
 	console.log(
 		`Wrote ${TOTAL_FRAMES} bonfire animation frames and strips to ${placeholdersDir}`,

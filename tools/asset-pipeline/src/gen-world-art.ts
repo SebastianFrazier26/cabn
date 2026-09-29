@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { RGB } from "./color.js";
 import {
@@ -8,6 +8,7 @@ import {
 	upscaleNearest,
 	writeRawRgbaPng,
 } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { generatedDir, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type Grid, toPixelMap } from "./pixel-shapes.js";
 import { renderPixelMap } from "./pixelmap.js";
@@ -991,10 +992,7 @@ async function main() {
 		pathRibbon,
 		mockScene: "mock-scene.png",
 	};
-	await writeFile(
-		path.join(worldArtDir, "tile-index.json"),
-		`${JSON.stringify(tileIndex, null, "\t")}\n`,
-	);
+	await writeJsonFile(path.join(worldArtDir, "tile-index.json"), tileIndex);
 
 	const decalCount = (decals.index.frames as unknown[]).length;
 	const pathStampCount = (pathStamps.index.frames as unknown[]).length;

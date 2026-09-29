@@ -1,7 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { RGB } from "./color.js";
 import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { generatedDir, paletteJsonPath, placeholdersDir } from "./paths.js";
 import type { PixelMap } from "./pixelmap.js";
 import { renderPixelMap } from "./pixelmap.js";
@@ -146,7 +147,7 @@ async function main() {
 		);
 	}
 
-	await writeFile(uiManifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
+	await writeJsonFile(uiManifestPath, manifest);
 }
 
 const isMain =

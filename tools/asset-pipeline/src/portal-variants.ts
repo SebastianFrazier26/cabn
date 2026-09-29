@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import type { RGB } from "./color.js";
 import { composeSheet, compositeInto, type RawImage } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { generatedDir, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { renderPixelMap } from "./pixelmap.js";
 import { PORTAL_STRIP_FRAME_PX, portalArch } from "./pixelmaps/portal-arch.js";
@@ -170,10 +171,7 @@ async function main() {
 			label: archVariantLabel(id),
 		})),
 	};
-	await writeFile(
-		path.join(placeholdersDir, INDEX_FILE),
-		`${JSON.stringify(index, null, "\t")}\n`,
-	);
+	await writeJsonFile(path.join(placeholdersDir, INDEX_FILE), index);
 
 	await mkdir(REVIEW_DIR, { recursive: true });
 	await writeContactSheet(
