@@ -691,9 +691,6 @@ export class FileScene extends Phaser.Scene {
 		this.monsterSprites.delete(monster.id);
 
 		if (sprite) {
-			const isActiveEncounter = monster.id === this.encounterMonsterId;
-			this.spawnVictorySparkles(sprite.x, sprite.y);
-			if (isActiveEncounter) this.showVictoryText(sprite.x, sprite.y);
 			if (!playMonsterDefeat(this, sprite)) {
 				this.tweens.add({
 					targets: sprite,
@@ -707,44 +704,6 @@ export class FileScene extends Phaser.Scene {
 			}
 		}
 		this.bus.emit("monster:defeated", { monsterId: monster.id });
-	}
-
-	private spawnVictorySparkles(x: number, y: number): void {
-		for (let i = 0; i < 6; i++) {
-			const angle = (Phaser.Math.PI2 * i) / 6;
-			const spark = this.add.circle(x, y, 2, PALETTE.gold).setDepth(7);
-			this.tweens.add({
-				targets: spark,
-				x: x + Math.cos(angle) * 22,
-				y: y + Math.sin(angle) * 22,
-				alpha: 0,
-				duration: 450,
-				ease: "Cubic.easeOut",
-				onComplete: () => spark.destroy(),
-			});
-		}
-	}
-
-	private showVictoryText(x: number, y: number): void {
-		const text = this.add
-			.text(x, y, "Fixed!", {
-				fontFamily: MONO_FONT,
-				fontSize: "14px",
-				fontStyle: "bold",
-				color: toCssColor(PALETTE.gold),
-				stroke: toCssColor(PALETTE.ink),
-				strokeThickness: 3,
-			})
-			.setOrigin(0.5)
-			.setDepth(7);
-		this.tweens.add({
-			targets: text,
-			y: y - 30,
-			alpha: 0,
-			duration: 1100,
-			ease: "Cubic.easeOut",
-			onComplete: () => text.destroy(),
-		});
 	}
 
 	/** `hit`: a save that didn't fix it still landed a blow, so the hit frame flashes; a run the monster blocks only gets the shrug. */
