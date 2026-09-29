@@ -186,6 +186,13 @@ export function portalRingBaseRadius(
 	return Math.max(PORTAL_RING_MIN_RADIUS_PX, circumference / (Math.PI * 2));
 }
 
+// This is the clearing ellipse's half-WIDTH. Since 2026-09-29 the engine
+// grows the half-height past it until the arches fit (clearingFit.ts), by at
+// most CLEARING_HEIGHT_OVERSHOOT_PX. Positions stay spaced by the width
+// alone, here and in shadowLayout.ts, so no cluster moved; two overshoots
+// still fit inside CLEARING_GAP_PX (clearingFit.test.ts checks both).
+export const CLEARING_HEIGHT_OVERSHOOT_PX = 18;
+
 export function estimatedClearingRadius(
 	portalCount: number,
 	pathCount: number,
