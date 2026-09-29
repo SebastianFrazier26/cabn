@@ -4,14 +4,15 @@
  * so a reload shows the change without restarting. Only the host page, which
  * carries the per-session owner token, can call these — see ownerAuth.ts for
  * the gate every request passes first. No shell, no other file types.
+ * `realm: "shadow"` signs live in hidden folders and only ever update the
+ * shadow realm's cached layer (ownerShadow.ts), never signs.json.
  */
-import { randomBytes } from "node:crypto";
-import { rename, rm, unlink, writeFile } from "node:fs/promises";
+import { unlink, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, dirname, join } from "node:path";
 import {
 	buildSignEntry,
 	DEFAULT_IGNORES,
+	isHiddenPath,
 	type WorldBundle,
 } from "@cabn/converter";
 import {
@@ -28,14 +29,19 @@ import { z } from "zod";
 import {
 	checkOwnerRequest,
 	OwnerPathError,
+	overwriteFileAtomic,
 	readOwnerJson,
 	resolveOwnerTarget,
 } from "./ownerAuth.js";
+import type { ShadowRealm } from "./ownerShadow.js";
 
 export const OWNER_SIGNS_SAVE_ROUTE = "/owner/signs/save";
 export const OWNER_SIGNS_DELETE_ROUTE = "/owner/signs/delete";
 
 const IGNORED_SEGMENTS = new Set(DEFAULT_IGNORES);
+const IGNORED_SEGMENTS_FOLDED = new Set(
+	DEFAULT_IGNORES.map((s) => s.toLowerCase()),
+);
 
 /**
  * Stricter than ownerAuth's generic confinement: plain names only (the same
@@ -55,23 +61,63 @@ export function isAllowedSignPath(path: string): boolean {
 	);
 }
 
-const SignPathField = z
-	.string()
-	.refine(isAllowedSignPath, { message: "not an allowed .seyn path" });
+/**
+ * The shadow realm's rule: the sign must sit in a hidden folder — that is
+ * what makes it a shadow sign — but never in `.git` or a folder the
+ * converter ignores (`.venv`, `node_modules`, ...), both case-folded for
+ * case-insensitive file systems. The file name still starts with a letter
+ * or digit.
+ */
+export function isAllowedShadowSignPath(path: string): boolean {
+	if (path.length === 0 || path.length > 512) return false;
+	const segments = path.split("/");
+	const file = segments.pop() ?? "";
+	if (!/^[A-Za-z0-9][A-Za-z0-9._ -]{0,100}\.seyn$/.test(file)) return false;
+	if (!segments.some((s) => s.startsWith("."))) return false;
+	return segments.every(
+		(s) =>
+			/^[A-Za-z0-9_.][A-Za-z0-9._ -]{0,100}$/.test(s) &&
+			s !== "." &&
+			s !== ".." &&
+			s.toLowerCase() !== ".git" &&
+			!IGNORED_SEGMENTS_FOLDED.has(s.toLowerCase()),
+	);
+}
 
-const SaveBodySchema = z.strictObject({
-	path: SignPathField,
-	content: z.string(),
-	create: z.boolean(),
-});
+type Realm = "normal" | "shadow";
 
-const DeleteBodySchema = z.strictObject({ path: SignPathField });
+function signPathAllowed(path: string, realm: Realm | undefined): boolean {
+	return realm === "shadow"
+		? isAllowedShadowSignPath(path) && isHiddenPath(path)
+		: isAllowedSignPath(path);
+}
+
+const RealmField = z.enum(["normal", "shadow"]).optional();
+
+const SaveBodySchema = z
+	.strictObject({
+		path: z.string(),
+		content: z.string(),
+		create: z.boolean(),
+		realm: RealmField,
+	})
+	.refine((b) => signPathAllowed(b.path, b.realm), {
+		message: "not an allowed .seyn path",
+	});
+
+const DeleteBodySchema = z
+	.strictObject({ path: z.string(), realm: RealmField })
+	.refine((b) => signPathAllowed(b.path, b.realm), {
+		message: "not an allowed .seyn path",
+	});
 
 export interface OwnerSignsContext {
 	dir: string;
 	port: number;
 	ownerToken: string;
 	bundle: WorldBundle;
+	/** Owner mode's shadow realm; a `realm: "shadow"` request without one is refused. */
+	shadow?: ShadowRealm;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -111,21 +157,6 @@ function worldIndex(bundle: WorldBundle) {
 		portalIds: new Set(manifest.portals.map((p) => p.id)),
 		clusters: manifest.clusters,
 	};
-}
-
-/** Write to a fresh temp file beside the target, then rename over it: a reader never sees half a sign, and rename replaces the directory entry itself rather than following whatever it points at. */
-async function overwriteFile(target: string, content: string): Promise<void> {
-	const temp = join(
-		dirname(target),
-		`.${basename(target)}.${randomBytes(6).toString("hex")}.tmp`,
-	);
-	try {
-		await writeFile(temp, content, { flag: "wx", mode: 0o644 });
-		await rename(temp, target);
-	} catch (err) {
-		await rm(temp, { force: true });
-		throw err;
-	}
 }
 
 /** Returns true when it handled the request (any owner-signs route); false for every other path, which the caller routes as before. */
@@ -173,7 +204,12 @@ async function save(
 		sendJson(res, body.status, { error: body.reason });
 		return;
 	}
-	const { path, content, create } = body.data;
+	const { path, content, create, realm } = body.data;
+	const shadow = realm === "shadow" ? ctx.shadow : undefined;
+	if (realm === "shadow" && !shadow) {
+		sendJson(res, 404, { error: "there is no shadow realm here" });
+		return;
+	}
 	if (Buffer.byteLength(content, "utf8") > SEYN_MAX_BYTES) {
 		sendJson(res, 413, { error: `a sign is at most ${SEYN_MAX_BYTES} bytes` });
 		return;
@@ -202,19 +238,22 @@ async function save(
 			throw err;
 		}
 	} else {
-		await overwriteFile(target.absolute, content);
+		await overwriteFileAtomic(target.absolute, content);
 	}
 
-	const built = buildSignEntry(path, content, worldIndex(ctx.bundle));
-	if (!built) {
+	const entry = shadow
+		? await shadow.putSign(path, content)
+		: buildSignEntry(path, content, worldIndex(ctx.bundle))?.entry;
+	if (!entry) {
 		sendJson(res, 500, { error: "this world has nowhere to put a sign" });
 		return;
 	}
-	writeSigns(ctx.bundle, [
-		...currentSigns(ctx.bundle).filter((s) => s.path !== path),
-		built.entry,
-	]);
-	sendJson(res, 200, { sign: built.entry });
+	if (!shadow)
+		writeSigns(ctx.bundle, [
+			...currentSigns(ctx.bundle).filter((s) => s.path !== path),
+			entry,
+		]);
+	sendJson(res, 200, { sign: entry });
 }
 
 async function remove(
@@ -227,7 +266,12 @@ async function remove(
 		sendJson(res, body.status, { error: body.reason });
 		return;
 	}
-	const { path } = body.data;
+	const { path, realm } = body.data;
+	const shadow = realm === "shadow" ? ctx.shadow : undefined;
+	if (realm === "shadow" && !shadow) {
+		sendJson(res, 404, { error: "there is no shadow realm here" });
+		return;
+	}
 	const target = await resolveOwnerTarget(ctx.dir, path, {
 		extension: SEYN_EXTENSION,
 	});
@@ -236,9 +280,11 @@ async function remove(
 		return;
 	}
 	await unlink(target.absolute);
-	writeSigns(
-		ctx.bundle,
-		currentSigns(ctx.bundle).filter((s) => s.path !== path),
-	);
+	if (shadow) shadow.dropSign(path);
+	else
+		writeSigns(
+			ctx.bundle,
+			currentSigns(ctx.bundle).filter((s) => s.path !== path),
+		);
 	sendJson(res, 200, { ok: true });
 }

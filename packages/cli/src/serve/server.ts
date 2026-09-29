@@ -25,6 +25,7 @@ import {
 import { bundleHostApp, hostPageHtml } from "./hostPage.js";
 import { generateOwnerToken } from "./ownerAuth.js";
 import { handleOwnerGit, type OwnerGitContext } from "./ownerGit.js";
+import { handleOwnerShadow, ShadowRealm } from "./ownerShadow.js";
 import { handleOwnerSignsRoute } from "./ownerSigns.js";
 import { runtimeForPath } from "./runtime.js";
 import {
@@ -142,6 +143,8 @@ interface ServeContext {
 	timeoutMs: number | undefined;
 	outputCapBytes: number | undefined;
 	owner: OwnerGitContext | undefined;
+	/** Owner mode only: the lazily computed, never-bundled layer of hidden files. */
+	shadow: ShadowRealm | undefined;
 }
 
 async function readJsonBody(
@@ -378,11 +381,19 @@ async function handleRequest(
 		const handled =
 			(ctx.owner &&
 				(await handleOwnerGit(req, res, url.pathname, ctx.owner))) ||
+			(ctx.shadow &&
+				(await handleOwnerShadow(req, res, url.pathname, {
+					dir: ctx.dir,
+					port: () => ctx.port,
+					ownerToken: ctx.ownerToken,
+					shadow: ctx.shadow,
+				}))) ||
 			(await handleOwnerSignsRoute(req, res, url.pathname, {
 				dir: ctx.dir,
 				port: ctx.port,
 				ownerToken: ctx.ownerToken,
 				bundle: ctx.bundle,
+				...(ctx.shadow ? { shadow: ctx.shadow } : {}),
 			}));
 		if (handled) return;
 	}
@@ -474,9 +485,15 @@ export async function startServe(
 		timeoutMs: opts.timeoutMs,
 		outputCapBytes: opts.outputCapBytes,
 		owner: undefined,
+		shadow: undefined,
 	};
 	let worldText = worldTextFromBundle(bundle);
 	if (ownerToken) {
+		ctx.shadow = new ShadowRealm({
+			dir: resolvedDir,
+			...(opts.gitDir ? { gitdir: resolvePath(opts.gitDir) } : {}),
+			bundle: () => ctx.bundle,
+		});
 		ctx.owner = {
 			dir: resolvedDir,
 			...(opts.gitDir ? { gitdir: resolvePath(opts.gitDir) } : {}),
@@ -488,6 +505,7 @@ export async function startServe(
 				ctx.bundle = next;
 				ctx.csp = frameSrcPolicy(worldEmbedOrigins(next));
 				worldText = worldTextFromBundle(next);
+				ctx.shadow?.clear();
 			},
 		};
 	}
