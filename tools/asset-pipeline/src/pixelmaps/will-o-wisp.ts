@@ -2,16 +2,19 @@ import type { PixelMap } from "../pixelmap.js";
 import { mirrored, overlay } from "./mirror.js";
 
 // Will-o'-wisp (TODO/FIXME notes — cosmetic, never fought), 2026-09-28
-// redraw: a little lantern-glow spirit flame — sky-blue tongues around a warm
-// cream core with a sleepy face — with the TODO it stands for pinned to it as
-// a paper scrap. Outlined in deep navy rather than ink so it reads as light,
-// not a solid body. idle1 flickers the tongues (the centre one ducks, the
-// side ones leap) and flutters the note.
+// redraw: a little lantern-glow spirit flame — pale moonlit tongues around a
+// warm cream core with a sleepy face — with the TODO it stands for pinned to
+// it as a paper scrap. Outlined in deep navy rather than ink so it reads as
+// light, not a solid body. idle1 flickers the tongues (the centre one ducks,
+// the side ones leap) and flutters the note. Art polish 2 (same day): the
+// flame was sky blue and cyan, which the night grade (a blue-violet multiply)
+// all but erased; its tones are now the palest blue/green/white, which the
+// grade can darken but never lose against the grass.
 const LEGEND = {
 	O: 67, // deep navy — outline
-	b: 53, // sky blue — outer flame
-	c: 68, // cyan — mid flame
-	p: 30, // pale ghost blue — inner flame
+	b: 30, // pale ghost blue — outer flame
+	c: 35, // wisp pale green — mid flame
+	p: 29, // bone white — inner flame
 	w: 65, // lantern glow — core
 	k: 67, // deep navy — eyes, mouth
 	n: 27, // cream — note paper
