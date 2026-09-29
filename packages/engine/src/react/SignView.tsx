@@ -207,6 +207,13 @@ const SIGN_CSS = `
 	border: 3px solid var(--cabn-border-outer); border-radius: 8px; padding: 5px 7px; box-sizing: border-box; width: 100%;
 }
 .cabn-pixel-root .cabn-sign-field input[type="number"] { width: 90px; }
+.cabn-pixel-root .cabn-sign-combo { position: relative; }
+.cabn-pixel-root .cabn-sign-combo-list {
+	position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 2; max-height: 220px; box-sizing: border-box;
+	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 8px; padding: 3px;
+	box-shadow: 3px 3px 0 rgba(0,0,0,0.22);
+}
+.cabn-pixel-root .cabn-sign-combo-hint { padding: 4px 8px; }
 .cabn-pixel-root .cabn-sign-field textarea { min-height: 220px; flex: 1; resize: vertical; line-height: 1.45; }
 .cabn-pixel-root .cabn-sign-cheat { font-family: var(--cabn-font-mono); font-size: 11px; color: var(--cabn-text-secondary); }
 .cabn-pixel-root .cabn-sign-preview { overflow: auto; background: var(--cabn-panel-body-alt); border: 3px dashed var(--cabn-border-outer); border-radius: 10px; padding: 10px; flex: 1; min-height: 160px; }

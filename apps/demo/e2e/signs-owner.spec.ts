@@ -138,6 +138,34 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	await expect(page.getByTestId("sign-placing")).toBeHidden();
 	const path = await page.getByTestId("sign-editor-file").inputValue();
 	expect(path).toMatch(/^[A-Za-z0-9][A-Za-z0-9._ -]*\.seyn$/);
+
+	// "Stands beside" filters as you type; Escape closes only its list, and
+	// typed letters (the l in "hello") never reach the hotbar.
+	const near = page.getByTestId("sign-editor-near");
+	const nearList = page.getByTestId("sign-editor-near-list");
+	const originalNear = await near.inputValue();
+	await near.click();
+	await expect(nearList.getByRole("option")).toHaveCount(7);
+	await near.pressSequentially("hello");
+	await expect(nearList.getByRole("option")).toHaveText([
+		"/hello.js",
+		"/hello.py",
+	]);
+	await page.waitForTimeout(400);
+	await shoot(page, "owner-2a-near-picker");
+	await page.keyboard.press("Escape");
+	await expect(nearList).toBeHidden();
+	await expect(editor).toBeVisible();
+	await expect(page.locator(".cabn-spyglass-frame")).toHaveCount(0);
+	await near.fill("py hel");
+	await page.keyboard.press("Enter");
+	await expect(nearList).toBeHidden();
+	await expect(near).toHaveValue("/hello.py");
+	await near.click();
+	await nearList
+		.getByRole("option", { name: originalNear, exact: true })
+		.click();
+	await expect(near).toHaveValue(originalNear);
 	await page
 		.getByTestId("sign-editor-text")
 		.fill(

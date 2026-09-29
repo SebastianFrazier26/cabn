@@ -5,6 +5,7 @@ import { footprintClear } from "../src/systems/edgeScenery.js";
 import type { OwnerSignsApi } from "../src/systems/ownerSigns.js";
 import {
 	defaultSignSpot,
+	filterSignTargets,
 	isSafeSignUrl,
 	isValidSignFileName,
 	placeSign,
@@ -16,6 +17,55 @@ import {
 	suggestSignPath,
 } from "../src/systems/signs.js";
 import { createDefaultTools, createSignTool } from "../src/systems/tools.js";
+
+describe("filterSignTargets", () => {
+	const targets = [
+		"/",
+		"/src/",
+		"/src/pages/",
+		"/docs/intro.md",
+		"/src/index.ts",
+		"/src/pages/index.tsx",
+		"/src/server.ts",
+		"/tools/reindex.py",
+	];
+
+	test("returns everything up to the limit for an empty query", () => {
+		expect(filterSignTargets(targets, "  ", 3)).toEqual({
+			matches: ["/", "/src/", "/src/pages/"],
+			total: targets.length,
+		});
+	});
+
+	test("ranks a name match over a segment match over a substring match", () => {
+		expect(filterSignTargets(targets, "index", 10).matches).toEqual([
+			"/src/index.ts",
+			"/src/pages/index.tsx",
+			"/tools/reindex.py",
+		]);
+		expect(filterSignTargets(targets, "pages", 10).matches).toEqual([
+			"/src/pages/",
+			"/src/pages/index.tsx",
+		]);
+	});
+
+	test("needs every term, in any order, case-insensitively", () => {
+		expect(filterSignTargets(targets, "TSX pages", 10).matches).toEqual([
+			"/src/pages/index.tsx",
+		]);
+		expect(filterSignTargets(targets, "nothing-here", 10)).toEqual({
+			matches: [],
+			total: 0,
+		});
+	});
+
+	test("caps the list but still counts every match", () => {
+		expect(filterSignTargets(targets, "src", 2)).toEqual({
+			matches: ["/src/", "/src/pages/"],
+			total: 5,
+		});
+	});
+});
 
 const FOOTPRINT = { w: 40, h: 64 };
 const hub = { x: 0, y: 0 };
