@@ -61,6 +61,7 @@ import {
 	type LineWindow,
 	lineWindowsEqual,
 } from "../systems/lineWindow.js";
+import { perfMark } from "../systems/perfMarks.js";
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	createIdleRunPlaybackState,
@@ -283,6 +284,7 @@ export class FileScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		perfMark("cabn:file:create-start");
 		this.reducedMotion = prefersReducedMotion();
 		this.isMac = detectMac(
 			typeof navigator === "undefined" ? "" : navigator.platform,
@@ -333,6 +335,7 @@ export class FileScene extends Phaser.Scene {
 				this.onBufferChanged(prev.activeFileState, state.activeFileState);
 			}
 		});
+		perfMark("cabn:file:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.teardown, this);
 	}
 

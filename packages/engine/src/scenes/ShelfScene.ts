@@ -68,6 +68,7 @@ import {
 	type Interactable,
 } from "../systems/clickWalk.js";
 import { labelAnchor, pickLabelSide } from "../systems/labelPlacement.js";
+import { perfMark } from "../systems/perfMarks.js";
 import {
 	newlyApproached,
 	type PortalPoint,
@@ -170,6 +171,7 @@ export class ShelfScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		perfMark("cabn:shelf:create-start");
 		this.layoutCabins();
 		const tower = this.drawTower();
 
@@ -182,10 +184,12 @@ export class ShelfScene extends Phaser.Scene {
 		// tower (much smaller — see drawTower) still gets a correctly-sized gap.
 		const spawn = { x: tower.displayWidth / 2 + TOWER_SPAWN_CLEARANCE, y: 0 };
 
+		perfMark("cabn:shelf:bake-start");
 		this.drawGround(spawn);
 		this.drawPaths();
 		this.drawEdgeScenery(spawn);
 		this.drawCabins();
+		perfMark("cabn:shelf:bake-end");
 
 		this.playerTextures = {
 			front: ASSET_KEYS.characterIdle,
@@ -204,6 +208,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.store.getState().setPlayerPos(spawn);
 
 		this.setupAmbientEffects(tower);
+		perfMark("cabn:shelf:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;

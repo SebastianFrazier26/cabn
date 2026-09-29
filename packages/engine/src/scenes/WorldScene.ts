@@ -107,6 +107,7 @@ import {
 import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import { portalOrbitEllipse } from "../systems/monsterOrbit.js";
+import { perfMark } from "../systems/perfMarks.js";
 import {
 	newlyApproached,
 	type PortalPoint,
@@ -386,6 +387,7 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	create(): void {
+		perfMark("cabn:world:create-start");
 		for (const cluster of this.manifest.clusters)
 			this.clustersById.set(cluster.id, cluster);
 		for (const portal of this.manifest.portals) {
@@ -416,12 +418,17 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setVisitedClusterIds([...this.save.visitedClusters]);
 		const spawn = this.resolveSpawnPos();
 
+		perfMark("cabn:world:bake-start");
 		this.drawGround(spawn);
+		perfMark("cabn:world:ground-baked");
 		this.drawPaths();
+		perfMark("cabn:world:paths-baked");
 		this.drawEdgeScenery(spawn);
+		perfMark("cabn:world:edge-scenery-baked");
 		this.drawClusters();
 		this.drawPortals();
 		this.drawEditedMarkers();
+		perfMark("cabn:world:bake-end");
 		this.monsterOrbits = new MonsterOrbits(this, prefersReducedMotion(), {
 			behind: MONSTER_BEHIND_ARCH_DEPTH,
 			front: MONSTER_DEPTH,
@@ -478,6 +485,7 @@ export class WorldScene extends Phaser.Scene {
 		this.setupToolBusListeners();
 		this.setupSaveListeners();
 		this.setupAmbientEffects();
+		perfMark("cabn:world:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
@@ -932,6 +940,7 @@ export class WorldScene extends Phaser.Scene {
 		)) {
 			field.setDepth(0);
 		}
+		perfMark("cabn:world:ground-field-baked");
 
 		const tintOverlay = this.add.graphics().setDepth(0.6);
 		for (const cluster of this.manifest.clusters) {
