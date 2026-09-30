@@ -243,6 +243,21 @@ export class WorldLayerSeam {
 		this.risers = [...picked];
 	}
 
+	/**
+	 * A layer object created after collect() already ran — a streamed-in
+	 * cluster's ground/props, arriving because the player walked toward it
+	 * with the realm already on. Falls back to the object's own current y/
+	 * alpha as its "rest" state (same as collect()'s objects would have had
+	 * at the moment they were collected — they'd already risen into place by
+	 * then too), so a later sink() animates it down exactly like every other
+	 * riser, with no separate rise of its own needed (it was never sunk to
+	 * begin with — it just appeared already risen, same as everything else
+	 * that streams in rather than popping fully formed).
+	 */
+	addRiser(object: Phaser.GameObjects.GameObject): void {
+		this.risers.push(object);
+	}
+
 	/** Raises the layer's objects out of the ground with a dust burst; instant under reduced motion. */
 	rise(
 		scene: Phaser.Scene,

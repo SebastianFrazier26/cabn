@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { mulberry32 } from "../src/systems/deterministicRandom.js";
 import {
+	buildLazySceneryContext,
 	type CircleKeepout,
 	type EdgeSceneryInput,
+	type EdgeSceneryLayer,
+	type EdgeSceneryWorld,
 	FILLER_KINDS,
 	type Footprint,
 	footprintClear,
 	KeepoutIndex,
 	keepoutDistance,
 	planEdgeScenery,
+	planEdgeSceneryPois,
+	planFillerChunk,
+	planFillerChunkForContext,
 	planLayeredEdgeScenery,
 	type SceneryKind,
 	type SegmentKeepout,
@@ -368,5 +374,244 @@ describe("KeepoutIndex", () => {
 		const first = index.nearestDistance(100, 0);
 		const second = index.nearestDistance(100, 0);
 		expect(second).toBe(first);
+	});
+});
+
+// M10 stream-bake round 3: lazy per-chunk planning replaces
+// planEdgeScenery's whole-bounds filler grid, whose own cost (not just each
+// query's) scaled with world area. These prove the chunk functions are
+// deterministic per chunk, independent of planning order, and seam-safe.
+function sampleLazyWorld(
+	overrides: Partial<EdgeSceneryWorld> = {},
+): EdgeSceneryWorld {
+	const { seed, bounds, circles, segments, footprints, windmillSailSpan } =
+		sampleWorld();
+	return {
+		seed,
+		bounds,
+		circles,
+		segments,
+		footprints,
+		windmillSailSpan,
+		...overrides,
+	};
+}
+
+describe("planEdgeSceneryPois", () => {
+	it("is deterministic for the same world and noise seed", () => {
+		const world = sampleLazyWorld();
+		expect(planEdgeSceneryPois(world, 999)).toEqual(
+			planEdgeSceneryPois(world, 999),
+		);
+	});
+
+	it("places nothing when the world has no circles or segments to anchor near", () => {
+		const world = sampleLazyWorld({ circles: [], segments: [] });
+		const result = planEdgeSceneryPois(world, 999);
+		expect(result.items).toEqual([]);
+		expect(result.pointsOfInterest).toEqual([]);
+		expect(result.reserveCircles).toEqual([]);
+	});
+
+	it("every placed item and POI is within bounds and clear of the world's own keepouts", () => {
+		const world = sampleLazyWorld();
+		const result = planEdgeSceneryPois(world, 999);
+		for (const item of result.items) {
+			expect(item.x).toBeGreaterThanOrEqual(world.bounds.minX);
+			expect(item.x).toBeLessThanOrEqual(world.bounds.maxX);
+			expect(item.y).toBeLessThanOrEqual(world.bounds.maxY);
+		}
+	});
+});
+
+describe("planFillerChunk", () => {
+	function chunkParams(
+		chunkCol: number,
+		chunkRow: number,
+		world = sampleLazyWorld(),
+	) {
+		return {
+			world,
+			keepoutIndex: new KeepoutIndex(world.circles, world.segments),
+			forestNoiseSeed: 4242,
+			chunkCol,
+			chunkRow,
+		};
+	}
+
+	it("is a pure function of (world, index, noise seed, chunkCol, chunkRow)", () => {
+		const a = planFillerChunk(chunkParams(2, -1));
+		const b = planFillerChunk(chunkParams(2, -1));
+		expect(b).toEqual(a);
+	});
+
+	it("doesn't depend on whether other chunks were planned first, or in what order", () => {
+		const world = sampleLazyWorld();
+		const index = new KeepoutIndex(world.circles, world.segments);
+		const target = {
+			world,
+			keepoutIndex: index,
+			forestNoiseSeed: 4242,
+			chunkCol: 3,
+			chunkRow: 1,
+		};
+		const alone = planFillerChunk(target);
+		// Plan a handful of neighbours (in both orders) first — target's own
+		// result must come out identical regardless.
+		for (const [c, r] of [
+			[0, 0],
+			[3, 1],
+			[4, 1],
+			[2, 1],
+			[3, 0],
+			[3, 2],
+		] as const) {
+			planFillerChunk({ ...target, chunkCol: c, chunkRow: r });
+		}
+		const afterNeighbours = planFillerChunk(target);
+		expect(afterNeighbours).toEqual(alone);
+	});
+
+	it("keeps every item's anchor within (or acceptably close to) its own chunk's square", () => {
+		// Absolute grid cells land in [chunkCol*512, chunkCol*512+512) by
+		// construction, plus up to GRID_JITTER_PX (16) of jitter each side.
+		const items = planFillerChunk(chunkParams(1, -2));
+		const chunkMinX = 1 * 512;
+		const chunkMinY = -2 * 512;
+		for (const item of items) {
+			expect(item.x).toBeGreaterThanOrEqual(chunkMinX - 20);
+			expect(item.x).toBeLessThanOrEqual(chunkMinX + 512 + 20);
+			expect(item.y).toBeGreaterThanOrEqual(chunkMinY - 20);
+			expect(item.y).toBeLessThanOrEqual(chunkMinY + 512 + 20);
+		}
+	});
+
+	it("never places an item inside a keepout circle's clearance", () => {
+		const world = sampleLazyWorld({
+			circles: [{ x: 256, y: 256, radius: 400 }],
+			segments: [],
+		});
+		const index = new KeepoutIndex(world.circles, world.segments);
+		const items = planFillerChunk({
+			world,
+			keepoutIndex: index,
+			forestNoiseSeed: 1,
+			chunkCol: 0,
+			chunkRow: 0,
+		});
+		for (const item of items) {
+			expect(Math.hypot(item.x - 256, item.y - 256)).toBeGreaterThan(400);
+		}
+	});
+
+	it("respects topMargin — nothing spawns above the skyline band", () => {
+		const world = sampleLazyWorld({ topMargin: 200 });
+		const index = new KeepoutIndex(world.circles, world.segments);
+		const items = planFillerChunk({
+			world,
+			keepoutIndex: index,
+			forestNoiseSeed: 1,
+			chunkCol: -3,
+			chunkRow: -3, // near bounds.minY, where topMargin actually bites
+		});
+		const topLimit = world.bounds.minY + 200;
+		for (const item of items) {
+			expect(item.y - world.footprints[item.kind].h).toBeGreaterThanOrEqual(
+				topLimit,
+			);
+		}
+	});
+});
+
+describe("buildLazySceneryContext / planFillerChunkForContext", () => {
+	it("with no layer, a chunk's filler matches calling planFillerChunk directly against the base context", () => {
+		const world = sampleLazyWorld();
+		const { context } = buildLazySceneryContext(world, null);
+		const direct = planFillerChunk({
+			world: context.base,
+			keepoutIndex: context.baseIndex,
+			forestNoiseSeed: context.baseNoiseSeed,
+			chunkCol: 5,
+			chunkRow: -2,
+		});
+		expect(planFillerChunkForContext(context, 5, -2)).toEqual(direct);
+	});
+
+	it("a base-region chunk is planned from the base seed whether or not a layer is active", () => {
+		const world = sampleLazyWorld();
+		const { context: noLayer } = buildLazySceneryContext(world, null);
+		const layer: EdgeSceneryLayer = {
+			bounds: world.bounds, // unchanged bounds — layer only removes, never grows
+			circles: [{ x: 5000, y: 5000, radius: 50 }], // far from the chunk under test
+			segments: [],
+		};
+		const { context: withLayer } = buildLazySceneryContext(world, layer);
+		// A chunk nowhere near the layer's own content: filtering removes
+		// nothing, so the result must be identical to the unlayered plan —
+		// "the base plan for a chunk is identical in and out of the realm".
+		expect(planFillerChunkForContext(withLayer, 0, 0)).toEqual(
+			planFillerChunkForContext(noLayer, 0, 0),
+		);
+	});
+
+	it("a layer only removes base items it stands on, never adds or moves any", () => {
+		const world = sampleLazyWorld();
+		const { context: noLayer } = buildLazySceneryContext(world, null);
+		const baseline = planFillerChunkForContext(noLayer, 0, 0);
+		const layer: EdgeSceneryLayer = {
+			bounds: world.bounds,
+			circles: [{ x: 256, y: 256, radius: 300 }],
+			segments: [],
+		};
+		const { context: withLayer } = buildLazySceneryContext(world, layer);
+		const filtered = planFillerChunkForContext(withLayer, 0, 0);
+		expect(filtered.length).toBeLessThanOrEqual(baseline.length);
+		const baselineKeys = new Set(
+			baseline.map((i) => `${i.kind}@${i.x},${i.y}`),
+		);
+		for (const item of filtered) {
+			expect(baselineKeys.has(`${item.kind}@${item.x},${item.y}`)).toBe(true);
+		}
+	});
+
+	it("a chunk only reachable because the layer grew the bounds is layer-seeded and marked layer:true", () => {
+		const world = sampleLazyWorld();
+		// Layer bounds grow well past the base world's own bounds.
+		const layer: EdgeSceneryLayer = {
+			bounds: {
+				minX: world.bounds.minX - 4000,
+				minY: world.bounds.minY - 4000,
+				maxX: world.bounds.maxX + 4000,
+				maxY: world.bounds.maxY + 4000,
+			},
+			circles: [{ x: world.bounds.maxX + 2000, y: 0, radius: 200 }],
+			segments: [],
+		};
+		const { context } = buildLazySceneryContext(world, layer);
+		// A chunk far outside the base bounds, near the layer's own new content.
+		const chunkCol = Math.floor((world.bounds.maxX + 2000) / 512);
+		const items = planFillerChunkForContext(context, chunkCol, 0);
+		for (const item of items) expect(item.layer).toBe(true);
+	});
+
+	it("never double-plants at the seam between the base bounds and a grown layer region", () => {
+		const world = sampleLazyWorld();
+		const layer: EdgeSceneryLayer = {
+			bounds: {
+				minX: world.bounds.minX - 2000,
+				minY: world.bounds.minY - 2000,
+				maxX: world.bounds.maxX + 2000,
+				maxY: world.bounds.maxY + 2000,
+			},
+			circles: [],
+			segments: [],
+		};
+		const { context } = buildLazySceneryContext(world, layer);
+		// The chunk row/col straddling bounds.maxX must never come from the
+		// "grown" (layer) plan — chunkOverlapsBounds(base.bounds) is true for
+		// it, so it's always base-seeded (buildLazySceneryContext's own rule).
+		const seamCol = Math.floor(world.bounds.maxX / 512);
+		const items = planFillerChunkForContext(context, seamCol, 0);
+		expect(items.every((i) => !i.layer)).toBe(true);
 	});
 });

@@ -54,6 +54,8 @@ export interface AtmosphereHandle {
 	blend(): number;
 	/** Called immediately with the current blend, then on every change (every frame during a cross-fade, never otherwise). */
 	onBlend(listener: BlendListener): void;
+	/** Registers one more light pool after construction — a streamed-in prop's window/lamp light joins the same grade-hole redraw loop as every light passed to attachAtmosphere() up front, not a second system. */
+	addLight(light: LightPoolOptions): void;
 	destroy(): void;
 }
 
@@ -202,6 +204,9 @@ export function attachAtmosphere(
 		onBlend: (listener) => {
 			listeners.push(listener);
 			listener(eased);
+		},
+		addLight: (light) => {
+			pools.push(createLightPool(scene, light, pools.length));
 		},
 		destroy: () => {
 			scene.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);

@@ -181,6 +181,8 @@ async function archSprites(
 interface SceneryView {
 	items: string[];
 	baseItems: string[];
+	/** chunkKey -> that chunk's own *base* items (as `key()` strings), `layer: true` ones excluded — edge scenery filler is now planned lazily per chunk (edgeScenery.ts's planFillerChunkForContext), not for the whole world up front, so "scenery never moves" can only mean "every *loaded* chunk's base plan is identical whether the realm is on or off". A chunk outside the base bounds plans from the layer's own (deliberately different) seed once the realm grows the bounds to reach it — see planFillerChunkForContext's own doc comment — so those layer-only items are excluded here, same as the old whole-world baseItems always excluded them. */
+	loadedChunks: Record<string, string[]>;
 	pois: string[];
 	skyline: string[];
 	archTextures: string[];
@@ -205,6 +207,10 @@ async function scenery(page: Page): Promise<SceneryView> {
 				items: Item[];
 				pointsOfInterest: { kind: string; x: number; y: number }[];
 			} | null;
+			// Lazy per-chunk plan cache (WorldScene's own bookkeeping, not part
+			// of EdgeDressing's public shape) — the one place that still knows
+			// which *chunk* each currently-loaded item came from.
+			edgeSceneryLoadedItems: Map<string, Item[]>;
 			sky: {
 				skyline: {
 					elements: { piece: string; layer: string; u: number }[];
@@ -216,9 +222,13 @@ async function scenery(page: Page): Promise<SceneryView> {
 		const key = (i: { kind: string; x: number; y: number }) =>
 			`${i.kind}@${i.x.toFixed(2)},${i.y.toFixed(2)}`;
 		const items = world.edgeDressing?.items ?? [];
+		const loadedChunks: Record<string, string[]> = {};
+		for (const [chunkKey, chunkItems] of world.edgeSceneryLoadedItems)
+			loadedChunks[chunkKey] = chunkItems.filter((i) => !i.layer).map(key);
 		return {
 			items: items.map(key),
 			baseItems: items.filter((i) => !i.layer).map(key),
+			loadedChunks,
 			pois: (world.edgeDressing?.pointsOfInterest ?? []).map(key),
 			skyline: (world.sky?.skyline.elements ?? []).map(
 				(e) => `${e.piece}/${e.layer}@${e.u.toFixed(2)}`,
@@ -519,14 +529,30 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	]);
 	expect(shadowScenery.archTextures).toEqual(["shadow-portal-arch"]);
 	expect(shadowScenery.fieldTexture).toBe("shadow-netherrack-tiles");
-	// Scenery stays put: every base piece still standing is where it was
-	// (only pieces the hidden clusters and paths stand on go), the skyline
-	// keeps every base piece (ponds and the windmill are items too).
-	const beforeSet = new Set(beforeScenery.items);
-	expect(shadowScenery.baseItems.filter((i) => !beforeSet.has(i))).toEqual([]);
-	expect(shadowScenery.baseItems.length).toBeGreaterThan(
-		beforeScenery.items.length * 0.5,
+	// Scenery stays put: filler is planned lazily per chunk now (a chunk's
+	// plan comes from the base seed regardless of whether the realm is on —
+	// see edgeScenery.ts's planFillerChunkForContext), so "the same scenery"
+	// is checked chunk by chunk, not as one whole-world list, which no
+	// longer exists up front. For every chunk loaded in *both* snapshots,
+	// the realm's own items for it are a subset of the normal world's (the
+	// layer only removes pieces its own content stands on, never swaps in a
+	// different one at the same position); grown-bounds-only chunks (marked
+	// `layer: true`) never appear here at all, since they can't have been
+	// loaded before the realm was even on.
+	const sharedChunkKeys = Object.keys(beforeScenery.loadedChunks).filter(
+		(k) => k in shadowScenery.loadedChunks,
 	);
+	expect(sharedChunkKeys.length).toBeGreaterThan(0);
+	let totalBefore = 0;
+	let totalKept = 0;
+	for (const chunkKey of sharedChunkKeys) {
+		const beforeSet = new Set(beforeScenery.loadedChunks[chunkKey]);
+		const shadowItems = shadowScenery.loadedChunks[chunkKey] ?? [];
+		expect(shadowItems.filter((i) => !beforeSet.has(i))).toEqual([]);
+		totalBefore += beforeSet.size;
+		totalKept += shadowItems.length;
+	}
+	expect(totalKept).toBeGreaterThan(totalBefore * 0.5);
 	expect(shadowScenery.skyline.slice(0, beforeScenery.skyline.length)).toEqual(
 		beforeScenery.skyline,
 	);
