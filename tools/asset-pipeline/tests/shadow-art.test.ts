@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, test } from "vitest";
 import type { RGB } from "../src/color.js";
 import { defeatFrames, hitFrame } from "../src/monster-fx.js";
-import { paletteJsonPath } from "../src/paths.js";
+import {
+	generatedDir,
+	paletteJsonPath,
+	placeholdersDir,
+} from "../src/paths.js";
 import type { PixelMap } from "../src/pixelmap.js";
 import { portalArchFrame } from "../src/pixelmaps/portal-arch.js";
 import {
@@ -32,6 +38,7 @@ const base: RGB[] = JSON.parse(
 	readFileSync(paletteJsonPath, "utf8"),
 ).colors.map((c: { rgb: RGB }) => c.rgb);
 const pal = buildNetherPalette(base);
+const shadowAssetsDir = join(generatedDir, "shadow");
 
 describe("shadow art", () => {
 	test("nether colours are appended, never shifting palette.json's indices", () => {
@@ -237,5 +244,42 @@ describe("dead plants", () => {
 			"oak",
 			"shrub",
 		]);
+	});
+});
+
+describe("generated crimson icons, pixel by pixel", () => {
+	const greenPixels = async (file: string) => {
+		const { data } = await sharp(file)
+			.ensureAlpha()
+			.raw()
+			.toBuffer({ resolveWithObject: true });
+		let count = 0;
+		for (let i = 0; i < data.length; i += 4) {
+			if ((data[i + 3] ?? 0) < 64) continue;
+			const r = data[i] ?? 0;
+			const g = data[i + 1] ?? 0;
+			const b = data[i + 2] ?? 0;
+			const lo = Math.min(r, b);
+			if (g - lo < 30 || g < r || g < b) continue;
+			const hue = 60 * ((b - r) / (g - lo)) + 120;
+			if (hue >= 75 && hue <= 165) count++;
+		}
+		return count;
+	};
+
+	test("every HUD icon whose normal art shows green has a variant, and no variant shows any", async () => {
+		const names = hudIconSources().map((s) => s.map.name);
+		const greenNormals: string[] = [];
+		for (const name of names)
+			if ((await greenPixels(join(placeholdersDir, `${name}_soft.png`))) > 0)
+				greenNormals.push(name);
+		expect(greenNormals).toContain("ui_tool_replace");
+		expect(netherIcons(pal).map((i) => i.map.name)).toEqual(
+			greenNormals.map((n) => `${n}_nether`),
+		);
+		for (const name of greenNormals) {
+			const file = join(shadowAssetsDir, `${name}_nether_soft.png`);
+			expect(await greenPixels(file), name).toBe(0);
+		}
 	});
 });

@@ -185,6 +185,7 @@ import {
 	type SkinSceneryKind,
 	type SkinStrip,
 	skinAnimKey,
+	skinMonsterAnims,
 	skinTextures,
 	type WorldSkin,
 } from "../systems/worldLayer.js";
@@ -522,6 +523,32 @@ export class WorldScene extends Phaser.Scene {
 				frameRate: strip.frameRate,
 				repeat: -1,
 			});
+		}
+		// The normal monster animations' rates (PreloadScene), so a swapped
+		// species moves exactly like its normal self.
+		for (const art of Object.values(this.skin.monsters ?? {})) {
+			if (!art) continue;
+			const anims = skinMonsterAnims(art);
+			if (anims.idle && !this.anims.exists(anims.idle))
+				this.anims.create({
+					key: anims.idle,
+					frames: art.idle.map((t) => ({ key: t.key })),
+					frameRate: 3,
+					repeat: -1,
+				});
+			if (!this.anims.exists(anims.hit))
+				this.anims.create({
+					key: anims.hit,
+					frames: [{ key: art.hit.key }],
+					frameRate: 1,
+				});
+			if (!this.anims.exists(anims.defeat))
+				this.anims.create({
+					key: anims.defeat,
+					frames: art.defeat.map((t) => ({ key: t.key })),
+					frameRate: 10,
+					repeat: 0,
+				});
 		}
 	}
 
@@ -1420,6 +1447,9 @@ export class WorldScene extends Phaser.Scene {
 					}
 				: {}),
 			...(scatterTint !== null ? { tint: scatterTint } : {}),
+			...(this.skin.stillScenery
+				? { still: new Set<SkinSceneryKind>(this.skin.stillScenery) }
+				: {}),
 		});
 	}
 
@@ -1798,6 +1828,7 @@ export class WorldScene extends Phaser.Scene {
 			y,
 			monster.species,
 			worldMonsterPx(drawn, fallbackPx),
+			this.skin.monsters,
 		);
 		sprite.setDepth(MONSTER_DEPTH);
 		this.monsterSprites.set(monster.id, sprite);
@@ -2561,6 +2592,7 @@ export class WorldScene extends Phaser.Scene {
 				...(this.skin.backdrop !== null
 					? { backdrop: this.skin.backdrop }
 					: {}),
+				...(this.skin.monsters ? { monsterSkin: this.skin.monsters } : {}),
 				...(this.skin.arch
 					? {
 							archStrip: {

@@ -72,6 +72,17 @@ export interface SkinPathTextures {
 /** Scenery kinds a skin may redraw; each replacement must match the original's pixel size, so edge-scenery placement never changes. */
 export type SkinSceneryKind = SceneryName;
 
+/**
+ * A monster species as a skin redraws it: the same frame count and size as
+ * its normal art (one idle frame for a static species, two for the rest),
+ * so a sprite fitted once never jumps when its texture swaps.
+ */
+export interface SkinMonster {
+	idle: readonly SkinImage[];
+	hit: SkinImage;
+	defeat: readonly SkinImage[];
+}
+
 /** World-wide ambient particles that replace the day motes and night fireflies. */
 export interface SkinAmbientParticles {
 	/** Flakes drifting down, picked at random from the sheet's frames. */
@@ -152,6 +163,12 @@ export interface WorldSkin {
 	props: Partial<Record<PropName, SkinImage>> | null;
 	/** Day art for skyline pieces, same pixel size as the originals so the horizon lays out the same. */
 	skyline: Partial<Record<SkylinePiece, SkinImage>> | null;
+	/** Monster art by species slug (assetPaths' species keys), used in the world and the file view while the layer shows. */
+	monsters: Partial<Record<string, SkinMonster>> | null;
+	/** Scenery kinds that hold still under this skin (the windmill's sails stop turning). */
+	stillScenery: readonly SkinSceneryKind[] | null;
+	/** HUD icon replacements: normal icon URL (assetPaths' uiIconPath/uiToolIconPath) -> the skin's URL. */
+	uiIcons: Readonly<Record<string, string>> | null;
 	/** Multiply tint on edge scenery, props and skyline pieces the skin doesn't redraw. */
 	scatterTint: number | null;
 	ambient: SkinAmbientParticles | null;
@@ -190,6 +207,9 @@ export const DEFAULT_SKIN: WorldSkin = {
 	scenery: null,
 	props: null,
 	skyline: null,
+	monsters: null,
+	stillScenery: null,
+	uiIcons: null,
 	scatterTint: null,
 	ambient: null,
 	pathGlow: null,
@@ -215,6 +235,8 @@ export function skinTextures(skin: WorldSkin): (SkinImage | SkinSheet)[] {
 	for (const t of Object.values(skin.scenery ?? {})) add(t);
 	for (const t of Object.values(skin.props ?? {})) add(t);
 	for (const t of Object.values(skin.skyline ?? {})) add(t);
+	for (const m of Object.values(skin.monsters ?? {}))
+		for (const t of skinMonsterTextures(m)) add(t);
 	add(skin.ambient?.ash.texture);
 	add(skin.ambient?.embers.texture);
 	add(skin.parchment);
@@ -260,6 +282,13 @@ export function resolveSkin(
 		scenery: loadedOnly(skin.scenery),
 		props: loadedOnly(skin.props),
 		skyline: loadedOnly(skin.skyline),
+		monsters: skin.monsters
+			? Object.fromEntries(
+					Object.entries(skin.monsters).filter(
+						([, m]) => m && skinMonsterTextures(m).every(ok),
+					),
+				)
+			: null,
 		ambient:
 			skin.ambient &&
 			ok(skin.ambient.ash.texture) &&
@@ -281,6 +310,24 @@ export function resolveSkinTimeOfDay(
 	now: Date = new Date(),
 ): TimeOfDay {
 	return skin?.fixedTimeOfDay ?? resolveTimeOfDay(override, now);
+}
+
+function skinMonsterTextures(m: SkinMonster | undefined): SkinImage[] {
+	return m ? [...m.idle, m.hit, ...m.defeat] : [];
+}
+
+/** Animation keys for a skin's monster, registered once per game by WorldScene (idle only when it has two or more frames). */
+export function skinMonsterAnims(m: SkinMonster): {
+	idle: string | null;
+	hit: string;
+	defeat: string;
+} {
+	const first = m.idle[0]?.key ?? m.hit.key;
+	return {
+		idle: m.idle.length > 1 ? `${first}:idle` : null,
+		hit: `${m.hit.key}:hit`,
+		defeat: `${first}:defeat`,
+	};
 }
 
 /** Animation key for a skin strip, registered once per game by WorldScene. */

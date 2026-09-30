@@ -345,7 +345,10 @@ describe("skin resolution", () => {
 		expect(skin.pathTextures).toBeNull();
 		expect(skin.arch).toBeNull();
 		expect(skin.scenery?.oak).toBeUndefined();
-		expect(skin.scenery?.["blossom-oak"]).toBeUndefined();
+		// Its own redraw since the dead-plant pass, so it survives the oak's miss.
+		expect(skin.scenery?.["blossom-oak"]).toBe(
+			NETHER_SKIN.scenery?.["blossom-oak"],
+		);
 		expect(skin.scenery?.pine).toBe(NETHER_SKIN.scenery?.pine);
 		expect(skin.fieldTiles).toBe(NETHER_SKIN.fieldTiles);
 		expect(skin.brazier).toBe(NETHER_SKIN.brazier);

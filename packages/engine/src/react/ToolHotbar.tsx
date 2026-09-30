@@ -14,6 +14,7 @@ import {
 	type ToolRegistry,
 } from "../systems/tools.js";
 import { classifyFocus, type FocusCandidate } from "../systems/uiFocus.js";
+import { iconFallback, useLayerIcon } from "./layerIcons.js";
 import { OwnerToolkit } from "./OwnerToolkit.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -61,6 +62,7 @@ export function ToolHotbar({
 }: ToolHotbarProps): React.ReactElement | null {
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
 	const [ownerTool] = useState(createOwnerToolkitTool);
+	const iconFor = useLayerIcon(store);
 	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
 	const hasGitHistory = useCabnStore(store, (s) => s.git !== null);
 	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
@@ -173,6 +175,7 @@ export function ToolHotbar({
 					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
 					showLabel={mode === "file"}
 					writing={writing}
+					iconFor={iconFor}
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
@@ -184,6 +187,7 @@ export function ToolHotbar({
 						selected={toolkitOpen || signPlacing}
 						showLabel={false}
 						writing={false}
+						iconFor={iconFor}
 						onUse={() => ownerTool.onUse({ store, bus })}
 					/>
 					{toolkitOpen && (
@@ -201,6 +205,7 @@ function HotbarSlot({
 	selected,
 	showLabel,
 	writing,
+	iconFor,
 	onUse,
 }: {
 	tool: Tool;
@@ -209,6 +214,7 @@ function HotbarSlot({
 	showLabel: boolean;
 	/** In a text file the page's caret takes plain letters and Enter, so the shortcuts become Alt chords (see systems/fileCaretKeys.ts). */
 	writing: boolean;
+	iconFor: (src: string) => string;
 	onUse: () => void;
 }): React.ReactElement {
 	const label = showLabel ? tool.label : undefined;
@@ -227,7 +233,11 @@ function HotbarSlot({
 			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
-			<img src={tool.icon} alt={tool.name} />
+			<img
+				src={iconFor(tool.icon)}
+				alt={tool.name}
+				onError={iconFallback(tool.icon)}
+			/>
 			<span className="cabn-key">
 				{/* The labeled slot's corner only fits one glyph beside the icon. */}
 				{label && tool.hotkey === "Enter" ? "↵" : tool.hotkey}

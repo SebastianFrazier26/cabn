@@ -138,7 +138,8 @@ export function addWindmillSails(
 	y: number,
 	bodyHeight: number,
 	depth: number,
-	reducedMotion: boolean,
+	/** Reduced motion, or a skin whose sails hold still. */
+	still: boolean,
 	tint?: number,
 	/** A world skin's redrawn sails; they then take no tint. */
 	textureKey?: string,
@@ -147,7 +148,7 @@ export function addWindmillSails(
 		.image(x, y - bodyHeight * 0.62, textureKey ?? sceneryKey("windmill-sails"))
 		.setDepth(depth);
 	if (tint !== undefined && textureKey === undefined) sails.setTint(tint);
-	if (!reducedMotion) {
+	if (!still) {
 		scene.tweens.add({
 			targets: sails,
 			angle: 360,

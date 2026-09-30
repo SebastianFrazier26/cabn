@@ -61,6 +61,7 @@ import {
 	runEditorCommand,
 	spellbookToolExtensions,
 } from "./editorTools.js";
+import { useLayerIcon } from "./layerIcons.js";
 import { PetProposalReview } from "./PetProposalReview.js";
 import { RunConsole, toRunConsoleSnapshot } from "./RunConsole.js";
 import {
@@ -194,6 +195,7 @@ export function EditorOverlay({
 	store,
 	bus,
 }: EditorOverlayProps): React.ReactElement | null {
+	const iconFor = useLayerIcon(store);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const portalId = useCabnStore(store, (s) => s.activePortalId);
 	const bagSlots = useCabnStore(store, (s) => s.bagSlots);
@@ -717,7 +719,7 @@ export function EditorOverlay({
 				pointerEvents: "auto",
 			}}
 		>
-			<SpellbookToolbar isMac={isMac} onTool={handleTool} />
+			<SpellbookToolbar isMac={isMac} onTool={handleTool} iconFor={iconFor} />
 			<div key={playToken} className="cabn-spellbook-frame">
 				<div className="cabn-spellbook-spread">
 					<div className="cabn-spellbook-ribbon" />
