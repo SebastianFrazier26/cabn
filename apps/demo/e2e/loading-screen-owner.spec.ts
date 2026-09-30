@@ -29,6 +29,12 @@ const PORT = Number(process.env.CABN_OWNER_E2E_PORT ?? 5042) + 6;
 let root: string;
 let serve: ChildProcess | undefined;
 let url: string;
+// Same diagnostic capture as signs-owner and friends: keep the whole serve log
+// and exit status so a failing test can print them from afterEach.
+let serveOutput = "";
+let serveExit:
+	| { code: number | null; signal: NodeJS.Signals | null }
+	| undefined;
 
 test.beforeAll(async () => {
 	root = await mkdtemp(join(tmpdir(), "cabn-loading-e2e-"));
@@ -41,28 +47,47 @@ test.beforeAll(async () => {
 		[CLI, "serve", dir, "--port", String(PORT), "--offline", "--owner"],
 		{ stdio: ["ignore", "pipe", "pipe"] },
 	);
+	serve.stdout?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.stderr?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.once("exit", (code, signal) => {
+		serveExit = { code, signal };
+	});
 	url = await new Promise<string>((resolveUrl, rejectUrl) => {
-		let out = "";
 		const timer = setTimeout(
-			() => rejectUrl(new Error(`cabn serve never printed its url: ${out}`)),
+			() =>
+				rejectUrl(
+					new Error(`cabn serve never printed its url: ${serveOutput}`),
+				),
 			30_000,
 		);
-		serve?.stdout?.on("data", (chunk: Buffer) => {
-			out += chunk.toString();
+		serve?.stdout?.on("data", () => {
 			const m =
-				/cabn serve: (http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(out);
+				/cabn serve: (http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(
+					serveOutput,
+				);
 			if (m?.[1]) {
 				clearTimeout(timer);
 				resolveUrl(m[1]);
 			}
 		});
-		serve?.stderr?.on("data", (chunk: Buffer) => {
-			out += chunk.toString();
-		});
 		serve?.once("exit", (code) =>
-			rejectUrl(new Error(`cabn serve exited (${code}): ${out}`)),
+			rejectUrl(new Error(`cabn serve exited (${code}): ${serveOutput}`)),
 		);
 	});
+});
+
+// biome-ignore lint/correctness/noEmptyPattern: Playwright parses this signature itself and requires a literal object pattern, even unused, to know this hook takes no fixtures.
+test.afterEach(async ({}, testInfo) => {
+	if (testInfo.status !== testInfo.expectedStatus) {
+		console.log(
+			`[loading-screen-owner] cabn serve output so far:\n${serveOutput}\n` +
+				`[loading-screen-owner] cabn serve exit: ${serveExit ? `code=${serveExit.code} signal=${serveExit.signal}` : "still running"}`,
+		);
+	}
 });
 
 test.afterAll(async () => {
