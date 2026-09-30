@@ -26,6 +26,8 @@ export type MonsterSkinArt = Partial<Record<string, SkinMonster>> | null;
 
 /** What a sprite plays: a still texture (ghost) or an idle loop, plus its battle animations when they exist. */
 interface MonsterLook {
+	/** The species whose art is shown (a fallback species when its own normal art is missing). */
+	drawn: string;
 	still: string;
 	idle: string | null;
 	hit: string | null;
@@ -44,6 +46,7 @@ function lookFor(
 			key !== null && scene.anims.exists(key) ? key : null;
 		if (anims.idle === null || has(anims.idle)) {
 			return {
+				drawn: species,
 				still: art.idle[0].key,
 				idle: has(anims.idle),
 				hit: has(anims.hit),
@@ -54,6 +57,7 @@ function lookFor(
 	const drawn = renderedMonsterSpecies(scene, species);
 	const has = (key: string) => (scene.anims.exists(key) ? key : null);
 	return {
+		drawn,
 		still: drawn === "ghost" ? MONSTER_GHOST_KEY : monsterFrameKey(drawn, 0),
 		idle: drawn === "ghost" ? null : monsterIdleAnim(drawn),
 		hit: has(monsterHitAnim(drawn)),
@@ -73,11 +77,14 @@ export function createMonsterSprite(
 	const look = lookFor(scene, species, skin);
 	const sprite = scene.add.sprite(x, y, look.still);
 	fitSpriteToSize(sprite, targetPx);
+	sprite.setData(DRAWN_SPECIES, look.drawn);
 	sprite.setData(LOOK, look);
 	if (look.idle) sprite.play(look.idle);
 	return sprite;
 }
 
+/** Read by the e2e specs to find a species' sprite. */
+const DRAWN_SPECIES = "monsterDrawnSpecies";
 const LOOK = "monsterLook";
 const HIT_FLASH_MS = 180;
 const DEFEAT_HIT_MS = 110;
