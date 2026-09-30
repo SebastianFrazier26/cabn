@@ -187,6 +187,7 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 				"The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.",
 				"A world built from a git repository has a swirling rift near this bonfire. Its branches are alternate universes: step through to visit one, or read its tags and releases.",
 				`Press H at an arch (${alt}+H inside a file) for the pensieve, that file's history. The big map's timeline shows which files each commit changed.`,
+				"Wooden signposts are notes the world's owner left. Walk up to one to see it at the side; press Enter or click it to read it all. Its links walk you to the file, folder or sign they name.",
 			],
 		},
 		{
@@ -201,6 +202,8 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 				`Quill (${alt}+${toolKey("quill")}) opens the spellbook on the page's caret and edits. Wand (${alt}+${toolKey("wand")}) runs the current buffer as a gentle, simulated trace.`,
 				`Inside a text file, use ${alt}+${toolKey("spyglass")} for the spyglass and ${alt}+${toolKey("orb")} for the orb. ${alt}+${toolKey("opener")} faces a nearby monster; plain Enter inserts a newline.`,
 				`On the world owner's own local page, ${OWNER_TOOLKIT_HOTKEY} opens the owner's toolkit: place a sign, commit, switch or create a branch, and whatever else that page offers. Arrows or numbers pick, Enter uses, Esc closes. Visitors never have it.`,
+				"The toolkit's Sudo opens the shadow realm: the world turns to a crimson nether, always in daylight, and only its hidden dotfiles show. Pick Sudo again to come back. Only the owner can go there.",
+				"Click Pet in the top-left corner to summon a pet with your own AI key, or a local Ollama. It answers questions about this world's files and can propose edits you review. Your key stays in this browser.",
 			],
 		},
 		{
@@ -210,7 +213,7 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 			pages: [
 				"Bugs in the files take the shape of monsters. They hover by their file's arch, and stand beside their line inside the file.",
 				...monsterPages,
-				`Inside the file, click a monster or press ${alt}+Enter with the caret within two lines of it. The spellbook opens on its line: fix the bug, save, and it's defeated!`,
+				`Inside the file, click a monster or press ${alt}+Enter with the caret within two lines of it. A card names the bug and waits: Enter to fight, Esc to back off. The spellbook opens on its line: fix the bug, save, and it's defeated!`,
 			],
 		},
 		{

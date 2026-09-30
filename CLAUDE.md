@@ -1,6 +1,6 @@
 # cabn — agent guide
 
-TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint + format, Vitest for tests.
+TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint + format, Vitest for tests, Playwright for browser tests. Architecture overview: `docs/ARCHITECTURE.md`. Player-facing docs: `README.md`, `docs/USER_GUIDE.md`, `docs/SEYN.md`.
 
 ## Commands (run from repo root)
 
@@ -9,30 +9,67 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `pnpm test` — `pnpm -r test` (Vitest per package)
 - `pnpm lint` — `biome check .`
 - `pnpm format` — `biome format --write .`
-- `pnpm -F @cabn/demo dev` — run the walkable demo (predev converts `apps/demo/sample-project/` into a world bundle if one isn't already built)
-- `pnpm -F @cabn/demo build:world` — (re)convert the sample project and sync sprites into `apps/demo/public/`; append `-- --force` to rebuild an already-built world
-- `pnpm -F @cabn/demo build && pnpm -F @cabn/demo e2e` — Playwright browser smoke test against a `vite preview` of the production build (see README's "Browser smoke test")
-- `cabn build <dir> [--offline] [--no-history] [--git-dir path]` — `--offline` skips the build-time url-preview framability check and the GitHub releases request (the only network requests cabn makes; the backend never makes them); a repo root also gets a read-only `git/` directory (its real objects, for recent history; read in the browser with isomorphic-git, branches converted on demand) and releases.json (README's "Git history" section)
-- `cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline] [--owner]` — convert `<dir>` in memory and serve it as a walkable game on `127.0.0.1` only; `--allow-exec` enables REAL code execution of files run with the wand tool (only use on code you trust — see README's `cabn serve` section); `--owner` (off by default, the one owner flag) turns on owner mode, reached in the game through one key, O (the owner's toolkit, `systems/ownerToolkit.ts` + `react/OwnerToolkit.tsx`, a generic entry list built from `owner.signs`/`owner.git`/`owner.layers[].tools`): sign placing and token-gated `.seyn` writes (README's "Signs") and git writes — commit edits, create/switch branches in the real repo, never push/fetch; and the shadow realm (hidden files, `serve/ownerShadow.ts`: `/owner/shadow/*`, lazily computed via the converter's Node-only `convertShadow`, never in the bundle). One gate, `serve/ownerAuth.ts`, for `serve/ownerSigns.ts`, `serve/ownerGit.ts` and `serve/ownerShadow.ts`. Normal worlds never contain hidden (dot) paths; the clients are the separate `@cabn/engine/owner` export, like `./local-exec`. In the game the shadow realm is a *world layer*: the main engine has only the neutral seam (`systems/worldLayer.ts`, `scenes/worldLayerSeam.ts`), all shadow code lives in `packages/engine/src/shadow/` and is re-exported only from `src/owner.ts` (an import-graph test enforces it)
-- `pnpm -F @cabn/backend dev` / `test` / `build` / `start` — the Fastify converter backend; `pnpm -F @cabn/backend keygen` generates a new API key (prints plaintext once + its SHA-256 for `CABN_API_KEY_SHA256`) — see README's "Backend API" section
-- `pnpm changeset` — record a version bump for one of the four publishable packages (`world-schema`/`converter`/`engine`/`cli`); publishing itself is a manual `workflow_dispatch` only, see README's "Releasing" section
+- Full check before a commit: `pnpm -r build && pnpm -r test && pnpm lint` (CI runs the same, plus `pnpm audit --audit-level=high` and the Playwright suite)
+- `pnpm -F @cabn/demo dev` — run the walkable demo. `predev` runs `scripts/build-world.mjs`, which rebuilds each demo world (`sample`, `notes`) only when its fingerprint changed
+- `pnpm -F @cabn/demo build:world` — the same world check on its own; `-- --force` rebuilds every world regardless
+- `pnpm -F @cabn/demo build` — production build; `postbuild` runs the three bundle checks (below)
+- `pnpm -F @cabn/demo e2e` — Playwright against `vite preview` of the production build (build first)
+- `pnpm -F @cabn/backend dev` / `test` / `build` / `start` — the Fastify converter backend; `pnpm -F @cabn/backend keygen` prints a new API key once plus its SHA-256 for `CABN_API_KEY_SHA256`
+- `pnpm -F @cabn/asset-pipeline generate` — regenerate all art (deterministic: a no-op on unchanged inputs); it chains the sub-scripts in `tools/asset-pipeline/package.json` (`palette`, `recover`, `placeholders`, `soften`, `world-art`, `signpost`, `pets`, `shadow`, `preview`, ...), each runnable alone
+- `pnpm changeset` — record a version bump for one of the four publishable packages (`world-schema`/`converter`/`engine`/`cli`); publishing is a manual `workflow_dispatch` only (README's "Releasing")
+
+### The CLI (`node packages/cli/dist/main.js`, bin name `cabn`)
+
+- `cabn build <dir|zip> [-o outDir] [--include-secrets] [--offline] [--findings file]... [--no-history] [--git-dir path]` — default output `./<name>-world/`. `--offline` skips the build-time url-preview framability check and the GitHub releases request (the only network requests cabn makes; the backend never makes them). A repo root also ships a read-only `git/` directory and `releases.json`. Linked git worktrees get no history (isomorphic-git doesn't follow `commondir`; the build prints a note)
+- `cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline] [--owner] [--no-history] [--git-dir path]` — converts in memory, serves on `127.0.0.1` only. `--allow-exec` enables REAL execution of wand runs (trusted code only). `--owner` (off by default, the one owner flag) enables owner mode: the owner's toolkit (`O`), sign writes, git writes (commit/branch/switch, never push/fetch) and the shadow realm. `?e2e=1` on a serve page exposes `window.__cabnStore`/`__cabnBus` for tests
+- `cabn shelf <bundleDir...> [-o outDir]`, `cabn inspect <bundleDir>`
+
+### Test and debug switches
+
+- `CABN_UPDATE_GUIDE=1` — `CABN_UPDATE_GUIDE=1 pnpm -F @cabn/engine exec vitest run tests/guideDoc.test.ts` rewrites the generated blocks in `docs/USER_GUIDE.md` from `packages/engine/src/systems/guideContent.ts`. Without it, `guideDoc.test.ts` fails when the doc drifts. Edit Wren's tips in `guideContent.ts`, never inside the generated blocks
+- `CABN_E2E_PORT` — `vite preview` port for the Playwright suite (default 4173); set a distinct one per worktree
+- `CABN_OWNER_E2E_PORT` — `cabn serve --owner` port for `signs-owner.spec.ts` (default 5042)
+- `CABN_OWNER_KEY_E2E_PORT` — `owner-key.spec.ts` (default `CABN_OWNER_E2E_PORT` + 3, so 5045)
+- `CABN_SHADOW_E2E_PORT` — `shadow-owner.spec.ts` (default 5043)
+- `CABN_SPELLBOOK_E2E_PORT` — `spellbook-serve.spec.ts` (default 5043, the same as the shadow spec: set one of them when those two specs can run in parallel workers)
+- `CABN_REVIEW_SHOTS=1` — specs that support it write review screenshots under `assets/generated/review/<topic>/`; `CABN_REVIEW_PREFIX` (default `after`) and `CABN_SHOT_SUFFIX` name them in the specs that read them
+- `CABN_E2E_LIVE_WEB=1` — `embeds.spec.ts` loads the real sites instead of stubs
+- `CABN_PERF=1` — `monsters.spec.ts` logs frame-time stats
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` — point at a cached Chrome for Testing build; never run `playwright install` locally
+- e2e worker cap: `apps/demo/playwright.config.ts` defaults `workers` to a quarter of the CPU cores (minimum 1), because each worker's Chrome spends real CPU in world bakes. `--workers=N` overrides it
+- `?perf=1` — the engine's `performance.mark`/`measure` phase marks (`systems/perfMarks.ts`: boot, preload, shelf, world entry with a per-bake breakdown, file view, spellbook). Off, each call site is one boolean check
+- `node apps/demo/scripts/perf-measure.mjs [--base-url=http://127.0.0.1:5091] [--reps=5]` — times cold boot, world entry, file and spellbook open through those marks against an already running `vite preview` of the production build, with Chrome traces and a CPU-throttled pass; output in `apps/demo/out/perf/`
+
+### The demo's world fingerprint
+
+`apps/demo/scripts/build-world.mjs` hashes each world's source tree (paths and bytes, `cabn.json` included), findings file and build options, plus the `version` and built `dist/` of `@cabn/world-schema`, `@cabn/converter` and `@cabn/cli` (without the cli's bundled sprites), `CABN_VERSION` and `gen-git-fixture.mjs`. The hash is stored in `apps/demo/node_modules/.cache/cabn-worlds/<name>.txt`. It follows `dist/`, not `src/`: run `pnpm -r build` after converter changes, or the demo keeps the old world. Tests: `apps/demo/tests/build-world.test.mjs`.
 
 ## Layout
 
-- `packages/world-schema` — `@cabn/world-schema`, world data model; other packages depend on it via `workspace:*`
-- `packages/converter` — `@cabn/converter`, directory/zip → world conversion
-- `packages/engine` — `@cabn/engine`, Phaser 3 + zustand + mitt game engine (scenes, React bridge — `CabnGame`/`FileOverlay`). Main entry (`.`) is always execution-safe (`TraceProvider` only); real execution (`LocalRunProvider`) lives behind a separate `./local-exec` subpath export that only a `cabn serve --allow-exec` host page ever imports; the owner sign client (`createServeOwnerSigns`) is likewise only behind `./owner`, imported only by a `cabn serve --owner` host page, together with the owner git client (`createOwnerGitClient`)
-- `packages/cli` — `@cabn/cli`, `cabn` bin (`build`/`inspect`/`shelf`/`serve`)
-- `apps/backend` — private, `@cabn/backend`, an authenticated Fastify service wrapping `@cabn/converter` (`POST /v1/worlds`, `GET /healthz`)
-- `apps/demo` — private, Vite + React app that converts `sample-project/` and renders it via `@cabn/engine`; `e2e/` holds the Playwright browser smoke test
-- `tools/asset-pipeline` — private, `@cabn/asset-pipeline`; palette extraction, sprite recovery, placeholder generation, preview page (see its scripts: `palette`, `recover`, `placeholders`, `preview`, `shadow`, `generate`); the shadow realm's art goes to `assets/generated/shadow/`, served by `cabn serve` only with `--owner` and never copied into the demo
-- `assets/source/icons` — source art PNGs
-- Rust prototype lives on the `rust-prototype` branch, not in this tree
+- `packages/world-schema` — `@cabn/world-schema`: zod schemas for `world.json` (strict), chunks, search index, the optional sidecars (`media.json`, `embeds.json`, `monsters.json`, `signs.json`, `git/`, `releases.json`), `cabn.json` (`src/cabnConfig.ts`), world layers (`src/layer.ts`) and the `.seyn` parser. `CABN_VERSION` is 1
+- `packages/converter` — `@cabn/converter`: `.` (Node: `convert`, `buildShelf`, `convertShadow`), `./browser` (in-browser conversion for universes; must never reach `shadow.ts`/`shadowLayout.ts`, enforced by an import-graph test), `./core` (annotators, media sniffing, `clearingFit`, search-index shape; what the engine's first chunk may import). Tests live in `test/` (singular)
+- `packages/engine` — `@cabn/engine`: Phaser 3 scenes (`src/scenes/`), rendering (`src/render/`), pure logic (`src/systems/`), React HUD (`src/react/`), pets (`src/pets/`), and the React↔Phaser bridge (`src/bridge/store.ts` zustand, `src/bridge/events.ts` mitt). Three entries:
+  - `.` — always execution-safe (`TraceProvider` only) and owner-free
+  - `./local-exec` — `LocalRunProvider`, imported only by a `cabn serve --allow-exec` page
+  - `./owner` — owner sign and git clients and everything in `src/shadow/` (the shadow realm's provider, client, skin, palette, sudo tool), imported only by a `cabn serve --owner` page. `src/shadow/` is owner-only: `tests/importGraph.test.ts` fails if `index.ts` reaches it
+- The world-layer seam: the main engine knows only a neutral "world layer" (`systems/worldLayer.ts`: `WorldLayerProvider`, `WorldSkin`, `mergeLayer`, `DEFAULT_SKIN`; `scenes/worldLayerSeam.ts`). The shadow realm is one provider plugged in through `owner.layers`. Never name shadow things in the main entry; add skin fields with a null default in `DEFAULT_SKIN` so normal worlds keep today's code path
+- The owner's toolkit: `systems/ownerToolkit.ts` builds a generic entry list from `owner.signs`, `owner.git` and each `owner.layers[].tools`; `react/OwnerToolkit.tsx` renders it
+- `packages/cli` — `@cabn/cli`: `build`/`inspect`/`shelf`/`serve`. `src/serve/ownerAuth.ts` is the one gate for `ownerSigns.ts`, `ownerGit.ts` and `ownerShadow.ts`; every `/owner/` route answers 404 without `--owner`. The shadow layer is computed lazily in the serve process and never written into the bundle. `scripts/copy-assets.mjs` bundles the engine's art (its `SHADOW` list only for `--owner`); `tests/serve/bundled-assets.test.ts` checks coverage
+- `apps/backend` — private, `@cabn/backend`: authenticated Fastify service (`POST /v1/worlds`, `GET /healthz`)
+- `apps/demo` — private, Vite + React app: converts `sample-project/` and `notes-vault/` into a shelf of two worlds. `e2e/` is the Playwright suite, `tests/` its Vitest tests, `scripts/` the world build, git fixture, perf harness and bundle checks. The three `postbuild` bundle checks, all over `dist/`:
+  - `check-no-exec-in-bundle.mjs` — no real-execution or owner-client markers
+  - `check-no-secrets-in-bundle.mjs` — no key-shaped strings (`sk-…`, Google, GitHub, AWS, private key blocks); world data excluded
+  - `check-no-shadow-in-bundle.mjs` — no shadow wire strings or client names, no `/assets/shadow/` art, no hidden paths in world files
+- `tools/asset-pipeline` — private, `@cabn/asset-pipeline`: palette, sprite recovery, pixel-map art, soften pipeline. Shadow art goes to `assets/generated/shadow/`, served by `cabn serve` only with `--owner` and never copied into the demo
+- `assets/source` — source art; `assets/generated` — generated sprites; `assets/generated/review/` — review screenshots
+- The Rust prototype lives on the `rust-prototype` branch, not in this tree
 
 ## Conventions
 
-- TS strict ESM everywhere; package builds emit to `dist/`, tests live in `tests/` (outside tsc `include`)
-- Add runtime deps only in the milestone that uses them — stubs stay dep-free
+- TS strict ESM everywhere; package builds emit to `dist/`; tests live in `tests/` (`test/` in the converter), outside tsc `include`
+- New bundle data goes in an optional sidecar file, never a new field in `world.json` (older engines parse it strictly and would reject the world); `CABN_VERSION` stays 1
+- Add runtime deps only in the milestone that uses them
 - Comments load-bearing only: explain why, never narrate what the code says
 - Branch per feature off `main`; never commit to `main` directly; never push without explicit user authorization
-- User-visible changes get a dated `CHANGELOG.md` entry
+- User-visible changes get a dated `CHANGELOG.md` entry. Don't delete old entries; mark a statement a later change overrides as superseded
+- A change to a key, tool or tip: update `guideContent.ts`, regenerate with `CABN_UPDATE_GUIDE=1`, and keep `docs/USER_GUIDE.md`'s prose in step
