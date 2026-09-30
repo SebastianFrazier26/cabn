@@ -40,8 +40,18 @@ import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
 ${ownerWiring}
+// Same opt-in pattern as apps/demo/src/App.tsx's exposeTestHookIfRequested:
+// only touches window when the page is explicitly loaded with ?e2e=1, never
+// by a real \`cabn serve\` visitor. Needed because a real serve host has no
+// other way to reach a portal for a Playwright test — world layout is
+// computed client-side, so there's no static pixel position to click.
+function onGameReady(handle) {
+	if (new URLSearchParams(window.location.search).get("e2e") !== "1") return;
+	window.__cabnStore = handle ? handle.store : undefined;
+	window.__cabnBus = handle ? handle.bus : undefined;
+}
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner, onGameReady }));
 `;
 }
 
