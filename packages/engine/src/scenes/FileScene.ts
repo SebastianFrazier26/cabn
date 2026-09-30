@@ -382,6 +382,14 @@ export class FileScene extends Phaser.Scene {
 				this.syncKeyboardForMode(state.mode);
 				if (state.mode === "file") this.goalColumn = undefined;
 			}
+			// Not left to the next frame's syncCaretFocus: a key pressed before
+			// that frame (a busy or sleeping game loop) would land on <body>.
+			// The book's own editor still holds focus at this point, but it is
+			// on its way out, so it doesn't count as a text field to yield to.
+			this.syncCaretFocus(
+				state.mode,
+				state.mode === "file" && prev.mode === "editor",
+			);
 			// The player can leave "editor"/"encounter" without a fix (Esc,
 			// discard) — either way, once we're back in plain "file" mode no
 			// encounter session is in progress anymore.
@@ -1022,11 +1030,13 @@ export class FileScene extends Phaser.Scene {
 		el.addEventListener("paste", this.onCaretPaste);
 		parent.appendChild(el);
 		this.caretInput = el;
+		window.addEventListener("keydown", this.onStrayKeyDown, true);
 	}
 
 	private destroyCaretInput(): void {
 		const el = this.caretInput;
 		if (!el) return;
+		window.removeEventListener("keydown", this.onStrayKeyDown, true);
 		el.removeEventListener("keydown", this.onCaretKeyDown);
 		el.removeEventListener("input", this.onCaretInput);
 		el.removeEventListener("compositionend", this.onCaretCompositionEnd);
@@ -1046,11 +1056,25 @@ export class FileScene extends Phaser.Scene {
 	 * Re-grabbing on every frame covers focus falling to <body> after a
 	 * canvas click or a hotbar button blurring itself.
 	 */
-	private syncCaretFocus(mode: CabnMode): void {
+	private syncCaretFocus(mode: CabnMode, overrideTextOwner = false): void {
 		const input = this.caretInput;
 		if (!input || typeof document === "undefined") return;
+		const writing = this.caretWriting(mode);
+		const focused = document.activeElement === input;
+		if (
+			writing &&
+			!focused &&
+			(overrideTextOwner || activeFocusOwner() !== "text")
+		) {
+			input.focus({ preventScroll: true });
+		} else if (!writing && focused) {
+			input.blur();
+		}
+	}
+
+	private caretWriting(mode: CabnMode): boolean {
 		const s = this.store.getState();
-		const writing =
+		return (
 			mode === "file" &&
 			!this.exiting &&
 			!s.fileLeavePrompt &&
@@ -1058,14 +1082,25 @@ export class FileScene extends Phaser.Scene {
 			!s.spyglassOpen &&
 			!s.bagOpen &&
 			s.pensievePortalId === null &&
-			s.activeFileState !== null;
-		const focused = document.activeElement === input;
-		if (writing && !focused && activeFocusOwner() !== "text") {
-			input.focus({ preventScroll: true });
-		} else if (!writing && focused) {
-			input.blur();
-		}
+			s.activeFileState !== null
+		);
 	}
+
+	/**
+	 * A key that lands on <body> or the canvas while the page should be
+	 * writing: a closing panel's field just unmounted and took focus with it,
+	 * before any frame could hand it back. The caret takes focus in time for
+	 * the key's own text input (which goes to whatever is focused after
+	 * keydown) and handles the key itself, since this event's target is fixed.
+	 */
+	private onStrayKeyDown = (event: KeyboardEvent): void => {
+		const input = this.caretInput;
+		if (!input || document.activeElement === input) return;
+		const mode = this.store.getState().mode;
+		if (!this.caretWriting(mode) || activeFocusOwner() !== "none") return;
+		input.focus({ preventScroll: true });
+		this.onCaretKeyDown(event);
+	};
 
 	private onCaretKeyDown = (event: KeyboardEvent): void => {
 		// A panel's capture-phase Esc (spyglass/orb/bag) already handled it.

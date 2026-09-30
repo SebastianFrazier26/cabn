@@ -390,3 +390,88 @@ test("file view caret: click, arrows, typing, Enter, save + re-annotate, spellbo
 	expect(consoleErrors).toEqual([]);
 	expect(pageErrors).toEqual([]);
 });
+
+/** Stops (or restarts) Phaser's loop, so FileScene gets no frame to re-grab focus in. */
+async function setLoopAsleep(page: Page, asleep: boolean) {
+	await page.evaluate((asleep) => {
+		const loop = (
+			window as unknown as {
+				__cabnGame: { loop: { sleep(): void; wake(): void } };
+			}
+		).__cabnGame.loop;
+		if (asleep) loop.sleep();
+		else loop.wake();
+	}, asleep);
+}
+
+test("file view: an Esc right after a panel closes still leaves, with no frame in between", async ({
+	page,
+}) => {
+	test.setTimeout(120_000);
+	const pageErrors: string[] = [];
+	page.on("pageerror", (err) => pageErrors.push(err.message));
+
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.goto("/?e2e=1");
+	await expect(page.locator("canvas").first()).toBeVisible();
+	await page.waitForTimeout(1500);
+	await walkToward(page, { x: 0, y: -480 }, 50);
+	await holdKey(page, "Enter");
+	await expect
+		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.not.toBeNull();
+	await page.waitForTimeout(1500);
+
+	// The spellbook: closing it and pressing Esc before FileScene's next frame.
+	await enterFile(page, FILE);
+	await page.keyboard.press("Alt+KeyQ");
+	await expect.poll(async () => (await state(page))?.mode).toBe("editor");
+	await expect(page.locator(".cm-content")).toBeFocused();
+	await setLoopAsleep(page, true);
+	await page.keyboard.press("Escape");
+	await expect(page.locator(".cabn-spellbook-frame")).toBeHidden();
+	expect((await state(page))?.mode).toBe("file");
+	await page.keyboard.press("Escape");
+	await setLoopAsleep(page, false);
+	await expect
+		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.toBe("world");
+	await page.waitForTimeout(600);
+
+	// The orb (find): same, its input unmounting takes focus with it.
+	await enterFile(page, FILE);
+	await page.keyboard.press("ControlOrMeta+f");
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					(
+						window as unknown as {
+							__cabnStore: { getState(): { searchOpen: boolean } };
+						}
+					).__cabnStore.getState().searchOpen,
+			),
+		)
+		.toBe(true);
+	await setLoopAsleep(page, true);
+	await page.keyboard.press("Escape");
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					(
+						window as unknown as {
+							__cabnStore: { getState(): { searchOpen: boolean } };
+						}
+					).__cabnStore.getState().searchOpen,
+			),
+		)
+		.toBe(false);
+	await page.keyboard.press("Escape");
+	await setLoopAsleep(page, false);
+	await expect
+		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.toBe("world");
+
+	expect(pageErrors).toEqual([]);
+});
