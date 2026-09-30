@@ -10,6 +10,33 @@ You don't need to read this first: the first world on your shelf has a guide, **
 - **Interact** with `Enter` in a world or on the shelf. Clicking something interactable walks you there and interacts when you arrive. Inside a text file, `Enter` inserts a newline; click a monster or use `Alt+Enter` (`Option+Enter` on macOS) to face it.
 - **Esc** backs out: out of a file, out of a world when you're near its bonfire, out of an open panel.
 
+### Every key at a glance
+
+On macOS, `Alt` is `Option` and `Ctrl` is `Cmd` for the editing shortcuts.
+
+| Where | Key | What it does |
+| --- | --- | --- |
+| Shelf and world | `WASD` / arrow keys | Walk. Any movement key also stops a click-walk. |
+| Shelf and world | Click | Walk to the spot, or walk to the thing you clicked and use it. |
+| Shelf and world | `Enter` | Use what you're standing at: a cabin, an arch, the bonfire, Wren, a sign, the rift, or your pet. |
+| World | `Esc` | Near the bonfire, go back to the shelf. Otherwise closes the open panel. |
+| World | `M` | Open or close the big map. |
+| World | `H` | At an arch in a world with git history: the pensieve (the file's history). |
+| World | `L` | Spyglass: the files in this clearing. |
+| World | `F`, `Ctrl+F` / `Cmd+F` | Crystal orb: search the whole world. |
+| World (owner only) | `O` | The owner's toolkit. Arrows or `1`-`9` pick, `Enter` uses, `Esc` or `O` closes. |
+| Inside a text file | Typing, arrows, `Shift`+arrows | Write, move the caret, select. `Enter` inserts a newline. |
+| Inside a text file | `Ctrl+S` / `Cmd+S` | Save. |
+| Inside a text file | `Ctrl+Z` / `Cmd+Z`, `Ctrl+Shift+Z` / `Cmd+Shift+Z` | Undo, redo (`Ctrl+Y` also redoes). |
+| Inside a text file | `Alt+Enter` | Face the monster within two lines of the caret. |
+| Inside a text file | `Alt+Q`, `Alt+B`, `Alt+R` | Spellbook, bag, wand (run). |
+| Inside a text file | `Alt+F`, `Alt+L`, `Alt+H` | Orb (this file's lines), spyglass, pensieve. |
+| Inside a text file | `Esc` | Leave the file (asks first if edits are unsaved). With a selection, the first `Esc` clears it. |
+| Spellbook open | `Alt+1` to `Alt+5` | Paste a bag slot at the caret. |
+| During a run | `Space`, `N`, `1` / `2` / `4`, `Esc` | Play or pause, one step, speed, stop. |
+
+The spellbook's own shortcuts are in [Editing: the spellbook](#editing-the-spellbook).
+
 ### The shelf, worlds, fountains and arches
 
 1. **The shelf** is the hub: a wizard tower surrounded by one **cabin** per world. Walk to a cabin and press `Enter` to go into that world.
@@ -26,7 +53,7 @@ When a text box has focus (the orb's search box, the spellbook or the file page'
 
 The minimap in the top-right shows the current world's folders, paths, files, player and undefeated monsters. Bright clearings are folders visited in this world's saved progress; unvisited clearings remain visible in a darker color. Gold marks you, cyan squares mark files, and red marks monsters at their portal or path anchors. If you walk beyond the mapped clearings, your marker stays at the nearest map edge.
 
-Press `M`, or click **Map (M)**, for a larger centered map. Select a cyan file marker or a named destination below the map to walk to its arch using the same navigation as the spyglass. This does not open the file automatically. `M`, `Esc` or **Close** closes the larger map. Movement pauses while it is open; opening it cancels any existing click-walk. Map keys do not run while typing or while Wren is speaking. The map is hidden on the shelf and inside files, and resets when changing worlds.
+Press `M`, or click **Map (M)**, for a larger centered map. Select a cyan file marker or a named destination below the map to walk to its arch using the same navigation as the spyglass. This does not open the file automatically. `M`, `Esc` or **Close** closes the larger map. Movement pauses while it is open; opening it cancels any existing click-walk. Map keys do not run while typing or while Wren is speaking. The map is hidden on the shelf and inside files, and resets when changing worlds. The small map also steps aside while an arch's bigger preview is open at the side of the screen; `M` still opens the big one.
 
 The hotbar at the bottom of the screen holds your tools. Click a slot or press its key. Inside a text file, add `Alt` (`Option` on macOS) to the tool keys so plain letters can type. Each slot shows a short verb (Use, Look, Search, Copy, Edit, Run).
 
@@ -104,11 +131,15 @@ Every problem cabn finds in a world's files when it builds the world becomes a m
 
 ### Fixing code defeats monsters
 
-1. Enter the monster's file and click it, or place the caret within two lines and press `Alt+Enter` (`Option+Enter` on macOS). A banner names the monster and shows the error. (`Esc` backs out before the book opens.)
+1. Enter the monster's file and click it, or place the caret within two lines and press `Alt+Enter` (`Option+Enter` on macOS). A card names the monster and shows the error. It stays until you answer: `Enter`, a click or any other key goes on to the fight, and `Esc` backs off and returns you to the page.
 2. The spellbook opens on the offending line. Fix the problem and save.
 3. Saving re-checks every monster in that file. A fixed bug's monster flashes and vanishes in a puff of smoke. If the fix didn't take, it shrugs off the hit and gives you a hint, and the book stays open so you can try again.
 
 Will-o'-wisps never fight: remove the `TODO` (or `FIXME`, `XXX`, `HACK`) and save, and the wisp drifts away. When the last monster in a world falls, you get a victory toast.
+
+Monsters follow their code while you edit: add lines above one and it moves down with its line, in the file and in the spellbook. Moving code around doesn't count as a fix; fixing the problem does.
+
+In the world, monsters circle their file's arch. On an arch that shows a live web page, they circle wide enough to stay visible around the page.
 
 ## Previews: pictures, sound, PDFs and web pages
 
@@ -150,6 +181,18 @@ This is the *entry point*.
 
 Only on your own `cabn serve` page can you place signs from inside the world: press `O` for the owner's toolkit (or click its slot at the end of the hotbar), pick **Place sign** (arrow keys or its number, then `Enter`), click where it should stand, write it in the editor (the preview updates as you type), and save. It's written into your folder and appears at once. Open one of your signs to edit or delete it. Nobody else ever gets the toolkit, including visitors to a hosted world: without it `O` does nothing. It only appears when you start the server with `cabn serve --owner`. The same menu also holds **Sudo** (show the hidden files, the shadow realm) and, in a world with git history, **Commit**, **Switch branch** and **Create branch**, which open the rift's Owner tab at that step (see the [README](../README.md)).
 
+## The shadow realm (world owners only)
+
+A normal world leaves out hidden files, meaning anything whose name, or any folder above it, starts with a dot (`.env`, `.gitignore`, `.github/`). It works like `ls` without `-a`. The owner of a world can see them on their own `cabn serve --owner` page:
+
+1. Press `O` for the owner's toolkit and pick **Sudo**.
+2. The normal arches sink into the ground and the hidden files rise in their own clearings. The world turns into a crimson nether: lava paths, braziers, dead trees and nether-coloured monsters. The realm is always in daylight, whatever the time-of-day switch says.
+3. Only hidden files show. The orb, spyglass, map and monster counter list only the realm's files and monsters, and your pet sees nothing here. Folders with nothing hidden in them shrink to a small patch of ground around their fountain, so you can still walk through them.
+4. Hidden files open and save like any other file, except that a save goes straight to the file on disk. If the file changed on disk meanwhile, the game says so and offers to reload it.
+5. Pick **Sudo** again to leave. Everything normal rises back as it was. The realm is always off after a reload.
+
+Visitors to a hosted world, and anyone on a page started without `--owner`, never get the toolkit, the realm or any hidden file.
+
 ## AI pets (bring your own key)
 
 A pet is a small companion that follows you around a world and answers questions about its files, using **your own** account with an AI provider. Click **Pet** under the day/night switch (top left, in any world), pick a provider, paste your API key and press **Summon pet**.
@@ -164,13 +207,13 @@ A pet is a small companion that follows you around a world and answers questions
 | DeepSeek | Dew, a whale that floats beside you | yes |
 
 - **Talk to it**: click the pet, or press `Enter` when nothing else (an arch, a sign, Wren, the bonfire) is in reach. Type a question and press `Enter` (`Shift+Enter` for a new line). **Stop** cancels an answer in progress; `Esc` closes the chat.
-- **What it can do**: list the world's files, read their raw text (long files in pieces), search them, and **propose edits**. It never runs code and never changes a file by itself. Files it read show under its answer; click one to walk to that file's arch.
+- **What it can do**: list the world's files, read their raw text (long files in pieces), search them, and **propose edits**. It never runs code and never changes a file by itself. It never sees hidden files. Files it read show under its answer; click one to walk to that file's arch.
 - **Proposed edits**: the answer shows a proposal card. **Review in spellbook** opens the file with a before/after diff on the spellbook's right page. **Accept** puts the change into the file's buffer as one undoable step (it isn't saved yet: save with `Ctrl+S` / `Cmd+S` as usual, which re-checks the file's monsters); **Reject** drops it. If the file changed since the pet looked, the proposal is marked stale instead.
 - **Model**: each provider has a short list; the first is the default. **Test connection** sends one tiny request, so it checks the key, the model and that your browser can reach the provider.
 - **Out of credits**: the pet tells you its "communication spell has worn off" and links your provider's billing page. A wrong key, a rate limit or a network problem get their own messages.
 - The pet is only in worlds: not on the shelf, and not inside a file.
 
-**Where your key goes.** Only into this browser. By default it's kept for this tab only (session storage) and gone when you close the tab. **Remember on this device** keeps it in local storage until you press **Forget key**; the key is then only as safe as this browser profile, so prefer a key with a spending limit. Questions go straight from your browser to the provider you picked; cabn's servers, the site hosting the game and `cabn serve` never see, relay or store the key. It isn't in world saves, exports, URLs or logs, and the page never shows it again after you save it. A file an undefeated magpie is guarding (a leaked secret) is not sent to the provider at all.
+**Where your key goes.** Only into this browser. By default it's kept for this tab only (session storage) and gone when you close the tab. **Remember on this device** keeps it in local storage until you press **Forget key**; the key is then only as safe as this browser profile, so prefer a key with a spending limit. Questions go straight from your browser to the provider you picked; cabn's servers, the site hosting the game and `cabn serve` never see, relay or store the key. It isn't in world saves, exports, URLs or logs, and the page never shows it again after you save it. In a file an undefeated magpie is guarding (a leaked secret), each secret is replaced with `«redacted secret»` before the file goes to the provider, and the pet can't propose an edit to those lines. Once the magpie is defeated the file goes as it is.
 
 **Ollama** needs no key, but it has to be reachable from the page. A world opened on your own machine works out of the box. A hosted (https) page can only reach it if Ollama allows that page's origin (`OLLAMA_ORIGINS`) and the browser allows the page to talk to your local network; Safari doesn't.
 
@@ -200,7 +243,7 @@ A `cabn.json` at the root of a project changes how its world is built. Every fie
 - **`history`** limits the git history a repository's world carries: `maxCommitsPerBranch` (default 200), `maxBranches` (20), `maxTags` (50), `maxReleases` (10), `maxPackBytes` (20 MB; the commits per branch halve until it fits) and `maxBlobBytes` (2 MB per file version), each within fixed bounds; `"releases": false` skips GitHub releases and `"enabled": false` turns history off. `cabn build --no-history` does the same from the command line.
 - **`annotate`** adjusts code-smell thresholds. External ESLint JSON or SARIF results can be attached with repeatable `cabn build --findings <file>` flags.
 
-See [`packages/world-schema/README.md`](../packages/world-schema/README.md) for the full format.
+The README's [`cabn.json` reference](../README.md#cabnjson-reference) lists every key with its bounds, and [`packages/world-schema/README.md`](../packages/world-schema/README.md) has the full format.
 
 ## Running code for real: `cabn serve --allow-exec`
 
@@ -210,7 +253,7 @@ cabn serve ./my-project --allow-exec
 
 `cabn serve` builds a world from a folder and serves it at `http://127.0.0.1:<port>/`, on your own machine only. Without `--allow-exec` the wand still only simulates, exactly like the hosted demo.
 
-**`--allow-exec` runs your code for real.** Using the wand (`Alt+R` / `Option+R`) on a `.py`, `.js`, `.mjs` or `.ts` file then executes it on your computer with `python3` or `node`. Only use it on a folder whose code you trust. cabn limits what it can (127.0.0.1 only, a per-session token, a 10-second default timeout, capped output, no paths outside the folder), but the code itself runs with your permissions. It prints a warning banner when it starts. The [README](../README.md#cabn-serve--running-a-file-for-real-locally-only) has the details.
+**`--allow-exec` runs your code for real.** Using the wand (`Alt+R` / `Option+R`) on a `.py`, `.js`, `.mjs` or `.ts` file then executes it on your computer with `python3` or `node`. Only use it on a folder whose code you trust. cabn limits what it can (127.0.0.1 only, a per-session token, a 10-second default timeout, capped output, no paths outside the folder), but the code itself runs with your permissions. It prints a warning banner when it starts. The [README](../README.md#cabn-serve---allow-exec-running-a-file-for-real) has the details.
 
 ## Wren's tips
 
@@ -229,6 +272,7 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - The map in the top-right shows folders, paths, files, you and undefeated monsters. Bright clearings are places you've visited. Press M for a larger map, select a file to walk there, and press Esc to close. Map keys stay out of text boxes.
 - A world built from a git repository has a swirling rift near this bonfire. Its branches are alternate universes: step through to visit one, or read its tags and releases.
 - Press H at an arch (Alt/Option+H inside a file) for the pensieve, that file's history. The big map's timeline shows which files each commit changed.
+- Wooden signposts are notes the world's owner left. Walk up to one to see it at the side; press Enter or click it to read it all. Its links walk you to the file, folder or sign they name.
 
 #### Tools
 
@@ -239,6 +283,8 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - Quill (Alt/Option+Q) opens the spellbook on the page's caret and edits. Wand (Alt/Option+R) runs the current buffer as a gentle, simulated trace.
 - Inside a text file, use Alt/Option+L for the spyglass and Alt/Option+F for the orb. Alt/Option+Enter faces a nearby monster; plain Enter inserts a newline.
 - On the world owner's own local page, O opens the owner's toolkit: place a sign, commit, switch or create a branch, and whatever else that page offers. Arrows or numbers pick, Enter uses, Esc closes. Visitors never have it.
+- The toolkit's Sudo opens the shadow realm: the world turns to a crimson nether, always in daylight, and only its hidden dotfiles show. Pick Sudo again to come back. Only the owner can go there.
+- Click Pet in the top-left corner to summon a pet with your own AI key, or a local Ollama. It answers questions about this world's files and can propose edits you review. Your key stays in this browser.
 
 #### Monsters
 
@@ -249,7 +295,7 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - Hex Imp: A parse error in JavaScript, Python, CSS or HTML. TypeScript is excluded; bracket problems belong to gremlins. Magpie: A password, API key or other secret left in the code. Remove it and rotate any real exposed credential.
 - Skeleton: An unused import or unreachable code after an unconditional exit. Bramble: Tangled code: deep nesting, long functions, duplicated blocks or leftover debug logging.
 - Shade: A finding from an external linter or scanner that has no more specific monster class.
-- Inside the file, click a monster or press Alt/Option+Enter with the caret within two lines of it. The spellbook opens on its line: fix the bug, save, and it's defeated!
+- Inside the file, click a monster or press Alt/Option+Enter with the caret within two lines of it. A card names the bug and waits: Enter to fight, Esc to back off. The spellbook opens on its line: fix the bug, save, and it's defeated!
 
 #### Editing
 

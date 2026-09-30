@@ -68,7 +68,7 @@ export interface BuildOptions {
 	findingsPaths?: string[];
 	/** Skip the build-time framability check for url previews and the GitHub releases request (no network requests at all). */
 	offline?: boolean;
-	/** false: no history.json/universes even for a repository root (`--no-history`). */
+	/** false: no `git/` pack directory or releases.json even for a repository root, and no releases request (`--no-history`). */
 	history?: boolean;
 	/** Read history from this git directory instead of `<dir>/.git` (`--git-dir`). */
 	gitDir?: string;
