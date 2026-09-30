@@ -7,6 +7,8 @@ export interface LangConfig {
 	tripleStrings?: readonly string[];
 	/** JS/TS template literal delimiter (backtick) — unlike `strings`/`tripleStrings`, this supports backslash escapes *and* `${expr}` interpolation (including nested template literals inside the expression), so it gets its own state machine in codeScanner rather than the single-char string path. */
 	templateLiteralDelim?: string;
+	/** JS/TS only: a bare `/` is tokenized as a regex literal (not scanned as division, and not bracket-matched against its contents) when the previous significant token says an expression is expected next — see codeScanner's `regexAllowed` tracking. Gated per-language because the heuristic (and the extra identifier/number tokenization it needs to track "previous token") only applies to JS/TS syntax. */
+	supportsRegexLiterals?: boolean;
 }
 
 // Scope is deliberately narrow — js/ts/py/rs/go plus the classic curly-brace
@@ -19,12 +21,14 @@ export const LANG_CONFIGS: Readonly<Record<string, LangConfig>> = {
 		blockComment: ["/*", "*/"],
 		strings: ['"', "'"],
 		templateLiteralDelim: "`",
+		supportsRegexLiterals: true,
 	},
 	typescript: {
 		lineComment: "//",
 		blockComment: ["/*", "*/"],
 		strings: ['"', "'"],
 		templateLiteralDelim: "`",
+		supportsRegexLiterals: true,
 	},
 	python: {
 		lineComment: "#",

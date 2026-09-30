@@ -149,6 +149,72 @@ describe("bracketBalance", () => {
 		expect(run("a.go", content)).toHaveLength(0);
 	});
 
+	test("regression: a bracket char class in a regex literal (changesets/changesets getLastJsonObjectFromString.ts shape)", () => {
+		const content = [
+			"export const getLastJsonObjectFromString = (str: string) => {",
+			'  str = str.replace(/[^}]*$/, "");',
+			"  return str;",
+			"};",
+			"",
+		].join("\n");
+		expect(run("getLastJsonObjectFromString.ts", content)).toHaveLength(0);
+	});
+
+	test("regression: regex literals inside a template interpolation (changesets/changesets test-utils.ts shape)", () => {
+		const content = [
+			"export function pkg({",
+			"  name,",
+			"  version,",
+			"}: {",
+			"  name: string;",
+			"  version: string;",
+			"}): Package {",
+			"  return {",
+			"    packageJson: {",
+			"      name,",
+			"      version,",
+			"    },",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+			'    dir: `/packages/${name.replace(/^@/, "").replace(/\\//g, "-")}`,',
+			"  };",
+			"}",
+			"",
+		].join("\n");
+		expect(run("test-utils.ts", content)).toHaveLength(0);
+	});
+
+	test("division (`a / b / c`, `x = y / 2`) is scanned as ordinary code, not a regex", () => {
+		const content = [
+			"function f(a, b, c) {",
+			"  return a / b / c;",
+			"}",
+			"const x = y / 2;",
+			"",
+		].join("\n");
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("division is told apart from a regex literal by the previous token, not just slash-counting", () => {
+		// If the first "/" were wrongly read as starting a regex (identifiers
+		// aren't a regex-ok previous token — only operators/keywords/start-of-
+		// file are), its lookahead would find the *second* "/" as a bogus
+		// closer and swallow the real "(" vs "]" mismatch between them as
+		// inert "pattern text," missing it entirely.
+		const content = "const x = a / (b + c] / d;\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:mismatched:("))).toBe(
+			true,
+		);
+	});
+
+	test("a real unclosed bracket after a regex literal is still caught", () => {
+		const content = "const re = /ab+c/;\nfunction f(a, b {\n  return a;\n}\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:unclosed:("))).toBe(
+			true,
+		);
+	});
+
 	test("skips languages outside the supported set entirely", () => {
 		expect(run("a.rb", "def f( unbalanced")).toHaveLength(0);
 	});

@@ -24,6 +24,86 @@ const CLOSE_TO_OPEN: Readonly<Record<string, string>> = {
 const OPENERS = new Set(["(", "[", "{"]);
 const CLOSERS = new Set([")", "]", "}"]);
 
+// Standard regex-vs-division disambiguation: a `/` starts a regex literal
+// when the previous significant token is one that leaves an expression
+// expected next (an operator, one of these punctuators, one of these
+// keywords, or start of file) — not after a value (identifier, number,
+// string, template literal, `)` or `]`). This list is intentionally the
+// common subset, not exhaustive (e.g. no `instanceof`).
+const REGEX_OK_PUNCT = new Set([
+	"(",
+	",",
+	"=",
+	":",
+	"[",
+	"!",
+	"&",
+	"|",
+	"?",
+	"{",
+	"}",
+	";",
+	"+",
+	"-",
+	"*",
+	"%",
+	"<",
+	">",
+	"^",
+	"~",
+]);
+const REGEX_OK_KEYWORDS = new Set([
+	"return",
+	"typeof",
+	"case",
+	"do",
+	"else",
+	"in",
+	"of",
+	"new",
+	"delete",
+	"void",
+	"throw",
+	"yield",
+	"await",
+]);
+const IDENT_START = /[A-Za-z_$]/;
+const IDENT_PART = /[A-Za-z0-9_$]/;
+// Anchored per-slice (not global/sticky), so no lastIndex state to reset.
+const NUMBER_PATTERN =
+	/^(?:0[xXoObB][0-9a-fA-F]+n?|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?n?)/;
+
+/**
+ * Looks ahead (without mutating the scanner's position) from the "/" at
+ * `start` for the matching unescaped closing "/" plus any trailing flags.
+ * Inside a `[...]` character class an unescaped "/" doesn't end the regex
+ * (real regex syntax). Returns the end index (exclusive) of the whole
+ * literal, or null if no closer appears before a newline or EOF — a regex
+ * literal can never span a real line, so that means this wasn't one; the
+ * caller falls back to treating the "/" as division rather than mis-eating
+ * the rest of the file looking for a closer that was never coming.
+ */
+function scanRegexLiteral(content: string, start: number): number | null {
+	let j = start + 1;
+	let inClass = false;
+	while (j < content.length && content[j] !== "\n") {
+		const c = content[j];
+		if (c === "\\") {
+			j += 2;
+			continue;
+		}
+		if (c === "[") inClass = true;
+		else if (c === "]") inClass = false;
+		else if (c === "/" && !inClass) {
+			j++;
+			while (j < content.length && /[A-Za-z]/.test(content[j] ?? "")) j++;
+			return j;
+		}
+		j++;
+	}
+	return null;
+}
+
 /**
  * A single-pass, comment/string-aware tokenizer shared by bracketBalance
  * (needs bracket issues) and todoMarker (needs to know which byte ranges are
@@ -67,6 +147,9 @@ export function scanCode(content: string, config: LangConfig): ScanResult {
 	// frame via `templateResume` — hands control back to template text.
 	let inTemplateText = false;
 	const templateStack: { line: number; col: number; ch: string }[] = [];
+	// JS/TS only (config.supportsRegexLiterals) — see REGEX_OK_PUNCT/KEYWORDS.
+	// Starts true (start of file is an expression-expected position).
+	let regexAllowed = true;
 
 	const advance = (n: number): void => {
 		for (let k = 0; k < n && i < content.length; k++) {
@@ -127,6 +210,7 @@ export function scanCode(content: string, config: LangConfig): ScanResult {
 			if (content[i] === inString) {
 				advance(1);
 				inString = null;
+				regexAllowed = false; // a closed string is a value
 				continue;
 			}
 			advance(1);
@@ -144,12 +228,14 @@ export function scanCode(content: string, config: LangConfig): ScanResult {
 				advance(1);
 				inTemplateText = false;
 				templateStack.pop();
+				regexAllowed = false; // a closed template literal is a value
 				continue;
 			}
 			if (content[i] === "$" && content[i + 1] === "{") {
 				stack.push({ ch: "{", line, col, templateResume: true });
 				advance(2);
 				inTemplateText = false;
+				regexAllowed = true; // start of the interpolation's own expression
 				continue;
 			}
 			advance(1); // includes newlines — template text spans lines freely
@@ -190,9 +276,25 @@ export function scanCode(content: string, config: LangConfig): ScanResult {
 			advance(1);
 			continue;
 		}
+		if (config.supportsRegexLiterals && ch === "/") {
+			const regexEnd = regexAllowed ? scanRegexLiteral(content, i) : null;
+			if (regexEnd !== null) {
+				advance(regexEnd - i);
+				regexAllowed = false; // a regex literal is a value
+				continue;
+			}
+			// Division — or a "/" that could start a regex but had no closer
+			// before a newline/EOF, so it wasn't one. Either way this "/" is an
+			// operator, same as +/-/* etc., so an expression (maybe even a
+			// regex) is expected right after it.
+			regexAllowed = true;
+			advance(1);
+			continue;
+		}
 
 		if (OPENERS.has(ch)) {
 			stack.push({ ch, line, col });
+			regexAllowed = true;
 			advance(1);
 			continue;
 		}
@@ -216,8 +318,28 @@ export function scanCode(content: string, config: LangConfig): ScanResult {
 				if (top.templateResume) inTemplateText = true;
 				stack.pop();
 			}
+			// Matches REGEX_OK_PUNCT: "}" (block/statement end) leaves an
+			// expression expected next; ")"/"]" end one (a value), same as an
+			// identifier or number below.
+			regexAllowed = ch === "}";
 			advance(1);
 			continue;
+		}
+		if (config.supportsRegexLiterals) {
+			if (IDENT_START.test(ch)) {
+				let j = i + 1;
+				while (j < content.length && IDENT_PART.test(content[j] ?? "")) j++;
+				regexAllowed = REGEX_OK_KEYWORDS.has(content.slice(i, j));
+				advance(j - i);
+				continue;
+			}
+			const numberMatch = NUMBER_PATTERN.exec(content.slice(i));
+			if (numberMatch) {
+				regexAllowed = false; // a number is a value
+				advance(numberMatch[0].length);
+				continue;
+			}
+			if (REGEX_OK_PUNCT.has(ch)) regexAllowed = true;
 		}
 		advance(1);
 	}
