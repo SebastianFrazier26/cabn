@@ -41,7 +41,8 @@ export function computeWorldId(meta: {
  * rebuild or `cabn serve` restart of an unchanged project keeps its scenery
  * while adding or removing a file may reshuffle it. Derived from fields every
  * manifest already has rather than a new meta field, because WorldMetaSchema
- * is strict and an older engine would reject a world carrying one.
+ * is strict and an older engine would reject a world carrying one. The
+ * converter's worldTreeSeed (meta.themeSeed) hashes the same key; keep them in step.
  */
 export function computeScenerySeed(manifest: {
 	meta: { name: string };

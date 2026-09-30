@@ -39,7 +39,7 @@ test("writes a shelf.json listing every bundle with relative worldUrls", async (
 		"../b-world/world.json",
 	]);
 	// Both bundles come from the same fixture, converted to different
-	// outDirs, so meta.source (and therefore themeSeed) legitimately differs.
+	// outDirs, so meta.source legitimately differs.
 	expect(shelf.worlds[0].id).not.toBe(shelf.worlds[1].id);
 });
 

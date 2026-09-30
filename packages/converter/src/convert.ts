@@ -39,7 +39,7 @@ import {
 import { classify } from "./classify.js";
 import { buildClusters, DEFAULT_MAX_FILES_PER_CLUSTER } from "./cluster.js";
 import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
-import { fnv1a } from "./hash.js";
+import { worldTreeSeed } from "./hash.js";
 import type { GithubNetwork } from "./history/githubReleases.js";
 import { buildGitDirectory } from "./history/gitPack.js";
 import { type GitHistoryInput, openGitRepo } from "./history/gitRepo.js";
@@ -368,9 +368,11 @@ export async function convert(
 			totalBytes: walked.totalBytes,
 			truncated: walked.truncated,
 			skippedFiles: walked.skippedFiles,
-			// Seeded from the source path/name, not the content, so re-converting
-			// the same project keeps the same cabin/interior tint across runs.
-			themeSeed: fnv1a(opts.source),
+			themeSeed: worldTreeSeed({
+				meta: { name: opts.name },
+				clusters,
+				portals,
+			}),
 		},
 		clusters,
 		paths,

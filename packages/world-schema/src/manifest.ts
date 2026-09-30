@@ -22,7 +22,8 @@ export const WorldMetaSchema = z.strictObject({
 	/** Files dropped entirely because of truncated (not counted for content-omitted files, which still get a portal). */
 	skippedFiles: z.number().int().nonnegative(),
 	/**
-	 * fnv1a(meta.source) — the converter fills this in, not hand-authored.
+	 * fnv1a over meta.name plus the sorted cluster and file paths (the same key
+	 * as the engine's scenery seed) — the converter fills this in, not hand-authored.
 	 * Optional so a hand-built or pre-shelf-hierarchy manifest still validates;
 	 * consumers that tint by theme (engine's systems/theme.ts) fall back to a
 	 * fixed seed when it's absent.

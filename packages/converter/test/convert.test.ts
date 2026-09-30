@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { validateManifest, type WorldManifest } from "@cabn/world-schema";
 import { afterEach, describe, expect, test } from "vitest";
 import { convert } from "../src/convert.js";
@@ -328,5 +328,51 @@ describe("convert: review-fix regressions", () => {
 				second.get(name),
 			);
 		}
+	});
+});
+
+describe("meta.themeSeed", () => {
+	const dirs: string[] = [];
+	afterEach(async () => {
+		await Promise.all(
+			dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })),
+		);
+	});
+
+	async function themeSeedOf(files: Record<string, string>): Promise<number> {
+		const parent = await mkdtemp(join(tmpdir(), "cabn-tint-"));
+		dirs.push(parent);
+		const root = join(parent, "my-project");
+		for (const [path, content] of Object.entries(files)) {
+			await mkdir(join(root, path, ".."), { recursive: true });
+			await writeFile(join(root, path), content);
+		}
+		const bundle = await convert(new DirSource(root), {
+			name: basename(root),
+			source: root,
+		});
+		const seed = parseBundleEntry<WorldManifest>(bundle, "world.json").meta
+			.themeSeed;
+		if (seed === undefined) throw new Error("themeSeed missing");
+		return seed;
+	}
+
+	const tree = {
+		"README.md": "# hi\n",
+		"src/main.py": "print('hi')\n",
+		"src/util/strings.py": "X = 1\n",
+	};
+
+	test("the same tree and folder name under different parents keeps its tint", async () => {
+		const a = await themeSeedOf(tree);
+		const b = await themeSeedOf(tree);
+		expect(dirs[0]).not.toBe(dirs[1]);
+		expect(a).toBe(b);
+	});
+
+	test("a different file tree changes it", async () => {
+		const a = await themeSeedOf(tree);
+		const b = await themeSeedOf({ ...tree, "src/extra.py": "Y = 2\n" });
+		expect(a).not.toBe(b);
 	});
 });

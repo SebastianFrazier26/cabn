@@ -69,7 +69,7 @@ exports[`convert (DirSource) > full bundle snapshot for mini-python 1`] = `
     "name": "mini-python",
     "skippedFiles": 0,
     "source": "mini-python",
-    "themeSeed": 354047303,
+    "themeSeed": 3740687020,
     "totalBytes": 505,
     "truncated": false,
   },
