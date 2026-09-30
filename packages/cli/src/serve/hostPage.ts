@@ -35,8 +35,10 @@ function entrySource(opts: HostPageOptions): string {
 			].join("\n")
 		: "const owner = undefined;";
 	// Same opt-in hook as the demo's App.tsx: only a page loaded with ?e2e=1
-	// (the owner e2e) gets the store on window. The owner token is already a
-	// page global, so this exposes nothing a script on the page couldn't read.
+	// (the owner and spellbook-serve e2es) gets the store on window — a real
+	// serve host has no other way to reach a portal, since world layout is
+	// computed client-side. The owner token is already a page global, so this
+	// exposes nothing a script on the page couldn't read.
 	return `
 import React from "react";
 import { createRoot } from "react-dom/client";

@@ -239,6 +239,27 @@ export function EditorOverlay({
 
 	const isOpen = mode === "editor";
 
+	// Bumped once per "open episode" to retrigger the book's CSS open
+	// animation (key={playToken} below). Done here, synchronously during
+	// render — React's documented "adjust state while rendering" pattern —
+	// rather than inside the mount effect below, where it used to live: that
+	// bump raced the same effect's own async EditorView construction. When
+	// `loadLanguageExtension` resolves within the same microtask tick (any
+	// file with no CodeMirror language pack, or — 2026-09-29 spellbook-empty
+	// bug — every file under `cabn serve`, whose esbuild bundle inlines the
+	// dynamic `import()` into a same-tick `Promise.resolve` instead of a real
+	// network fetch), the view mounted into the pre-bump host div one render
+	// before the bump's key-remount tore that div out from under it, leaving
+	// the left page permanently empty. A render-time state adjustment lands
+	// in the same commit as this render, so the mount effect's `hostRef`
+	// always points at the already-final, already-remounted host div.
+	const openEpisodeKeyRef = useRef<string | null>(null);
+	const openEpisodeKey = isOpen && portalId ? portalId : null;
+	if (openEpisodeKey !== openEpisodeKeyRef.current) {
+		openEpisodeKeyRef.current = openEpisodeKey;
+		if (openEpisodeKey !== null) setPlayToken((token) => token + 1);
+	}
+
 	/** Runs the live annotators against `content` and republishes the right page's error list — called on open, on every debounced keystroke, and right after a save. */
 	const recomputeErrors = useCallback(
 		(content: string) => {
@@ -278,7 +299,6 @@ export function EditorOverlay({
 		let cancelled = false;
 		let debounce: ReturnType<typeof setTimeout> | undefined;
 
-		setPlayToken((token) => token + 1);
 		setLocalRun(IDLE_RUN);
 		setDialog(null);
 		setToolHint(null);
