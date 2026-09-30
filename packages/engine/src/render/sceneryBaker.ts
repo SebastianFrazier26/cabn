@@ -5,6 +5,11 @@ import type {
 	SceneryItem,
 	SceneryKind,
 } from "../systems/edgeScenery.js";
+import {
+	parseWorldChunkKey,
+	WORLD_CHUNK_SIZE_PX,
+	worldChunkKey,
+} from "./worldChunkGrid.js";
 
 export interface SceneryBakeBounds {
 	minX: number;
@@ -13,7 +18,7 @@ export interface SceneryBakeBounds {
 	maxY: number;
 }
 
-const CHUNK_SIZE_PX = 512;
+const CHUNK_SIZE_PX = WORLD_CHUNK_SIZE_PX;
 
 /** Two multiply tints applied as one, channel by channel. */
 export function multiplyTint(a: number, b: number): number {
@@ -44,39 +49,37 @@ export function sceneryFootprints(
 	return out;
 }
 
+export interface SceneryChunkSkin {
+	/** A world skin's replacement textures and tint (render/worldDressing.ts). */
+	textureFor?: (kind: SceneryName) => string | undefined;
+	tint?: number;
+}
+
 /**
- * Bakes every planned scenery item into fixed 512px RenderTexture chunks —
- * the same one-draw-call-per-chunk trade groundField.ts makes, and the reason
- * a 600-tree border forest costs the frame nothing after scene creation. Only
- * chunks that actually contain scenery are created. An item straddling a
- * chunk seam is drawn into every chunk it touches (each clips its own part),
- * and items are drawn in the planner's y-sorted order in every chunk so
- * overlapping trees stack the same way on both sides of a seam.
+ * Which chunk(s) each planned item's footprint overlaps — pure grouping,
+ * split out of bakeScenery so a streamer (WorldScene's edgeSceneryStreamer)
+ * can bake one chunk's items on demand instead of every chunk up front. An
+ * item straddling a seam lands in every chunk its footprint touches, same as
+ * groundField.ts's chunk math and worldChunkGrid.ts's indexPointsByChunk —
+ * kept as its own loop rather than reusing that helper because a footprint's
+ * box isn't centered on the item's own point (origin is bottom-center, see
+ * stampFor's `setOrigin(0.5, 1)` below), so the box math differs slightly.
  */
-export function bakeScenery(
-	scene: Phaser.Scene,
-	bounds: SceneryBakeBounds,
+export function groupSceneryItemsByChunk(
 	items: readonly SceneryItem[],
 	footprints: Readonly<Record<SceneryKind, Footprint>>,
-	depth: number,
-	/** A world skin's replacement textures and tint (render/worldDressing.ts). */
-	skin: {
-		textureFor?: (kind: SceneryName) => string | undefined;
-		tint?: number;
-	} = {},
-): Phaser.GameObjects.RenderTexture[] {
-	const startCol = Math.floor(bounds.minX / CHUNK_SIZE_PX);
-	const startRow = Math.floor(bounds.minY / CHUNK_SIZE_PX);
+	chunkSize = CHUNK_SIZE_PX,
+): Map<string, SceneryItem[]> {
 	const chunkItems = new Map<string, SceneryItem[]>();
 	for (const item of items) {
 		const fp = footprints[item.kind];
-		const c0 = Math.floor((item.x - fp.w / 2) / CHUNK_SIZE_PX);
-		const c1 = Math.floor((item.x + fp.w / 2) / CHUNK_SIZE_PX);
-		const r0 = Math.floor((item.y - fp.h) / CHUNK_SIZE_PX);
-		const r1 = Math.floor(item.y / CHUNK_SIZE_PX);
-		for (let r = Math.max(r0, startRow); r <= r1; r++) {
-			for (let c = Math.max(c0, startCol); c <= c1; c++) {
-				const key = `${c},${r}`;
+		const c0 = Math.floor((item.x - fp.w / 2) / chunkSize);
+		const c1 = Math.floor((item.x + fp.w / 2) / chunkSize);
+		const r0 = Math.floor((item.y - fp.h) / chunkSize);
+		const r1 = Math.floor(item.y / chunkSize);
+		for (let r = r0; r <= r1; r++) {
+			for (let c = c0; c <= c1; c++) {
+				const key = worldChunkKey(c, r);
 				let list = chunkItems.get(key);
 				if (!list) {
 					list = [];
@@ -86,7 +89,33 @@ export function bakeScenery(
 			}
 		}
 	}
+	return chunkItems;
+}
 
+/**
+ * One chunk's scenery bake, given the items `groupSceneryItemsByChunk`
+ * already assigned to it (items are drawn in the planner's y-sorted order,
+ * so overlapping trees stack the same way regardless of which side of a seam
+ * they're drawn from) — null if the list is empty, so a streamer can record
+ * "checked, nothing here" without creating a throwaway RenderTexture.
+ */
+export function bakeSceneryChunk(
+	scene: Phaser.Scene,
+	chunkCol: number,
+	chunkRow: number,
+	items: readonly SceneryItem[],
+	depth: number,
+	skin: SceneryChunkSkin = {},
+): Phaser.GameObjects.RenderTexture | null {
+	if (items.length === 0) return null;
+	const originX = chunkCol * CHUNK_SIZE_PX;
+	const originY = chunkRow * CHUNK_SIZE_PX;
+	const rt = scene.add.renderTexture(
+		originX + CHUNK_SIZE_PX / 2,
+		originY + CHUNK_SIZE_PX / 2,
+		CHUNK_SIZE_PX,
+		CHUNK_SIZE_PX,
+	);
 	const stamps = new Map<string, Phaser.GameObjects.Image>();
 	const stampFor = (kind: SceneryKind): Phaser.GameObjects.Image => {
 		const key = skin.textureFor?.(kind) ?? sceneryTextureKey(kind);
@@ -97,37 +126,50 @@ export function bakeScenery(
 		}
 		return image;
 	};
+	// Batched for the same reason as pathBaker.ts's ribbon bake.
+	rt.beginDraw();
+	for (const item of items) {
+		const image = stampFor(item.kind);
+		const swapped = skin.textureFor?.(item.kind) !== undefined;
+		image
+			.setFlipX(item.flipX)
+			.setTint(
+				skin.tint === undefined || swapped
+					? item.tint
+					: multiplyTint(item.tint, skin.tint),
+			);
+		rt.batchDraw(image, item.x - originX, item.y - originY);
+	}
+	rt.endDraw();
+	rt.setDepth(depth);
+	for (const image of stamps.values()) image.destroy();
+	return rt;
+}
 
+/**
+ * Bakes every planned scenery item into fixed 512px RenderTexture chunks —
+ * the same one-draw-call-per-chunk trade groundField.ts makes, and the reason
+ * a 600-tree border forest costs the frame nothing after scene creation. Only
+ * chunks that actually contain scenery are created. Still used whole-bounds
+ * by ShelfScene and as the non-streamed fallback; WorldScene instead streams
+ * chunks in via bakeSceneryChunk + render/chunkStream.ts (see drawEdgeScenery
+ * in WorldScene.ts), same shape as its ground-field streaming.
+ */
+export function bakeScenery(
+	scene: Phaser.Scene,
+	_bounds: SceneryBakeBounds,
+	items: readonly SceneryItem[],
+	footprints: Readonly<Record<SceneryKind, Footprint>>,
+	depth: number,
+	skin: SceneryChunkSkin = {},
+): Phaser.GameObjects.RenderTexture[] {
+	const chunkItems = groupSceneryItemsByChunk(items, footprints);
 	const chunks: Phaser.GameObjects.RenderTexture[] = [];
 	for (const [key, list] of chunkItems) {
-		const [c, r] = key.split(",").map(Number) as [number, number];
-		const originX = c * CHUNK_SIZE_PX;
-		const originY = r * CHUNK_SIZE_PX;
-		const rt = scene.add.renderTexture(
-			originX + CHUNK_SIZE_PX / 2,
-			originY + CHUNK_SIZE_PX / 2,
-			CHUNK_SIZE_PX,
-			CHUNK_SIZE_PX,
-		);
-		// Batched for the same reason as pathBaker.ts's ribbon bake.
-		rt.beginDraw();
-		for (const item of list) {
-			const image = stampFor(item.kind);
-			const swapped = skin.textureFor?.(item.kind) !== undefined;
-			image
-				.setFlipX(item.flipX)
-				.setTint(
-					skin.tint === undefined || swapped
-						? item.tint
-						: multiplyTint(item.tint, skin.tint),
-				);
-			rt.batchDraw(image, item.x - originX, item.y - originY);
-		}
-		rt.endDraw();
-		rt.setDepth(depth);
-		chunks.push(rt);
+		const { col, row } = parseWorldChunkKey(key);
+		const rt = bakeSceneryChunk(scene, col, row, list, depth, skin);
+		if (rt) chunks.push(rt);
 	}
-	for (const image of stamps.values()) image.destroy();
 	return chunks;
 }
 

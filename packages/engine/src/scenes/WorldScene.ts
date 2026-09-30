@@ -50,13 +50,7 @@ import {
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
-import {
-	bakeGroundFieldChunk,
-	CHUNK_SIZE_PX,
-	groundFieldCandidatesNear,
-	groundFieldPositionOf,
-	parseGroundFieldChunkKey,
-} from "../render/groundField.js";
+import { bakeGroundFieldChunk, CHUNK_SIZE_PX } from "../render/groundField.js";
 import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { MonsterOrbits } from "../render/monsterOrbit.js";
@@ -65,9 +59,13 @@ import {
 	renderedMonsterSpecies,
 } from "../render/monsterSprite.js";
 import {
+	bakePathChunk,
+	bakePathRibbonChunk,
 	bakePathRibbons,
 	bakePaths,
 	type PathSegment,
+	planPathRibbonChunks,
+	planPathStamps,
 	type WorldBounds,
 } from "../render/pathBaker.js";
 import { stampPointsAlongSegment } from "../render/pathStamps.js";
@@ -99,10 +97,17 @@ import {
 import { SignLayer } from "../render/signposts.js";
 import { computeWorldBounds as sharedComputeWorldBounds } from "../render/worldBounds.js";
 import {
+	parseWorldChunkKey,
+	worldChunkCandidatesNear,
+	worldChunkPositionOf,
+} from "../render/worldChunkGrid.js";
+import {
 	attachSky,
+	bakeEdgeSceneryChunk,
 	boundsWithSky,
-	dressEdges,
 	type EdgeDressing,
+	materializeEdgeSceneryExtras,
+	planEdgeScenery,
 } from "../render/worldDressing.js";
 import {
 	type DisplayPreview,
@@ -443,6 +448,15 @@ export class WorldScene extends Phaser.Scene {
 	> | null = null;
 	/** Cluster-ground streaming's theme-tint ellipses accrete into this one Graphics as each cluster's ground bakes (in whatever order the streamer picks), same as they always did in the old all-at-once loop. */
 	private groundTintOverlay: Phaser.GameObjects.Graphics | null = null;
+	/** Payload is null for a chunk that was checked and has nothing to draw (bakeScenery/path chunks only exist where content actually falls — see sceneryBaker.ts's own doc comment) — still "loaded" so the streamer never re-checks it every frame. */
+	private edgeSceneryStreamer: ChunkStreamer<
+		string,
+		Phaser.GameObjects.RenderTexture | null
+	> | null = null;
+	private pathStreamer: ChunkStreamer<
+		string,
+		Phaser.GameObjects.RenderTexture | null
+	> | null = null;
 	private ambientEffects: { destroy(): void } | null = null;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
@@ -611,7 +625,7 @@ export class WorldScene extends Phaser.Scene {
 		perfMark("cabn:world:bake-start");
 		this.drawGround(sceneryKeepout);
 		perfMark("cabn:world:ground-baked");
-		this.drawPaths();
+		this.drawPaths(sceneryKeepout);
 		perfMark("cabn:world:paths-baked");
 		this.drawEdgeScenery(sceneryKeepout);
 		perfMark("cabn:world:edge-scenery-baked");
@@ -708,6 +722,10 @@ export class WorldScene extends Phaser.Scene {
 			this.clusterGroundStreamer = null;
 			this.groundTintOverlay?.destroy();
 			this.groundTintOverlay = null;
+			this.edgeSceneryStreamer?.destroyAll((_key, rt) => rt?.destroy());
+			this.edgeSceneryStreamer = null;
+			this.pathStreamer?.destroyAll((_key, rt) => rt?.destroy());
+			this.pathStreamer = null;
 			// Phaser's CameraManager shuts down first (it subscribed when the
 			// scene started, before create()) and clears `main` — without the
 			// `?.` every return to the shelf threw here and froze the game.
@@ -1172,13 +1190,9 @@ export class WorldScene extends Phaser.Scene {
 		return exclusions;
 	}
 
-	/** Half the viewport diagonal (in world px, camera-zoom-aware — no scene in this codebase changes zoom today, but a future map-teleport/click-walk zoom would shrink or grow this the same way) plus a fixed walking-speed lookahead — the streamed bakes' "close enough to load" radius. Independent of world size by construction: it only ever grows with viewport or zoom, never with cluster count or spread. */
+	/** Half the viewport diagonal (in world px) plus a fixed walking-speed lookahead — the streamed bakes' "close enough to load" radius. Independent of world size by construction: it only ever grows with viewport, never with cluster count or spread. No scene in this codebase changes `camera.zoom` away from its default of 1, and there is no map-teleport or click-walk camera jump — checked by grep, not assumed — so this deliberately doesn't divide by zoom; add that back only alongside a real zoom-changing feature. */
 	private streamLoadRadiusPx(): number {
-		const zoom = this.cameras.main?.zoom || 1;
-		const viewportDiagonal = Math.hypot(
-			this.scale.width / zoom,
-			this.scale.height / zoom,
-		);
+		const viewportDiagonal = Math.hypot(this.scale.width, this.scale.height);
 		return viewportDiagonal / 2 + GROUND_STREAM_LOOKAHEAD_PX;
 	}
 
@@ -1277,13 +1291,13 @@ export class WorldScene extends Phaser.Scene {
 			evictRadius: this.streamEvictRadiusPx(),
 			budgetMs: GROUND_STREAM_BUDGET_MS,
 			maxPerFrame: GROUND_STREAM_MAX_CHUNKS_PER_FRAME,
-			positionOf: groundFieldPositionOf,
+			positionOf: worldChunkPositionOf,
 			bake: (key) => {
-				const { chunkCol, chunkRow } = parseGroundFieldChunkKey(key);
+				const { col, row } = parseWorldChunkKey(key);
 				return bakeGroundFieldChunk(
 					this,
-					chunkCol,
-					chunkRow,
+					col,
+					row,
 					fieldSheetKey,
 					FIELD_SEED,
 					fieldTint,
@@ -1292,7 +1306,7 @@ export class WorldScene extends Phaser.Scene {
 			evict: (_key, rt) => rt.destroy(),
 		});
 		this.groundFieldStreamer.loadNowSync(
-			groundFieldCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
+			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
 				(c) => c.key,
 			),
 		);
@@ -1389,7 +1403,22 @@ export class WorldScene extends Phaser.Scene {
 		});
 	}
 
-	private drawPaths(): void {
+	/**
+	 * Base paths stream in chunked, same shape as the ground field (see
+	 * drawGround()'s doc comment) — a very spread-out world's path ribbon used
+	 * to be one RenderTexture sized to the whole world's bounds, which for
+	 * this repo's own 146-cluster world (~61,000 x 67,000px bounds) requests a
+	 * multi-gigapixel texture no real GPU allocates, hanging entry outright
+	 * rather than merely being slow (the ground-field/cluster-ground fix alone
+	 * doesn't help here — this is a second, independent scaling bug, not the
+	 * one the original wide-pass report profiled). A layer's own paths stay
+	 * whole-bounds and synchronous: they're a narrower, owner-only feature
+	 * (see this task's own report for the disclosed gap) and need to be
+	 * collected as a single, known riser set for the layer's rise/sink
+	 * animation, which streamed-in chunks arriving after raiseLayer() ran
+	 * wouldn't be part of without extra bookkeeping this pass doesn't add.
+	 */
+	private drawPaths(spawn: Position): void {
 		if (!this.availability.worldArt) {
 			const g = this.add.graphics().setDepth(1);
 			g.lineStyle(2, PALETTE.trail, 0.8);
@@ -1422,39 +1451,86 @@ export class WorldScene extends Phaser.Scene {
 					});
 			}
 		}
+		const tint = this.skin.pathTint ?? undefined;
+		const skinPath = this.skin.pathTextures;
+		const ribbonKeys = skinPath
+			? {
+					edge: skinPath.edge.key,
+					bed: skinPath.bed.key,
+					cobbles: skinPath.cobbles.map((c) => c.key),
+					cobbleFraction: skinPath.cobbleFraction,
+				}
+			: undefined;
+
 		// A layer's paths bake on their own canvas: the base ribbon (its
 		// junction plazas included) stays exactly as it is without the layer,
 		// and the layer's can rise and sink with it.
 		this.layerPathBake = null;
-		for (const [list, isLayer] of [
-			[segments, false],
-			[layerSegments, true],
-		] as const) {
-			if (list.length === 0) continue;
-			const tint = this.skin.pathTint ?? undefined;
-			// Same bounds as the ground field/camera (computeWorldBounds), not a
-			// tighter box hugging just the path endpoints — a mismatch there used
-			// to leave the path's own bake canvas clipping a stamp right at its edge.
-			const skinPath = this.skin.pathTextures;
+		if (layerSegments.length > 0) {
 			const rt = this.availability.atmosphereArt
 				? bakePathRibbons(
 						this,
 						this.computeWorldBounds(),
-						list,
+						layerSegments,
 						tint,
-						skinPath
-							? {
-									edge: skinPath.edge.key,
-									bed: skinPath.bed.key,
-									cobbles: skinPath.cobbles.map((c) => c.key),
-									cobbleFraction: skinPath.cobbleFraction,
-								}
-							: undefined,
+						ribbonKeys,
 					).rt
-				: bakePaths(this, this.computeWorldBounds(), list, tint);
+				: bakePaths(this, this.computeWorldBounds(), layerSegments, tint);
 			rt.setDepth(1);
-			if (isLayer) this.layerPathBake = rt;
+			this.layerPathBake = rt;
 		}
+
+		if (segments.length === 0) return;
+		const bakeChunk = this.availability.atmosphereArt
+			? ((): ((
+					key: string,
+					col: number,
+					row: number,
+				) => Phaser.GameObjects.RenderTexture | null) => {
+					const chunkPlan = planPathRibbonChunks(this, segments, ribbonKeys);
+					return (key, col, row) => {
+						const rt = bakePathRibbonChunk(
+							this,
+							col,
+							row,
+							key,
+							chunkPlan,
+							tint,
+						);
+						return rt ? rt.setDepth(1) : null;
+					};
+				})()
+			: ((): ((
+					key: string,
+					col: number,
+					row: number,
+				) => Phaser.GameObjects.RenderTexture | null) => {
+					const { stamps, index } = planPathStamps(this, segments);
+					return (key, col, row) => {
+						const rt = bakePathChunk(this, col, row, key, stamps, index, tint);
+						return rt ? rt.setDepth(1) : null;
+					};
+				})();
+		this.pathStreamer = new ChunkStreamer<
+			string,
+			Phaser.GameObjects.RenderTexture | null
+		>({
+			loadRadius: this.streamLoadRadiusPx(),
+			evictRadius: this.streamEvictRadiusPx(),
+			budgetMs: GROUND_STREAM_BUDGET_MS,
+			maxPerFrame: GROUND_STREAM_MAX_CHUNKS_PER_FRAME,
+			positionOf: worldChunkPositionOf,
+			bake: (key) => {
+				const { col, row } = parseWorldChunkKey(key);
+				return bakeChunk(key, col, row);
+			},
+			evict: (_key, rt) => rt?.destroy(),
+		});
+		this.pathStreamer.loadNowSync(
+			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
+				(c) => c.key,
+			),
+		);
 	}
 
 	/**
@@ -1533,21 +1609,61 @@ export class WorldScene extends Phaser.Scene {
 		}
 		const swaps = this.skin.scenery;
 		const scatterTint = this.skin.scatterTint;
-		this.edgeDressing = dressEdges({
+		const textureFor = swaps
+			? (kind: string) => swaps[kind as SkinSceneryKind]?.key
+			: undefined;
+		const tint = scatterTint !== null ? scatterTint : undefined;
+		const plan = planEdgeScenery({
 			scene: this,
 			bounds: this.baseWorldBounds(),
 			seed: this.worldId,
 			circles,
 			segments,
-			reducedMotion: prefersReducedMotion(),
 			layer,
-			...(swaps
-				? {
-						textureFor: (kind: string) => swaps[kind as SkinSceneryKind]?.key,
-					}
-				: {}),
-			...(scatterTint !== null ? { tint: scatterTint } : {}),
 		});
+		perfMark("cabn:world:edge-scenery-planned");
+		this.edgeSceneryStreamer = new ChunkStreamer<
+			string,
+			Phaser.GameObjects.RenderTexture | null
+		>({
+			loadRadius: this.streamLoadRadiusPx(),
+			evictRadius: this.streamEvictRadiusPx(),
+			budgetMs: GROUND_STREAM_BUDGET_MS,
+			maxPerFrame: GROUND_STREAM_MAX_CHUNKS_PER_FRAME,
+			positionOf: worldChunkPositionOf,
+			bake: (key) => {
+				const { col, row } = parseWorldChunkKey(key);
+				return bakeEdgeSceneryChunk(this, plan, key, col, row, {
+					textureFor,
+					tint,
+				});
+			},
+			evict: (_key, rt) => rt?.destroy(),
+		});
+		this.edgeSceneryStreamer.loadNowSync([
+			...worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx())
+				.map((c) => c.key)
+				.filter((key) => plan.chunkItems.has(key)),
+		]);
+		perfMark("cabn:world:edge-scenery-entry-baked");
+		const extras = materializeEdgeSceneryExtras(
+			this,
+			plan,
+			prefersReducedMotion(),
+			tint,
+			textureFor?.("windmill-sails"),
+		);
+		this.edgeDressing = {
+			lights: extras.lights,
+			itemCount: plan.items.length,
+			items: plan.items,
+			pointsOfInterest: plan.pointsOfInterest,
+			destroy: () => {
+				this.edgeSceneryStreamer?.destroyAll((_key, rt) => rt?.destroy());
+				this.edgeSceneryStreamer = null;
+				extras.destroy();
+			},
+		};
 	}
 
 	// Same seed for every cabinet in this world (this.theme, set once in
@@ -2240,7 +2356,7 @@ export class WorldScene extends Phaser.Scene {
 			this.handleMovement(delta);
 		}
 		this.handleChunkLoading();
-		this.streamGroundBakes();
+		this.streamWorldBakes();
 		this.handlePortalApproach();
 		const view = this.cameras.main.worldView;
 		this.archPreviews?.update(
@@ -2363,18 +2479,26 @@ export class WorldScene extends Phaser.Scene {
 		}
 	}
 
-	/** One frame's worth of ground-field/cluster-ground streaming (see drawGround()'s doc comment) — bounded work regardless of world size, since groundFieldCandidatesNear's own scan window is capped by loadRadius, and the cluster candidate list is capped by the world's own (already-bounded) cluster count. */
-	private streamGroundBakes(): void {
-		if (!this.groundFieldStreamer && !this.clusterGroundStreamer) return;
+	/** One frame's worth of streaming for every chunked/per-cluster bake (see drawGround()'s doc comment) — bounded work regardless of world size, since worldChunkCandidatesNear's own scan window is capped by loadRadius, and the cluster candidate list is capped by the world's own (already-bounded) cluster count. */
+	private streamWorldBakes(): void {
+		if (
+			!this.groundFieldStreamer &&
+			!this.clusterGroundStreamer &&
+			!this.edgeSceneryStreamer &&
+			!this.pathStreamer
+		)
+			return;
 		const view = this.cameras.main.worldView;
 		const camera = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
 		const body = this.player.body.body as Phaser.Physics.Arcade.Body;
 		const velocity = { x: body.velocity.x, y: body.velocity.y };
-		this.groundFieldStreamer?.step(
-			groundFieldCandidatesNear(camera, this.streamLoadRadiusPx()),
+		const chunkCandidates = worldChunkCandidatesNear(
 			camera,
-			velocity,
+			this.streamLoadRadiusPx(),
 		);
+		this.groundFieldStreamer?.step(chunkCandidates, camera, velocity);
+		this.edgeSceneryStreamer?.step(chunkCandidates, camera, velocity);
+		this.pathStreamer?.step(chunkCandidates, camera, velocity);
 		this.clusterGroundStreamer?.step(
 			this.manifest.clusters.map((c) => ({
 				key: c.id,

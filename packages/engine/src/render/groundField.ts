@@ -1,7 +1,11 @@
 import type Phaser from "phaser";
 import { BIOME_TILE_VARIANT_COUNT } from "../assetPaths.js";
-import type { Point, StreamCandidate } from "./chunkStream.js";
 import { baseVariantIndex, GROUND_TILE_SIZE } from "./groundTiles.js";
+import {
+	type ChunkRange,
+	computeChunkRange,
+	WORLD_CHUNK_SIZE_PX,
+} from "./worldChunkGrid.js";
 
 export interface FieldBounds {
 	minX: number;
@@ -10,31 +14,18 @@ export interface FieldBounds {
 	maxY: number;
 }
 
-// 16 tiles/side @ 32px = 512px per chunk — small enough that a chunk is a
-// trivial one-time bake, large enough that even a big world's field is a
-// handful of RenderTextures, not one per tile.
+export type { ChunkRange };
+// Re-exported: existing call sites (WorldScene.ts, ShelfScene.ts,
+// groundField.test.ts) import both of these from here — worldChunkGrid.ts
+// owns the actual grid math now, shared with sceneryBaker.ts and
+// pathBaker.ts, but nothing outside this file needs to know that.
+export { computeChunkRange };
+
+// 16 tiles/side @ 32px = 512px per chunk, matching WORLD_CHUNK_SIZE_PX —
+// small enough that a chunk is a trivial one-time bake, large enough that
+// even a big world's field is a handful of RenderTextures, not one per tile.
 export const FIELD_CHUNK_TILES = 16;
-export const CHUNK_SIZE_PX = FIELD_CHUNK_TILES * GROUND_TILE_SIZE;
-
-export interface ChunkRange {
-	startCol: number;
-	endCol: number;
-	startRow: number;
-	endRow: number;
-}
-
-/** Pure: which chunk grid indices cover `bounds` at `chunkSizePx` — split out from bakeGroundField so the coverage math (the part most likely to have an off-by-one at a chunk boundary) is testable without a Phaser scene. */
-export function computeChunkRange(
-	bounds: FieldBounds,
-	chunkSizePx: number,
-): ChunkRange {
-	return {
-		startCol: Math.floor(bounds.minX / chunkSizePx),
-		endCol: Math.ceil(bounds.maxX / chunkSizePx),
-		startRow: Math.floor(bounds.minY / chunkSizePx),
-		endRow: Math.ceil(bounds.maxY / chunkSizePx),
-	};
-}
+export const CHUNK_SIZE_PX = WORLD_CHUNK_SIZE_PX;
 
 /** One chunk's tile draws: `{frame, x, y}` in chunk-local pixel space, in draw order. Pure — split out of bakeGroundFieldChunk so a streamed chunk's draw list can be diffed byte-for-byte against a full-world bake's (see chunkStream.test.ts / groundField.test.ts) without a Phaser scene. */
 export interface GroundFieldDraw {
@@ -138,65 +129,4 @@ export function bakeGroundField(
 		}
 	}
 	return chunks;
-}
-
-export function groundFieldChunkKey(
-	chunkCol: number,
-	chunkRow: number,
-): string {
-	return `${chunkCol},${chunkRow}`;
-}
-
-export function parseGroundFieldChunkKey(key: string): {
-	chunkCol: number;
-	chunkRow: number;
-} {
-	const [col, row] = key.split(",").map(Number);
-	return { chunkCol: col ?? 0, chunkRow: row ?? 0 };
-}
-
-function groundFieldChunkCenter(chunkCol: number, chunkRow: number): Point {
-	return {
-		x: chunkCol * CHUNK_SIZE_PX + CHUNK_SIZE_PX / 2,
-		y: chunkRow * CHUNK_SIZE_PX + CHUNK_SIZE_PX / 2,
-	};
-}
-
-export function groundFieldPositionOf(key: string): Point {
-	const { chunkCol, chunkRow } = parseGroundFieldChunkKey(key);
-	return groundFieldChunkCenter(chunkCol, chunkRow);
-}
-
-/**
- * Every field-chunk key whose center falls within `radius` of `camera` —
- * chunkStream.ts's streamer calls this each frame as its bounded
- * `loadCandidates` window (see that module's doc comment on why the window
- * only needs to cover loadRadius, not the whole world): the scan itself is
- * bounded by `radius`/CHUNK_SIZE_PX squared, not by how many chunks the
- * world has in total.
- */
-export function groundFieldCandidatesNear(
-	camera: Point,
-	radius: number,
-): StreamCandidate<string>[] {
-	const chunkRadius = Math.ceil(radius / CHUNK_SIZE_PX) + 1;
-	const centerCol = Math.floor(camera.x / CHUNK_SIZE_PX);
-	const centerRow = Math.floor(camera.y / CHUNK_SIZE_PX);
-	const out: StreamCandidate<string>[] = [];
-	for (
-		let row = centerRow - chunkRadius;
-		row <= centerRow + chunkRadius;
-		row++
-	) {
-		for (
-			let col = centerCol - chunkRadius;
-			col <= centerCol + chunkRadius;
-			col++
-		) {
-			const { x, y } = groundFieldChunkCenter(col, row);
-			if (Math.hypot(x - camera.x, y - camera.y) > radius) continue;
-			out.push({ key: groundFieldChunkKey(col, row), x, y });
-		}
-	}
-	return out;
 }
