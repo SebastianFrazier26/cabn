@@ -9,6 +9,7 @@ export { CabnGame } from "./react/CabnGame.js";
 export { EditorOverlay } from "./react/EditorOverlay.js";
 export { FileOverlay } from "./react/FileOverlay.js";
 export { GuideDialog } from "./react/GuideDialog.js";
+export { LoadingOverlay } from "./react/LoadingOverlay.js";
 export { OrbSearch } from "./react/OrbSearch.js";
 export { Pensieve } from "./react/Pensieve.js";
 export type { PortalEmbedProps } from "./react/PortalEmbed.js";
@@ -41,6 +42,14 @@ export * from "./systems/gitHistory.js";
 export * from "./systems/guideContent.js";
 export * from "./systems/insertText.js";
 export * from "./systems/lineWindow.js";
+export {
+	type BeginLoadingOptions,
+	LOADING_MIN_VISIBLE_MS,
+	LOADING_SHOW_DELAY_MS,
+	type LoadingError,
+	type LoadingState,
+	type LoadingToken,
+} from "./systems/loadingScreen.js";
 export type {
 	OwnerCapability,
 	OwnerCommitRequest,

@@ -35,8 +35,8 @@ import {
 } from "../systems/ownerApi.js";
 import type { OwnerGitAction } from "../systems/ownerToolkit.js";
 import { hashSeed } from "../systems/portalFx.js";
+import { travelLabel } from "../systems/sceneLoading.js";
 import { fetchJsonOnce } from "./gitShared.js";
-import { LoadingSwirl } from "./LoadingSwirl.js";
 import { MarkdownLite } from "./MarkdownLite.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -154,7 +154,13 @@ export function UniversePickerDialog({
 				)}
 				{tab === "releases" && <ReleaseList git={git} />}
 				{tab === "owner" && owner?.git && (
-					<OwnerPanel git={git} owner={owner} bus={bus} focus={ownerFocus} />
+					<OwnerPanel
+						git={git}
+						owner={owner}
+						bus={bus}
+						store={store}
+						focus={ownerFocus}
+					/>
 				)}
 			</div>
 		</div>
@@ -197,6 +203,13 @@ function BranchList({
 		}
 		setLoading(branch.name);
 		setError(null);
+		const universe = { slug: universeSlug(branch.name), branch: branch.name };
+		// The loading panel's own label from here on, through the conversion and
+		// the scene load that universe:travel starts (which begins before this
+		// token ends, so the panel never drops out between them).
+		const token = store.getState().beginLoading(travelLabel(universe), {
+			detail: "Built here in your browser from its git history",
+		});
 		try {
 			const repo = await loadBrowserRepo(git.historyBase, git.meta);
 			const bundle = await repo.convertUniverse(branch.name, {
@@ -207,27 +220,15 @@ function BranchList({
 			const base = registerMemoryWorld(universeKey(git, branch.name), bundle);
 			bus.emit("universe:travel", {
 				worldUrl: `${base}world.json`,
-				universe: { slug: universeSlug(branch.name), branch: branch.name },
+				universe,
 			});
 		} catch (e) {
 			setError(`That universe couldn't be opened: ${(e as Error).message}`);
 			setLoading(null);
+		} finally {
+			store.getState().endLoading(token);
 		}
 	};
-
-	if (loading)
-		return (
-			<div
-				data-testid="universe-loading"
-				style={{ display: "grid", placeItems: "center", gap: 8, padding: 16 }}
-			>
-				<LoadingSwirl seedKey={loading} />
-				<div style={{ fontSize: 12 }}>
-					Opening the universe of <strong>{loading}</strong>… (built here in
-					your browser from its git history)
-				</div>
-			</div>
-		);
 
 	return (
 		<>
@@ -298,6 +299,11 @@ function BranchList({
 								<button
 									type="button"
 									className="cabn-btn confirm"
+									disabled={loading !== null}
+									aria-busy={loading === branch.name}
+									data-testid={
+										loading === branch.name ? "universe-loading" : undefined
+									}
 									onClick={() => travel(branch)}
 								>
 									{branch.current ? "Return" : "Travel"}
@@ -442,11 +448,13 @@ function OwnerPanel({
 	git,
 	owner,
 	bus,
+	store,
 	focus,
 }: {
 	git: GitContext;
 	owner: OwnerCapability;
 	bus: CabnBus;
+	store: StoreApi<CabnStore>;
 	focus: OwnerGitAction | null;
 }): React.ReactElement {
 	const api = owner.git;
@@ -514,13 +522,18 @@ function OwnerPanel({
 			files: keep,
 		});
 	};
-	const run = async (work: () => Promise<void>) => {
+	const run = async (work: () => Promise<void>, label: string) => {
 		setBusy(true);
 		setError(null);
+		// Not ended on success: the page reloads under the panel.
+		const token = store.getState().beginLoading(label, {
+			detail: "The real repository changes, then the world rebuilds",
+		});
 		try {
 			await work();
 			window.location.reload();
 		} catch (e) {
+			store.getState().endLoading(token);
 			if (e instanceof OwnerApiError && e.needsAuthor) setNeedsAuthor(true);
 			setError((e as Error).message);
 			setBusy(false);
@@ -543,18 +556,18 @@ function OwnerPanel({
 				Object.entries(edits).filter(([path]) => !selected.has(path)),
 			);
 			stashRemaining(git.branch, rest);
-		});
+		}, "Sealing the commit…");
 	const createBranch = () =>
 		run(async () => {
 			await api.createBranch({ name: newBranch, checkout: switchNewBranch });
 			// Like git, uncommitted edits follow you onto a branch created from here.
 			stashRemaining(switchNewBranch ? newBranch : git.branch, edits);
-		});
+		}, `Growing the branch ${newBranch}…`);
 	const switchTo = (branch: string) =>
 		run(async () => {
 			await api.checkout({ branch });
 			stashRemaining(git.branch, edits);
-		});
+		}, `Switching to ${branch}…`);
 	const restoreStash = () => {
 		if (!stash || !storage) return;
 		clearStash(storage, git.rootSource, git.branch);

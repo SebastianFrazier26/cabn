@@ -32,7 +32,15 @@ export function Pensieve({ store }: Props): React.ReactElement | null {
 	usePensieveHotkeys(store);
 	if (!portalId || !git) return null;
 	return (
-		<Suspense fallback={<GitPanelFallback seedKey={portalId} />}>
+		<Suspense
+			fallback={
+				<GitPanelFallback
+					seedKey={portalId}
+					store={store}
+					label="Stirring the pensieve…"
+				/>
+			}
+		>
 			<Panel
 				key={`${git.worldId}:${portalId}`}
 				git={git}

@@ -21,6 +21,10 @@ import {
 import Phaser from "phaser";
 import { resolveBundleUrl, resolveRelativeUrl } from "../render/resolveUrl.js";
 import { perfMark } from "../systems/perfMarks.js";
+import {
+	SCENE_LOADING_REGISTRY_KEY,
+	type SceneLoadCoordinator,
+} from "../systems/sceneLoading.js";
 
 export type BootSceneData =
 	| {
@@ -40,6 +44,8 @@ export type BootSceneData =
  */
 export class BootScene extends Phaser.Scene {
 	private target!: BootSceneData;
+	/** Set by the loader when the manifest request itself failed (network, 404), so the error can say which. */
+	private fetchFailure: string | null = null;
 
 	constructor() {
 		// active: false — Phaser would otherwise auto-start the first scene in
@@ -60,6 +66,16 @@ export class BootScene extends Phaser.Scene {
 		// boot with the first world's manifest.
 		this.cache.json.remove("shelf-manifest");
 		this.cache.json.remove("world-manifest");
+		this.fetchFailure = null;
+		this.load.once(
+			Phaser.Loader.Events.FILE_LOAD_ERROR,
+			(file: Phaser.Loader.File) => {
+				// A 2xx that failed is a parse error (an SPA fallback page), not a fetch failure.
+				const status = file.xhrLoader?.status ?? 0;
+				if (status >= 200 && status < 300) return;
+				this.fetchFailure = status ? `HTTP ${status}` : "no response";
+			},
+		);
 		if ("shelfUrl" in this.target) {
 			this.load.json("shelf-manifest", this.target.shelfUrl);
 		} else {
@@ -73,7 +89,13 @@ export class BootScene extends Phaser.Scene {
 		// instead of re-parsed by every consumer downstream.
 		if ("shelfUrl" in this.target) {
 			const raw = this.cache.json.get("shelf-manifest");
-			const shelfManifest = validateShelf(raw);
+			let shelfManifest: ReturnType<typeof validateShelf>;
+			try {
+				shelfManifest = validateShelf(raw);
+			} catch {
+				this.failBoot("shelf.json");
+				return;
+			}
 			const shelfBase = this.target.shelfUrl.slice(
 				0,
 				this.target.shelfUrl.lastIndexOf("/") + 1,
@@ -88,7 +110,13 @@ export class BootScene extends Phaser.Scene {
 		}
 
 		const raw = this.cache.json.get("world-manifest");
-		const baseManifest = validateManifest(raw);
+		let baseManifest: ReturnType<typeof validateManifest>;
+		try {
+			baseManifest = validateManifest(raw);
+		} catch {
+			this.failBoot("world.json");
+			return;
+		}
 		const worldBase = this.target.worldUrl.slice(
 			0,
 			this.target.worldUrl.lastIndexOf("/") + 1,
@@ -129,6 +157,37 @@ export class BootScene extends Phaser.Scene {
 			});
 		});
 	}
+
+	private failBoot(file: "world.json" | "shelf.json"): void {
+		const loading = this.registry.get(SCENE_LOADING_REGISTRY_KEY) as
+			| SceneLoadCoordinator
+			| undefined;
+		const target = this.target;
+		const shelfUrl =
+			"shelfUrl" in target ? undefined : target.returnTo?.shelfUrl;
+		loading?.fail({
+			...bootFailureCopy(file, this.fetchFailure),
+			retry: () => this.scene.restart(target),
+			...(shelfUrl ? { back: () => this.scene.restart({ shelfUrl }) } : {}),
+		});
+	}
+}
+
+/** Tells a manifest that never arrived (retrying may help) from one that arrived unreadable (it won't). */
+function bootFailureCopy(
+	file: "world.json" | "shelf.json",
+	fetchFailure: string | null,
+): { message: string; detail: string } {
+	const what = file === "shelf.json" ? "the shelf" : "this world";
+	return fetchFailure
+		? {
+				message: `The path to ${what} has washed out.`,
+				detail: `${file} couldn't be fetched (${fetchFailure}).`,
+			}
+		: {
+				message: `The map of ${what} is torn.`,
+				detail: `${file} isn't something this version of cabn can read.`,
+			};
 }
 
 /**

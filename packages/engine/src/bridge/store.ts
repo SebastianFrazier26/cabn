@@ -18,6 +18,14 @@ import type { PixelThemeTokens } from "../react/pixelThemeTokens.js";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
+import {
+	type BeginLoadingOptions,
+	IDLE_LOADING_STATE,
+	type LoadingError,
+	type LoadingState,
+	type LoadingToken,
+	LoadingTracker,
+} from "../systems/loadingScreen.js";
 import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import type { OwnerGitAction } from "../systems/ownerToolkit.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
@@ -204,6 +212,8 @@ export interface CabnState {
 	layerUiTokens: PixelThemeTokens | null;
 	/** A layer file save that didn't land (react/LayerSaveNotice.tsx). */
 	layerSaveIssue: LayerSaveIssue | null;
+	/** The loading overlay (react/LoadingOverlay.tsx), driven only through the *Loading actions. */
+	loading: LoadingState;
 }
 
 export interface LayerSaveIssue {
@@ -350,6 +360,18 @@ export interface CabnActions {
 	/** WorldScene, once it has (re)started with or without a layer. An id no offered provider has clears it. */
 	setActiveLayer(layerId: string | null): void;
 	setLayerSaveIssue(issue: LayerSaveIssue | null): void;
+	/** Starts a load and returns its token; the overlay appears only if some load is still open after the delay (systems/loadingScreen.ts). */
+	beginLoading(label: string, options?: BeginLoadingOptions): LoadingToken;
+	/** 0..1, or null for indeterminate. */
+	setLoadingProgress(
+		token: LoadingToken,
+		progress: number | null,
+		detail?: string | null,
+	): void;
+	endLoading(token: LoadingToken): void;
+	/** Swaps the overlay for an in-world error with the given ways out; it stays until clearLoadingError. */
+	failLoading(token: LoadingToken, error: LoadingError): void;
+	clearLoadingError(): void;
 }
 
 export type CabnStore = CabnState & CabnActions;
@@ -411,6 +433,7 @@ const initialState: CabnState = {
 	activeLayerId: null,
 	layerUiTokens: null,
 	layerSaveIssue: null,
+	loading: IDLE_LOADING_STATE,
 };
 
 function pinned(
@@ -424,7 +447,9 @@ function pinned(
 }
 
 export function createCabnStore(): StoreApi<CabnStore> {
-	return createStore<CabnStore>((set, get) => ({
+	let publishLoading: (state: LoadingState) => void = () => {};
+	const loading = new LoadingTracker((state) => publishLoading(state));
+	const store = createStore<CabnStore>((set, get) => ({
 		...initialState,
 		setWorldMap: (worldMap) =>
 			set({ worldMap, mapOpen: false, visitedClusterIds: [] }),
@@ -714,5 +739,13 @@ export function createCabnStore(): StoreApi<CabnStore> {
 			);
 		},
 		setLayerSaveIssue: (layerSaveIssue) => set({ layerSaveIssue }),
+		beginLoading: (label, options) => loading.begin(label, options),
+		setLoadingProgress: (token, progress, detail) =>
+			loading.setProgress(token, progress, detail),
+		endLoading: (token) => loading.end(token),
+		failLoading: (token, error) => loading.fail(token, error),
+		clearLoadingError: () => loading.clearError(),
 	}));
+	publishLoading = (state) => store.setState({ loading: state });
+	return store;
 }
