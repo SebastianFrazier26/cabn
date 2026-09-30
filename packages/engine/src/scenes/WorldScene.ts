@@ -38,6 +38,7 @@ import {
 	type AtmosphereHandle,
 	attachAtmosphere,
 } from "../render/atmosphere.js";
+import { ChunkStreamer } from "../render/chunkStream.js";
 import {
 	attachPointerInput,
 	BOUNDS_INSET_PX,
@@ -49,7 +50,13 @@ import {
 import { dashedLine } from "../render/dashedLine.js";
 import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
-import { bakeGroundField } from "../render/groundField.js";
+import {
+	bakeGroundFieldChunk,
+	CHUNK_SIZE_PX,
+	groundFieldCandidatesNear,
+	groundFieldPositionOf,
+	parseGroundFieldChunkKey,
+} from "../render/groundField.js";
 import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
 import { MonsterOrbits } from "../render/monsterOrbit.js";
@@ -333,6 +340,22 @@ const PATH_CORRIDOR_EXCLUSION_RADIUS = 70;
 const PATH_CORRIDOR_SAMPLE_SPACING = 40;
 /** Fixed, not per-world — the field's own texture variety already comes from tile position, not from needing a different seed per world. */
 const FIELD_SEED = 20260928;
+
+// M10 stream-bake (docs/testing/2026-09-29-wide-pass.md Bug 1): ground-field
+// and per-cluster-ground bakes stream in around the camera instead of over
+// the whole world, so entry cost is bounded by the viewport, not by cluster
+// count/world spread. Budgets deliberately small (a synchronous RT bake
+// can't be pre-empted mid-draw, so this is "stop asking for more once we've
+// already spent this much," not a hard cap) — see chunkStream.ts's own doc
+// comment for why "always bake at least one" matters here.
+const GROUND_STREAM_BUDGET_MS = 4;
+const GROUND_STREAM_MAX_CHUNKS_PER_FRAME = 3;
+const CLUSTER_GROUND_STREAM_BUDGET_MS = 4;
+const CLUSTER_GROUND_STREAM_MAX_PER_FRAME = 2;
+/** 3s of buffer at the fastest movement this game has (click-walk's own SUMMONED_WALK_SPEED, 320px/s) — long enough that the per-frame budget above has finished a chunk well before the player could reach its edge on foot, short enough that it still scales with viewport, not world size. */
+const GROUND_STREAM_LOOKAHEAD_PX = SUMMONED_WALK_SPEED * 3;
+/** One full field chunk of hysteresis: a chunk sitting exactly on the load boundary must not load/evict/reload every frame as floating-point camera motion nudges it back and forth (see chunkStream.test.ts's own hysteresis case). */
+const GROUND_STREAM_EVICT_HYSTERESIS_PX = CHUNK_SIZE_PX;
 /** Same reasoning as ShelfScene's TOWER_SPAWN_CLEARANCE — clear space between the player's physics body and the bonfire's edge. */
 const BONFIRE_SPAWN_CLEARANCE = 24;
 /** Edge scenery keeps this far outside a clearing's own ground radius, so the forest frames the clearing instead of crowding its flower ring. */
@@ -409,6 +432,17 @@ export class WorldScene extends Phaser.Scene {
 	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
 	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
 	private placedProps: PlacedProp[] = [];
+	/** Ground-field grid chunks streamed in/out around the camera (render/chunkStream.ts) — see drawGround()'s doc comment for why only the field itself evicts and per-cluster ground below doesn't. */
+	private groundFieldStreamer: ChunkStreamer<
+		string,
+		Phaser.GameObjects.RenderTexture
+	> | null = null;
+	private clusterGroundStreamer: ChunkStreamer<
+		string,
+		Phaser.GameObjects.RenderTexture
+	> | null = null;
+	/** Cluster-ground streaming's theme-tint ellipses accrete into this one Graphics as each cluster's ground bakes (in whatever order the streamer picks), same as they always did in the old all-at-once loop. */
+	private groundTintOverlay: Phaser.GameObjects.Graphics | null = null;
 	private ambientEffects: { destroy(): void } | null = null;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
@@ -668,6 +702,12 @@ export class WorldScene extends Phaser.Scene {
 			this.monsterSprites.clear();
 			this.portalVariantOverlays.clear();
 			this.portalVariants.clear();
+			this.groundFieldStreamer?.destroyAll((_key, rt) => rt.destroy());
+			this.groundFieldStreamer = null;
+			this.clusterGroundStreamer?.destroyAll((_key, rt) => rt.destroy());
+			this.clusterGroundStreamer = null;
+			this.groundTintOverlay?.destroy();
+			this.groundTintOverlay = null;
 			// Phaser's CameraManager shuts down first (it subscribed when the
 			// scene started, before create()) and clears `main` — without the
 			// `?.` every return to the shelf threw here and froze the game.
@@ -1132,6 +1172,58 @@ export class WorldScene extends Phaser.Scene {
 		return exclusions;
 	}
 
+	/** Half the viewport diagonal (in world px, camera-zoom-aware — no scene in this codebase changes zoom today, but a future map-teleport/click-walk zoom would shrink or grow this the same way) plus a fixed walking-speed lookahead — the streamed bakes' "close enough to load" radius. Independent of world size by construction: it only ever grows with viewport or zoom, never with cluster count or spread. */
+	private streamLoadRadiusPx(): number {
+		const zoom = this.cameras.main?.zoom || 1;
+		const viewportDiagonal = Math.hypot(
+			this.scale.width / zoom,
+			this.scale.height / zoom,
+		);
+		return viewportDiagonal / 2 + GROUND_STREAM_LOOKAHEAD_PX;
+	}
+
+	private streamEvictRadiusPx(): number {
+		return this.streamLoadRadiusPx() + GROUND_STREAM_EVICT_HYSTERESIS_PX;
+	}
+
+	/** One cluster's ground RT + its theme-tint ellipse — split out of drawGround so clusterGroundStreamer (below) can call it for whichever cluster it's baking, in whatever order distance/direction picks, same as bakeGroundFieldChunk for field chunks. Never called twice for the same cluster (clusterGroundStreamer's evictRadius is Infinity — see drawGround's doc comment on why clusters don't evict). */
+	private bakeOneClusterGround(
+		clusterId: string,
+		spawn: Position,
+	): Phaser.GameObjects.RenderTexture {
+		const cluster = this.clustersById.get(clusterId);
+		if (!cluster)
+			throw new Error(`bakeOneClusterGround: unknown cluster ${clusterId}`);
+		const radiusX = this.groundRadius(cluster);
+		const radiusY = this.groundRadiusY(cluster);
+		const exclusions = this.clusterExclusions(cluster, spawn);
+		const rt = bakeClusterGround({
+			scene: this,
+			clusterId: cluster.id,
+			biomeSheetKey:
+				this.skin.clearingTiles?.key ?? biomeTileSheetKey(cluster.biome),
+			centerX: cluster.pos.x,
+			centerY: cluster.pos.y,
+			radiusX,
+			radiusY,
+			exclusions,
+			decalCount: DECALS_PER_CLUSTER,
+			ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
+			seed: 20260928,
+			tint: this.skin.groundTint ?? undefined,
+			...(this.skin.decals ? { decalSheetKey: this.skin.decals.key } : {}),
+		});
+		rt.setDepth(0.5);
+		this.groundTintOverlay?.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
+		this.groundTintOverlay?.fillEllipse(
+			cluster.pos.x,
+			cluster.pos.y,
+			radiusX * 2,
+			radiusY * 2,
+		);
+		return rt;
+	}
+
 	/**
 	 * One continuous grass field across the whole world (`groundField.ts`,
 	 * chunked), with clusters marked as clearings on top of it — a subtle
@@ -1142,6 +1234,22 @@ export class WorldScene extends Phaser.Scene {
 	 * scene. Props (trees, fences, etc.) are placed here too since they share
 	 * the same per-cluster exclusion zones, even though they render as their
 	 * own sprites rather than being baked (see propPlacement.ts's doc comment).
+	 *
+	 * M10 stream-bake: the field and per-cluster ground RTs (this method's
+	 * two most expensive parts, per docs/testing/2026-09-29-wide-pass.md Bug
+	 * 1) now bake only what's near `spawn` synchronously here; update() (see
+	 * streamGroundBakes()) bakes the rest incrementally, budgeted, as the
+	 * camera moves. The field streamer evicts chunks that fall out of range
+	 * (an open world can have unbounded chunks as the player wanders, so RT
+	 * count must stay bounded); the cluster streamer never evicts — a
+	 * world's cluster count is fixed and already bounded by its own file
+	 * count, so once a cluster's ground is baked it simply stays, exactly
+	 * like today's un-streamed behaviour, just spread over more frames to
+	 * get there. Props/skin-swap/light registration stay synchronous for
+	 * every cluster below (not the measured bottleneck, and
+	 * setupAmbientEffects() right after create() needs every light-emitting
+	 * prop to exist already) — the two-bake-radii tradeoff this leaves is
+	 * documented on this task's own report, not silently dropped.
 	 */
 	private drawGround(spawn: Position): void {
 		if (!this.availability.worldArt) {
@@ -1158,47 +1266,66 @@ export class WorldScene extends Phaser.Scene {
 			return;
 		}
 
-		for (const field of bakeGroundField(
-			this,
-			this.computeWorldBounds(),
-			this.skin.fieldTiles?.key ?? biomeTileSheetKey("meadow"),
-			FIELD_SEED,
-			this.skin.groundTint ?? undefined,
-		)) {
-			field.setDepth(0);
-		}
+		const fieldSheetKey =
+			this.skin.fieldTiles?.key ?? biomeTileSheetKey("meadow");
+		const fieldTint = this.skin.groundTint ?? undefined;
+		this.groundFieldStreamer = new ChunkStreamer<
+			string,
+			Phaser.GameObjects.RenderTexture
+		>({
+			loadRadius: this.streamLoadRadiusPx(),
+			evictRadius: this.streamEvictRadiusPx(),
+			budgetMs: GROUND_STREAM_BUDGET_MS,
+			maxPerFrame: GROUND_STREAM_MAX_CHUNKS_PER_FRAME,
+			positionOf: groundFieldPositionOf,
+			bake: (key) => {
+				const { chunkCol, chunkRow } = parseGroundFieldChunkKey(key);
+				return bakeGroundFieldChunk(
+					this,
+					chunkCol,
+					chunkRow,
+					fieldSheetKey,
+					FIELD_SEED,
+					fieldTint,
+				).setDepth(0);
+			},
+			evict: (_key, rt) => rt.destroy(),
+		});
+		this.groundFieldStreamer.loadNowSync(
+			groundFieldCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
+				(c) => c.key,
+			),
+		);
 		perfMark("cabn:world:ground-field-baked");
 
-		const tintOverlay = this.add.graphics().setDepth(0.6);
+		this.groundTintOverlay = this.add.graphics().setDepth(0.6);
+		this.clusterGroundStreamer = new ChunkStreamer<
+			string,
+			Phaser.GameObjects.RenderTexture
+		>({
+			loadRadius: this.streamLoadRadiusPx(),
+			evictRadius: Number.POSITIVE_INFINITY,
+			budgetMs: CLUSTER_GROUND_STREAM_BUDGET_MS,
+			maxPerFrame: CLUSTER_GROUND_STREAM_MAX_PER_FRAME,
+			positionOf: (id) => this.clustersById.get(id)?.pos ?? { x: 0, y: 0 },
+			bake: (id) => this.bakeOneClusterGround(id, spawn),
+			evict: () => {
+				// Never called: evictRadius above is Infinity.
+			},
+		});
+		const clusterLoadRadius = this.streamLoadRadiusPx();
+		const entryClusterIds = this.manifest.clusters
+			.filter(
+				(c) =>
+					Math.hypot(c.pos.x - spawn.x, c.pos.y - spawn.y) <= clusterLoadRadius,
+			)
+			.map((c) => c.id);
+		this.clusterGroundStreamer.loadNowSync(entryClusterIds);
+
 		for (const cluster of this.manifest.clusters) {
 			const radiusX = this.groundRadius(cluster);
 			const radiusY = this.groundRadiusY(cluster);
 			const exclusions = this.clusterExclusions(cluster, spawn);
-
-			bakeClusterGround({
-				scene: this,
-				clusterId: cluster.id,
-				biomeSheetKey:
-					this.skin.clearingTiles?.key ?? biomeTileSheetKey(cluster.biome),
-				centerX: cluster.pos.x,
-				centerY: cluster.pos.y,
-				radiusX,
-				radiusY,
-				exclusions,
-				decalCount: DECALS_PER_CLUSTER,
-				ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
-				seed: 20260928,
-				tint: this.skin.groundTint ?? undefined,
-				...(this.skin.decals ? { decalSheetKey: this.skin.decals.key } : {}),
-			}).setDepth(0.5);
-
-			tintOverlay.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
-			tintOverlay.fillEllipse(
-				cluster.pos.x,
-				cluster.pos.y,
-				radiusX * 2,
-				radiusY * 2,
-			);
 
 			this.placedProps.push(
 				...placeProps({
@@ -2113,6 +2240,7 @@ export class WorldScene extends Phaser.Scene {
 			this.handleMovement(delta);
 		}
 		this.handleChunkLoading();
+		this.streamGroundBakes();
 		this.handlePortalApproach();
 		const view = this.cameras.main.worldView;
 		this.archPreviews?.update(
@@ -2233,6 +2361,29 @@ export class WorldScene extends Phaser.Scene {
 		) {
 			this.loadChunk(cluster);
 		}
+	}
+
+	/** One frame's worth of ground-field/cluster-ground streaming (see drawGround()'s doc comment) — bounded work regardless of world size, since groundFieldCandidatesNear's own scan window is capped by loadRadius, and the cluster candidate list is capped by the world's own (already-bounded) cluster count. */
+	private streamGroundBakes(): void {
+		if (!this.groundFieldStreamer && !this.clusterGroundStreamer) return;
+		const view = this.cameras.main.worldView;
+		const camera = { x: view.x + view.width / 2, y: view.y + view.height / 2 };
+		const body = this.player.body.body as Phaser.Physics.Arcade.Body;
+		const velocity = { x: body.velocity.x, y: body.velocity.y };
+		this.groundFieldStreamer?.step(
+			groundFieldCandidatesNear(camera, this.streamLoadRadiusPx()),
+			camera,
+			velocity,
+		);
+		this.clusterGroundStreamer?.step(
+			this.manifest.clusters.map((c) => ({
+				key: c.id,
+				x: c.pos.x,
+				y: c.pos.y,
+			})),
+			camera,
+			velocity,
+		);
 	}
 
 	private loadChunk(cluster: Cluster): void {
