@@ -69,4 +69,26 @@ describe("findCircularImports", () => {
 		expect(results).toHaveLength(1);
 		expect(results[0]?.members).toEqual(["pkg/a.py", "pkg/b.py"]);
 	});
+
+	// Known false positive, pinned rather than fixed here — see
+	// docs/testing/2026-09-29-wide-pass.md ("from . import <submodule> is
+	// flagged as a self-import"). `from . import views` is ambiguous between
+	// "import the submodule views" and "import the name views defined in
+	// __init__.py"; resolvePyTarget (importGraph.ts) always picks the second
+	// reading and resolves bare "from . import x" to the current package's
+	// own __init__.py, so this ordinary sibling-module idiom (used by e.g.
+	// Flask's own example apps) reads as __init__.py importing itself and
+	// trips the isSelfLoop branch below. Fixing it means resolving `x`
+	// against the package's real file listing, a design change reported
+	// rather than made in this pass. This test pins today's behavior so a
+	// fix changes it deliberately, not by accident.
+	test("from . import <submodule> in __init__.py is mis-flagged as a self-cycle (known false positive)", () => {
+		const files = new Map([
+			["pkg/__init__.py", "from . import views\n"],
+			["pkg/views.py", "x = 1\n"],
+		]);
+		const results = findCircularImports(files);
+		expect(results).toHaveLength(1);
+		expect(results[0]?.members).toEqual(["pkg/__init__.py"]);
+	});
 });
