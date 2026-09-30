@@ -44,6 +44,23 @@ export const PER_FILE_ANNOTATORS: readonly Annotator[] = [
 	codeSmell,
 ];
 
+/**
+ * Backstop across *all* built-in per-file annotators combined, mirroring
+ * MAX_EXTERNAL_PER_FILE/MAX_EXTERNAL_TOTAL below in spirit (a bounded worst
+ * case, not a tuning knob). Several annotators already cap their own output
+ * (codeSmell's MAX_SMELLS_PER_FILE, syntaxError's MAX_SYNTAX_ERRORS_PER_FILE,
+ * etc.), but nothing capped the *sum* across annotators for one file, or
+ * across the whole world — the gap a single 74-line file with a
+ * bracketBalance cascade fell straight through (~1000 duplicate monsters
+ * from one file, 90% of a real-world conversion's total). Not exposed via
+ * cabn.json: unlike codeSmell's thresholds, this isn't "what counts as an
+ * issue", it's "how many monsters a world can hold" — no existing override
+ * shape fits, so it stays a plain constant until a real need to tune it
+ * shows up.
+ */
+const MAX_BUILTIN_PER_FILE = 20;
+const MAX_BUILTIN_TOTAL = 2000;
+
 export interface AnnotateWorldOptions {
 	annotate?: AnnotateOptions;
 	/** Findings from an external tool's results file (see externalFindings.ts). */
@@ -146,16 +163,31 @@ export function annotateWorld(
 
 	const pending: PendingMonster[] = [];
 
+	let builtinTotal = 0;
 	for (const { file, content } of files) {
 		if (content === undefined) continue;
+		if (builtinTotal >= MAX_BUILTIN_TOTAL) break;
+		let fileTotal = 0;
 		for (const annotator of PER_FILE_ANNOTATORS) {
+			if (
+				fileTotal >= MAX_BUILTIN_PER_FILE ||
+				builtinTotal >= MAX_BUILTIN_TOTAL
+			)
+				break;
 			for (const annotation of annotator({
 				file,
 				content,
 				worldFiles,
 				options: options.annotate,
 			})) {
+				if (
+					fileTotal >= MAX_BUILTIN_PER_FILE ||
+					builtinTotal >= MAX_BUILTIN_TOTAL
+				)
+					break;
 				pending.push({ portalId: file.path, annotation });
+				fileTotal++;
+				builtinTotal++;
 			}
 		}
 	}
