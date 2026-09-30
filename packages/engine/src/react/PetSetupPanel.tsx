@@ -26,6 +26,7 @@ import {
 	type PetProviderId,
 } from "../pets/providers.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 interface Status {
 	text: string;
@@ -83,12 +84,11 @@ export function PetSetupPanel({
 		setStatus(null);
 	}, [selected]);
 
-	const panelRef = useRef<HTMLDivElement>(null);
 	// Opened from the corner button, which blurs itself, so nothing inside is
-	// focused yet and the keyboard-owner marker wouldn't apply.
-	useEffect(() => {
-		panelRef.current?.focus({ preventScroll: true });
-	}, []);
+	// focused yet and the keyboard-owner marker wouldn't apply — useFocusTrap
+	// both sets that initial focus and restores it (and now traps Tab) on close.
+	const panelRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(panelRef);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {

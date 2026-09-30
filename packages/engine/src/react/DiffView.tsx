@@ -19,8 +19,13 @@ export function DiffView({
 	hunks: readonly HistoryHunk[];
 }): React.ReactElement {
 	return (
+		// biome-ignore lint/a11y/useSemanticElements: role="group" here isn't a form grouping — <fieldset> would be the wrong element for a read-only diff view.
 		<div
 			data-testid="pensieve-diff"
+			// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region with no focusable content of its own needs its own tab stop (axe: scrollable-region-focusable).
+			tabIndex={0}
+			role="group"
+			aria-label="Diff"
 			style={{
 				fontFamily: "var(--cabn-font-mono)",
 				fontSize: 12,

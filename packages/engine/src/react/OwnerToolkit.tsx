@@ -134,7 +134,10 @@ export function OwnerToolkit({
 			{...{ [KEYBOARD_OWNER_ATTR]: "" }}
 		>
 			<div className="cabn-owner-toolkit-title">Owner's toolkit</div>
-			<ul>
+			{/* role="presentation" on both: axe's aria-required-parent wants a
+			    menuitem's ancestor chain to go straight to menu/menubar/group,
+			    and the ul/li's own implicit list/listitem roles break that. */}
+			<ul role="presentation">
 				{entries.map((entry, index) => {
 					const heading =
 						entry.group !== null && entry.group !== lastGroup
@@ -142,7 +145,7 @@ export function OwnerToolkit({
 							: null;
 					lastGroup = entry.group;
 					return (
-						<li key={entry.id}>
+						<li key={entry.id} role="presentation">
 							{heading && (
 								<div className="cabn-owner-toolkit-group">{heading}</div>
 							)}

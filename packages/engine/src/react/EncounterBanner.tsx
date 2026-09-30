@@ -93,6 +93,7 @@ export function EncounterBanner({
 			key={playToken}
 			ref={rootRef}
 			role="alertdialog"
+			aria-modal="true"
 			aria-label={`A ${speciesDisplayName(monster.species)} appeared`}
 			tabIndex={-1}
 			data-testid="cabn-encounter-popup"

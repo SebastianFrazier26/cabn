@@ -14,6 +14,7 @@ import { signWriterFor } from "../systems/worldLayer.js";
 import { SignTargetPicker } from "./SignTargetPicker.js";
 import { SignView } from "./SignView.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface SignEditorProps {
 	store: StoreApi<CabnStore>;
@@ -153,11 +154,16 @@ function SignEditorPanel({
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, []);
 
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
+
 	return (
 		<div className="cabn-sign-backdrop">
 			<div
+				ref={dialogRef}
 				className="cabn-panel cabn-sign-editor"
 				role="dialog"
+				aria-modal="true"
 				tabIndex={-1}
 				data-cabn-keyboard-owner=""
 				aria-label={isNew ? "New sign" : `Edit ${draft.path}`}

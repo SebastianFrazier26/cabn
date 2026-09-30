@@ -105,7 +105,17 @@ export function RunConsole({
 					{run.blockedMessage}
 				</div>
 			)}
-			<div className="cabn-run-log" style={{ flex: 1, overflowY: "auto" }}>
+			{/* tabIndex/role/aria-label: a scrollable region with no focusable
+			    content of its own needs its own tab stop (axe:
+			    scrollable-region-focusable), same reasoning as DiffView's. */}
+			<div
+				className="cabn-run-log"
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: see comment above.
+				tabIndex={0}
+				role="log"
+				aria-label="Run log"
+				style={{ flex: 1, overflowY: "auto" }}
+			>
 				{run.log.map((entry, i) => (
 					// Append-only log for the lifetime of one run — index is a stable
 					// enough key, no reordering/removal to trip on.

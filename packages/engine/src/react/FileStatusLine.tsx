@@ -5,6 +5,7 @@ import type { CabnStore } from "../bridge/store.js";
 import { fileCaretHints, isActiveFileDirty } from "../systems/fileBuffer.js";
 import { detectMac } from "../systems/spellbookTools.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface FileStatusLineProps {
 	store: StoreApi<CabnStore>;
@@ -26,6 +27,8 @@ export function FileStatusLine({
 	const dirty = useCabnStore(store, isActiveFileDirty);
 	const prompt = useCabnStore(store, (s) => s.fileLeavePrompt);
 	const saveRef = useRef<HTMLButtonElement>(null);
+	const promptRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(promptRef, prompt);
 	const isMac = useMemo(
 		() => detectMac(typeof navigator === "undefined" ? "" : navigator.platform),
 		[],
@@ -103,8 +106,10 @@ export function FileStatusLine({
 					}}
 				>
 					<div
+						ref={promptRef}
 						className="cabn-panel"
 						role="alertdialog"
+						aria-modal="true"
 						aria-label="Unsaved changes"
 						style={{
 							display: "flex",

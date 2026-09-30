@@ -398,17 +398,14 @@ function MapDrawing({
 								strokeWidth={3}
 							/>
 						)}
-						{/* biome-ignore lint/a11y/useSemanticElements: SVG markers cannot contain HTML buttons; matching HTML destinations are below. */}
+						{/* Mouse-only: a pointer-clickable dot standing in for the matching
+						    HTML destination button below, which is the real keyboard/AT
+						    path — no role or key handler, so this plain onClick never
+						    surfaces as an interactive node in the accessibility tree (axe
+						    flagged the previous role="button" version as nested-interactive
+						    inside the svg's own role="img"). */}
+						{/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only convenience duplicate; the same destination is a real, focusable <button> in the fieldset below. */}
 						<rect
-							role="button"
-							aria-label={`Walk to ${p.label}`}
-							tabIndex={-1}
-							onKeyDown={(e) => {
-								if (e.key !== "Enter" && e.key !== " ") return;
-								e.preventDefault();
-								store.getState().setMapOpen(false);
-								bus.emit("tool:walk-to-portal", { portalId: p.id });
-							}}
 							data-testid={large ? "map-portal" : undefined}
 							data-portal-id={p.id}
 							data-layer={p.layer ? "" : undefined}

@@ -98,7 +98,7 @@ export function hostPageHtml(token: string, ownerToken?: string): string {
 		? `\n<script>window.__CABN_OWNER_TOKEN__ = ${JSON.stringify(ownerToken)};</script>`
 		: "";
 	return `<!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>cabn serve</title>

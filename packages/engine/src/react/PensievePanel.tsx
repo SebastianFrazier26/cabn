@@ -1,5 +1,5 @@
 import { diffText, type HistoryHunk } from "@cabn/converter/browser";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GitContext } from "../bridge/store.js";
 import { loadBrowserRepo } from "../systems/git/loadRepo.js";
 import type {
@@ -15,6 +15,7 @@ import {
 } from "../systems/gitHistory.js";
 import { DiffView } from "./DiffView.js";
 import { LoadingSwirl } from "./LoadingSwirl.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 type EntryView =
 	| { kind: "loading" }
@@ -111,6 +112,9 @@ export function PensievePanel({
 		setVersion({ index: selected, read: await repo.readBlob(entry.blob) });
 	};
 
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
+
 	return (
 		<div
 			style={{
@@ -124,6 +128,7 @@ export function PensievePanel({
 			}}
 		>
 			<div
+				ref={dialogRef}
 				role="dialog"
 				aria-modal="true"
 				aria-label="Pensieve"

@@ -122,6 +122,18 @@ const PIXEL_THEME_CSS = `
 	background: var(--cabn-accent-yellow); border: 2px solid var(--cabn-border-outer); border-radius: 2px; transform: rotate(45deg);
 }
 [data-cabn-keyboard-owner]:focus { outline: none; }
+/* A real, visible keyboard focus ring for every interactive element that
+   doesn't already draw its own (the spellbook toolbar and its text inputs
+   do, further down, and win the cascade despite coming first in this file —
+   :where() keeps this rule's specificity at just .cabn-pixel-root, below
+   any of theirs). Needed because the browser's own default outline here
+   measured 1px (Chrome, "auto" style) against a 64px pixel-art button with
+   its own 3px painted border already around it — effectively invisible, not
+   just a headless-mode measurement artifact (2026-09-30 a11y pass). */
+.cabn-pixel-root :where(button, a, input, textarea, select, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [tabindex]):focus-visible {
+	outline: 3px solid var(--cabn-accent-yellow);
+	outline-offset: 2px;
+}
 .cabn-panel::before { left: 10px; }
 .cabn-panel::after { right: 10px; }
 .cabn-panel-title { font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--cabn-border-outer); }
