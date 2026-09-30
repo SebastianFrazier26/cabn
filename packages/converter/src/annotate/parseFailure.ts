@@ -1,6 +1,4 @@
-import { shortHash } from "../hash.js";
 import { locAt } from "./loc.js";
-import { normalizeLine } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 /**
@@ -37,7 +35,11 @@ function checkJson(content: string): ErrorAnnotation[] {
 		return [
 			{
 				code: "Corrupted",
-				rule: `json-parse:${shortHash(jsonErrorKey(message), 8)}`,
+				// A parse only reports its first error, so a file has at most one
+				// of these: "still fails to parse" is the whole identity. Keying on
+				// the message would tie it to one JS engine's wording (the build
+				// runs in Node, the re-check in whatever browser the player uses).
+				rule: "json-parse",
 				message: `Invalid JSON: ${message}`,
 				loc,
 				species: "rot-sprite",
@@ -45,20 +47,6 @@ function checkJson(content: string): ErrorAnnotation[] {
 			},
 		];
 	}
-}
-
-/**
- * JSON.parse's message with every position stripped: V8 says "at position N"
- * and, since about Node 21/Chrome 117, also "(line L column C)". The build
- * (Node) and the in-browser re-check (Chrome) must agree on this key, which
- * is why both forms go rather than trusting one engine's wording.
- */
-export function jsonErrorKey(message: string): string {
-	return normalizeLine(
-		message
-			.replace(/\s*\(line \d+ column \d+\)/g, "")
-			.replace(/\s*at position \d+/g, ""),
-	);
 }
 
 function checkFrontmatter(content: string): ErrorAnnotation[] {

@@ -107,6 +107,21 @@ describe("checkMonsterFixed", () => {
 		).toBe(false);
 	});
 
+	it("Corrupted: still broken while the file fails to parse, wherever and however it fails", () => {
+		const monster = found("Corrupted", jsonFile, '{\n  "a": 1,\n}\n');
+		expect(monster.rule).toBe("json-parse");
+		const worldFiles = new Set([jsonFile.path]);
+		expect(
+			checkMonsterFixed(monster, jsonFile, '{"a": 1}\n{', worldFiles),
+		).toBe(false);
+		expect(checkMonsterFixed(monster, jsonFile, "[1, 2", worldFiles)).toBe(
+			false,
+		);
+		expect(checkMonsterFixed(monster, jsonFile, "[1, 2]", worldFiles)).toBe(
+			true,
+		);
+	});
+
 	it("WispNote: rewording the note is a different note", () => {
 		const f = file("src/a.ts");
 		const monster = found("WispNote", f, "// TODO: later\n");

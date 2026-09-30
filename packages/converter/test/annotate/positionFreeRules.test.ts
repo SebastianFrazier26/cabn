@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { bracketBalance } from "../../src/annotate/bracketBalance.js";
 import { brokenImport } from "../../src/annotate/brokenImport.js";
 import { encodingIssue } from "../../src/annotate/encodingIssue.js";
-import { jsonErrorKey, parseFailure } from "../../src/annotate/parseFailure.js";
+import { parseFailure } from "../../src/annotate/parseFailure.js";
 import { todoMarker } from "../../src/annotate/todoMarker.js";
 import type { Annotator } from "../../src/annotate/types.js";
 import { classify } from "../../src/classify.js";
@@ -73,14 +73,11 @@ describe("position-free rules", () => {
 		expect(c?.rule).not.toBe(a?.rule);
 	});
 
-	test("jsonErrorKey drops both of V8's position forms", () => {
-		expect(
-			jsonErrorKey(
-				"Expected double-quoted property name in JSON at position 69 (line 5 column 2)",
-			),
-		).toBe("Expected double-quoted property name in JSON");
-		expect(jsonErrorKey("Unexpected token } in JSON at position 12")).toBe(
-			"Unexpected token } in JSON",
-		);
+	test("json-parse is one key per file, whatever the error is or where", () => {
+		const trailingComma = run(parseFailure, "config.json", '{"a": 1,}');
+		const badKey = run(parseFailure, "config.json", "\n\n{a: 1}");
+		expect(trailingComma.map((r) => r.rule)).toEqual(["json-parse"]);
+		expect(badKey.map((r) => r.rule)).toEqual(["json-parse"]);
+		expect(run(parseFailure, "config.json", '{"a": 1}')).toEqual([]);
 	});
 });

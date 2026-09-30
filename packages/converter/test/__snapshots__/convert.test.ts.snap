@@ -282,7 +282,7 @@ exports[`convert (DirSource) > spawns a monster of every species for the broken-
         "line": 4,
       },
       "message": "Invalid JSON: Expected double-quoted property name in JSON at position 59 (line 5 column 2)",
-      "rule": "json-parse:9379f3da",
+      "rule": "json-parse",
     },
     "portalId": "config.json",
     "species": "rot-sprite",
