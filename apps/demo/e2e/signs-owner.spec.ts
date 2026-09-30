@@ -31,6 +31,14 @@ const PORT = Number(process.env.CABN_OWNER_E2E_PORT ?? 5042);
 let dir: string;
 let serve: ChildProcess | undefined;
 let url: string;
+// Captured for the whole process lifetime (not just the URL-wait above) so a
+// flake in any test can print what the server was doing at the time — see
+// the afterEach below. `signal` matters more than `code` here: a 144 exit is
+// SIGURG (128+16), the signature under investigation for M10's serve-kills bug.
+let serveOutput = "";
+let serveExit:
+	| { code: number | null; signal: NodeJS.Signals | null }
+	| undefined;
 
 test.beforeAll(async () => {
 	dir = await mkdtemp(join(tmpdir(), "cabn-owner-e2e-"));
@@ -42,28 +50,47 @@ test.beforeAll(async () => {
 			stdio: ["ignore", "pipe", "pipe"],
 		},
 	);
+	serve.stdout?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.stderr?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.once("exit", (code, signal) => {
+		serveExit = { code, signal };
+	});
 	url = await new Promise<string>((resolveUrl, rejectUrl) => {
-		let out = "";
 		const timer = setTimeout(
-			() => rejectUrl(new Error(`cabn serve never printed its url: ${out}`)),
+			() =>
+				rejectUrl(
+					new Error(`cabn serve never printed its url: ${serveOutput}`),
+				),
 			30_000,
 		);
-		serve?.stdout?.on("data", (chunk: Buffer) => {
-			out += chunk.toString();
+		serve?.stdout?.on("data", () => {
 			const m =
-				/cabn serve: (http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(out);
+				/cabn serve: (http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(
+					serveOutput,
+				);
 			if (m?.[1]) {
 				clearTimeout(timer);
 				resolveUrl(m[1]);
 			}
 		});
-		serve?.stderr?.on("data", (chunk: Buffer) => {
-			out += chunk.toString();
-		});
 		serve?.once("exit", (code) =>
-			rejectUrl(new Error(`cabn serve exited (${code}): ${out}`)),
+			rejectUrl(new Error(`cabn serve exited (${code}): ${serveOutput}`)),
 		);
 	});
+});
+
+// biome-ignore lint/correctness/noEmptyPattern: Playwright parses this signature itself and requires a literal object pattern, even unused, to know this hook takes no fixtures.
+test.afterEach(async ({}, testInfo) => {
+	if (testInfo.status !== testInfo.expectedStatus) {
+		console.log(
+			`[signs-owner] cabn serve output so far:\n${serveOutput}\n` +
+				`[signs-owner] cabn serve exit: ${serveExit ? `code=${serveExit.code} signal=${serveExit.signal}` : "still running"}`,
+		);
+	}
 });
 
 test.afterAll(async () => {
