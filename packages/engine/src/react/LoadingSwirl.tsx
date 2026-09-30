@@ -31,13 +31,15 @@ const SHAPES: ReadonlyArray<ReadonlyArray<[number, number]>> = [
 	],
 ];
 
-/** The same particle swirl an arch shows while its preview loads (systems/portalFx.ts loadingMote), here while a universe converts. */
+/** The same particle swirl an arch shows while its preview loads (systems/portalFx.ts loadingMote), here on the loading panel. Under reduced motion it draws one still frame. */
 export function LoadingSwirl({
 	seedKey,
 	size = 120,
+	testId = "universe-loading-swirl",
 }: {
 	seedKey: string;
 	size?: number;
+	testId?: string;
 }): React.ReactElement {
 	const ref = useRef<HTMLCanvasElement>(null);
 	useEffect(() => {
@@ -67,7 +69,7 @@ export function LoadingSwirl({
 			ref={ref}
 			width={size}
 			height={size}
-			data-testid="universe-loading-swirl"
+			data-testid={testId}
 			aria-hidden
 			style={{ imageRendering: "pixelated", width: size, height: size }}
 		/>

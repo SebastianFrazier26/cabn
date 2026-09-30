@@ -59,6 +59,10 @@ import {
 import { preloadGuideNpcAssets } from "../render/guideNpc.js";
 import { preloadSignAssets } from "../render/signposts.js";
 import { perfMark } from "../systems/perfMarks.js";
+import {
+	SCENE_LOADING_REGISTRY_KEY,
+	type SceneLoadCoordinator,
+} from "../systems/sceneLoading.js";
 import type { WorldGitData } from "./WorldScene.js";
 
 export type PreloadSceneData =
@@ -119,6 +123,14 @@ export class PreloadScene extends Phaser.Scene {
 
 	preload(): void {
 		perfMark("cabn:preload:queue-start");
+		const loading = this.registry.get(SCENE_LOADING_REGISTRY_KEY) as
+			| SceneLoadCoordinator
+			| undefined;
+		// Only the art download is real progress; the scene bake after it isn't
+		// measurable from here, so the bar stops at 90% until the scene is up.
+		this.load.on(Phaser.Loader.Events.PROGRESS, (value: number) =>
+			loading?.progress(value * 0.9),
+		);
 		this.load.on(
 			Phaser.Loader.Events.FILE_LOAD_ERROR,
 			(file: { key: string }) => {

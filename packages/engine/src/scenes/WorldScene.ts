@@ -177,6 +177,7 @@ import {
 	withVisitedCluster,
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
+import { layerLabel } from "../systems/sceneLoading.js";
 import {
 	cabinTransitionDelayMs,
 	layerRiseMs,
@@ -3207,6 +3208,9 @@ export class WorldScene extends Phaser.Scene {
 		if (!provider) return;
 		this.layerSwitching = true;
 		this.walker.cancel();
+		// Ended after switchLayer, whose layer:changed begins the restart's own
+		// scene load first, so the overlay doesn't drop out between the two.
+		const fetching = state.beginLoading(layerLabel(provider.label));
 		provider
 			.load()
 			.then((manifest) => {
@@ -3230,7 +3234,8 @@ export class WorldScene extends Phaser.Scene {
 					message: `The layer wouldn't open: ${err instanceof Error ? err.message : String(err)}`,
 					conflict: false,
 				});
-			});
+			})
+			.finally(() => this.store.getState().endLoading(fetching));
 	};
 
 	/** Restarts this scene with `next` shown (or none), keeping the player where they stand; the layer's objects sink first when leaving. */

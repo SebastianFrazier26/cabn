@@ -9,7 +9,9 @@ import { previewDockOpen } from "../systems/portalFx.js";
 import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
 import { LAYER_FALLBACK_COLOR } from "../systems/worldLayer.js";
 import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
+import { LoadingFallback } from "./LoadingOverlay.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useLoadingWhile } from "./useLoadingWhile.js";
 
 // Only a world with git history ever shows it, and only after the reader loads.
 const MapTimeline = lazy(() =>
@@ -47,6 +49,7 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 		},
 		[git],
 	);
+	useLoadingWhile(store, loadingTimeline, "Reading the world's history…");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the map opens/closes or the universe changes.
 	useEffect(() => {
 		setStep(null);
@@ -240,7 +243,14 @@ export function WorldMap({ store, bus }: Props): React.ReactElement | null {
 							</div>
 						)}
 						{commits && commits.length > 0 && (
-							<Suspense fallback={null}>
+							<Suspense
+								fallback={
+									<LoadingFallback
+										store={store}
+										label="Unrolling the timeline…"
+									/>
+								}
+							>
 								<MapTimeline
 									commits={commits}
 									changes={changes}

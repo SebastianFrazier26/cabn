@@ -1,4 +1,7 @@
 import { useEffect } from "react";
+import type { StoreApi } from "zustand/vanilla";
+import type { CabnStore } from "../bridge/store.js";
+import { useLoadingWhile } from "./useLoadingWhile.js";
 
 const jsonCache = new Map<string, Promise<unknown | null>>();
 
@@ -35,12 +38,17 @@ export function useModalKeys(open: boolean, onClose: () => void): void {
 	}, [open, onClose]);
 }
 
-/** What a git panel shows while its lazy chunk loads: the same dim backdrop, so the click visibly landed. */
+/** What a git panel shows while its lazy chunk loads: the same dim backdrop, so the click visibly landed, and the loading panel if the chunk is slow. */
 export function GitPanelFallback({
 	seedKey,
+	store,
+	label,
 }: {
 	seedKey: string;
+	store: StoreApi<CabnStore>;
+	label: string;
 }): React.ReactElement {
+	useLoadingWhile(store, true, label);
 	return (
 		<div
 			style={{

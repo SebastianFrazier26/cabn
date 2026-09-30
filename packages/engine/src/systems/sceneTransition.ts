@@ -92,3 +92,40 @@ export function sceneTransitionTotalMs(
 			return layerTransitionTotalMs(reducedMotion);
 	}
 }
+
+export interface TransitionCoverTiming {
+	/** Fade up to the cover. */
+	coverMs: number;
+	/** Minimum time at the cover before the reveal may start. */
+	holdMs: number;
+	revealMs: number;
+}
+
+/**
+ * The cabin and layer kinds as a cover, a hold and a reveal, so the hold can
+ * stretch while a load is still open (SceneTransitionOverlay waits on the
+ * store's loading state). With nothing loading the three add up to
+ * sceneTransitionTotalMs, the same length as before the split.
+ */
+export function transitionCoverTiming(
+	kind: SceneTransitionKind,
+	reducedMotion: boolean,
+): TransitionCoverTiming {
+	if (reducedMotion)
+		return {
+			coverMs: REDUCED_MOTION_FADE_MS,
+			holdMs: 0,
+			revealMs: REDUCED_MOTION_FADE_MS,
+		};
+	if (kind === "layer")
+		return {
+			coverMs: LAYER_PULSE_IN_MS,
+			holdMs: 0,
+			revealMs: LAYER_PULSE_OUT_MS,
+		};
+	return {
+		coverMs: CABIN_FADE_MS,
+		holdMs: CABIN_HOLD_MS,
+		revealMs: CABIN_FADE_MS,
+	};
+}

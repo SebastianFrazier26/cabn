@@ -14,6 +14,7 @@ import { FileOverlay } from "./FileOverlay.js";
 import { FileStatusLine } from "./FileStatusLine.js";
 import { GuideDialog } from "./GuideDialog.js";
 import { LayerSaveNotice } from "./LayerSaveNotice.js";
+import { LoadingOverlay } from "./LoadingOverlay.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
 import { Pensieve } from "./Pensieve.js";
@@ -91,6 +92,17 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
 	}, [pdfWorkerUrl]);
 
+	const [busy, setBusy] = useState(false);
+	useEffect(() => {
+		if (!handle) return;
+		const sync = () => {
+			const { loading } = handle.store.getState();
+			setBusy(loading.active || loading.visible);
+		};
+		sync();
+		return handle.store.subscribe(sync);
+	}, [handle]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: onGameReady is deliberately excluded — an inline arrow-function prop (the common case) is a fresh reference every render and would re-create the whole game each time.
 	useEffect(() => {
 		const container = containerRef.current;
@@ -113,7 +125,11 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	}, [worldUrl, shelfUrl]);
 
 	return (
-		<div style={{ position: "relative", width: "100%", height: "100%" }}>
+		<div
+			style={{ position: "relative", width: "100%", height: "100%" }}
+			aria-busy={busy}
+			data-testid="cabn-game-root"
+		>
 			<div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 			{handle && (
 				<PixelTheme store={handle.store}>
@@ -141,6 +157,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<LayerSaveNotice store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />
+					<LoadingOverlay store={handle.store} />
 				</PixelTheme>
 			)}
 		</div>

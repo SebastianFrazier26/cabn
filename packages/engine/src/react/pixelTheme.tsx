@@ -702,6 +702,57 @@ const PIXEL_THEME_CSS = `
 @keyframes cabn-wipe-across { 0% { transform: translateX(-120%); } 50% { transform: translateX(0); } 100% { transform: translateX(120%); } }
 .cabn-transition-wipe.play { animation: cabn-wipe-across var(--cabn-wipe-total-ms, 340ms) ease-in-out forwards; }
 
+/* A cover/reveal pair (cabin, layer) held at its peak while a load is open —
+   SceneTransitionOverlay switches cover -> held -> reveal. */
+@keyframes cabn-cover-in { 0% { opacity: 0; } 100% { opacity: var(--cabn-cover-peak, 1); } }
+@keyframes cabn-cover-out { 0% { opacity: var(--cabn-cover-peak, 1); } 100% { opacity: 0; } }
+.cabn-transition-fade.cover, .cabn-transition-layer.cover { animation: cabn-cover-in var(--cabn-cover-ms, 220ms) linear forwards; }
+.cabn-transition-fade.held, .cabn-transition-layer.held { opacity: var(--cabn-cover-peak, 1); }
+.cabn-transition-fade.reveal, .cabn-transition-layer.reveal { animation: cabn-cover-out var(--cabn-cover-ms, 220ms) linear forwards; }
+.cabn-transition-layer { --cabn-cover-peak: 0.85; }
+
+/* ================= loading overlay (react/LoadingOverlay.tsx) ================= */
+.cabn-sr-only {
+	position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+	overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.cabn-loading-shield { position: absolute; inset: 0; z-index: 30; pointer-events: auto; }
+.cabn-loading-overlay {
+	position: absolute; inset: 0; z-index: 30; pointer-events: auto;
+	display: grid; place-items: center; padding: 16px;
+	background: rgba(8, 6, 20, 0.72);
+	animation: cabn-fade-in 160ms ease-out;
+}
+.cabn-loading-panel {
+	width: min(360px, calc(100% - 32px)); box-sizing: border-box;
+	display: grid; justify-items: center; gap: 8px; text-align: center; padding: 16px 18px;
+}
+.cabn-loading-swirl {
+	width: 96px; height: 96px; border-radius: 50%;
+	background: radial-gradient(circle, var(--cabn-panel-body-alt) 0%, transparent 70%);
+}
+.cabn-loading-label { margin: 0; font-size: 14px; color: var(--cabn-text); }
+.cabn-loading-detail { margin: 0; font-size: 11px; color: var(--cabn-text-secondary); }
+.cabn-loading-bar {
+	width: 100%; height: 10px; box-sizing: border-box;
+	border: 2px solid var(--cabn-border-outer); border-radius: 2px;
+	background: var(--cabn-panel-body-alt); overflow: hidden;
+}
+.cabn-loading-bar-fill { height: 100%; background: var(--cabn-accent-green); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.18); }
+.cabn-loading-tip {
+	margin: 4px 0 0; padding-top: 8px; border-top: 3px solid var(--cabn-inset-tint);
+	font-size: 11px; line-height: 1.5; color: var(--cabn-text-secondary); min-height: 3em;
+}
+.cabn-loading-tip-name { display: block; font-size: 10px; color: var(--cabn-accent-violet); margin-bottom: 2px; }
+.cabn-loading-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-loading-overlay:not([data-reduced-motion]) .cabn-loading-swirl { animation: cabn-loading-breathe 2.4s ease-in-out infinite; }
+}
+@keyframes cabn-loading-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+	.cabn-loading-overlay { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.cabn-transition-bars.play .bar,
 	.cabn-transition-wipe.play {

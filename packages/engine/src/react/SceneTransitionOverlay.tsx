@@ -11,6 +11,7 @@ import {
 	PORTAL_WIPE_MS,
 	type SceneTransitionKind,
 	sceneTransitionTotalMs,
+	transitionCoverTiming,
 } from "../systems/sceneTransition.js";
 
 export interface SceneTransitionOverlayProps {
@@ -23,6 +24,12 @@ interface ActiveTransition {
 	token: number;
 	/** The "layer" kind's colour, from the layer's own skin. */
 	color?: number | null;
+	/** Cabin and layer covers hold ("held") while a load is still open, then reveal; the rest just play. */
+	phase: "play" | "cover" | "held" | "reveal";
+}
+
+function loadBusy(state: CabnStore): boolean {
+	return state.loading.active || state.loading.visible;
 }
 
 /**
@@ -56,7 +63,8 @@ export function SceneTransitionOverlay({
 		let token = 0;
 		const play = (kind: SceneTransitionKind, color?: number | null) => {
 			token += 1;
-			setActive({ kind, token, color });
+			const covers = kind === "cabin" || kind === "layer";
+			setActive({ kind, token, color, phase: covers ? "cover" : "play" });
 		};
 
 		let prevMode = store.getState().mode;
@@ -90,15 +98,39 @@ export function SceneTransitionOverlay({
 
 	useEffect(() => {
 		if (!active) return;
+		const advance = (next: ActiveTransition | null) =>
+			setActive((current) =>
+				current?.token === active.token ? next : current,
+			);
+		const timing = transitionCoverTiming(active.kind, reducedMotion);
+		if (active.phase === "held") {
+			const release = () => {
+				if (!loadBusy(store.getState()))
+					advance({ ...active, phase: "reveal" });
+			};
+			release();
+			return store.subscribe(release);
+		}
+		const ms =
+			active.phase === "play"
+				? sceneTransitionTotalMs(active.kind, reducedMotion)
+				: active.phase === "cover"
+					? timing.coverMs + timing.holdMs
+					: timing.revealMs;
 		const timeout = setTimeout(
 			() =>
-				setActive((current) =>
-					current?.token === active.token ? null : current,
+				advance(
+					active.phase === "cover"
+						? {
+								...active,
+								phase: loadBusy(store.getState()) ? "held" : "reveal",
+							}
+						: null,
 				),
-			sceneTransitionTotalMs(active.kind, reducedMotion),
+			ms,
 		);
 		return () => clearTimeout(timeout);
-	}, [active, reducedMotion]);
+	}, [active, reducedMotion, store]);
 
 	if (!active) return null;
 
@@ -119,6 +151,30 @@ export function SceneTransitionOverlay({
 		active.kind === "layer" && active.color != null
 			? { background: toCssColor(active.color) }
 			: {};
+	if (active.phase !== "play") {
+		const timing = transitionCoverTiming(active.kind, reducedMotion);
+		const base =
+			active.kind === "layer" && !reducedMotion
+				? "cabn-transition-layer"
+				: "cabn-transition-fade";
+		return (
+			<div style={wrapperStyle}>
+				<div
+					key={active.token}
+					className={`${base} ${active.phase}`}
+					data-transition={active.kind}
+					data-phase={active.phase}
+					style={{
+						...layerColor,
+						...({
+							"--cabn-cover-ms": `${active.phase === "reveal" ? timing.revealMs : timing.coverMs}ms`,
+						} as React.CSSProperties),
+					}}
+				/>
+			</div>
+		);
+	}
+
 	if (reducedMotion) {
 		return (
 			<div style={wrapperStyle}>
@@ -129,36 +185,6 @@ export function SceneTransitionOverlay({
 					style={{
 						animationDuration: `${sceneTransitionTotalMs(active.kind, true)}ms`,
 						...layerColor,
-					}}
-				/>
-			</div>
-		);
-	}
-
-	if (active.kind === "layer") {
-		return (
-			<div style={wrapperStyle}>
-				<div
-					key={active.token}
-					className="cabn-transition-layer play"
-					data-transition="layer"
-					style={{
-						...layerColor,
-						animationDuration: `${sceneTransitionTotalMs("layer", false)}ms`,
-					}}
-				/>
-			</div>
-		);
-	}
-
-	if (active.kind === "cabin") {
-		return (
-			<div style={wrapperStyle}>
-				<div
-					key={active.token}
-					className="cabn-transition-fade play"
-					style={{
-						animationDuration: `${sceneTransitionTotalMs("cabin", false)}ms`,
 					}}
 				/>
 			</div>

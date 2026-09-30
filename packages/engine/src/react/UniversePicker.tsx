@@ -33,7 +33,15 @@ export function UniversePicker({
 	useModalKeys(open, close);
 	if (!open || !git || mode !== "world") return null;
 	return (
-		<Suspense fallback={<GitPanelFallback seedKey="rift" />}>
+		<Suspense
+			fallback={
+				<GitPanelFallback
+					seedKey="rift"
+					store={store}
+					label="Parting the rift…"
+				/>
+			}
+		>
 			<Dialog store={store} bus={bus} owner={owner} git={git} close={close} />
 		</Suspense>
 	);

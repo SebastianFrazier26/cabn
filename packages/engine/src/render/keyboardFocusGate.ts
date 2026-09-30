@@ -16,12 +16,16 @@ import { activeFocusOwner } from "../systems/uiFocus.js";
  * focusin/focusout also covers a focused element being removed from the DOM
  * (closing the search), which doesn't reliably fire focusout.
  */
-export function attachKeyboardFocusGate(game: Phaser.Game): () => void {
+export function attachKeyboardFocusGate(
+	game: Phaser.Game,
+	/** Also takes the keyboard away while this holds (a load in flight). */
+	blocked: () => boolean = () => false,
+): () => void {
 	let textFocused = false;
 	const onPreStep = (): void => {
 		const manager = game.input.keyboard;
 		if (!manager) return;
-		const next = activeFocusOwner() === "text";
+		const next = activeFocusOwner() === "text" || blocked();
 		if (next === textFocused) return;
 		textFocused = next;
 		manager.enabled = !next;

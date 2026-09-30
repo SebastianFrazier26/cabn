@@ -715,7 +715,10 @@ export class ShelfScene extends Phaser.Scene {
 		this.enteringWorld = true;
 		this.walker.cancel();
 		const worldUrl = resolveRelativeUrl(this.shelfBase, cabin.world.worldUrl);
-		this.bus.emit("shelf:enter-world", { worldId: cabin.world.id });
+		this.bus.emit("shelf:enter-world", {
+			worldId: cabin.world.id,
+			name: cabin.world.name,
+		});
 		// Delayed rather than immediate: SceneTransitionOverlay (React) starts a
 		// Stardew-style fade-to-black the instant it hears shelf:enter-world —
 		// this hold gives that fade time to finish covering the screen before

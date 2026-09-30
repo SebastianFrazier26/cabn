@@ -25,7 +25,11 @@ export type CabnEvents = {
 	};
 	"cluster:enter": { clusterId: string };
 	"chunk:loaded": { clusterId: string };
-	"shelf:enter-world": { worldId: string };
+	"shelf:enter-world": {
+		worldId: string;
+		/** The shelf entry's display name, for the loading label. */
+		name?: string;
+	};
 	"world:return-to-shelf": { shelfUrl: string };
 	/** React (spyglass/orb result click) -> WorldScene: auto-walk the player to this portal. */
 	"tool:walk-to-portal": { portalId: string };

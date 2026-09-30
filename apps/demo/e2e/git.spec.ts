@@ -196,15 +196,38 @@ test("git: the rift switches universes and back; releases render safely", async 
 	await shoot(page, "picker-releases-day");
 
 	await page.getByRole("tab", { name: "Universes" }).click();
+	// The conversion runs under the shared loading panel (it only shows if the
+	// wait passes its delay), so check the load itself was announced.
+	await page.evaluate(() => {
+		const w = window as unknown as {
+			__loadingLabels: string[];
+			__cabnStore: {
+				subscribe(
+					fn: (s: { loading: { active: boolean; label: string } }) => void,
+				): () => void;
+			};
+		};
+		w.__loadingLabels = [];
+		w.__cabnStore.subscribe((s) => {
+			if (s.loading.active) w.__loadingLabels.push(s.loading.label);
+		});
+	});
 	await page
 		.locator(
 			'[data-testid=universe-branch][data-branch="feature/lantern-festival"]',
 		)
 		.getByRole("button", { name: "Travel" })
 		.click();
-	await expect(page.getByTestId("universe-loading")).toBeVisible();
-	await expect(page.getByTestId("universe-loading-swirl")).toBeVisible();
-	await shoot(page, "universe-loading-day");
+	await expect
+		.poll(() =>
+			page.evaluate(
+				() =>
+					(window as unknown as { __loadingLabels: string[] }).__loadingLabels,
+			),
+		)
+		.toContain("Opening the rift to feature/lantern-festival…");
+	if (await page.getByTestId("loading-overlay").isVisible())
+		await shoot(page, "universe-loading-day");
 	await expect
 		.poll(async () => (await state(page))?.universe, { timeout: 20_000 })
 		.toBe("feature/lantern-festival");
