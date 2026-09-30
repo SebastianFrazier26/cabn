@@ -22,7 +22,9 @@ import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 // disk, a hidden-folder sign lands on disk, pets never see any of it, and a
 // reload starts with the realm off. Since M3 it also checks the nether skin
 // is drawn and that the base world's scenery (edge forest, ponds, windmill,
-// skyline) stands exactly where it did. CABN_REVIEW_SHOTS=1 writes the review
+// skyline) stands exactly where it did. Since 2026-09-29 it checks the realm
+// has no night (the Night setting shows its day look; off, night returns) and
+// that every placed piece wears nether art. CABN_REVIEW_SHOTS=1 writes the review
 // screenshots to assets/generated/review/shadow-m3/.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -238,6 +240,99 @@ async function scenery(page: Page): Promise<SceneryView> {
 	});
 }
 
+interface Look {
+	timeOfDay: string;
+	override: string;
+	/** The atmosphere's eased day (0) .. night (1) blend, which drives the grade, moon and stars. */
+	blend: number;
+	theme: string | null;
+	propTextures: string[];
+	/** Edge scenery kinds (baked into chunks) and whether the skin redraws each with a nether texture. */
+	unswappedScenery: string[];
+	/** Normal-world prop, sails and day-skyline textures still on a live sprite. */
+	normalArt: string[];
+}
+
+const NORMAL_ART_KEYS = new Set([
+	...[
+		"fence",
+		"hedge",
+		"lamp-post",
+		"tree-small",
+		"tree-large",
+		"bush",
+		"well",
+		"signpost",
+		"flower-pot",
+		"stone-wall",
+		"cottage",
+		"flower-bed",
+		"bench",
+	].map((n) => `prop-${n}`),
+	"scenery-windmill-sails",
+	...["castle", "watchtower", "village", "hill", "treeline"].map(
+		(p) => `skyline-${p}-day`,
+	),
+]);
+
+/** Time of day as the store and the scene's atmosphere see it, and which art is on screen. */
+async function look(page: Page): Promise<Look> {
+	return page.evaluate(
+		(normalKeys) => {
+			const game = (
+				window as unknown as {
+					__cabnGame: { scene: { getScene(k: string): unknown } };
+				}
+			).__cabnGame;
+			const s = (
+				window as unknown as { __cabnStore: { getState(): CabnStore } }
+			).__cabnStore.getState();
+			const world = game.scene.getScene("world") as {
+				atmosphere: { blend(): number } | null;
+				placedProps: { sprite: { texture: { key: string } } }[];
+				edgeDressing: { items: { kind: string }[] } | null;
+				skin: { scenery: Record<string, { key: string }> | null };
+				children: { list: { texture?: { key: string }; active: boolean }[] };
+			};
+			const normal = new Set(normalKeys);
+			return {
+				timeOfDay: s.timeOfDay,
+				override: s.timeOfDayOverride,
+				blend: world.atmosphere?.blend() ?? -1,
+				theme:
+					document
+						.querySelector(".cabn-pixel-root")
+						?.getAttribute("data-theme") ?? null,
+				propTextures: world.placedProps.map((p) => p.sprite.texture.key),
+				unswappedScenery: [
+					...new Set(
+						(world.edgeDressing?.items ?? [])
+							.map((i) => i.kind)
+							.filter(
+								(k) => !world.skin.scenery?.[k]?.key.startsWith("shadow-"),
+							),
+					),
+				],
+				normalArt: [
+					...new Set(
+						world.children.list
+							.map((o) => o.texture?.key ?? "")
+							.filter((k) => normal.has(k)),
+					),
+				],
+			};
+		},
+		[...NORMAL_ART_KEYS],
+	);
+}
+
+async function expectDayLook(page: Page) {
+	await expect.poll(async () => (await look(page)).blend).toBe(0);
+	const now = await look(page);
+	expect(now.timeOfDay).toBe("day");
+	expect(now.theme).toBe("day");
+}
+
 async function waitForWorld(page: Page) {
 	await expect
 		.poll(async () => (await snap(page)).mapPortals.length, { timeout: 30_000 })
@@ -364,6 +459,12 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(beforeScenery.items.length).toBeGreaterThan(20);
 	expect(beforeScenery.archTextures).toEqual(["portal-arch-strip"]);
 	expect(beforeScenery.fieldTexture).toBeNull();
+	// The normal world draws the normal art (so the realm's check below means something).
+	const normalLook = await look(page);
+	expect(normalLook.normalArt.length).toBeGreaterThan(0);
+	expect(normalLook.propTextures.every((k) => k.startsWith("prop-"))).toBe(
+		true,
+	);
 	// The normal world never even loads the nether art.
 	expect(Object.values(beforeScenery.textures)).toEqual([
 		false,
@@ -429,6 +530,14 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(shadowScenery.skyline.slice(0, beforeScenery.skyline.length)).toEqual(
 		beforeScenery.skyline,
 	);
+	// Every placed piece wears a nether texture, none the tinted green art.
+	const realmLook = await look(page);
+	expect(realmLook.propTextures.length).toBeGreaterThan(0);
+	expect(
+		realmLook.propTextures.filter((k) => !k.startsWith("shadow-prop-")),
+	).toEqual([]);
+	expect(realmLook.unswappedScenery).toEqual([]);
+	expect(realmLook.normalArt).toEqual([]);
 	await shoot(page, "day-shadow");
 
 	// .env opens and reads.
@@ -565,7 +674,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(pet?.search.filter(isHidden)).toEqual([]);
 	expect(pet?.env).toBeNull();
 
-	// Night shots of both realms.
+	// The realm has no night: choosing Night while it shows changes nothing.
 	await page.evaluate(() =>
 		(
 			window as unknown as { __cabnStore: { getState(): CabnStore } }
@@ -574,6 +683,8 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 			.setTimeOfDayOverride("night"),
 	);
 	await page.waitForTimeout(900);
+	await expectDayLook(page);
+	expect((await look(page)).override).toBe("night");
 	await shoot(page, "night-shadow");
 
 	// Toggling off takes everything hidden away again.
@@ -598,7 +709,27 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(offScenery.pois).toEqual(beforeScenery.pois);
 	expect(offScenery.skyline).toEqual(beforeScenery.skyline);
 	expect(offScenery.archTextures).toEqual(["portal-arch-strip"]);
+	// Off again, the normal world follows the Night setting.
+	await expect.poll(async () => (await look(page)).blend).toBe(1);
+	expect((await look(page)).timeOfDay).toBe("night");
+	expect((await look(page)).theme).toBe("night");
 	await shoot(page, "night-normal");
+
+	// With the setting on Night, sudo shows the realm's day look; off, night is back.
+	await sudo(page, "keys");
+	await expect
+		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.toBe("shadow");
+	await expectDayLook(page);
+	await page.waitForTimeout(1200);
+	await shoot(page, "sudo-at-night-setting");
+	await sudo(page, "mouse");
+	await expect
+		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.toBeNull();
+	await expect.poll(async () => (await look(page)).blend).toBe(1);
+	expect((await look(page)).timeOfDay).toBe("night");
+	await page.waitForTimeout(1200);
 
 	// A reload always starts with the realm off.
 	await sudo(page, "mouse");
