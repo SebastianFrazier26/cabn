@@ -653,6 +653,13 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await shoot(page, "spellbook-shadow");
 	await page.keyboard.press("Escape");
 	await expect(page.locator(".cabn-spellbook-frame")).toBeHidden();
+	// The caret re-takes focus on the file scene's next frame; an Esc before
+	// that lands on <body> and is dropped (seen under a loaded serial run).
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.activeElement?.getAttribute("data-testid")),
+		)
+		.toBe("cabn-file-caret-input");
 	await hold(page, "Escape");
 	await expect
 		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
