@@ -79,6 +79,9 @@ export function createPetWorldAccess(source: PetWorldSource): PetWorldAccess {
 			return source.savedOverride(path) ?? files[path] ?? null;
 		},
 		async search(query, limit) {
+			// No files to read means nothing to find: the index would still name
+			// the base world's, which a layer hiding them hands the pet none of.
+			if (files.length === 0) return [];
 			searchIndex ??= fetchWorldSearchIndex(source.worldBase).catch((err) => {
 				searchIndex = null;
 				throw err;

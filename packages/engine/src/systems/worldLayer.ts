@@ -423,6 +423,14 @@ export interface WorldLayerProvider {
 	saveSign(request: OwnerSignSaveRequest): Promise<SignEntry>;
 	removeSign(path: string): Promise<void>;
 	skin: WorldSkin;
+	/**
+	 * While shown, the layer replaces the base world's contents instead of
+	 * adding to them: base portals, their monsters, the base path monsters and
+	 * the base signs all go (mergeLayer), and search and the pet see none of
+	 * the base files. Base clearings, fountains and paths stay as the layer's
+	 * skeleton, laid out exactly as without it. Absent means false.
+	 */
+	exclusive?: boolean;
 }
 
 /** What WorldScene is handed when it (re)starts with a layer on. */
@@ -442,6 +450,12 @@ export interface LayerIds {
 export interface MergedWorld {
 	manifest: WorldManifest;
 	layer: LayerIds;
+	/** The layer hides the base world's portals, monsters and signs (WorldLayerProvider.exclusive). */
+	exclusive: boolean;
+}
+
+export interface MergeOptions {
+	exclusive?: boolean;
 }
 
 export function worldPathId(path: Pick<WorldPath, "from" | "to">): string {
@@ -454,20 +468,33 @@ export function worldPathId(path: Pick<WorldPath, "from" | "to">): string {
  * come first; nothing in the base is changed or moved. Layer monsters from
  * both of the layer's lists join `monsters`, the same merge BootScene does
  * for monsters.json.
+ *
+ * An exclusive layer drops every base portal and base monster from the
+ * view. Base clusters keep their `portalIds` all the same: those name the
+ * arch spots the ring layout reserves, so clearings keep their size, paths
+ * their gates and scenery its place, and a consumer that shows portals has
+ * to look each id up in `portals` (the hidden ones aren't there).
  */
 export function mergeLayer(
 	base: WorldManifest,
 	delta: WorldLayerManifest,
+	options: MergeOptions = {},
 ): MergedWorld {
 	assertWorldLayerFits(base, delta);
+	const exclusive = options.exclusive === true;
 	const layerMonsters = [...delta.monsters, ...delta.extendedMonsters];
 	return {
+		exclusive,
 		manifest: {
 			...base,
 			clusters: [...base.clusters, ...delta.clusters],
-			portals: [...base.portals, ...delta.portals],
+			portals: exclusive
+				? [...delta.portals]
+				: [...base.portals, ...delta.portals],
 			paths: [...base.paths, ...delta.paths],
-			monsters: [...base.monsters, ...layerMonsters],
+			monsters: exclusive
+				? layerMonsters
+				: [...base.monsters, ...layerMonsters],
 		},
 		layer: {
 			clusterIds: new Set(delta.clusters.map((c) => c.id)),
@@ -586,6 +613,23 @@ export function editorSaveTarget(
 	layer: Pick<LayerIds, "portalIds"> | null,
 ): "override" | "layer" {
 	return layer?.portalIds.has(portalId) ? "layer" : "override";
+}
+
+/**
+ * Which signs a world shows: all of them, or, while an exclusive layer hides
+ * the base world's, only the layer's own — its manifest's signs plus any
+ * hidden-folder sign written since (the same ownership rule as signWriterFor).
+ */
+export function signShown(
+	sign: Pick<SignEntry, "path">,
+	layer: Pick<LayerIds, "signPaths"> | null,
+	exclusive: boolean,
+): boolean {
+	return (
+		!exclusive ||
+		isHiddenPath(sign.path) ||
+		(layer?.signPaths.has(sign.path) ?? false)
+	);
 }
 
 /** Any segment starting with `.` — the same rule as the converter's walk.ts. */

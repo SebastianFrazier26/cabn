@@ -66,6 +66,8 @@ export interface SignLayerOptions {
 	playerPos: () => Position;
 	/** Other things Enter goes to first when the player is within their radius (the guide NPC) — the popup stays down there. */
 	enterTakers?: readonly CircleKeepout[];
+	/** Which of the store's signs this world draws; absent draws all. The store keeps every sign either way, so a hidden one comes back unchanged. */
+	shows?: (sign: SignEntry) => boolean;
 }
 
 interface PlacedSign {
@@ -330,7 +332,8 @@ export class SignLayer {
 	}
 
 	private sync(signs: readonly SignEntry[]): void {
-		const sorted = [...signs].sort((a, b) =>
+		const shows = this.opts.shows;
+		const sorted = (shows ? signs.filter(shows) : [...signs]).sort((a, b) =>
 			a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
 		);
 		const wanted = new Map(sorted.map((s) => [s.path, s]));

@@ -26,7 +26,11 @@ import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 // has no night (the Night setting shows its day look; off, night returns) and
 // that every placed piece wears nether art; since the second polish pass that
 // the monsters (world and file view) wear nether recolours, the windmill's
-// sails hold still and the HUD icons lose their green. CABN_REVIEW_SHOTS=1
+// sails hold still and the HUD icons lose their green. Since the 2026-09-29
+// decision "nether regions should ONLY show . files" the realm hides every
+// normal arch, monster and sign, and search and the pet find no normal file,
+// while the clearings and paths stay put; off, all of it comes back
+// unchanged. CABN_REVIEW_SHOTS=1
 // writes the review screenshots to assets/generated/review/shadow-m3/.
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +56,12 @@ const HIDDEN_FILES: Record<string, string> = {
 	".github/check.py": "def check(:\n    return [1, 2\n",
 };
 
+// A normal folder with no hidden file anywhere under it: in the realm its
+// clearing stands empty.
+const NORMAL_FILES: Record<string, string> = {
+	"docs/notes.md": "# Notes\n\nnormalcanary lives here.\n",
+};
+
 let dir: string;
 let serve: ChildProcess | undefined;
 let url: string;
@@ -59,7 +69,10 @@ let url: string;
 test.beforeAll(async () => {
 	dir = await mkdtemp(join(tmpdir(), "cabn-shadow-e2e-"));
 	await cp(FIXTURE, dir, { recursive: true });
-	for (const [path, content] of Object.entries(HIDDEN_FILES)) {
+	for (const [path, content] of Object.entries({
+		...HIDDEN_FILES,
+		...NORMAL_FILES,
+	})) {
 		await mkdir(dirname(join(dir, path)), { recursive: true });
 		await writeFile(join(dir, path), content);
 	}
@@ -122,6 +135,8 @@ interface Snapshot {
 	focused: string | null;
 	dirty: boolean;
 	theme: string | null;
+	monsters: string[];
+	mapMonsters: string[];
 }
 
 async function snap(page: Page): Promise<Snapshot> {
@@ -159,6 +174,8 @@ async function snap(page: Page): Promise<Snapshot> {
 				s.activeFileSavedDoc !== null &&
 				!s.activeFileState.doc.eq(s.activeFileSavedDoc),
 			theme: root?.getAttribute("data-layer") ?? null,
+			monsters: s.monsters.map((m) => m.id),
+			mapMonsters: (s.worldMap?.monsters ?? []).map((m) => m.id),
 		};
 	});
 }
@@ -180,6 +197,72 @@ async function archSprites(
 		for (const [id, s] of world.portalSprites) out[id] = [s.x, s.y];
 		return out;
 	});
+}
+
+interface Drawn {
+	/** Every laid-out arch spot, drawn or not. */
+	spots: Record<string, [number, number]>;
+	monsterSprites: string[];
+	editedMarkers: string[];
+	signs: string[];
+}
+
+/** What WorldScene itself has drawn, beyond the arches. */
+async function drawn(page: Page): Promise<Drawn> {
+	return page.evaluate(() => {
+		const game = (
+			window as unknown as {
+				__cabnGame: { scene: { getScene(k: string): unknown } };
+			}
+		).__cabnGame;
+		const world = game.scene.getScene("world") as {
+			portalWorldPos: Map<string, { x: number; y: number }>;
+			monsterSprites: Map<string, { active: boolean }>;
+			editedMarkers: Map<string, unknown>;
+			signs: { placed: Map<string, unknown> } | null;
+		};
+		const spots: Record<string, [number, number]> = {};
+		for (const [id, p] of world.portalWorldPos) spots[id] = [p.x, p.y];
+		return {
+			spots,
+			monsterSprites: [...world.monsterSprites]
+				.filter(([, m]) => m.active)
+				.map(([id]) => id),
+			editedMarkers: [...world.editedMarkers.keys()],
+			signs: [...(world.signs?.placed.keys() ?? [])],
+		};
+	});
+}
+
+/** Clicks the arch's middle on screen (the click walks there and enters it). */
+async function clickArch(page: Page, portalId: string) {
+	const at = await page.evaluate((id) => {
+		const game = (
+			window as unknown as {
+				__cabnGame: {
+					canvas: HTMLCanvasElement;
+					scene: { getScene(k: string): unknown };
+				};
+			}
+		).__cabnGame;
+		const world = game.scene.getScene("world") as {
+			portalSprites: Map<string, { x: number; y: number }>;
+			cameras: {
+				main: { worldView: { x: number; y: number }; zoom: number };
+			};
+		};
+		const sprite = world.portalSprites.get(id);
+		if (!sprite) return null;
+		const cam = world.cameras.main;
+		const rect = game.canvas.getBoundingClientRect();
+		const scale = rect.width / game.canvas.width;
+		return {
+			x: rect.left + (sprite.x - cam.worldView.x) * cam.zoom * scale,
+			y: rect.top + (sprite.y - cam.worldView.y) * cam.zoom * scale,
+		};
+	}, portalId);
+	if (!at) throw new Error(`no arch drawn for ${portalId}`);
+	await page.mouse.click(at.x, at.y);
 }
 
 interface SceneryView {
@@ -497,6 +580,10 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(before.clusters.some((c) => c.layer)).toBe(false);
 	const beforeSprites = await archSprites(page);
 	expect(Object.keys(beforeSprites).length).toBeGreaterThan(0);
+	const beforeDrawn = await drawn(page);
+	expect(before.portals.length).toBeGreaterThan(0);
+	expect(before.monsters.length).toBeGreaterThan(0);
+	expect(beforeDrawn.monsterSprites.length).toBeGreaterThan(0);
 	const beforeScenery = await scenery(page);
 	expect(beforeScenery.items.length).toBeGreaterThan(20);
 	expect(beforeScenery.archTextures).toEqual(["portal-arch-strip"]);
@@ -526,7 +613,8 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 		expect(b, "normal sails turn").not.toEqual(a);
 	}
 
-	// Sudo raises the hidden clusters; nothing visible moves, even mid-rise.
+	// Sudo sinks the normal arches and raises the hidden clusters in their
+	// place: only hidden files show, and nothing that stays moves.
 	await sudo(page, "keys");
 	await expect
 		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
@@ -534,19 +622,40 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await page.waitForTimeout(200);
 	await shoot(page, "toggle-mid-rise");
 	const midSprites = await archSprites(page);
-	for (const [id, pos] of Object.entries(beforeSprites))
-		expect(midSprites[id], id).toEqual(pos);
+	expect(Object.keys(midSprites).filter((id) => !isHidden(id))).toEqual([]);
 	const hiddenMid = Object.keys(midSprites).filter(isHidden);
 	expect(hiddenMid.length).toBeGreaterThan(0);
 	await page.waitForTimeout(1200);
 	const shadow = await snap(page);
 	const afterSprites = await archSprites(page);
-	for (const [id, pos] of Object.entries(beforeSprites))
-		expect(afterSprites[id], id).toEqual(pos);
+	expect(Object.keys(afterSprites).filter((id) => !isHidden(id))).toEqual([]);
 	for (const c of before.clusters)
 		expect(shadow.clusters.find((x) => x.id === c.id)).toEqual(c);
-	for (const p of before.mapPortals)
-		expect(shadow.mapPortals.find((x) => x.id === p.id)).toEqual(p);
+	// No normal file anywhere: arches, the portal index (spyglass), the map,
+	// monsters (world, HUD counter, map), signs or edited marks.
+	expect(shadow.portals.filter((p) => !isHidden(p.id))).toEqual([]);
+	expect(shadow.mapPortals.filter((p) => !isHidden(p.id))).toEqual([]);
+	for (const id of before.monsters) {
+		expect(shadow.monsters, id).not.toContain(id);
+		expect(shadow.mapMonsters, id).not.toContain(id);
+	}
+	const realmDrawn = await drawn(page);
+	for (const id of beforeDrawn.monsterSprites)
+		expect(realmDrawn.monsterSprites, id).not.toContain(id);
+	expect(
+		realmDrawn.monsterSprites.filter((id) => !shadow.monsters.includes(id)),
+	).toEqual([]);
+	expect(realmDrawn.signs.filter((p) => !isHidden(p))).toEqual([]);
+	expect(realmDrawn.editedMarkers.filter((p) => !isHidden(p))).toEqual([]);
+	// The normal arch spots keep their places in the layout, undrawn.
+	for (const [id, pos] of Object.entries(beforeDrawn.spots))
+		expect(realmDrawn.spots[id], id).toEqual(pos);
+	// The HUD counts only the realm's own monsters.
+	const realmMonsters = shadow.monsters.length;
+	expect(realmMonsters).toBeGreaterThan(0);
+	await expect(page.getByText(/bugs? remains? in this world/)).toHaveText(
+		`${realmMonsters} bug${realmMonsters === 1 ? "" : "s"} remain in this world`,
+	);
 	const hiddenIds = shadow.portals
 		.filter((p) => isHidden(p.id))
 		.map((p) => p.id);
@@ -589,7 +698,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	).toEqual([]);
 	expect(realmLook.unswappedScenery).toEqual([]);
 	expect(realmLook.normalArt).toEqual([]);
-	// Monsters, base and realm alike, wear nether art; the dead mill's sails hang still.
+	// The realm's monsters wear nether art; the dead mill's sails hang still.
 	// A hidden cluster can stand where the windmill was, which removes it.
 	const realmMills = shadowScenery.pois.filter((p) =>
 		p.startsWith("windmill@"),
@@ -751,8 +860,25 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await expect(content.getByTestId("layer-badge").first()).toBeVisible();
 	await page.waitForTimeout(700);
 	await shoot(page, "orb-shadow");
+	// ...and no normal file, by its text or its name.
+	for (const query of ["normalcanary", "greet", "hello"]) {
+		await input.fill(query);
+		await expect(content).toContainText("no matches", { timeout: 10_000 });
+		await expect(content.locator("li")).toHaveCount(0);
+	}
 	await page.keyboard.press("Escape");
 	await page.waitForTimeout(300);
+
+	// A hidden arch is reached by clicking it, too.
+	await clickArch(page, ".github/ci.yml");
+	await expect
+		.poll(async () => (await snap(page)).activePortalId, { timeout: 20_000 })
+		.toBe(".github/ci.yml");
+	expect((await snap(page)).content).toBe(HIDDEN_FILES[".github/ci.yml"]);
+	await hold(page, "Escape");
+	await expect
+		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.toBe("world");
 
 	// A sign in .github lands on disk (realm shadow).
 	await page.evaluate(() => {
@@ -800,7 +926,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	}, token);
 	expect(gitWrite).toBe(403);
 
-	// The pet sees none of it.
+	// The pet sees none of it, and while the realm shows no normal file either.
 	const pet = await page.evaluate(async () => {
 		const s = (
 			window as unknown as { __cabnStore: { getState(): CabnStore } }
@@ -816,10 +942,49 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 		};
 	});
 	expect(pet).not.toBeNull();
-	expect(pet?.files.length).toBeGreaterThan(0);
-	expect(pet?.files.filter(isHidden)).toEqual([]);
-	expect(pet?.search.filter(isHidden)).toEqual([]);
+	expect(pet?.files).toEqual([]);
+	expect(pet?.search).toEqual([]);
 	expect(pet?.env).toBeNull();
+
+	// For review: a normal folder with no hidden file under it keeps its
+	// clearing in the realm, empty.
+	if (TAKE_SHOTS) {
+		const docs = await page.evaluate(() => {
+			const s = (
+				window as unknown as { __cabnStore: { getState(): CabnStore } }
+			).__cabnStore.getState();
+			return s.worldMap?.clusters.find((c) => c.label === "docs")?.pos ?? null;
+		});
+		expect(docs).not.toBeNull();
+		await page.evaluate(
+			(to) => {
+				const game = (
+					window as unknown as {
+						__cabnGame: { scene: { getScene(k: string): unknown } };
+					}
+				).__cabnGame;
+				const world = game.scene.getScene("world") as {
+					player: { body: { x: number; y: number } };
+					walker: {
+						walkTo(
+							p: { x: number; y: number },
+							o: { from: { x: number; y: number }; speed: number },
+						): void;
+					};
+				};
+				world.walker.walkTo(
+					{ x: to.x + 60, y: to.y + 40 },
+					{
+						from: { x: world.player.body.x, y: world.player.body.y },
+						speed: 600,
+					},
+				);
+			},
+			docs as { x: number; y: number },
+		);
+		await page.waitForTimeout(4000);
+		await shoot(page, "empty-clearing-shadow");
+	}
 
 	// The realm has no night: choosing Night while it shows changes nothing.
 	await page.evaluate(() =>
@@ -848,9 +1013,43 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	for (const c of before.clusters)
 		expect(off.clusters.find((x) => x.id === c.id)).toEqual(c);
 	const offSprites = await archSprites(page);
-	expect(Object.keys(offSprites).filter(isHidden)).toEqual([]);
-	for (const [id, pos] of Object.entries(beforeSprites))
-		expect(offSprites[id], id).toEqual(pos);
+	expect(offSprites).toEqual(beforeSprites);
+	// Every normal file, monster and sign is back, the same ones in the same places.
+	expect(off.portals).toEqual(before.portals);
+	expect(off.mapPortals).toEqual(before.mapPortals);
+	expect(off.monsters).toEqual(before.monsters);
+	expect(off.mapMonsters).toEqual(before.mapMonsters);
+	expect(off.signs).toEqual(before.signs);
+	const offDrawn = await drawn(page);
+	expect(offDrawn.monsterSprites.sort()).toEqual(
+		[...beforeDrawn.monsterSprites].sort(),
+	);
+	expect(offDrawn.spots).toEqual(beforeDrawn.spots);
+	expect(offDrawn.signs.sort()).toEqual([...beforeDrawn.signs].sort());
+	await expect(page.getByText(/bugs? remains? in this world/)).toHaveText(
+		`${before.monsters.length} bug${before.monsters.length === 1 ? "" : "s"} remain in this world`,
+	);
+	const petOff = await page.evaluate(async () => {
+		const world = (
+			window as unknown as { __cabnStore: { getState(): CabnStore } }
+		).__cabnStore.getState().petWorld;
+		return world
+			? {
+					files: world.files().map((f) => f.path),
+					search: (await world.search("normalcanary", 10)).map((r) => r.path),
+				}
+			: null;
+	});
+	expect(petOff?.files.length).toBe(before.portals.length);
+	expect(petOff?.files.filter(isHidden)).toEqual([]);
+	expect(petOff?.search).toEqual(["docs/notes.md"]);
+	await page.locator('[data-tool="orb"]').click();
+	await page.getByPlaceholder("search the world...").fill("normalcanary");
+	await expect(
+		page.locator(".cabn-crystal-ball-content li").first(),
+	).toContainText("docs/notes.md", { timeout: 10_000 });
+	await page.keyboard.press("Escape");
+	await page.waitForTimeout(300);
 	const offScenery = await scenery(page);
 	expect(offScenery.items).toEqual(beforeScenery.items);
 	expect(offScenery.pois).toEqual(beforeScenery.pois);

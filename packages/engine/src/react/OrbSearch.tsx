@@ -190,8 +190,10 @@ export function OrbSearch({
 					score: r.score,
 					isLayer,
 				}));
+		// A layer that hides the base world hides its files from search too.
+		const baseHidden = layer?.exclusive === true;
 		const rawResults = [
-			...run(index, liveSignPaths, false),
+			...(baseHidden ? [] : run(index, liveSignPaths, false)),
 			...(layerIndex ? run(layerIndex, liveLayerSignPaths, true) : []),
 		].sort((a, b) => b.score - a.score);
 		const hits = toWorldSearchHits(rawResults, previewLineByPortalId);
@@ -202,6 +204,7 @@ export function OrbSearch({
 		query,
 		scope,
 		index,
+		layer,
 		layerIndex,
 		activeFileDoc,
 		previewLineByPortalId,

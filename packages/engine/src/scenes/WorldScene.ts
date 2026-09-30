@@ -195,7 +195,7 @@ import {
 	BONFIRE_IDLE_ANIM,
 	PORTAL_IDLE_ANIM,
 } from "./PreloadScene.js";
-import { WorldLayerSeam } from "./worldLayerSeam.js";
+import { GroundRiser, WorldLayerSeam } from "./worldLayerSeam.js";
 
 export interface WorldSceneData {
 	manifest: WorldManifest;
@@ -217,6 +217,8 @@ export interface WorldSceneData {
 	layer?: ActiveWorldLayer;
 	/** Where the player stands after a layer toggle restart, instead of the saved spot. */
 	spawnAt?: Position;
+	/** Set by the restart that leaves a layer which hid the base arches: they rise back out of the ground. */
+	raiseArches?: boolean;
 }
 
 export interface WorldGitData {
@@ -261,6 +263,8 @@ const ARCH_FX_DEPTH = 3.06;
 /** An orbiting monster on the far half of its ellipse — under the arch (3) so the stone and the opening's preview both hide it. */
 const MONSTER_BEHIND_ARCH_DEPTH = 2.95;
 const MONSTER_DEPTH = 4;
+/** Around each base arch, how far its orbiting monsters and trim reach when the arch sinks or rises. */
+const BASE_ARCH_RISE_REACH = PORTAL_ARCH_DISPLAY_SIZE * 0.75;
 /** Reach either side of a path's midpoint for the cross-cluster ouroboros' figure-eight. */
 const PATH_MONSTER_LOOP_PX = 70;
 // MONSTER_HOVER_SIZE was tuned beside the old 96px arch; circling the 2x arch
@@ -746,6 +750,11 @@ export class WorldScene extends Phaser.Scene {
 				),
 			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
 			enterTakers: this.signEnterTakers(),
+			...(this.layerSeam?.exclusive
+				? {
+						shows: (sign: SignEntry) => this.layerSeam?.showsSign(sign) ?? true,
+					}
+				: {}),
 		});
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.signs = null;
@@ -765,10 +774,10 @@ export class WorldScene extends Phaser.Scene {
 
 	/** What the pet may read (pets/worldAccess.ts): effective text, save overrides included; files an undefeated magpie guards stay in the browser. */
 	private publishPetWorld(): void {
-		// Pets only ever see the base world: never a layer's files or text.
-		const basePortals = new Map(
-			this.baseManifest.portals.map((p) => [p.id, p] as const),
-		);
+		// Pets only ever see the base world: never a layer's files or text,
+		// and nothing at all while a layer hides the base world.
+		const seen = this.layerSeam?.exclusive ? [] : this.baseManifest.portals;
+		const basePortals = new Map(seen.map((p) => [p.id, p] as const));
 		const magpieGuarded = (path: string): boolean =>
 			(this.portalMonsterIds.get(path) ?? []).some((id) => {
 				const monster = this.monstersById.get(id);
@@ -780,7 +789,7 @@ export class WorldScene extends Phaser.Scene {
 		this.store.getState().setPetWorld(
 			createPetWorldAccess({
 				worldBase: this.worldBase,
-				files: this.baseManifest.portals.map((p) => ({
+				files: seen.map((p) => ({
 					path: p.file.path,
 					bytes: p.file.bytes,
 					kind: p.file.kind,
@@ -888,7 +897,7 @@ export class WorldScene extends Phaser.Scene {
 		// night grade darkens the in-arch text to illegible. Cool and dim so the
 		// additive glow doesn't wash the preview out; the grade hole (see
 		// render/atmosphere.ts) is what actually keeps it readable.
-		for (const pos of this.portalWorldPos.values()) {
+		for (const [, pos] of this.shownPortalPositions()) {
 			lights.push({
 				x: pos.x,
 				y: pos.y + PORTAL_ARCH_DISPLAY_SIZE * ARCH_OPENING_Y_OFFSET_RATIO,
@@ -1064,7 +1073,9 @@ export class WorldScene extends Phaser.Scene {
 	// it gets the walk bob/facing and WASD cancels it; it only walks there —
 	// entering stays the player's call.
 	private onWalkToPortal = ({ portalId }: { portalId: string }): void => {
-		const target = this.portalWorldPos.get(portalId);
+		const target = this.portalsById.has(portalId)
+			? this.portalWorldPos.get(portalId)
+			: undefined;
 		if (!target) return;
 		this.walker.walkTo(target, {
 			from: { x: this.player.body.x, y: this.player.body.y },
@@ -1664,7 +1675,8 @@ export class WorldScene extends Phaser.Scene {
 		for (const cluster of this.manifest.clusters) {
 			cluster.portalIds.forEach((portalId) => {
 				const pos = this.portalWorldPos.get(portalId);
-				if (!pos) return; // computePortalPositions() populates every id from this same manifest — defensive only
+				// An arch spot a layer hides (mergeLayer) keeps its place in the ring but draws nothing.
+				if (!pos || !this.portalsById.has(portalId)) return;
 
 				const arch = this.skin.arch;
 				const sprite = this.add.sprite(
@@ -1775,7 +1787,8 @@ export class WorldScene extends Phaser.Scene {
 	// same placeholder-first approach as the tool icons) — a small pencil
 	// character at the arch's upper-right reads fine at this scale.
 	private drawEditedMarker(portalId: string): void {
-		if (this.editedMarkers.has(portalId)) return;
+		if (this.editedMarkers.has(portalId) || !this.portalsById.has(portalId))
+			return;
 		const pos = this.portalWorldPos.get(portalId);
 		if (!pos) return;
 		// Up on the capstone's right shoulder — the old 0.22 offset now lands
@@ -2017,7 +2030,7 @@ export class WorldScene extends Phaser.Scene {
 	/** Hit areas derive from the same size constants the arches/bonfire are drawn with, not from the sprites, so they follow any change to how a portal is drawn. Monsters and cabinets aren't interactable in the world (see drawMonsters) — clicking one just walks there, and clicking an orbiting monster over its arch hits the arch. */
 	private clickInteractables(): Interactable[] {
 		const targets: Interactable[] = [];
-		for (const [portalId, pos] of this.portalWorldPos) {
+		for (const [portalId, pos] of this.shownPortalPositions()) {
 			targets.push({
 				id: portalId,
 				kind: "portal",
@@ -2312,7 +2325,7 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private handlePortalApproach(): void {
-		const points: PortalPoint[] = [...this.portalWorldPos.entries()].map(
+		const points: PortalPoint[] = this.shownPortalPositions().map(
 			([portalId, pos]) => ({ portalId, pos }),
 		);
 		const playerPos = { x: this.player.body.x, y: this.player.body.y };
@@ -2733,6 +2746,38 @@ export class WorldScene extends Phaser.Scene {
 			});
 	}
 
+	/** Arches this scene draws: every laid-out spot except those a layer hides (their portals aren't in the merged view). */
+	private shownPortalPositions(): [string, Position][] {
+		return [...this.portalWorldPos].filter(([id]) => this.portalsById.has(id));
+	}
+
+	/**
+	 * The drawn base arches with everything standing on them (trim, preview,
+	 * orbiting monsters, edited marker), for sinking them as a layer that
+	 * hides them comes in and raising them as it goes. The depth band keeps
+	 * the player, the pet, signs and light pools out of it.
+	 */
+	private baseArchRiser(): { riser: GroundRiser; dustAt: Position[] } {
+		const dustAt = this.shownPortalPositions()
+			.filter(([id]) => !this.layerSeam?.isLayerPortal(id))
+			.map(([, pos]) => pos);
+		const riser = new GroundRiser(this.skin);
+		riser.collect(
+			this,
+			dustAt.map((pos) => ({ ...pos, radius: BASE_ARCH_RISE_REACH })),
+			{
+				depth: { min: MONSTER_BEHIND_ARCH_DEPTH - 0.02, max: MONSTER_DEPTH },
+				extra: [
+					...this.editedMarkers.values(),
+					...[...this.monsterSprites]
+						.filter(([id]) => !this.layerSeam?.layer.monsterIds.has(id))
+						.map(([, sprite]) => sprite),
+				],
+			},
+		);
+		return { riser, dustAt: dustAt.slice(0, 32) };
+	}
+
 	/** The guide and the rift stand where they would without a layer. */
 	private basePortalPositions(): Position[] {
 		return this.baseManifest.portals.flatMap((p) => {
@@ -2821,6 +2866,10 @@ export class WorldScene extends Phaser.Scene {
 	private raiseLayer(before: ReadonlySet<Phaser.GameObjects.GameObject>): void {
 		const seam = this.layerSeam;
 		this.store.getState().setActiveLayer(seam?.id ?? null);
+		if (this.initData.raiseArches && !seam?.exclusive) {
+			const { riser, dustAt } = this.baseArchRiser();
+			riser.rise(this, layerRiseMs(prefersReducedMotion()), dustAt);
+		}
 		if (!seam) return;
 		seam.collect(
 			this,
@@ -2914,14 +2963,22 @@ export class WorldScene extends Phaser.Scene {
 			inLayerClearing(here, this.layerClearings());
 		const spawnAt = standingInLayer ? undefined : here;
 		const color = (next?.provider.skin ?? this.skin).transitionColor;
+		const hidesArches = next?.provider.exclusive === true;
+		const raiseArches = this.layerSeam?.exclusive === true && !hidesArches;
 		const restart = (): void => {
-			const { layer: _layer, spawnAt: _spawnAt, ...rest } = this.initData;
+			const {
+				layer: _layer,
+				spawnAt: _spawnAt,
+				raiseArches: _raiseArches,
+				...rest
+			} = this.initData;
 			this.scene.restart({
 				...rest,
 				// Signs the owner wrote this visit live only in the store.
 				signs: this.store.getState().signs.filter((s) => !isHiddenPath(s.path)),
 				...(next ? { layer: next } : {}),
 				...(spawnAt ? { spawnAt } : {}),
+				...(raiseArches ? { raiseArches } : {}),
 			} satisfies WorldSceneData);
 		};
 		const announce = (): void => {
@@ -2931,14 +2988,21 @@ export class WorldScene extends Phaser.Scene {
 			});
 			this.time.delayedCall(layerTransitionDelayMs(reducedMotion), restart);
 		};
-		if (!next && this.layerSeam)
+		if (this.layerSeam && (!next || hidesArches))
 			this.layerSeam.sink(
 				this,
 				layerRiseMs(reducedMotion),
 				this.layerDustPoints(),
 				announce,
 			);
-		else announce();
+		else if (hidesArches) {
+			// The orbits set each monster's alpha every frame; let go of them
+			// so the monsters fade down with their arches.
+			for (const id of this.monsterSprites.keys())
+				this.monsterOrbits?.remove(id);
+			const { riser, dustAt } = this.baseArchRiser();
+			riser.sink(this, layerRiseMs(reducedMotion), dustAt, announce);
+		} else announce();
 	}
 
 	/** FileScene's saveToDisk for a layer file: resolves true once the provider has written it. */
