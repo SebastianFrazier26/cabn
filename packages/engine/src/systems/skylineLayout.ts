@@ -155,3 +155,60 @@ export function planSkyline(input: SkylinePlanInput): SkylineElement[] {
 	repeatAcross("treeline", "near", 0.9, 1.3);
 	return out;
 }
+
+/**
+ * The skyline for a scroll range that has grown past the base world's (a
+ * world layer on): the base plan, untouched, plus hills and treeline
+ * seeded apart that cover only the parallax span the base plan doesn't.
+ * Replanning over the grown range moved the castle and reshuffled every
+ * piece on each toggle.
+ */
+export function planGrownSkyline(
+	base: SkylinePlanInput,
+	grown: { scrollMin: number; scrollMax: number },
+): SkylineElement[] {
+	const out = planSkyline(base);
+	if (grown.scrollMin >= base.scrollMin && grown.scrollMax <= base.scrollMax)
+		return out;
+	const rand = mulberry32(hashStringSeed(`skyline:${base.seed}#grown`));
+	const pad = base.pad ?? 400;
+	const extend = (
+		piece: SkylinePieceName,
+		layer: SkylineLayer,
+		minScale: number,
+		maxScale: number,
+	) => {
+		const sf = LAYER_SCROLL_FACTOR[layer];
+		const [baseLo, baseHi] = parallaxSpan(
+			base.scrollMin,
+			base.scrollMax,
+			base.viewWidth,
+			sf,
+			pad,
+		);
+		const [lo, hi] = parallaxSpan(
+			Math.min(grown.scrollMin, base.scrollMin),
+			Math.max(grown.scrollMax, base.scrollMax),
+			base.viewWidth,
+			sf,
+			pad,
+		);
+		const fill = (from: number, to: number, dir: 1 | -1) => {
+			let u = from;
+			while (dir > 0 ? u < to : u > to) {
+				const scale = minScale + rand() * (maxScale - minScale);
+				u +=
+					dir *
+					base.widths[piece] *
+					scale *
+					(0.5 + rand() * (REPEAT_OVERLAP - 0.5));
+				out.push({ piece, layer, u, scale, flipX: rand() < 0.5 });
+			}
+		};
+		if (lo < baseLo) fill(baseLo, lo, -1);
+		if (hi > baseHi) fill(baseHi, hi, 1);
+	};
+	extend("hill", "mid", 1.1, 1.9);
+	extend("treeline", "near", 0.9, 1.3);
+	return out;
+}

@@ -6,6 +6,7 @@ import {
 	footprintClear,
 	keepoutDistance,
 	planEdgeScenery,
+	planLayeredEdgeScenery,
 	type SceneryKind,
 	valueNoise,
 } from "../src/systems/edgeScenery.js";
@@ -216,6 +217,70 @@ describe("planEdgeScenery", () => {
 		expect(plan.items.length).toBeGreaterThan(0);
 		expect(plan.pointsOfInterest.some((p) => p.kind === "waymarker")).toBe(
 			false,
+		);
+	});
+});
+
+describe("planLayeredEdgeScenery", () => {
+	const layer = {
+		bounds: { minX: -1500, minY: -1900, maxX: 2100, maxY: 1300 },
+		circles: [{ x: 1500, y: -1300, radius: 260 }],
+		segments: [{ ax: 600, ay: -300, bx: 1500, by: -1300, halfWidth: 20 }],
+	};
+
+	it("without a layer it is the plain plan", () => {
+		const plain = planEdgeScenery(sampleWorld());
+		const layered = planLayeredEdgeScenery(sampleWorld(), null);
+		expect(layered.items).toEqual(plain.items);
+		expect(layered.pointsOfInterest).toEqual(plain.pointsOfInterest);
+		expect(layered.removed).toBe(0);
+	});
+
+	it("keeps every base item the layer doesn't stand on exactly where it was", () => {
+		const plain = planEdgeScenery(sampleWorld());
+		const layered = planLayeredEdgeScenery(sampleWorld(), layer);
+		const base = layered.items.filter((i) => !i.layer);
+		const key = (i: { kind: string; x: number; y: number }) =>
+			`${i.kind}@${i.x},${i.y}`;
+		const before = new Set(plain.items.map(key));
+		for (const item of base) expect(before.has(key(item))).toBe(true);
+		expect(base.length + layered.removed).toBe(plain.items.length);
+		for (const item of plain.items) {
+			const kept = base.some((b) => key(b) === key(item));
+			const clear = footprintClear(
+				item.x,
+				item.y,
+				FOOTPRINTS[item.kind],
+				layer.circles,
+				layer.segments,
+				14,
+			);
+			expect(kept).toBe(clear);
+		}
+	});
+
+	it("adds scenery only outside the base bounds, clear of the layer", () => {
+		const layered = planLayeredEdgeScenery(sampleWorld(), layer);
+		const extra = layered.items.filter((i) => i.layer);
+		expect(extra.length).toBeGreaterThan(0);
+		const b = sampleWorld().bounds;
+		for (const item of extra) {
+			const fp = FOOTPRINTS[item.kind];
+			const inside =
+				item.x + fp.w / 2 > b.minX &&
+				item.x - fp.w / 2 < b.maxX &&
+				item.y > b.minY &&
+				item.y - fp.h < b.maxY;
+			expect(inside).toBe(false);
+			expect(
+				footprintClear(item.x, item.y, fp, layer.circles, layer.segments, 14),
+			).toBe(true);
+		}
+	});
+
+	it("is deterministic", () => {
+		expect(planLayeredEdgeScenery(sampleWorld(), layer)).toEqual(
+			planLayeredEdgeScenery(sampleWorld(), layer),
 		);
 	});
 });

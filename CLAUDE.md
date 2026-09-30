@@ -25,7 +25,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `packages/cli` — `@cabn/cli`, `cabn` bin (`build`/`inspect`/`shelf`/`serve`)
 - `apps/backend` — private, `@cabn/backend`, an authenticated Fastify service wrapping `@cabn/converter` (`POST /v1/worlds`, `GET /healthz`)
 - `apps/demo` — private, Vite + React app that converts `sample-project/` and renders it via `@cabn/engine`; `e2e/` holds the Playwright browser smoke test
-- `tools/asset-pipeline` — private, `@cabn/asset-pipeline`; palette extraction, sprite recovery, placeholder generation, preview page (see its scripts: `palette`, `recover`, `placeholders`, `preview`, `generate`)
+- `tools/asset-pipeline` — private, `@cabn/asset-pipeline`; palette extraction, sprite recovery, placeholder generation, preview page (see its scripts: `palette`, `recover`, `placeholders`, `preview`, `shadow`, `generate`); the shadow realm's art goes to `assets/generated/shadow/`, served by `cabn serve` only with `--owner` and never copied into the demo
 - `assets/source/icons` — source art PNGs
 - Rust prototype lives on the `rust-prototype` branch, not in this tree
 

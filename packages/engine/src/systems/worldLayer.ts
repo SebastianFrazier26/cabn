@@ -34,6 +34,72 @@ export interface WorldParticleSkin {
 }
 
 /**
+ * A texture a skin brings along. WorldScene loads it in its own preload
+ * (never through assetPaths.ts or PreloadScene), so a hosted build's asset
+ * list names no layer art at all.
+ */
+export interface SkinImage {
+	key: string;
+	path: string;
+}
+
+export interface SkinSheet extends SkinImage {
+	frameWidth: number;
+	frameHeight: number;
+	frames: number;
+}
+
+/** An animated sheet: every frame in order, looping. */
+export interface SkinStrip extends SkinSheet {
+	frameRate: number;
+}
+
+/** The path ribbon's three stamp kinds (render/pathBaker.ts bakePathRibbons). */
+export interface SkinPathTextures {
+	edge: SkinImage;
+	bed: SkinImage;
+	cobbles: readonly SkinImage[];
+	/** Share of the ribbon's cobble spots that get a stone (0..1]; the rest show the bed. */
+	cobbleFraction: number;
+}
+
+/** Scenery kinds a skin may redraw; each replacement must match the original's pixel size, so edge-scenery placement never changes. */
+export type SkinSceneryKind =
+	| "pine"
+	| "oak"
+	| "blossom-oak"
+	| "boulder"
+	| "pond";
+
+/** World-wide ambient particles that replace the day motes and night fireflies. */
+export interface SkinAmbientParticles {
+	/** Flakes drifting down, picked at random from the sheet's frames. */
+	ash: {
+		texture: SkinSheet;
+		tint: number;
+		frequencyMs: number;
+		alpha: number;
+	};
+	/** Sparks rising from anywhere in the world, additive. */
+	embers: {
+		texture: SkinImage;
+		colors: readonly number[];
+		frequencyMs: number;
+	};
+}
+
+/** Night light pools laid along every path, `spacingPx` apart (render/lightPools.ts). */
+export interface SkinPathGlow {
+	spacingPx: number;
+	radiusPx: number;
+	color: number;
+	alpha: number;
+	flicker: boolean;
+	/** Cap on pools for a whole world, so a sprawling path network stays cheap. */
+	maxPools: number;
+}
+
+/**
  * Colours and keys a layer swaps into the world renderer while it is
  * active. Every field is optional in effect: null keeps today's look, so
  * DEFAULT_SKIN (all null) reproduces the unskinned world exactly — each
@@ -61,6 +127,26 @@ export interface WorldSkin {
 	uiTokens: PixelThemeTokens | null;
 	/** Colour of the "layer" scene transition. */
 	transitionColor: number | null;
+	/** Tile sheet (meadow_tiles layout) for the continuous ground field. */
+	fieldTiles: SkinSheet | null;
+	/** Tile sheet (same layout) for every clearing, whatever its biome. */
+	clearingTiles: SkinSheet | null;
+	/** Clearing decals (decals layout: 24px frames, 0 and 1 ring the clearing's edge). */
+	decals: SkinSheet | null;
+	pathTextures: SkinPathTextures | null;
+	/** Replaces both the day and the night sky gradient. */
+	sky: SkinImage | null;
+	/** The portal arch strip (portal_arch_strip layout and timing) plus an overlay pulsing over it. */
+	arch: { strip: SkinStrip; overlay: SkinStrip } | null;
+	/** Stands in for the fountain in the layer's own clusters, and for the bonfire (world_fountain_strip layout). */
+	brazier: SkinStrip | null;
+	scenery: Partial<Record<SkinSceneryKind, SkinImage>> | null;
+	/** Multiply tint on edge scenery the skin doesn't redraw, and on the clearings' props. */
+	scatterTint: number | null;
+	ambient: SkinAmbientParticles | null;
+	pathGlow: SkinPathGlow | null;
+	/** A tiling texture for the file view's parchment (drawn over parchmentTint). */
+	parchment: SkinImage | null;
 }
 
 /** Marks a layer's entries (map, search badge) when its skin names no UI palette. */
@@ -80,7 +166,151 @@ export const DEFAULT_SKIN: WorldSkin = {
 	parchmentTint: null,
 	uiTokens: null,
 	transitionColor: null,
+	fieldTiles: null,
+	clearingTiles: null,
+	decals: null,
+	pathTextures: null,
+	sky: null,
+	arch: null,
+	brazier: null,
+	scenery: null,
+	scatterTint: null,
+	ambient: null,
+	pathGlow: null,
+	parchment: null,
 };
+
+/** Every texture a skin names, each once (the load list for WorldScene's preload). */
+export function skinTextures(skin: WorldSkin): (SkinImage | SkinSheet)[] {
+	const out: (SkinImage | SkinSheet)[] = [];
+	const add = (t: SkinImage | SkinSheet | null | undefined): void => {
+		if (t && !out.some((o) => o.key === t.key)) out.push(t);
+	};
+	add(skin.fieldTiles);
+	add(skin.clearingTiles);
+	add(skin.decals);
+	add(skin.pathTextures?.edge);
+	add(skin.pathTextures?.bed);
+	for (const c of skin.pathTextures?.cobbles ?? []) add(c);
+	add(skin.sky);
+	add(skin.arch?.strip);
+	add(skin.arch?.overlay);
+	add(skin.brazier);
+	for (const t of Object.values(skin.scenery ?? {})) add(t);
+	add(skin.ambient?.ash.texture);
+	add(skin.ambient?.embers.texture);
+	add(skin.parchment);
+	return out;
+}
+
+/**
+ * The skin as it can actually be drawn: any texture group with a piece
+ * that failed to load (`loaded(key)` false) falls back to today's look,
+ * never half-skinned. DEFAULT_SKIN comes back as the same object.
+ */
+export function resolveSkin(
+	skin: WorldSkin,
+	loaded: (key: string) => boolean,
+): WorldSkin {
+	if (skinTextures(skin).every((t) => loaded(t.key))) return skin;
+	const ok = (t: SkinImage | null | undefined): boolean =>
+		t !== null && t !== undefined && loaded(t.key);
+	const path = skin.pathTextures;
+	const scenery = skin.scenery
+		? Object.fromEntries(Object.entries(skin.scenery).filter(([, t]) => ok(t)))
+		: null;
+	return {
+		...skin,
+		fieldTiles: ok(skin.fieldTiles) ? skin.fieldTiles : null,
+		clearingTiles: ok(skin.clearingTiles) ? skin.clearingTiles : null,
+		decals: ok(skin.decals) ? skin.decals : null,
+		pathTextures:
+			path && ok(path.edge) && ok(path.bed) && path.cobbles.every(ok)
+				? path
+				: null,
+		sky: ok(skin.sky) ? skin.sky : null,
+		arch:
+			skin.arch && ok(skin.arch.strip) && ok(skin.arch.overlay)
+				? skin.arch
+				: null,
+		brazier: ok(skin.brazier) ? skin.brazier : null,
+		scenery,
+		ambient:
+			skin.ambient &&
+			ok(skin.ambient.ash.texture) &&
+			ok(skin.ambient.embers.texture)
+				? skin.ambient
+				: null,
+		parchment: ok(skin.parchment) ? skin.parchment : null,
+	};
+}
+
+/** Animation key for a skin strip, registered once per game by WorldScene. */
+export function skinAnimKey(strip: SkinStrip): string {
+	return `${strip.key}:loop`;
+}
+
+/** Evenly spaced points along a polyline (both ends included when it has length), for lights laid along paths. */
+export function pointsAlongPolyline(
+	points: readonly Position[],
+	spacingPx: number,
+): Position[] {
+	const out: Position[] = [];
+	let carry = 0;
+	for (let i = 1; i < points.length; i++) {
+		const a = points[i - 1];
+		const b = points[i];
+		if (!a || !b) continue;
+		const len = Math.hypot(b.x - a.x, b.y - a.y);
+		if (len === 0) continue;
+		let d = carry;
+		while (d <= len) {
+			out.push({
+				x: a.x + ((b.x - a.x) * d) / len,
+				y: a.y + ((b.y - a.y) * d) / len,
+			});
+			d += spacingPx;
+		}
+		carry = d - len;
+	}
+	return out;
+}
+
+/** The point halfway along a polyline by length, and the heading of the segment it falls on. */
+export function polylineMidpoint(points: readonly Position[]): {
+	center: Position;
+	angle: number;
+} {
+	const first = points[0] ?? { x: 0, y: 0 };
+	const last = points[points.length - 1] ?? first;
+	let total = 0;
+	for (let i = 1; i < points.length; i++) {
+		const a = points[i - 1];
+		const b = points[i];
+		if (a && b) total += Math.hypot(b.x - a.x, b.y - a.y);
+	}
+	let remaining = total / 2;
+	for (let i = 1; i < points.length; i++) {
+		const a = points[i - 1];
+		const b = points[i];
+		if (!a || !b) continue;
+		const len = Math.hypot(b.x - a.x, b.y - a.y);
+		if (len > 0 && remaining <= len) {
+			return {
+				center: {
+					x: a.x + ((b.x - a.x) * remaining) / len,
+					y: a.y + ((b.y - a.y) * remaining) / len,
+				},
+				angle: Math.atan2(b.y - a.y, b.x - a.x),
+			};
+		}
+		remaining -= len;
+	}
+	return {
+		center: { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 },
+		angle: Math.atan2(last.y - first.y, last.x - first.x),
+	};
+}
 
 export type WorldLayerSaveResult =
 	| { ok: true; sha256: string }

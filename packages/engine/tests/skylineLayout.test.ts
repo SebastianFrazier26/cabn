@@ -3,6 +3,7 @@ import {
 	LAYER_SCROLL_FACTOR,
 	parallaxCenter,
 	parallaxSpan,
+	planGrownSkyline,
 	planSkyline,
 	type SkylinePlanInput,
 } from "../src/systems/skylineLayout.js";
@@ -113,5 +114,47 @@ describe("planSkyline", () => {
 		expect(LAYER_SCROLL_FACTOR.far).toBeLessThan(LAYER_SCROLL_FACTOR.mid);
 		expect(LAYER_SCROLL_FACTOR.mid).toBeLessThan(LAYER_SCROLL_FACTOR.near);
 		expect(LAYER_SCROLL_FACTOR.near).toBe(1);
+	});
+});
+
+describe("planGrownSkyline", () => {
+	it("keeps the base plan and covers only the grown span", () => {
+		const base = planSkyline(input());
+		const grown = planGrownSkyline(input(), {
+			scrollMin: -2600,
+			scrollMax: 1900,
+		});
+		expect(grown.slice(0, base.length)).toEqual(base);
+		const extra = grown.slice(base.length);
+		expect(extra.length).toBeGreaterThan(0);
+		expect(
+			extra.every((e) => e.piece === "hill" || e.piece === "treeline"),
+		).toBe(true);
+		for (const layer of ["mid", "near"] as const) {
+			const piece = layer === "mid" ? "hill" : "treeline";
+			const [lo, hi] = parallaxSpan(
+				-2600,
+				1900,
+				2200,
+				LAYER_SCROLL_FACTOR[layer],
+				400,
+			);
+			const us = grown
+				.filter((e) => e.layer === layer)
+				.map((e) => e.u)
+				.sort((a, b) => a - b);
+			expect(us[0] ?? 0).toBeLessThanOrEqual(lo);
+			expect(us[us.length - 1] ?? 0).toBeGreaterThanOrEqual(hi);
+			for (let i = 1; i < us.length; i++)
+				expect((us[i] ?? 0) - (us[i - 1] ?? 0)).toBeLessThan(
+					WIDTHS[piece] * 1.9 * 0.72 + 1,
+				);
+		}
+	});
+
+	it("is the base plan when the range didn't grow", () => {
+		expect(
+			planGrownSkyline(input(), { scrollMin: -1400, scrollMax: 900 }),
+		).toEqual(planSkyline(input()));
 	});
 });

@@ -8,7 +8,11 @@ import {
 	pathCobbleKey,
 	pathStampKey,
 } from "../assetPaths.js";
-import { hashStringSeed, mulberry32 } from "../systems/deterministicRandom.js";
+import {
+	hashNoise2D,
+	hashStringSeed,
+	mulberry32,
+} from "../systems/deterministicRandom.js";
 import { planPathRibbon, type RibbonPlan } from "./pathRibbon.js";
 import { stampPointsAlongSegment } from "./pathStamps.js";
 
@@ -113,6 +117,13 @@ export function bakePathRibbons(
 	bounds: WorldBounds,
 	segments: readonly PathSegment[],
 	tint?: number,
+	/** A world skin's ribbon textures (systems/worldLayer.ts SkinPathTextures); omitted, the world's own. */
+	keys?: {
+		edge: string;
+		bed: string;
+		cobbles: readonly string[];
+		cobbleFraction?: number;
+	},
 ): { rt: Phaser.GameObjects.RenderTexture; plan: RibbonPlan } {
 	const width = bounds.maxX - bounds.minX;
 	const height = bounds.maxY - bounds.minY;
@@ -122,16 +133,21 @@ export function bakePathRibbons(
 		width,
 		height,
 	);
+	const edgeKey = keys?.edge ?? PATH_EDGE_DISC_KEY;
+	const bedKey = keys?.bed ?? PATH_BED_DISC_KEY;
+	const cobbleKeys =
+		keys?.cobbles ??
+		Array.from({ length: PATH_COBBLE_COUNT }, (_, i) => pathCobbleKey(i));
 	const plan = planPathRibbon(segments, {
-		edgeRadius: textureRadius(scene, PATH_EDGE_DISC_KEY),
-		bedRadius: textureRadius(scene, PATH_BED_DISC_KEY),
-		cobbleVariants: PATH_COBBLE_COUNT,
+		edgeRadius: textureRadius(scene, edgeKey),
+		bedRadius: textureRadius(scene, bedKey),
+		cobbleVariants: cobbleKeys.length,
 	});
 
-	const edge = scene.make.image({ key: PATH_EDGE_DISC_KEY }, false);
-	const bed = scene.make.image({ key: PATH_BED_DISC_KEY }, false);
-	const cobbleImages = Array.from({ length: PATH_COBBLE_COUNT }, (_, i) =>
-		scene.make.image({ key: pathCobbleKey(i) }, false),
+	const edge = scene.make.image({ key: edgeKey }, false);
+	const bed = scene.make.image({ key: bedKey }, false);
+	const cobbleImages = cobbleKeys.map((key) =>
+		scene.make.image({ key }, false),
 	);
 	// One open batch for every stamp: a plain rt.draw() per stamp binds and
 	// flushes the framebuffer each time, which for a few thousand stamps cost
@@ -143,7 +159,13 @@ export function bakePathRibbons(
 	for (const p of plan.bedStamps) {
 		rt.batchDraw(bed, p.x - bounds.minX, p.y - bounds.minY);
 	}
+	const fraction = keys?.cobbleFraction ?? 1;
 	for (const c of plan.cobbles) {
+		if (
+			fraction < 1 &&
+			hashNoise2D(Math.round(c.x), Math.round(c.y), 0x1a7a) >= fraction
+		)
+			continue;
 		const image = cobbleImages[c.variant] ?? cobbleImages[0];
 		if (image) rt.batchDraw(image, c.x - bounds.minX, c.y - bounds.minY);
 	}
