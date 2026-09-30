@@ -1,17 +1,43 @@
+import { PROP_NAMES, SKYLINE_PIECES } from "../assetPaths.js";
 import { DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS } from "../fx/glowParams.js";
 import type { WorldSkin } from "../systems/worldLayer.js";
-import { SHADOW_TEXTURES as T } from "./assets.js";
+import {
+	netherProp,
+	netherScenery,
+	netherSkyline,
+	SHADOW_TEXTURES as T,
+} from "./assets.js";
 import { CRIMSON_TOKENS } from "./tokens.js";
 
+/** Edge scenery with a palette-remapped nether variant (shadow-art.ts); the rest have their own redraws. */
+export const REMAPPED_SCENERY = [
+	"shrub",
+	"berry-shrub",
+	"rock-small",
+	"flower-patch",
+	"reeds",
+	"mushroom",
+	"fallen-log",
+	"stump",
+	"ruin",
+	"windmill",
+	"windmill-sails",
+	"waymarker",
+] as const;
+
 /**
- * The nether: ember sky, netherrack field, obsidian clearings, lava paths
- * with a night glow, blackstone arches with pulsing red runes, braziers,
- * charred scenery and drifting ash. The grade is lighter than M2's tint-only
- * skin because the art now carries the colour itself; the grade only
- * warms it and sinks the night.
+ * The nether: ember sky, netherrack field, obsidian clearings, lava paths,
+ * blackstone arches with pulsing red runes, braziers, charred scenery and
+ * drifting ash. It has no day and night (2026-09-29): the realm always
+ * shows its day look whatever the player's setting, with the lava and
+ * braziers kept glowing through that day. Every prop, scenery piece and
+ * skyline piece has a nether variant, so nothing is left to the multiply
+ * tint, which turned the green art olive.
  */
 export const NETHER_SKIN: WorldSkin = {
 	id: "shadow",
+	fixedTimeOfDay: "day",
+	dayGlowStrength: 0.5,
 	grade: { day: 0xffe0d4, night: 0x7a3028 },
 	wash: { color: 0x3a0a08, dayAlpha: 0.06, nightAlpha: 0.28 },
 	skylineTint: 0xc8604c,
@@ -31,6 +57,7 @@ export const NETHER_SKIN: WorldSkin = {
 		night: { ...NIGHT_GLOW_PARAMS, vignetteStrength: 0.46 },
 	},
 	parchmentTint: 0xf0c4b4,
+	backdrop: 0x2a0e0c,
 	uiTokens: CRIMSON_TOKENS,
 	transitionColor: 0x5a1a14,
 	fieldTiles: T.netherrack,
@@ -52,7 +79,12 @@ export const NETHER_SKIN: WorldSkin = {
 		"blossom-oak": T.deadTree,
 		boulder: T.magmaRock,
 		pond: T.lavaPond,
+		...Object.fromEntries(REMAPPED_SCENERY.map((k) => [k, netherScenery(k)])),
 	},
+	props: Object.fromEntries(PROP_NAMES.map((name) => [name, netherProp(name)])),
+	skyline: Object.fromEntries(
+		SKYLINE_PIECES.map((piece) => [piece, netherSkyline(piece)]),
+	),
 	scatterTint: 0x7a4a44,
 	ambient: {
 		ash: { texture: T.ash, tint: 0xd8ccc8, frequencyMs: 140, alpha: 0.7 },

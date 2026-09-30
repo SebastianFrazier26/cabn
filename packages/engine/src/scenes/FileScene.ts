@@ -103,6 +103,8 @@ export interface FileSceneData {
 	parchmentTint?: number;
 	/** The active world skin's tiling parchment texture (already loaded by WorldScene). */
 	parchmentTexture?: string;
+	/** The active world skin's colour around and below the page, over the game's own meadow green. */
+	backdrop?: number;
 	/** The active world skin's arch strip for the exit portal, and its looping animation. */
 	archStrip?: { key: string; anim: string };
 }
@@ -256,6 +258,7 @@ export class FileScene extends Phaser.Scene {
 	/** Bumped per init(): the scene instance is reused for every file, so an async save outcome checks it still belongs to this visit. */
 	private visit = 0;
 	private parchmentTint: number | undefined;
+	private backdrop: number | undefined;
 	private parchmentTexture: string | undefined;
 	private parchmentTile: Phaser.GameObjects.TileSprite | null = null;
 	private archStrip: FileSceneData["archStrip"];
@@ -309,6 +312,7 @@ export class FileScene extends Phaser.Scene {
 		this.visit++;
 		this.saveToDisk = data.saveToDisk;
 		this.parchmentTint = data.parchmentTint;
+		this.backdrop = data.backdrop;
 		this.parchmentTexture =
 			data.parchmentTexture && this.textures.exists(data.parchmentTexture)
 				? data.parchmentTexture
@@ -330,6 +334,8 @@ export class FileScene extends Phaser.Scene {
 
 	create(): void {
 		perfMark("cabn:file:create-start");
+		if (this.backdrop !== undefined)
+			this.cameras.main.setBackgroundColor(this.backdrop);
 		this.reducedMotion = prefersReducedMotion();
 		this.isMac = detectMac(
 			typeof navigator === "undefined" ? "" : navigator.platform,

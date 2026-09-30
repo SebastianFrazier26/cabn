@@ -136,7 +136,11 @@ export function attachAtmosphere(
 		if (alpha > 0) wash.fill(washColor, alpha);
 		for (const pool of pools) {
 			const flicker = poolFlicker(pool, now, options.reducedMotion);
-			updateLightPool(pool, eased, flicker);
+			updateLightPool(
+				pool,
+				Math.max(eased, pool.opts.dayStrength ?? 0),
+				flicker,
+			);
 			if (eased <= 0.001) continue;
 			const radius = pool.opts.radiusPx * HOLE_RADIUS_RATIO * zoom;
 			const sx = (pool.opts.x - view.x) * zoom + OVERHANG_PX;

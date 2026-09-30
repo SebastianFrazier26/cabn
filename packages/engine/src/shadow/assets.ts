@@ -1,3 +1,4 @@
+import type { PropName, SkylinePiece } from "../assetPaths.js";
 import type { SkinImage, SkinSheet, SkinStrip } from "../systems/worldLayer.js";
 
 /**
@@ -86,3 +87,15 @@ export const SHADOW_TEXTURES = {
 	ember: image("ember", "fx_ember.png"),
 	parchment: image("parchment", "parchment_scorched.png"),
 } as const;
+
+const slug = (name: string) => name.replace(/-/g, "_");
+
+/** A normal prop redrawn for the nether (shadow-art.ts genVariants, same size as the original). */
+export const netherProp = (name: PropName): SkinImage =>
+	image(`prop-${name}`, `prop_${slug(name)}_nether_soft.png`);
+
+export const netherScenery = (name: string): SkinImage =>
+	image(`scenery-${name}`, `scenery_${slug(name)}_nether_soft.png`);
+
+export const netherSkyline = (piece: SkylinePiece): SkinImage =>
+	image(`skyline-${piece}`, `skyline_${piece}_nether_soft.png`);

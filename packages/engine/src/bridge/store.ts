@@ -21,12 +21,11 @@ import { createFileBufferState } from "../systems/fileBuffer.js";
 import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import type { OwnerGitAction } from "../systems/ownerToolkit.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
+import type { TimeOfDay, TimeOfDayOverride } from "../systems/timeOfDay.js";
 import {
-	resolveTimeOfDay,
-	type TimeOfDay,
-	type TimeOfDayOverride,
-} from "../systems/timeOfDay.js";
-import type { WorldLayerProvider } from "../systems/worldLayer.js";
+	resolveSkinTimeOfDay,
+	type WorldLayerProvider,
+} from "../systems/worldLayer.js";
 import type { WorldMapSummary } from "../systems/worldMap.js";
 
 export type CabnMode = "world" | "file" | "editor" | "encounter" | "run";
@@ -151,8 +150,10 @@ export interface CabnState {
 	run: RunOverlayState | null;
 	/** The player's choice (SettingsCorner) — "auto" derives from the local clock (see systems/timeOfDay.ts), "day"/"night" pin it. game.ts seeds this from timeOfDaySettings.ts (persisted choice, else "auto") before any scene reads it. */
 	timeOfDayOverride: TimeOfDayOverride;
-	/** Resolved from timeOfDayOverride (+ the clock, if "auto") — what every glow-bearing scene actually reads to pick its GlowParams preset and, at night, switch on fireflies. Recomputed whenever the override changes or (for "auto") periodically, by game.ts. */
+	/** Resolved from timeOfDayPin, else timeOfDayOverride (+ the clock, if "auto") — what every glow-bearing scene actually reads to pick its GlowParams preset and, at night, switch on fireflies. Recomputed whenever the override or pin changes or (for "auto") periodically, by game.ts. */
 	timeOfDay: TimeOfDay;
+	/** The shown world layer's fixed time of day (its skin's `fixedTimeOfDay`); while set, the override and the clock are ignored. */
+	timeOfDayPin: TimeOfDay | null;
 	focusedPortalPreview: FocusedPortalPreview | null;
 	nearWebPortal: NearWebPortal | null;
 	/** The guide NPC in the current world (render/guideNpc.ts publishes it on spawn and clears it on shutdown); null in every world without one. */
@@ -308,6 +309,8 @@ export interface CabnActions {
 	setTimeOfDayOverride(override: TimeOfDayOverride): void;
 	/** Re-resolves timeOfDay from the *current* override — a no-op for "day"/"night" (already pinned), but "auto" needs this called periodically so a session left open across a day/night boundary actually crosses it (game.ts polls this on an interval). */
 	refreshTimeOfDay(): void;
+	/** WorldScene, before it builds anything: the skin it is about to draw pins (or, null, releases) the time of day. */
+	setTimeOfDayPin(pin: TimeOfDay | null): void;
 	setFocusedPortalPreview(preview: FocusedPortalPreview | null): void;
 	setNearWebPortal(portal: NearWebPortal | null): void;
 	setGuideNpc(guide: GuideNpcSummary | null): void;
@@ -379,6 +382,7 @@ const initialState: CabnState = {
 	run: null,
 	timeOfDayOverride: "auto",
 	timeOfDay: "day",
+	timeOfDayPin: null,
 	focusedPortalPreview: null,
 	nearWebPortal: null,
 	guideNpc: null,
@@ -408,6 +412,16 @@ const initialState: CabnState = {
 	layerUiTokens: null,
 	layerSaveIssue: null,
 };
+
+function pinned(
+	pin: TimeOfDay | null,
+	override: TimeOfDayOverride,
+): Pick<CabnState, "timeOfDayPin" | "timeOfDay"> {
+	return {
+		timeOfDayPin: pin,
+		timeOfDay: resolveSkinTimeOfDay({ fixedTimeOfDay: pin }, override),
+	};
+}
 
 export function createCabnStore(): StoreApi<CabnStore> {
 	return createStore<CabnStore>((set, get) => ({
@@ -462,6 +476,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				activeLayerId: null,
 				layerUiTokens: null,
 				layerSaveIssue: null,
+				...pinned(null, get().timeOfDayOverride),
 			}),
 		setActiveCluster: (activeClusterId) => set({ activeClusterId }),
 		enterPortal: (portalId, content, preview) => {
@@ -562,14 +577,14 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setRun: (run) => set({ run }),
 		stopRun: () => set({ mode: "file", run: null }),
 		setTimeOfDayOverride: (timeOfDayOverride) =>
-			set({
-				timeOfDayOverride,
-				timeOfDay: resolveTimeOfDay(timeOfDayOverride),
-			}),
-		refreshTimeOfDay: () =>
 			set((state) => ({
-				timeOfDay: resolveTimeOfDay(state.timeOfDayOverride),
+				timeOfDayOverride,
+				...pinned(state.timeOfDayPin, timeOfDayOverride),
 			})),
+		refreshTimeOfDay: () =>
+			set((state) => pinned(state.timeOfDayPin, state.timeOfDayOverride)),
+		setTimeOfDayPin: (pin) =>
+			set((state) => pinned(pin, state.timeOfDayOverride)),
 		setFocusedPortalPreview: (focusedPortalPreview) =>
 			set({ focusedPortalPreview }),
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
@@ -665,10 +680,16 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setWorldLayers: (worldLayers) => {
 			const active = get().activeLayerId;
 			const keep = active !== null && worldLayers.some((l) => l.id === active);
+			const override = get().timeOfDayOverride;
 			set(
-				keep
+				keep || active === null
 					? { worldLayers }
-					: { worldLayers, activeLayerId: null, layerUiTokens: null },
+					: {
+							worldLayers,
+							activeLayerId: null,
+							layerUiTokens: null,
+							...pinned(null, override),
+						},
 			);
 		},
 		setActiveLayer: (layerId) => {
@@ -676,16 +697,19 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				layerId === null
 					? undefined
 					: get().worldLayers.find((l) => l.id === layerId);
+			const override = get().timeOfDayOverride;
 			set(
 				provider
 					? {
 							activeLayerId: provider.id,
 							layerUiTokens: provider.skin.uiTokens,
+							...pinned(provider.skin.fixedTimeOfDay, override),
 						}
 					: {
 							activeLayerId: null,
 							layerUiTokens: null,
 							layerSaveIssue: null,
+							...pinned(null, override),
 						},
 			);
 		},

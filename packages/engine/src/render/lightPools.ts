@@ -22,6 +22,8 @@ export interface LightPoolOptions {
 	holeStrength?: number;
 	/** The bonfire and lanterns flicker; a plain window doesn't (a window is lit or not; a flame flickers). */
 	flicker?: boolean;
+	/** Share of the glow (0..1) still shown at full day; default 0, a night-only light. */
+	dayStrength?: number;
 }
 
 export interface LightPool {

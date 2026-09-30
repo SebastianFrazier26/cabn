@@ -16,11 +16,17 @@ import {
 	type WorldManifest,
 	type WorldPath,
 } from "@cabn/world-schema";
+import type { PropName, SceneryName, SkylinePiece } from "../assetPaths.js";
 import type { GlowParams } from "../fx/glowParams.js";
 import type { PixelThemeTokens } from "../react/pixelThemeTokens.js";
 import type { WorldSearchIndex } from "../react/useWorldSearchIndex.js";
 import { largestAngularGapMidpoint } from "./angularGap.js";
 import type { OwnerSignSaveRequest } from "./ownerSigns.js";
+import {
+	resolveTimeOfDay,
+	type TimeOfDay,
+	type TimeOfDayOverride,
+} from "./timeOfDay.js";
 import type { Tool } from "./tools.js";
 
 /** Ambient particle colours (render/effects.ts), as data so a skin can swap them. */
@@ -64,12 +70,7 @@ export interface SkinPathTextures {
 }
 
 /** Scenery kinds a skin may redraw; each replacement must match the original's pixel size, so edge-scenery placement never changes. */
-export type SkinSceneryKind =
-	| "pine"
-	| "oak"
-	| "blossom-oak"
-	| "boulder"
-	| "pond";
+export type SkinSceneryKind = SceneryName;
 
 /** World-wide ambient particles that replace the day motes and night fireflies. */
 export interface SkinAmbientParticles {
@@ -107,6 +108,10 @@ export interface SkinPathGlow {
  */
 export interface WorldSkin {
 	id: string;
+	/** Pins the layer to one time of day: the player's Auto/Day/Night choice and the clock are ignored while it shows. */
+	fixedTimeOfDay: TimeOfDay | null;
+	/** Share (0..1) of the skin's own warm lights (path glow, braziers) still lit at full day, so they glow in a pinned day. */
+	dayGlowStrength: number | null;
 	/** Multiply grade colour at full day / full night (render/atmosphere.ts). */
 	grade: { day: number; night: number } | null;
 	/** The normal-blend wash over the grade; alpha is lerped by the day/night blend. */
@@ -123,6 +128,8 @@ export interface WorldSkin {
 	glow: { day: GlowParams; night: GlowParams } | null;
 	/** The file view's parchment. */
 	parchmentTint: number | null;
+	/** Around and below the file view's page (and so behind the spellbook), in place of the game's meadow green. */
+	backdrop: number | null;
 	/** The HUD palette while the layer is active (react/pixelTheme.tsx). */
 	uiTokens: PixelThemeTokens | null;
 	/** Colour of the "layer" scene transition. */
@@ -141,7 +148,11 @@ export interface WorldSkin {
 	/** Stands in for the fountain in the layer's own clusters, and for the bonfire (world_fountain_strip layout). */
 	brazier: SkinStrip | null;
 	scenery: Partial<Record<SkinSceneryKind, SkinImage>> | null;
-	/** Multiply tint on edge scenery the skin doesn't redraw, and on the clearings' props. */
+	/** Clearing props the skin redraws (same pixel size as the originals). */
+	props: Partial<Record<PropName, SkinImage>> | null;
+	/** Day art for skyline pieces, same pixel size as the originals so the horizon lays out the same. */
+	skyline: Partial<Record<SkylinePiece, SkinImage>> | null;
+	/** Multiply tint on edge scenery, props and skyline pieces the skin doesn't redraw. */
 	scatterTint: number | null;
 	ambient: SkinAmbientParticles | null;
 	pathGlow: SkinPathGlow | null;
@@ -154,6 +165,8 @@ export const LAYER_FALLBACK_COLOR = 0xc8323c;
 
 export const DEFAULT_SKIN: WorldSkin = {
 	id: "default",
+	fixedTimeOfDay: null,
+	dayGlowStrength: null,
 	grade: null,
 	wash: null,
 	skylineTint: null,
@@ -164,6 +177,7 @@ export const DEFAULT_SKIN: WorldSkin = {
 	particles: null,
 	glow: null,
 	parchmentTint: null,
+	backdrop: null,
 	uiTokens: null,
 	transitionColor: null,
 	fieldTiles: null,
@@ -174,6 +188,8 @@ export const DEFAULT_SKIN: WorldSkin = {
 	arch: null,
 	brazier: null,
 	scenery: null,
+	props: null,
+	skyline: null,
 	scatterTint: null,
 	ambient: null,
 	pathGlow: null,
@@ -197,6 +213,8 @@ export function skinTextures(skin: WorldSkin): (SkinImage | SkinSheet)[] {
 	add(skin.arch?.overlay);
 	add(skin.brazier);
 	for (const t of Object.values(skin.scenery ?? {})) add(t);
+	for (const t of Object.values(skin.props ?? {})) add(t);
+	for (const t of Object.values(skin.skyline ?? {})) add(t);
 	add(skin.ambient?.ash.texture);
 	add(skin.ambient?.embers.texture);
 	add(skin.parchment);
@@ -216,9 +234,14 @@ export function resolveSkin(
 	const ok = (t: SkinImage | null | undefined): boolean =>
 		t !== null && t !== undefined && loaded(t.key);
 	const path = skin.pathTextures;
-	const scenery = skin.scenery
-		? Object.fromEntries(Object.entries(skin.scenery).filter(([, t]) => ok(t)))
-		: null;
+	const loadedOnly = <K extends string>(
+		map: Partial<Record<K, SkinImage>> | null,
+	): Partial<Record<K, SkinImage>> | null =>
+		map
+			? (Object.fromEntries(
+					Object.entries<SkinImage | undefined>(map).filter(([, t]) => ok(t)),
+				) as Partial<Record<K, SkinImage>>)
+			: null;
 	return {
 		...skin,
 		fieldTiles: ok(skin.fieldTiles) ? skin.fieldTiles : null,
@@ -234,7 +257,9 @@ export function resolveSkin(
 				? skin.arch
 				: null,
 		brazier: ok(skin.brazier) ? skin.brazier : null,
-		scenery,
+		scenery: loadedOnly(skin.scenery),
+		props: loadedOnly(skin.props),
+		skyline: loadedOnly(skin.skyline),
 		ambient:
 			skin.ambient &&
 			ok(skin.ambient.ash.texture) &&
@@ -243,6 +268,19 @@ export function resolveSkin(
 				: null,
 		parchment: ok(skin.parchment) ? skin.parchment : null,
 	};
+}
+
+/**
+ * The time of day a scene shows: the skin's pin when it has one, else the
+ * player's choice resolved against the clock. No skin, or DEFAULT_SKIN, is
+ * exactly resolveTimeOfDay.
+ */
+export function resolveSkinTimeOfDay(
+	skin: Pick<WorldSkin, "fixedTimeOfDay"> | null,
+	override: TimeOfDayOverride,
+	now: Date = new Date(),
+): TimeOfDay {
+	return skin?.fixedTimeOfDay ?? resolveTimeOfDay(override, now);
 }
 
 /** Animation key for a skin strip, registered once per game by WorldScene. */

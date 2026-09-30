@@ -735,6 +735,7 @@ function applyLayerStyle(tokens: PixelThemeTokens | null): void {
 	--cabn-editor-gutter-border: rgba(0, 0, 0, 0.35);
 	--cabn-layer-badge-bg: ${toCssColor(tokens.accentPink)};
 	--cabn-layer-badge-text: ${toCssColor(tokens.text)};
+	--cabn-bg-panel: ${toCssColor(tokens.panelBodyAlt)};
 }`;
 }
 

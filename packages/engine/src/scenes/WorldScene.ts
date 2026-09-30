@@ -24,6 +24,7 @@ import {
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
 	PORTAL_VARIANT_SHEET_KEY,
+	type SkylinePiece,
 	WORLD_FOUNTAIN_GEM_KEY,
 	WORLD_FOUNTAIN_IDLE_ANIM,
 	WORLD_FOUNTAIN_KEY,
@@ -527,6 +528,9 @@ export class WorldScene extends Phaser.Scene {
 	create(): void {
 		perfMark("cabn:world:create-start");
 		this.settleSkin();
+		// Before the atmosphere, sky and ambient effects read timeOfDay, so a
+		// pinned layer starts in its own look instead of cross-fading into it.
+		this.store.getState().setTimeOfDayPin(this.skin.fixedTimeOfDay);
 		for (const cluster of this.manifest.clusters)
 			this.clustersById.set(cluster.id, cluster);
 		for (const portal of this.manifest.portals) {
@@ -805,6 +809,7 @@ export class WorldScene extends Phaser.Scene {
 				},
 			];
 		});
+		const skinGlow = this.skin.dayGlowStrength ?? 0;
 		if (root) {
 			lights.push({
 				x: root.pos.x,
@@ -813,6 +818,7 @@ export class WorldScene extends Phaser.Scene {
 				color: warmLight,
 				alpha: 0.75,
 				flicker: true,
+				...(this.skin.brazier ? { dayStrength: skinGlow } : {}),
 			});
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
@@ -828,6 +834,7 @@ export class WorldScene extends Phaser.Scene {
 						color: warmLight,
 						alpha: 0.8,
 						flicker: true,
+						dayStrength: skinGlow,
 					});
 					continue;
 				}
@@ -892,6 +899,12 @@ export class WorldScene extends Phaser.Scene {
 				{
 					...(this.layerSeam ? { baseBounds: this.baseWorldBounds() } : {}),
 					...(this.skin.sky ? { skyKey: this.skin.sky.key } : {}),
+					...(this.skin.skyline
+						? {
+								pieceTextureFor: (piece: SkylinePiece) =>
+									this.skin.skyline?.[piece]?.key,
+							}
+						: {}),
 				},
 			);
 		}
@@ -1203,9 +1216,13 @@ export class WorldScene extends Phaser.Scene {
 			);
 		}
 		this.clearPropsOffLayerPaths();
+		const swaps = this.skin.props;
 		const scatterTint = this.skin.scatterTint;
-		if (scatterTint !== null)
-			for (const prop of this.placedProps) prop.sprite.setTint(scatterTint);
+		for (const prop of this.placedProps) {
+			const swap = swaps?.[prop.name];
+			if (swap) prop.sprite.setTexture(swap.key);
+			else if (scatterTint !== null) prop.sprite.setTint(scatterTint);
+		}
 	}
 
 	/**
@@ -1523,6 +1540,7 @@ export class WorldScene extends Phaser.Scene {
 					color: glow.color,
 					alpha: glow.alpha,
 					flicker: glow.flicker,
+					dayStrength: this.skin.dayGlowStrength ?? 0,
 				});
 				if (lights.length >= glow.maxPools) return lights;
 			}
@@ -2539,6 +2557,9 @@ export class WorldScene extends Phaser.Scene {
 					: {}),
 				...(this.skin.parchment
 					? { parchmentTexture: this.skin.parchment.key }
+					: {}),
+				...(this.skin.backdrop !== null
+					? { backdrop: this.skin.backdrop }
 					: {}),
 				...(this.skin.arch
 					? {

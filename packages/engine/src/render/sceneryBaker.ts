@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { sceneryKey } from "../assetPaths.js";
+import { type SceneryName, sceneryKey } from "../assetPaths.js";
 import type {
 	Footprint,
 	SceneryItem,
@@ -61,7 +61,7 @@ export function bakeScenery(
 	depth: number,
 	/** A world skin's replacement textures and tint (render/worldDressing.ts). */
 	skin: {
-		textureFor?: (kind: SceneryKind) => string | undefined;
+		textureFor?: (kind: SceneryName) => string | undefined;
 		tint?: number;
 	} = {},
 ): Phaser.GameObjects.RenderTexture[] {
@@ -140,11 +140,13 @@ export function addWindmillSails(
 	depth: number,
 	reducedMotion: boolean,
 	tint?: number,
+	/** A world skin's redrawn sails; they then take no tint. */
+	textureKey?: string,
 ): Phaser.GameObjects.Image {
 	const sails = scene.add
-		.image(x, y - bodyHeight * 0.62, sceneryKey("windmill-sails"))
+		.image(x, y - bodyHeight * 0.62, textureKey ?? sceneryKey("windmill-sails"))
 		.setDepth(depth);
-	if (tint !== undefined) sails.setTint(tint);
+	if (tint !== undefined && textureKey === undefined) sails.setTint(tint);
 	if (!reducedMotion) {
 		scene.tweens.add({
 			targets: sails,
