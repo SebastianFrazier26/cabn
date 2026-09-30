@@ -155,13 +155,26 @@ describe("groundFieldCandidatesNear", () => {
 		}
 	});
 
-	it("includes the camera's own chunk", () => {
+	it("includes the camera's own chunk once the radius covers a full chunk's worth of offset", () => {
+		// A chunk center can be up to a half-diagonal (~362px) from a camera
+		// standing anywhere inside that same chunk — radius has to clear that
+		// before "own chunk" is guaranteed, not just be "some positive number".
 		const camera = { x: 1234, y: -987 };
-		const candidates = groundFieldCandidatesNear(camera, 100);
+		const candidates = groundFieldCandidatesNear(camera, 400);
 		const ownKey = groundFieldChunkKey(
 			Math.floor(camera.x / 512),
 			Math.floor(camera.y / 512),
 		);
 		expect(candidates.some((c) => c.key === ownKey)).toBe(true);
+	});
+
+	it("never returns a candidate whose center is actually beyond radius — this is what the entry-set sync bake bakes verbatim, unfiltered, so an over-wide result here means baking way more than the viewport at world entry", () => {
+		const camera = { x: 500, y: -300 };
+		const radius = 900;
+		for (const c of groundFieldCandidatesNear(camera, radius)) {
+			expect(Math.hypot(c.x - camera.x, c.y - camera.y)).toBeLessThanOrEqual(
+				radius,
+			);
+		}
 	});
 });

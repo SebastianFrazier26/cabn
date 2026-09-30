@@ -194,6 +194,7 @@ export function groundFieldCandidatesNear(
 			col++
 		) {
 			const { x, y } = groundFieldChunkCenter(col, row);
+			if (Math.hypot(x - camera.x, y - camera.y) > radius) continue;
 			out.push({ key: groundFieldChunkKey(col, row), x, y });
 		}
 	}
