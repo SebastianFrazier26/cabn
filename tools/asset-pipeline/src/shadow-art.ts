@@ -6,11 +6,12 @@ import {
 	composeSheet,
 	compositeInto,
 	concatHorizontal,
+	loadRawRgba,
 	type RawImage,
 	upscaleNearest,
 	writeRawRgbaPng,
 } from "./image-io.js";
-import { generatedDir, paletteJsonPath } from "./paths.js";
+import { generatedDir, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type Grid, toPixelMap } from "./pixel-shapes.js";
 import { type PixelMap, renderPixelMap } from "./pixelmap.js";
 import {
@@ -30,6 +31,12 @@ import {
 	sudoIconGrid,
 } from "./shadow/grids.js";
 import { buildNetherPalette, type NetherPalette } from "./shadow/palette.js";
+import {
+	type NetherVariant,
+	netherProps,
+	netherScenery,
+	netherSkyline,
+} from "./shadow/props.js";
 import {
 	DEFAULT_SOFTEN_OPTIONS,
 	type SoftenOptions,
@@ -336,6 +343,120 @@ async function genScenery(pal: NetherPalette, runtime: Runtime): Promise<void> {
 	}
 }
 
+interface VariantGroup {
+	prefix: "prop" | "scenery" | "skyline";
+	variants: NetherVariant[];
+	upscale: number;
+	/** The multiply tint the realm used to lay over the normal art, for the before/after sheet. */
+	oldTint: RGB;
+	/** The normal art's runtime file for a variant slug. */
+	baseFile: (slug: string) => string;
+}
+
+function variantGroups(pal: NetherPalette): VariantGroup[] {
+	const scatter = { r: 0x7a, g: 0x4a, b: 0x44 };
+	return [
+		{
+			prefix: "prop",
+			variants: netherProps(pal),
+			upscale: 8,
+			oldTint: scatter,
+			baseFile: (slug) => `prop_${slug}_soft.png`,
+		},
+		{
+			prefix: "scenery",
+			variants: netherScenery(pal),
+			upscale: 8,
+			oldTint: scatter,
+			baseFile: (slug) => `scenery_${slug}_soft.png`,
+		},
+		{
+			prefix: "skyline",
+			variants: netherSkyline(pal),
+			upscale: 4,
+			oldTint: { r: 0xc8, g: 0x60, b: 0x4c },
+			baseFile: (slug) => `skyline_${slug}_day_soft.png`,
+		},
+	];
+}
+
+const variantSlug = (name: string) => name.replace(/-/g, "_");
+
+async function genVariants(
+	pal: NetherPalette,
+	runtime: Runtime,
+): Promise<void> {
+	for (const [g, group] of variantGroups(pal).entries()) {
+		for (const [i, v] of group.variants.entries()) {
+			const slug = `${group.prefix}_${variantSlug(v.name)}_nether`;
+			const pair = renderGrid(
+				v.grid,
+				slug,
+				pal,
+				worldSoften(v.cellSize, 20263000 + g * 100 + i),
+			);
+			await writePair(slug, pair, group.upscale);
+			runtime.push([`${slug}_soft.png`, pair.soft]);
+		}
+	}
+}
+
+function multiplied(image: RawImage, tint: RGB): RawImage {
+	const data = Buffer.from(image.data);
+	for (let i = 0; i < data.length; i += 4) {
+		data[i] = Math.round(((data[i] ?? 0) * tint.r) / 255);
+		data[i + 1] = Math.round(((data[i + 1] ?? 0) * tint.g) / 255);
+		data[i + 2] = Math.round(((data[i + 2] ?? 0) * tint.b) / 255);
+	}
+	return { data, width: image.width, height: image.height };
+}
+
+/** Normal art | what the realm showed (multiply tint) | the nether variant, for every swapped piece. */
+async function genBeforeAfter(pal: NetherPalette): Promise<void> {
+	const cells: RawImage[] = [];
+	for (const group of variantGroups(pal)) {
+		for (const v of group.variants) {
+			const slug = variantSlug(v.name);
+			const base = await loadRawRgba(
+				path.join(placeholdersDir, group.baseFile(slug)),
+			);
+			const nether = await loadRawRgba(
+				out(`${group.prefix}_${slug}_nether_soft.png`),
+			);
+			const scale = Math.max(base.width, base.height) <= 80 ? 2 : 1;
+			const shown = [base, multiplied(base, group.oldTint), nether];
+			const pad = 6;
+			const w = base.width * scale;
+			const h = base.height * scale;
+			const cell = solid(w * 3 + pad * 4, h + pad * 2, { r: 60, g: 52, b: 56 });
+			for (const [k, image] of shown.entries()) {
+				const up = scale > 1 ? await upscaleNearest(image, scale) : image;
+				compositeInto(cell, up, pad + k * (w + pad), pad);
+			}
+			cells.push(cell);
+		}
+	}
+	const sheetWidth = 1600;
+	const gap = 10;
+	const placed: [RawImage, number, number][] = [];
+	let x = gap;
+	let y = gap;
+	let rowH = 0;
+	for (const cell of cells) {
+		if (x + cell.width + gap > sheetWidth && x > gap) {
+			x = gap;
+			y += rowH + gap;
+			rowH = 0;
+		}
+		placed.push([cell, x, y]);
+		x += cell.width + gap;
+		rowH = Math.max(rowH, cell.height);
+	}
+	const sheet = solid(sheetWidth, y + rowH + gap, { r: 24, g: 18, b: 22 });
+	for (const [cell, cx, cy] of placed) compositeInto(sheet, cell, cx, cy);
+	await writeRawRgbaPng(sheet, path.join(reviewDir, "props-before-after.png"));
+}
+
 async function genFx(pal: NetherPalette, runtime: Runtime): Promise<void> {
 	const flakes = ashFlakes(pal.n).map(
 		(grid, i) =>
@@ -470,8 +591,10 @@ async function main() {
 	await genArch(pal, runtime);
 	await genBrazier(pal, runtime);
 	await genScenery(pal, runtime);
+	await genVariants(pal, runtime);
 	await genFx(pal, runtime);
 	await genReview(runtime);
+	await genBeforeAfter(pal);
 	console.log(`shadow: ${runtime.length} runtime textures -> ${shadowDir}`);
 }
 
