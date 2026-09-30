@@ -149,6 +149,7 @@ import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	applyOverridesToChunk,
 	clearSave,
+	computeScenerySeed,
 	computeWorldId,
 	emptySaveData,
 	loadSave,
@@ -406,6 +407,7 @@ export class WorldScene extends Phaser.Scene {
 	private chunkFetchesInFlight = new Set<string>();
 
 	private worldId = "";
+	private scenerySeed = "";
 	private save: SaveData = emptySaveData("");
 	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
 	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
@@ -575,6 +577,7 @@ export class WorldScene extends Phaser.Scene {
 		}
 
 		this.worldId = computeWorldId(this.manifest.meta);
+		this.scenerySeed = computeScenerySeed(this.baseManifest);
 		this.save = loadSave(this.worldId);
 		this.layerSeam?.openSlot(this.worldId);
 		this.theme = themeFromSeed(this.manifest.meta.themeSeed ?? 0);
@@ -919,7 +922,7 @@ export class WorldScene extends Phaser.Scene {
 			this.sky = attachSky(
 				this,
 				this.computeWorldBounds(),
-				this.worldId,
+				this.scenerySeed,
 				this.atmosphere,
 				reducedMotion,
 				this.skin.skylineTint ?? undefined,
@@ -1436,7 +1439,7 @@ export class WorldScene extends Phaser.Scene {
 		this.edgeDressing = dressEdges({
 			scene: this,
 			bounds: this.baseWorldBounds(),
-			seed: this.worldId,
+			seed: this.scenerySeed,
 			circles,
 			segments,
 			reducedMotion: prefersReducedMotion(),

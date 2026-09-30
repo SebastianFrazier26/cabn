@@ -35,6 +35,28 @@ export function computeWorldId(meta: {
 		.padStart(8, "0");
 }
 
+/**
+ * Seeds edge scenery, the skyline and world dressing: the project's name and
+ * its file tree, never the conversion time or the absolute source path, so a
+ * rebuild or `cabn serve` restart of an unchanged project keeps its scenery
+ * while adding or removing a file may reshuffle it. Derived from fields every
+ * manifest already has rather than a new meta field, because WorldMetaSchema
+ * is strict and an older engine would reject a world carrying one.
+ */
+export function computeScenerySeed(manifest: {
+	meta: { name: string };
+	clusters: readonly { path: string }[];
+	portals: readonly { file: { path: string } }[];
+}): string {
+	const clusterPaths = manifest.clusters.map((c) => c.path).sort();
+	const filePaths = manifest.portals.map((p) => p.file.path).sort();
+	return fnv1a(
+		`${manifest.meta.name}\u0000${clusterPaths.join("\n")}\u0000${filePaths.join("\n")}`,
+	)
+		.toString(16)
+		.padStart(8, "0");
+}
+
 export const SAVE_SCHEMA_VERSION = 2;
 
 const FileOverrideSchema = z.strictObject({

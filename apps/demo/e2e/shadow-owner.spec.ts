@@ -52,12 +52,16 @@ const HIDDEN_FILES: Record<string, string> = {
 	".github/check.py": "def check(:\n    return [1, 2\n",
 };
 
+let root: string;
 let dir: string;
 let serve: ChildProcess | undefined;
 let url: string;
 
 test.beforeAll(async () => {
-	dir = await mkdtemp(join(tmpdir(), "cabn-shadow-e2e-"));
+	root = await mkdtemp(join(tmpdir(), "cabn-shadow-e2e-"));
+	// A fixed folder name: the scenery is seeded from it (plus the file tree),
+	// so the windmill and ponds land the same way on every run.
+	dir = join(root, "serve-project");
 	await cp(FIXTURE, dir, { recursive: true });
 	for (const [path, content] of Object.entries(HIDDEN_FILES)) {
 		await mkdir(dirname(join(dir, path)), { recursive: true });
@@ -97,7 +101,7 @@ test.afterAll(async () => {
 	serve?.kill("SIGINT");
 	await new Promise((r) => setTimeout(r, 300));
 	if (serve && serve.exitCode === null) serve.kill("SIGKILL");
-	await rm(dir, { recursive: true, force: true });
+	await rm(root, { recursive: true, force: true });
 });
 
 async function shoot(page: Page, name: string) {
@@ -520,11 +524,10 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(
 		normalCreatures.monsters.filter((k) => k.startsWith("shadow-")),
 	).toEqual([]);
-	const hasWindmill = normalCreatures.sails.length > 0;
-	if (hasWindmill) {
-		const [a, b] = await sailTurn(page);
-		expect(b, "normal sails turn").not.toEqual(a);
-	}
+	// The seeded scenery gives this fixture one windmill on every run.
+	expect(normalCreatures.sails.length).toBe(1);
+	const [a, b] = await sailTurn(page);
+	expect(b, "normal sails turn").not.toEqual(a);
 
 	// Sudo raises the hidden clusters; nothing visible moves, even mid-rise.
 	await sudo(page, "keys");
