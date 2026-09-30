@@ -185,7 +185,6 @@ export const SHADOW = [
 	"portal_arch_nether_strip_soft.png",
 	"portal_arch_rune_overlay_soft.png",
 	"prop_nether_brazier_strip_soft.png",
-	"scenery_dead_tree_soft.png",
 	"scenery_basalt_pillar_soft.png",
 	"scenery_magma_rock_soft.png",
 	"scenery_lava_pond_soft.png",
@@ -208,6 +207,8 @@ export const SHADOW = [
 		"bench",
 	].map((p) => `prop_${p}_nether_soft.png`),
 	...[
+		"oak",
+		"blossom_oak",
 		"shrub",
 		"berry_shrub",
 		"rock_small",
@@ -223,6 +224,42 @@ export const SHADOW = [
 	].map((s) => `scenery_${s}_nether_soft.png`),
 	...["castle", "watchtower", "village", "hill", "treeline"].map(
 		(s) => `skyline_${s}_nether_soft.png`,
+	),
+	...[
+		"rot_sprite",
+		"warded_mimic",
+		"gremlin",
+		"ouroboros",
+		"will_o_wisp",
+		"imp",
+		"magpie",
+		"skeleton",
+		"bramble",
+		"shade",
+	].flatMap((m) => [
+		`${m}_idle0_nether_soft.png`,
+		`${m}_idle1_nether_soft.png`,
+	]),
+	"ghost_nether_soft.png",
+	...[
+		"rot_sprite",
+		"warded_mimic",
+		"gremlin",
+		"ouroboros",
+		"will_o_wisp",
+		"imp",
+		"magpie",
+		"skeleton",
+		"bramble",
+		"shade",
+		"ghost",
+	].flatMap((m) => [
+		`${m}_hit_nether_soft.png`,
+		...[0, 1, 2].map((i) => `${m}_defeat${i}_nether_soft.png`),
+	]),
+	...["replace", "goto"].map((t) => `ui_tool_${t}_nether_soft.png`),
+	...["orb", "spyglass", "bag", "quill", "wand", "key", "sign", "owner"].map(
+		(i) => `ui_icon_${i}_nether_soft.png`,
 	),
 ];
 

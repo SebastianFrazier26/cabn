@@ -15,9 +15,21 @@ import type { PixelMap } from "./pixelmap.js";
 // fitSpriteToSize() never jumps in size when the engine swaps textures.
 
 const INK = 0;
-const HIT_OUTLINE = 55; // mushroom red bright
-const PUFF = { light: 29, fill: 58, shade: 59, rim: 60 } as const;
-const SPARK = { core: 65, glow: 54 } as const;
+
+/** The palette indices the battle frames add, so a recoloured species (the owner-only nether set) can bring its own. */
+export interface MonsterFxTones {
+	hitOutline: number;
+	puff: { light: number; fill: number; shade: number; rim: number };
+	spark: { core: number; glow: number };
+	/** Indices the bleach may land on; every index when unset. */
+	lightenPool?: readonly number[];
+}
+
+export const DEFAULT_FX_TONES: MonsterFxTones = {
+	hitOutline: 55, // mushroom red bright
+	puff: { light: 29, fill: 58, shade: 59, rim: 60 },
+	spark: { core: 65, glow: 54 },
+};
 
 export function pixelMapToGrid(map: PixelMap): Grid {
 	const grid = createGrid(map.width, map.height);
@@ -31,27 +43,43 @@ export function pixelMapToGrid(map: PixelMap): Grid {
 	return grid;
 }
 
-function nearestIndex(palette: readonly RGB[], c: RGB): number {
+function nearestIndex(
+	palette: readonly RGB[],
+	c: RGB,
+	pool: readonly number[] | undefined,
+): number {
 	let best = 0;
 	let bestD = Number.POSITIVE_INFINITY;
-	palette.forEach((p, i) => {
+	const consider = (p: RGB | undefined, i: number) => {
+		if (!p) return;
 		const d = (p.r - c.r) ** 2 + (p.g - c.g) ** 2 + (p.b - c.b) ** 2;
 		if (d < bestD) {
 			bestD = d;
 			best = i;
 		}
-	});
+	};
+	if (pool) for (const i of pool) consider(palette[i], i);
+	else palette.forEach(consider);
 	return best;
 }
 
-function lighten(palette: readonly RGB[], idx: number, t: number): number {
+function lighten(
+	palette: readonly RGB[],
+	idx: number,
+	t: number,
+	pool?: readonly number[],
+): number {
 	const c = palette[idx];
 	if (!c) return idx;
-	return nearestIndex(palette, {
-		r: c.r + (255 - c.r) * t,
-		g: c.g + (255 - c.g) * t,
-		b: c.b + (255 - c.b) * t,
-	});
+	return nearestIndex(
+		palette,
+		{
+			r: c.r + (255 - c.r) * t,
+			g: c.g + (255 - c.g) * t,
+			b: c.b + (255 - c.b) * t,
+		},
+		pool,
+	);
 }
 
 /** The species' own outline index — whatever idle0 maps 'O' to (ink for most, cool blue-gray for ghost, navy for the wisp). */
@@ -94,18 +122,29 @@ export function hitFrame(
 	map: PixelMap,
 	palette: readonly RGB[],
 	name: string,
+	tones: MonsterFxTones = DEFAULT_FX_TONES,
 ): PixelMap {
 	const outline = outlineIndex(map);
 	const grid = pixelMapToGrid(map).map((row) =>
 		row.map((v) =>
-			v == null ? null : v === outline ? HIT_OUTLINE : lighten(palette, v, 0.6),
+			v == null
+				? null
+				: v === outline
+					? tones.hitOutline
+					: lighten(palette, v, 0.6, tones.lightenPool),
 		),
 	);
 	return toPixelMap(name, grid);
 }
 
 /** A shaded puff: a filled disc lit from the up-left (the shared light direction), no outline — outlineGrid adds it once all puffs are placed. */
-function puff(grid: Grid, cx: number, cy: number, r: number): void {
+function puff(
+	grid: Grid,
+	cx: number,
+	cy: number,
+	r: number,
+	tones: MonsterFxTones["puff"],
+): void {
 	for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
 		for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
 			const dx = x + 0.5 - cx;
@@ -115,26 +154,28 @@ function puff(grid: Grid, cx: number, cy: number, r: number): void {
 			const lit = (-dx - dy) / (Math.max(d, 0.01) * Math.SQRT2);
 			const tone =
 				d > r * 0.55 && lit > 0.3
-					? PUFF.light
+					? tones.light
 					: d > r * 0.6 && lit < -0.3
-						? PUFF.shade
-						: PUFF.fill;
+						? tones.shade
+						: tones.fill;
 			setPixel(grid, x, y, tone);
 		}
 	}
 }
 
-function sparkle(grid: Grid, x: number, y: number, big: boolean): void {
-	setPixel(grid, x, y, SPARK.core);
+function sparkle(
+	grid: Grid,
+	x: number,
+	y: number,
+	big: boolean,
+	tones: MonsterFxTones["spark"],
+): void {
+	setPixel(grid, x, y, tones.core);
 	if (!big) return;
-	setPixel(grid, x - 1, y, SPARK.glow);
-	setPixel(grid, x + 1, y, SPARK.glow);
-	setPixel(grid, x, y - 1, SPARK.glow);
-	setPixel(grid, x, y + 1, SPARK.glow);
-}
-
-function finishPuffs(grid: Grid): void {
-	outlineGrid(grid, PUFF.rim);
+	setPixel(grid, x - 1, y, tones.glow);
+	setPixel(grid, x + 1, y, tones.glow);
+	setPixel(grid, x, y - 1, tones.glow);
+	setPixel(grid, x, y + 1, tones.glow);
 }
 
 /**
@@ -147,7 +188,13 @@ export function defeatFrames(
 	map: PixelMap,
 	palette: readonly RGB[],
 	baseName: string,
+	tones: MonsterFxTones = DEFAULT_FX_TONES,
 ): [PixelMap, PixelMap, PixelMap] {
+	const puffAt = (g: Grid, x: number, y: number, r: number) =>
+		puff(g, x, y, r, tones.puff);
+	const sparkAt = (g: Grid, x: number, y: number, big: boolean) =>
+		sparkle(g, x, y, big, tones.spark);
+	const finishPuffs = (g: Grid) => outlineGrid(g, tones.puff.rim);
 	const src = pixelMapToGrid(map);
 	const box = contentBox(src);
 	const cx = (box.x0 + box.x1 + 1) / 2;
@@ -162,41 +209,41 @@ export function defeatFrames(
 	src.forEach((row, y) => {
 		row.forEach((v, x) => {
 			if (v == null || hash(x, y, 1) < 0.3) return;
-			setPixel(f0, x, y, lighten(palette, v, 0.35));
+			setPixel(f0, x, y, lighten(palette, v, 0.35, tones.lightenPool));
 		});
 	});
 	const r0 = Math.max(1.6, span * 0.14);
 	const burst = createGrid(w, h);
-	puff(burst, box.x0 + r0 * 0.6, cy + bh * 0.2, r0);
-	puff(burst, box.x1 + 1 - r0 * 0.6, cy + bh * 0.1, r0);
-	puff(burst, cx - bw * 0.15, box.y0 + r0 * 0.7, r0 * 0.9);
-	puff(burst, cx + bw * 0.2, box.y1 + 1 - r0 * 0.7, r0 * 0.9);
+	puffAt(burst, box.x0 + r0 * 0.6, cy + bh * 0.2, r0);
+	puffAt(burst, box.x1 + 1 - r0 * 0.6, cy + bh * 0.1, r0);
+	puffAt(burst, cx - bw * 0.15, box.y0 + r0 * 0.7, r0 * 0.9);
+	puffAt(burst, cx + bw * 0.2, box.y1 + 1 - r0 * 0.7, r0 * 0.9);
 	finishPuffs(burst);
 	overlayGrid(f0, burst);
 
 	const f1 = createGrid(w, h);
 	const r1 = Math.max(2.2, span * 0.26);
-	puff(f1, cx, cy + r1 * 0.2, r1 * 1.1);
-	puff(f1, cx - r1 * 0.9, cy + r1 * 0.35, r1 * 0.8);
-	puff(f1, cx + r1 * 0.9, cy + r1 * 0.3, r1 * 0.85);
-	puff(f1, cx - r1 * 0.35, cy - r1 * 0.55, r1 * 0.75);
-	puff(f1, cx + r1 * 0.45, cy - r1 * 0.45, r1 * 0.7);
+	puffAt(f1, cx, cy + r1 * 0.2, r1 * 1.1);
+	puffAt(f1, cx - r1 * 0.9, cy + r1 * 0.35, r1 * 0.8);
+	puffAt(f1, cx + r1 * 0.9, cy + r1 * 0.3, r1 * 0.85);
+	puffAt(f1, cx - r1 * 0.35, cy - r1 * 0.55, r1 * 0.75);
+	puffAt(f1, cx + r1 * 0.45, cy - r1 * 0.45, r1 * 0.7);
 	finishPuffs(f1);
-	sparkle(f1, Math.round(box.x0 + 1), Math.round(box.y0 + 1), true);
-	sparkle(f1, Math.round(box.x1 - 1), Math.round(box.y0 + 2), false);
-	sparkle(f1, Math.round(box.x1 - 1), Math.round(box.y1 - 1), true);
+	sparkAt(f1, Math.round(box.x0 + 1), Math.round(box.y0 + 1), true);
+	sparkAt(f1, Math.round(box.x1 - 1), Math.round(box.y0 + 2), false);
+	sparkAt(f1, Math.round(box.x1 - 1), Math.round(box.y1 - 1), true);
 
 	const f2 = createGrid(w, h);
 	const r2 = Math.max(1.2, span * 0.12);
 	const spread = span * 0.36;
 	for (let i = 0; i < 5; i++) {
 		const a = -Math.PI / 2 + (i * Math.PI * 2) / 5 + 0.3;
-		puff(f2, cx + Math.cos(a) * spread, cy + Math.sin(a) * spread, r2);
+		puffAt(f2, cx + Math.cos(a) * spread, cy + Math.sin(a) * spread, r2);
 	}
 	finishPuffs(f2);
-	sparkle(f2, Math.round(cx), Math.round(cy), true);
-	sparkle(f2, Math.round(box.x0), Math.round(cy - spread * 0.4), false);
-	sparkle(f2, Math.round(box.x1), Math.round(cy + spread * 0.5), false);
+	sparkAt(f2, Math.round(cx), Math.round(cy), true);
+	sparkAt(f2, Math.round(box.x0), Math.round(cy - spread * 0.4), false);
+	sparkAt(f2, Math.round(box.x1), Math.round(cy + spread * 0.5), false);
 
 	return [
 		toPixelMap(`${baseName}0`, f0),

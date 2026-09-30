@@ -563,50 +563,9 @@ export function sudoIconGrid(p: NetherPalette): Grid {
 	return g;
 }
 
-// --- Scenery swaps (pen sizes match scenery.ts's oak/pine/boulder) -----------
+// --- Scenery swaps (pen sizes match scenery.ts's pine/boulder/pond) ----------
 
 const K = 3;
-
-export function deadTree(n: N): Grid {
-	const p = pen(20, 26, K);
-	p.rect(8.7, 12, 2.6, 14, n.char);
-	p.rect(8.7, 12, 0.7, 14, n.charLight);
-	p.tri(7, 26, 13, 26, 10, 22, n.char);
-	const limbs: [number, number, number, number, number][] = [
-		[10, 14, 4, 6, 1.5],
-		[10, 13, 16, 5, 1.5],
-		[10, 11, 8, 2, 1.2],
-		[10, 11, 13, 1.5, 1.2],
-		[5, 8, 2.5, 4, 0.9],
-		[15, 7, 18, 3.5, 0.9],
-		[6, 8, 7, 3.5, 0.8],
-		[14.5, 7, 13.5, 3, 0.8],
-	];
-	for (const [x0, y0, x1, y1, w] of limbs) {
-		const steps = 24;
-		for (let i = 0; i <= steps; i++) {
-			const t = i / steps;
-			const x = x0 + (x1 - x0) * t;
-			const y = y0 + (y1 - y0) * t;
-			const half = w * (1 - t * 0.5);
-			p.rect(x - half / 2, y - half / 2, half, half, n.char);
-		}
-	}
-	for (const [x, y] of [
-		[9.5, 18],
-		[10.3, 21],
-		[9.7, 15],
-	] as const)
-		p.rect(x, y, 0.67, 1, n.emberOrange);
-	for (const [x, y] of [
-		[4, 6],
-		[16, 5],
-		[8, 2],
-		[13, 1.5],
-	] as const)
-		p.rect(x - 0.34, y - 0.34, 0.67, 0.67, n.emberRed);
-	return p.g;
-}
 
 export function basaltPillar(n: N): Grid {
 	const p = pen(14, 24, K);

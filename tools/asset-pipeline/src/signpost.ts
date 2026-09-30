@@ -14,7 +14,7 @@ import {
 
 // Fixed seed so regenerating gives byte-identical files; the raised bloom
 // threshold keeps the light wood flat instead of glowing.
-const SIGNPOST_SOFTEN: SoftenOptions = {
+export const SIGNPOST_SOFTEN: SoftenOptions = {
 	...DEFAULT_SOFTEN_OPTIONS,
 	seed: 20260928,
 	bloomThreshold: 240,

@@ -18,7 +18,6 @@ import {
 	ashFlakes,
 	basaltPillar,
 	brazierFrame,
-	deadTree,
 	lavaPathPieces,
 	lavaPond,
 	magmaRock,
@@ -30,6 +29,8 @@ import {
 	runeOverlayFrame,
 	sudoIconGrid,
 } from "./shadow/grids.js";
+import { netherIcons } from "./shadow/icons.js";
+import { netherMonsters } from "./shadow/monsters.js";
 import { buildNetherPalette, type NetherPalette } from "./shadow/palette.js";
 import {
 	type NetherVariant,
@@ -39,6 +40,7 @@ import {
 } from "./shadow/props.js";
 import {
 	DEFAULT_SOFTEN_OPTIONS,
+	MONSTER_SOFTEN_OVERRIDES,
 	type SoftenOptions,
 	soften,
 } from "./soften.js";
@@ -330,14 +332,13 @@ async function genIcon(pal: NetherPalette, runtime: Runtime): Promise<void> {
 }
 
 async function genScenery(pal: NetherPalette, runtime: Runtime): Promise<void> {
-	const pieces: [string, Grid][] = [
-		["scenery_dead_tree", deadTree(pal.n)],
-		["scenery_basalt_pillar", basaltPillar(pal.n)],
-		["scenery_magma_rock", magmaRock(pal.n)],
-		["scenery_lava_pond", lavaPond(pal.n)],
+	const pieces: [string, Grid, number][] = [
+		["scenery_basalt_pillar", basaltPillar(pal.n), 20262701],
+		["scenery_magma_rock", magmaRock(pal.n), 20262702],
+		["scenery_lava_pond", lavaPond(pal.n), 20262703],
 	];
-	for (const [i, [slug, grid]] of pieces.entries()) {
-		const pair = renderGrid(grid, slug, pal, worldSoften(2, 20262700 + i));
+	for (const [slug, grid, seed] of pieces) {
+		const pair = renderGrid(grid, slug, pal, worldSoften(2, seed));
 		await writePair(slug, pair, 8);
 		runtime.push([`${slug}_soft.png`, pair.soft]);
 	}
@@ -455,6 +456,114 @@ async function genBeforeAfter(pal: NetherPalette): Promise<void> {
 	const sheet = solid(sheetWidth, y + rowH + gap, { r: 24, g: 18, b: 22 });
 	for (const [cell, cx, cy] of placed) compositeInto(sheet, cell, cx, cy);
 	await writeRawRgbaPng(sheet, path.join(reviewDir, "props-before-after.png"));
+}
+
+/** Idle, hit and defeat frames of every species as the nether shows them, softened like the normal set (gen-placeholders + soften.ts). */
+async function genMonsters(pal: NetherPalette): Promise<void> {
+	const overrides: Record<
+		string,
+		Partial<SoftenOptions>
+	> = MONSTER_SOFTEN_OVERRIDES;
+	for (const m of netherMonsters(pal)) {
+		for (const map of [...m.idle, m.hit, ...m.defeat]) {
+			const crisp = renderPixelMap(map, pal.colors);
+			await writePair(
+				map.name,
+				{ crisp, soft: soften(crisp, overrides[m.slug] ?? {}) },
+				8,
+			);
+		}
+	}
+}
+
+async function genIcons(pal: NetherPalette, runtime: Runtime): Promise<void> {
+	for (const icon of netherIcons(pal)) {
+		const crisp = renderPixelMap(icon.map, pal.colors);
+		const soft = soften(crisp, icon.soften ?? {});
+		await writePair(icon.map.name, { crisp, soft }, 8);
+		runtime.push([`${icon.map.name}_soft.png`, soft]);
+	}
+}
+
+async function fitHeight(image: RawImage, height: number): Promise<RawImage> {
+	const width = Math.round((image.width * height) / image.height);
+	const data = await sharp(image.data, {
+		raw: { width: image.width, height: image.height, channels: 4 },
+	})
+		.resize(width, height)
+		.raw()
+		.toBuffer();
+	return { data, width, height };
+}
+
+/** Normal vs nether, every species: idle0, idle1, hit, defeat0-2 on the ground each is seen on. */
+async function genMonsterSheet(pal: NetherPalette): Promise<void> {
+	const cellH = 96;
+	const pad = 8;
+	const rows: RawImage[] = [];
+	for (const m of netherMonsters(pal)) {
+		const frameNames =
+			m.idle.length === 1
+				? [m.slug, null]
+				: [`${m.slug}_idle0`, `${m.slug}_idle1`];
+		const normalFiles = [
+			...frameNames,
+			`${m.slug}_hit`,
+			...[0, 1, 2].map((i) => `${m.slug}_defeat${i}`),
+		];
+		const netherFiles = [
+			...m.idle.map((f) => f.name),
+			...(m.idle.length === 1 ? [null] : []),
+			m.hit.name,
+			...m.defeat.map((f) => f.name),
+		];
+		const halves: [string | null, (string | null)[], RGB][] = [
+			[placeholdersDir, normalFiles, { r: 96, g: 150, b: 72 }],
+			[shadowDir, netherFiles, { r: 112, g: 30, b: 30 }],
+		];
+		const first = await loadRawRgba(
+			path.join(placeholdersDir, `${normalFiles[0]}_soft.png`),
+		);
+		const cellW = Math.round((first.width * cellH) / first.height);
+		const row = solid((cellW + pad) * 12 + pad * 3, cellH + pad * 2, {
+			r: 24,
+			g: 18,
+			b: 22,
+		});
+		for (const [h, [dir, files, ground]] of halves.entries()) {
+			const x0 = pad + h * ((cellW + pad) * 6 + pad * 2);
+			compositeInto(
+				row,
+				solid((cellW + pad) * 6 + pad, cellH + pad * 2, ground),
+				x0 - pad / 2,
+				0,
+			);
+			for (const [i, file] of files.entries()) {
+				if (!file || !dir) continue;
+				const image = await fitHeight(
+					await loadRawRgba(path.join(dir, `${file}_soft.png`)),
+					cellH,
+				);
+				compositeInto(row, image, x0 + i * (cellW + pad), pad);
+			}
+		}
+		rows.push(row);
+	}
+	const width = Math.max(...rows.map((r) => r.width));
+	const sheet = solid(
+		width,
+		rows.reduce((sum, r) => sum + r.height + 4, 4),
+		{ r: 24, g: 18, b: 22 },
+	);
+	let y = 4;
+	for (const r of rows) {
+		compositeInto(sheet, r, 0, y);
+		y += r.height + 4;
+	}
+	await writeRawRgbaPng(
+		sheet,
+		path.join(reviewDir, "monsters-normal-nether.png"),
+	);
 }
 
 async function genFx(pal: NetherPalette, runtime: Runtime): Promise<void> {
@@ -592,9 +701,12 @@ async function main() {
 	await genBrazier(pal, runtime);
 	await genScenery(pal, runtime);
 	await genVariants(pal, runtime);
+	await genIcons(pal, runtime);
+	await genMonsters(pal);
 	await genFx(pal, runtime);
 	await genReview(runtime);
 	await genBeforeAfter(pal);
+	await genMonsterSheet(pal);
 	console.log(`shadow: ${runtime.length} runtime textures -> ${shadowDir}`);
 }
 
