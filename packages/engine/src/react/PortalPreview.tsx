@@ -2,6 +2,8 @@ import type { MarkdownPreviewNode } from "@cabn/world-schema";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "react";
+import type { StoreApi } from "zustand/vanilla";
+import type { CabnStore } from "../bridge/store.js";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
 import type { DisplayPreview } from "../systems/archPreview.js";
 import { loadLanguageExtension } from "./editorLanguages.js";
@@ -28,6 +30,8 @@ export interface PortalPreviewProps {
 	variant: "overlay" | "expanded";
 	/** Just the body, no panel chrome/title — for hosts that already draw their own frame (the file view). */
 	bare?: boolean;
+	/** Passed on to media that can wait a while (the PDF viewer), so their load uses the shared loading panel. */
+	store?: StoreApi<CabnStore>;
 }
 
 const OVERLAY_MAX_HEIGHT = 220;
@@ -153,6 +157,7 @@ export function PortalPreview({
 	worldBaseUrl,
 	variant,
 	bare = false,
+	store,
 }: PortalPreviewProps): React.ReactElement {
 	const maxHeight = variant === "overlay" ? OVERLAY_MAX_HEIGHT : undefined;
 
@@ -251,7 +256,13 @@ export function PortalPreview({
 				body = <AudioPlayer preview={preview} worldBaseUrl={worldBaseUrl} />;
 				break;
 			case "pdf":
-				body = <PdfViewer preview={preview} worldBaseUrl={worldBaseUrl} />;
+				body = (
+					<PdfViewer
+						preview={preview}
+						worldBaseUrl={worldBaseUrl}
+						store={store}
+					/>
+				);
 				break;
 			case "table":
 				body = <CsvTable rows={preview.rows} truncated={preview.truncated} />;

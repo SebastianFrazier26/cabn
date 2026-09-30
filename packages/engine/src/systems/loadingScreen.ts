@@ -1,9 +1,9 @@
 import { type GuideTopic, guideTopics } from "./guideContent.js";
 
 /** A load shorter than this never shows the overlay at all: most scene switches finish under the transition that covers them. */
-export const LOADING_SHOW_DELAY_MS = 300;
+export const LOADING_SHOW_DELAY_MS = 500;
 /** Once shown, the overlay stays at least this long, so a load that ends just after the delay doesn't blink the panel. */
-export const LOADING_MIN_VISIBLE_MS = 400;
+export const LOADING_MIN_VISIBLE_MS = 250;
 export const LOADING_TIP_ROTATE_MS = 4500;
 
 export type LoadingToken = number;

@@ -50,6 +50,11 @@ function setup() {
 }
 
 describe("LoadingTracker", () => {
+	it("uses the reviewed thresholds (2026-09-30): show after 500 ms, stay at least 250 ms", () => {
+		expect(LOADING_SHOW_DELAY_MS).toBe(500);
+		expect(LOADING_MIN_VISIBLE_MS).toBe(250);
+	});
+
 	it("never shows a load that ends before the delay", () => {
 		const { tracker, advance, changes, pending } = setup();
 		const t = tracker.begin("Walking to notes…");

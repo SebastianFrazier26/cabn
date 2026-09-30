@@ -1,6 +1,8 @@
 import type { AudioPreview, PdfPreview } from "@cabn/world-schema";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { StoreApi } from "zustand/vanilla";
+import type { CabnStore } from "../bridge/store.js";
 import {
 	loadPdf,
 	loadPeaks,
@@ -14,6 +16,7 @@ import {
 	sealedReasonText,
 } from "../systems/archPreview.js";
 import { waveformBars } from "../systems/waveform.js";
+import { useLoadingWhile } from "./useLoadingWhile.js";
 
 // Own stylesheet rather than more rules in pixelTheme.tsx's shared template:
 // same `--cabn-*` tokens (so day/night comes for free from the enclosing
@@ -242,12 +245,17 @@ export function AudioPlayer({
 export interface PdfViewerProps {
 	preview: PdfPreview;
 	worldBaseUrl: string;
+	/** Given, a slow pdf.js chunk or document load also puts up the shared loading panel. */
+	store?: StoreApi<CabnStore>;
 }
+
+export const PDF_LOADING_LABEL = "Unrolling the scroll…";
 
 /** Paged PDF viewer: pdf.js is imported on first mount (never at engine load), and each page is rendered to a canvas sized to the panel. */
 export function PdfViewer({
 	preview,
 	worldBaseUrl,
+	store,
 }: PdfViewerProps): React.ReactElement {
 	useMediaStyle();
 	const url = resolveRelativeUrl(worldBaseUrl, preview.asset);
@@ -288,6 +296,8 @@ export function PdfViewer({
 		};
 	}, [doc, page]);
 
+	useLoadingWhile(store, doc === null && error === null, PDF_LOADING_LABEL);
+
 	const pages = doc?.numPages ?? 0;
 	return (
 		<div className="cabn-media" data-testid="cabn-pdf-viewer">
@@ -296,7 +306,7 @@ export function PdfViewer({
 					<div className="cabn-media-center">{error}</div>
 				) : (
 					<div ref={hostRef} className="cabn-pdf-scroll">
-						<div className="cabn-media-center">Unrolling the scroll…</div>
+						<div className="cabn-media-center">{PDF_LOADING_LABEL}</div>
 					</div>
 				)}
 			</div>

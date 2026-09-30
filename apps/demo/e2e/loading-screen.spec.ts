@@ -241,9 +241,14 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	test.setTimeout(180_000);
 	const pageErrors = trackErrors(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
-	// Startup: slowing the art down gives the preloader real progress to show.
+	// Startup: a slow shelf.json keeps it past the show delay on a warm
+	// server, and slowing the art gives the preloader real progress to show.
+	await page.route("**/worlds/shelf.json", async (route) => {
+		await new Promise((r) => setTimeout(r, 900));
+		await route.continue();
+	});
 	await page.route("**/*.png", async (route) => {
-		await new Promise((r) => setTimeout(r, 40));
+		await new Promise((r) => setTimeout(r, 60));
 		await route.continue();
 	});
 	await page.goto("/?e2e=1");
@@ -271,6 +276,7 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	await shoot(page, "startup-day");
 	await waitForShelf(page);
 	await page.unroute("**/*.png");
+	await page.unroute("**/worlds/shelf.json");
 	await expect(overlay).toBeHidden();
 	await expect(page.getByTestId("cabn-game-root")).toHaveAttribute(
 		"aria-busy",
@@ -423,5 +429,79 @@ test("reduced motion: the panel is still, the fade is flat, and it still waits f
 	await shoot(page, "entering-world-reduced-motion");
 	await waitForWorld(page);
 	await expect(overlay).toBeHidden();
+	expect(pageErrors).toEqual([]);
+});
+
+test("a PDF whose document is slow puts up the panel in the file view, labelled with the viewer's own line", async ({
+	page,
+}) => {
+	test.setTimeout(150_000);
+	const pageErrors = trackErrors(page);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	// Held until released below: the dock and the arch thumbnail share the
+	// same document load, so a plain delay could run out before the file opens.
+	let release: () => void = () => {};
+	const gate = new Promise<void>((r) => {
+		release = r;
+	});
+	await page.route("**/worlds/sample/media/*.pdf", async (route) => {
+		await gate;
+		await route.continue();
+	});
+	await page.goto("/?e2e=1");
+	await waitForShelf(page);
+	await page.getByRole("button", { name: "Day" }).click();
+	await enterSampleWorld(page);
+	await waitForWorld(page);
+
+	const portalId = "media/field-guide.pdf";
+	await page.evaluate((id) => {
+		(
+			window as unknown as {
+				__cabnBus: { emit(e: string, p: unknown): void };
+			}
+		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
+	}, portalId);
+	await expect
+		.poll(
+			() =>
+				page.evaluate(
+					() =>
+						(
+							window as unknown as {
+								__cabnStore: {
+									getState(): {
+										focusedPortalPreview: { portalId: string } | null;
+									};
+								};
+							}
+						).__cabnStore.getState().focusedPortalPreview?.portalId ?? null,
+				),
+			{ timeout: 20_000 },
+		)
+		.toBe(portalId);
+	await page.waitForTimeout(900);
+	// The dock waits on the same document without the panel: only the file view reports it.
+	expect((await state(page))?.loading.active).toBe(false);
+	await holdKey(page, "Enter");
+	await expect.poll(async () => (await state(page))?.mode).toBe("file");
+
+	const overlay = page.getByTestId("loading-overlay");
+	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(page.getByTestId("loading-label")).toHaveText(
+		"Unrolling the scroll…",
+	);
+	await page.waitForTimeout(300);
+	await shoot(page, "pdf-file-day");
+	release();
+	const view = page.getByTestId("cabn-file-media-view");
+	await expect(view.locator(".cabn-pdf-scroll canvas")).toBeVisible({
+		timeout: 15_000,
+	});
+	await expect(overlay).toBeHidden({ timeout: 5_000 });
+	await holdKey(page, "Escape");
+	await expect
+		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.toBe("world");
 	expect(pageErrors).toEqual([]);
 });

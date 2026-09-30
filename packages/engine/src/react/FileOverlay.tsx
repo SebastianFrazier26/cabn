@@ -104,6 +104,7 @@ export function FileOverlay({
 							worldBaseUrl={worldBase}
 							variant="expanded"
 							bare
+							store={store}
 						/>
 					</div>
 				) : (
