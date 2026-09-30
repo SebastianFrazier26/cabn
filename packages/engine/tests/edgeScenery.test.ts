@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { mulberry32 } from "../src/systems/deterministicRandom.js";
 import {
+	type CircleKeepout,
 	type EdgeSceneryInput,
 	FILLER_KINDS,
 	type Footprint,
 	footprintClear,
+	KeepoutIndex,
 	keepoutDistance,
 	planEdgeScenery,
 	planLayeredEdgeScenery,
 	type SceneryKind,
+	type SegmentKeepout,
 	valueNoise,
 } from "../src/systems/edgeScenery.js";
 
@@ -282,5 +286,87 @@ describe("planLayeredEdgeScenery", () => {
 		expect(planLayeredEdgeScenery(sampleWorld(), layer)).toEqual(
 			planLayeredEdgeScenery(sampleWorld(), layer),
 		);
+	});
+});
+
+// M10 stream-bake: planEdgeScenery's filler grid queries a keepout distance
+// once (forestScore) or several times (footprintClear) per candidate cell —
+// for a real repo conversion (hundreds of clusters' worth of circles) that
+// used to make the *plan itself* (not just its bake) take minutes. KeepoutIndex
+// must return exactly what the reference keepoutDistance() does, or the
+// planned forest changes shape — these compare the two directly.
+describe("KeepoutIndex", () => {
+	function randomCircles(rand: () => number, n: number): CircleKeepout[] {
+		return Array.from({ length: n }, () => ({
+			x: (rand() - 0.5) * 4000,
+			y: (rand() - 0.5) * 4000,
+			radius: 20 + rand() * 180,
+		}));
+	}
+
+	function randomSegments(rand: () => number, n: number): SegmentKeepout[] {
+		return Array.from({ length: n }, () => ({
+			ax: (rand() - 0.5) * 4000,
+			ay: (rand() - 0.5) * 4000,
+			bx: (rand() - 0.5) * 4000,
+			by: (rand() - 0.5) * 4000,
+			halfWidth: 5 + rand() * 40,
+		}));
+	}
+
+	it("matches keepoutDistance exactly over many random points, circles and segments", () => {
+		const rand = mulberry32(20260930);
+		const circles = randomCircles(rand, 200);
+		const segments = randomSegments(rand, 60);
+		const index = new KeepoutIndex(circles, segments);
+		for (let i = 0; i < 300; i++) {
+			const x = (rand() - 0.5) * 5000;
+			const y = (rand() - 0.5) * 5000;
+			expect(index.nearestDistance(x, y)).toBeCloseTo(
+				keepoutDistance(x, y, circles, segments),
+				9,
+			);
+		}
+	});
+
+	it("matches keepoutDistance for a query point far outside every keepout's bucket neighborhood", () => {
+		const circles: CircleKeepout[] = [{ x: 0, y: 0, radius: 50 }];
+		const index = new KeepoutIndex(circles, []);
+		const far = { x: 100_000, y: -100_000 };
+		expect(index.nearestDistance(far.x, far.y)).toBeCloseTo(
+			keepoutDistance(far.x, far.y, circles, []),
+			9,
+		);
+	});
+
+	it("accounts for a large radius reaching in from a farther bucket than a smaller, nearer circle", () => {
+		// A huge circle two buckets away can still have a closer *edge* than a
+		// tiny one right next to the query point — this is exactly what maxPad
+		// exists to protect against an early, wrong stop.
+		const circles: CircleKeepout[] = [
+			{ x: 10, y: 0, radius: 5 }, // edge distance from (0,0): 10-5=5
+			{ x: 900, y: 0, radius: 850 }, // edge distance from (0,0): 900-850=50... still farther, use a bigger one
+		];
+		// Make the far one's edge closer than the near one's.
+		circles[1] = { x: 900, y: 0, radius: 895 };
+		const index = new KeepoutIndex(circles, []);
+		expect(index.nearestDistance(0, 0)).toBeCloseTo(
+			keepoutDistance(0, 0, circles, []),
+			9,
+		);
+	});
+
+	it("returns Infinity for an empty index, same as keepoutDistance", () => {
+		const index = new KeepoutIndex([], []);
+		expect(index.nearestDistance(0, 0)).toBe(Number.POSITIVE_INFINITY);
+		expect(keepoutDistance(0, 0, [], [])).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it("is a pure function of its own construction inputs — querying doesn't mutate results between calls", () => {
+		const circles = [{ x: 0, y: 0, radius: 30 }];
+		const index = new KeepoutIndex(circles, []);
+		const first = index.nearestDistance(100, 0);
+		const second = index.nearestDistance(100, 0);
+		expect(second).toBe(first);
 	});
 });

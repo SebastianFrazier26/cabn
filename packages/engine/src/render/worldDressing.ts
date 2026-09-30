@@ -5,9 +5,11 @@ import {
 	type CircleKeepout,
 	type EdgeSceneryLayer,
 	FILLER_KINDS,
+	type Footprint,
 	type LayeredSceneryItem,
 	type PointOfInterest,
 	planLayeredEdgeScenery,
+	type SceneryItem,
 	type SceneryKind,
 	type SegmentKeepout,
 } from "../systems/edgeScenery.js";
@@ -16,7 +18,9 @@ import { attachCloudShadows } from "./cloudShadows.js";
 import type { LightPoolOptions } from "./lightPools.js";
 import {
 	addWindmillSails,
-	bakeScenery,
+	bakeSceneryChunk,
+	groupSceneryItemsByChunk,
+	type SceneryChunkSkin,
 	sceneryFootprints,
 } from "./sceneryBaker.js";
 import {
@@ -26,6 +30,7 @@ import {
 	type SkylineHandle,
 	type SkylineOptions,
 } from "./skyline.js";
+import { parseWorldChunkKey } from "./worldChunkGrid.js";
 
 export interface Bounds {
 	minX: number;
@@ -85,12 +90,20 @@ export interface EdgeDressing {
 	destroy(): void;
 }
 
-/**
- * Plans (systems/edgeScenery.ts) and bakes (render/sceneryBaker.ts) the
- * border forest, meadow detail and points of interest for one scene. Shared
- * by WorldScene and ShelfScene, which differ only in what they keep clear.
- */
-export function dressEdges(input: EdgeDressingInput): EdgeDressing {
+/** The planning half of dressEdges — item positions and the windmill/POI list, all pure data independent of whether anything's actually been baked yet. Split out so WorldScene can stream the chunked bake (edgeSceneryStreamer) while still having the full, un-streamed plan available immediately for keepout math and the shadow-owner e2e's "scenery never moves" check. */
+export interface EdgeSceneryPlan {
+	chunkItems: Map<string, SceneryItem[]>;
+	footprints: Readonly<Record<SceneryKind, Footprint>>;
+	items: readonly LayeredSceneryItem[];
+	pointsOfInterest: readonly PointOfInterest[];
+}
+
+export function planEdgeScenery(
+	input: Pick<
+		EdgeDressingInput,
+		"scene" | "bounds" | "seed" | "circles" | "segments" | "layer"
+	>,
+): EdgeSceneryPlan {
 	const { scene } = input;
 	const footprints = sceneryFootprints(scene, ALL_KINDS);
 	const sails = scene.textures
@@ -110,15 +123,43 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 		},
 		input.layer ?? null,
 	);
-	const chunks = bakeScenery(
-		scene,
-		input.layer?.bounds ?? input.bounds,
-		plan.items,
+	return {
+		chunkItems: groupSceneryItemsByChunk(plan.items, footprints),
 		footprints,
-		SCENERY_DEPTH,
-		{ textureFor: input.textureFor, tint: input.tint },
-	);
+		items: plan.items,
+		pointsOfInterest: plan.pointsOfInterest,
+	};
+}
 
+/** One edge-scenery chunk's bake, for a streamer driving planEdgeScenery's own chunkItems map — a no-op (returns null) for a chunk key the plan never assigned any items to. */
+export function bakeEdgeSceneryChunk(
+	scene: Phaser.Scene,
+	plan: EdgeSceneryPlan,
+	chunkKey: string,
+	chunkCol: number,
+	chunkRow: number,
+	skin: SceneryChunkSkin,
+): Phaser.GameObjects.RenderTexture | null {
+	const items = plan.chunkItems.get(chunkKey);
+	if (!items) return null;
+	return bakeSceneryChunk(
+		scene,
+		chunkCol,
+		chunkRow,
+		items,
+		SCENERY_DEPTH,
+		skin,
+	);
+}
+
+/** The windmill sails (live sprite) and its window light — sparse (a world has at most a couple of windmills, never scaling with world size), so kept synchronous rather than streamed, unlike the chunked forest/meadow bake above. */
+export function materializeEdgeSceneryExtras(
+	scene: Phaser.Scene,
+	plan: EdgeSceneryPlan,
+	reducedMotion: boolean,
+	tint?: number,
+	sailsTextureKey?: string,
+): { lights: LightPoolOptions[]; destroy(): void } {
 	const live: Phaser.GameObjects.GameObject[] = [];
 	const lights: LightPoolOptions[] = [];
 	for (const poi of plan.pointsOfInterest) {
@@ -128,31 +169,65 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 				scene,
 				poi.x,
 				poi.y,
-				footprints.windmill.h,
+				plan.footprints.windmill.h,
 				SAILS_DEPTH,
-				input.reducedMotion || (input.still?.has("windmill-sails") ?? false),
-				input.tint,
-				input.textureFor?.("windmill-sails"),
+				reducedMotion,
+				tint,
+				sailsTextureKey,
 			),
 		);
 		// Window rows 16-19 of the 30-row windmill grid (world-art/scenery.ts).
 		lights.push({
 			x: poi.x,
-			y: poi.y - footprints.windmill.h * 0.42,
+			y: poi.y - plan.footprints.windmill.h * 0.42,
 			radiusPx: 34,
 			color: PALETTE.gold,
 			alpha: 0.65,
 		});
 	}
-
 	return {
 		lights,
+		destroy: () => {
+			for (const object of live) object.destroy();
+		},
+	};
+}
+
+/**
+ * Plans (systems/edgeScenery.ts) and bakes (render/sceneryBaker.ts) the
+ * border forest, meadow detail and points of interest for one scene. Shared
+ * by WorldScene and ShelfScene, which differ only in what they keep clear.
+ * Bakes every chunk synchronously — fine for ShelfScene's small, fixed cabin
+ * count; WorldScene instead composes planEdgeScenery + bakeEdgeSceneryChunk
+ * + materializeEdgeSceneryExtras itself so the chunked bake can stream.
+ */
+export function dressEdges(input: EdgeDressingInput): EdgeDressing {
+	const { scene } = input;
+	const plan = planEdgeScenery(input);
+	const chunks: Phaser.GameObjects.RenderTexture[] = [];
+	for (const key of plan.chunkItems.keys()) {
+		const { col, row } = parseWorldChunkKey(key);
+		const rt = bakeEdgeSceneryChunk(scene, plan, key, col, row, {
+			textureFor: input.textureFor,
+			tint: input.tint,
+		});
+		if (rt) chunks.push(rt);
+	}
+	const extras = materializeEdgeSceneryExtras(
+		scene,
+		plan,
+		input.reducedMotion || (input.still?.has("windmill-sails") ?? false),
+		input.tint,
+		input.textureFor?.("windmill-sails"),
+	);
+	return {
+		lights: extras.lights,
 		itemCount: plan.items.length,
 		items: plan.items,
 		pointsOfInterest: plan.pointsOfInterest,
 		destroy: () => {
 			for (const chunk of chunks) chunk.destroy();
-			for (const object of live) object.destroy();
+			extras.destroy();
 		},
 	};
 }

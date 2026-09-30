@@ -141,6 +141,247 @@ export function keepoutDistance(
 	return best;
 }
 
+// M10 stream-bake: planEdgeScenery's filler grid calls a keepout-distance
+// query once (forestScore) or several times (footprintClear's sample points)
+// per candidate cell — for a real repo conversion with hundreds of clusters
+// (each with its own portal-ring circles) this is easily a few thousand
+// keepouts, over a grid that itself scales with world *area* (see
+// planEdgeScenery's own doc comment: GRID_CELL_PX cells across the full
+// bounds). O(cells x keepouts) with both terms scaling up independently is
+// what turned a 61,000 x 67,000px real-world conversion's edge-scenery bake
+// into a multi-minute stall — chunking the *bake* (sceneryBaker.ts) doesn't
+// touch this, since the plan itself (not just its draws) is what was slow.
+// Bigger than a typical portal-ring circle (keeps dense areas' per-bucket
+// lists small — see KeepoutIndex's own maxBucketSize, measured ~7 at this
+// size on a real repo conversion), but big enough that reaching
+// KEEPOUT_SATURATION_PX only takes a couple of rings, not a dozen: a query
+// deep in a filler-grid gap between clusters (the common case on a sprawling
+// world, not the rare one) hits that saturation cap on almost every call, so
+// the ring count *at* the cap dominates that call's actual cost.
+const INDEX_BUCKET_PX = 768;
+
+// Both planEdgeScenery call sites that use KeepoutIndex (forestScore's
+// zoning score, the filler loop's clearance check) only ever compare the
+// distance against small thresholds — clearance is a few tens of px,
+// forestScore's own fromContent term already dominates fromEdge and clears
+// the 0.5/0.22 zoning cutoffs well before a couple hundred px, even before
+// noise (±0.35) is added. Once the true distance is provably at least this
+// far, reporting this value instead of searching further changes neither
+// decision — see KeepoutIndex.nearestDistance's own doc comment. This
+// matters because "far from every keepout" is the *common* case for a
+// filler grid cell in a real, sprawling repo conversion (that's the point
+// of the filler grid: fill the gaps between far-apart clusters), not a rare
+// edge case worth leaving unhandled.
+const KEEPOUT_SATURATION_PX = 2048;
+
+function indexBucketKey(col: number, row: number): string {
+	return `${col},${row}`;
+}
+
+function indexBucketRange(
+	minX: number,
+	minY: number,
+	maxX: number,
+	maxY: number,
+): { c0: number; c1: number; r0: number; r1: number } {
+	return {
+		c0: Math.floor(minX / INDEX_BUCKET_PX),
+		c1: Math.floor(maxX / INDEX_BUCKET_PX),
+		r0: Math.floor(minY / INDEX_BUCKET_PX),
+		r1: Math.floor(maxY / INDEX_BUCKET_PX),
+	};
+}
+
+/** Every bucket a segment's own thin corridor actually passes through — walks the line at half-bucket steps (fine enough not to skip a bucket) rather than using its full bounding box, which for a long diagonal segment is far bigger than the corridor itself. */
+function segmentBucketKeys(s: SegmentKeepout): Set<string> {
+	const keys = new Set<string>();
+	const dx = s.bx - s.ax;
+	const dy = s.by - s.ay;
+	const len = Math.hypot(dx, dy);
+	const steps = Math.max(1, Math.ceil(len / (INDEX_BUCKET_PX / 2)));
+	for (let i = 0; i <= steps; i++) {
+		const t = i / steps;
+		const px = s.ax + dx * t;
+		const py = s.ay + dy * t;
+		const { c0, c1, r0, r1 } = indexBucketRange(
+			px - s.halfWidth,
+			py - s.halfWidth,
+			px + s.halfWidth,
+			py + s.halfWidth,
+		);
+		for (let row = r0; row <= r1; row++) {
+			for (let col = c0; col <= c1; col++) keys.add(indexBucketKey(col, row));
+		}
+	}
+	return keys;
+}
+
+/**
+ * A uniform-grid spatial index over a fixed set of circles/segments, giving
+ * the exact same result `keepoutDistance` would over that same set — see
+ * edgeScenery.test.ts's property test comparing the two directly over random
+ * points and random keepout sets — but in O(nearby keepouts) per query
+ * instead of O(all keepouts). Built once per `planEdgeScenery` call (the
+ * keepout set doesn't change once a reserve() has happened — see that
+ * function for where each index gets (re)built) and queried once per grid
+ * cell, so the index-build cost amortizes across however many cells the
+ * world's bounds imply.
+ *
+ * Exactness relies on `maxPad` (the largest radius/half-width in the set):
+ * once a search ring's *inner* edge is farther than the best distance found
+ * so far, minus that pad, nothing outside the ring can still beat it — a
+ * circle or segment even one bucket farther out can reach at most `maxPad`
+ * back toward the query point, never more.
+ */
+// A circle/segment padded above this goes into a small linear-scanned
+// "wide" list instead of the bucketed grid — one arch-heavy cluster (a
+// directory with hundreds of files gets a proportionally wider portal ring,
+// see WorldScene's groundReach) would otherwise both (a) get inserted into
+// hundreds of buckets at once (its bounding box divided by INDEX_BUCKET_PX
+// squared) and (b) inflate maxPad for every other query in the whole world,
+// forcing every single ring search to expand further before it can prove
+// nothing farther out beats what it's already found — one outlier
+// shouldn't cost every other query its early exit.
+const WIDE_PAD_THRESHOLD_PX = INDEX_BUCKET_PX * 2;
+
+export class KeepoutIndex {
+	private readonly circleBuckets = new Map<string, CircleKeepout[]>();
+	private readonly segmentBuckets = new Map<string, SegmentKeepout[]>();
+	private readonly wideCircles: CircleKeepout[] = [];
+	private readonly wideSegments: SegmentKeepout[] = [];
+	private readonly maxPad: number;
+	private readonly empty: boolean;
+
+	constructor(
+		circles: readonly CircleKeepout[],
+		segments: readonly SegmentKeepout[],
+	) {
+		let maxPad = 0;
+		for (const c of circles) {
+			if (c.radius > WIDE_PAD_THRESHOLD_PX) {
+				this.wideCircles.push(c);
+				continue;
+			}
+			maxPad = Math.max(maxPad, c.radius);
+			const { c0, c1, r0, r1 } = indexBucketRange(
+				c.x - c.radius,
+				c.y - c.radius,
+				c.x + c.radius,
+				c.y + c.radius,
+			);
+			for (let row = r0; row <= r1; row++) {
+				for (let col = c0; col <= c1; col++) {
+					const key = indexBucketKey(col, row);
+					const list = this.circleBuckets.get(key);
+					if (list) list.push(c);
+					else this.circleBuckets.set(key, [c]);
+				}
+			}
+		}
+		for (const s of segments) {
+			if (s.halfWidth > WIDE_PAD_THRESHOLD_PX) {
+				this.wideSegments.push(s);
+				continue;
+			}
+			maxPad = Math.max(maxPad, s.halfWidth);
+			// A path segment's own bounding box (not just its thin corridor) can
+			// span most of a sprawling world's whole layout — two clusters many
+			// buckets apart with a segment drawn diagonally between them would
+			// otherwise insert into every bucket in that box, not just the ones
+			// the segment's own line actually reaches, ballooning bucket counts
+			// (a real repo world with a couple hundred segments measured ~39,000
+			// bucket entries this way — most of them nowhere near the segment
+			// itself). Walking the line and inserting each sample's own small
+			// box instead keeps insertion proportional to the segment's length,
+			// not the area of its bounding rectangle.
+			for (const key of segmentBucketKeys(s)) {
+				const list = this.segmentBuckets.get(key);
+				if (list) list.push(s);
+				else this.segmentBuckets.set(key, [s]);
+			}
+		}
+		this.maxPad = maxPad;
+		this.empty =
+			circles.length === 0 &&
+			segments.length === 0 &&
+			this.wideCircles.length === 0 &&
+			this.wideSegments.length === 0;
+	}
+
+	/**
+	 * Exactly what `keepoutDistance(x, y, circles, segments)` would return
+	 * over this index's own circles/segments — unless `saturateAt` is given,
+	 * in which case a query point far enough from everything that the true
+	 * distance is provably >= `saturateAt` returns `saturateAt` itself rather
+	 * than searching further to find the exact (larger) value. Only safe for
+	 * a caller whose own decisions saturate below that point too (see
+	 * planEdgeScenery's own call sites for why 2048px is safe there — the
+	 * forest/meadow zoning and clearance checks it drives never care about
+	 * distances anywhere near that large). Without it, a query deep in a
+	 * mostly-empty world (its own filler grid's whole point: fill the big
+	 * gaps between far-apart clusters, see planEdgeScenery's doc comment) has
+	 * to expand its search ring outward until it's *sure* nothing farther out
+	 * could still be closer — for a real sprawling repo conversion, exactly
+	 * that "far from everything" case is common, not rare, so leaving this
+	 * uncapped measurably reintroduces the same area-scaling cost chunking
+	 * the bake alone doesn't touch.
+	 */
+	nearestDistance(
+		x: number,
+		y: number,
+		saturateAt = Number.POSITIVE_INFINITY,
+	): number {
+		if (this.empty) return Number.POSITIVE_INFINITY;
+		let best = Number.POSITIVE_INFINITY;
+		for (const c of this.wideCircles) {
+			best = Math.min(best, Math.hypot(x - c.x, y - c.y) - c.radius);
+		}
+		for (const s of this.wideSegments) {
+			best = Math.min(best, distToSegment(x, y, s) - s.halfWidth);
+		}
+		const cx = Math.floor(x / INDEX_BUCKET_PX);
+		const cy = Math.floor(y / INDEX_BUCKET_PX);
+		const seenCircle = new Set<CircleKeepout>();
+		const seenSegment = new Set<SegmentKeepout>();
+		// Generous but finite — see this class's doc comment on why the ring
+		// search terminates on its own almost always; this only guards the
+		// pathological case (a query point in a void far past every keepout,
+		// with no `saturateAt` given) from searching forever instead of just
+		// returning its best guess so far, which for a point that remote is
+		// Infinity either way.
+		const maxRing = 512;
+		for (let ring = 0; ring <= maxRing; ring++) {
+			for (let row = cy - ring; row <= cy + ring; row++) {
+				const onHorizontalEdge = row === cy - ring || row === cy + ring;
+				for (let col = cx - ring; col <= cx + ring; col++) {
+					if (
+						ring > 0 &&
+						!onHorizontalEdge &&
+						col !== cx - ring &&
+						col !== cx + ring
+					)
+						continue; // interior of this ring, already covered by an earlier ring
+					const key = indexBucketKey(col, row);
+					for (const c of this.circleBuckets.get(key) ?? []) {
+						if (seenCircle.has(c)) continue;
+						seenCircle.add(c);
+						best = Math.min(best, Math.hypot(x - c.x, y - c.y) - c.radius);
+					}
+					for (const s of this.segmentBuckets.get(key) ?? []) {
+						if (seenSegment.has(s)) continue;
+						seenSegment.add(s);
+						best = Math.min(best, distToSegment(x, y, s) - s.halfWidth);
+					}
+				}
+			}
+			if (ring * INDEX_BUCKET_PX - this.maxPad > best) return best;
+			if (ring * INDEX_BUCKET_PX - this.maxPad > saturateAt)
+				return Math.max(best, saturateAt);
+		}
+		return best;
+	}
+}
+
 /** Sample points over a bottom-anchored sprite box — enough to catch a canopy leaning over a path without a full box/capsule intersection test. */
 function footprintSamples(
 	x: number,
@@ -219,6 +460,11 @@ export function planEdgeScenery(input: EdgeSceneryInput): EdgeSceneryPlan {
 	const topLimit = bounds.minY + (input.topMargin ?? 0);
 	const circles: CircleKeepout[] = [...input.circles];
 	const segments = input.segments;
+	// See KeepoutIndex's own doc comment: the filler grid below calls
+	// forestScore once per candidate cell, so for a world with hundreds of
+	// clusters' worth of circles this is the difference between a fast plan
+	// and one that never finishes at real repo-conversion scale.
+	const forestScoreIndex = new KeepoutIndex(input.circles, segments);
 
 	const inBounds = (x: number, y: number, fp: Footprint): boolean =>
 		y <= bounds.maxY &&
@@ -227,7 +473,7 @@ export function planEdgeScenery(input: EdgeSceneryInput): EdgeSceneryPlan {
 		x <= bounds.maxX;
 
 	const forestScore = (x: number, y: number): number => {
-		const d = keepoutDistance(x, y, input.circles, segments);
+		const d = forestScoreIndex.nearestDistance(x, y, KEEPOUT_SATURATION_PX);
 		const fromEdge = 1 - edgeDistance(x, y, bounds) / FOREST_EDGE_BAND_PX;
 		const fromContent = (d - FOREST_INTERIOR_START_PX) / 200;
 		const n = valueNoise(x, y, NOISE_CELL_PX, baseSeed) - 0.5;
@@ -383,7 +629,11 @@ export function planEdgeScenery(input: EdgeSceneryInput): EdgeSceneryPlan {
 		break;
 	}
 
-	// Filler: a jittered grid, each cell deciding by zone what (if anything) grows there.
+	// Filler: a jittered grid, each cell deciding by zone what (if anything)
+	// grows there. `circles` is frozen from here on (every reserve() above
+	// already ran), so one index covers every cell's footprintClear check —
+	// same reasoning as forestScoreIndex above, over the reserve-augmented set.
+	const fillerIndex = new KeepoutIndex(circles, segments);
 	const filler: SceneryItem[] = [];
 	const cols = Math.ceil((bounds.maxX - bounds.minX) / GRID_CELL_PX);
 	const rows = Math.ceil((bounds.maxY - bounds.minY) / GRID_CELL_PX);
@@ -421,7 +671,14 @@ export function planEdgeScenery(input: EdgeSceneryInput): EdgeSceneryPlan {
 			if (!kind) continue;
 			const fp = footprints[kind];
 			if (!inBounds(x, y, fp)) continue;
-			if (!footprintClear(x, y, fp, circles, segments, clearance)) continue;
+			if (
+				!footprintSamples(x, y, fp).every(
+					([sx, sy]) =>
+						fillerIndex.nearestDistance(sx, sy, KEEPOUT_SATURATION_PX) >=
+						clearance,
+				)
+			)
+				continue;
 			const isTree =
 				kind === "pine" || kind === "oak" || kind === "blossom-oak";
 			const tint = isTree
