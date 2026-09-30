@@ -261,6 +261,38 @@ export interface CaretLayout {
 	charWidth: number;
 }
 
+export interface CaretGeometry {
+	/** Half-width of the vertical ink stem straddling the column boundary. */
+	stemHalfWidth: number;
+	/** Half-width of the ink serif caps top and bottom. */
+	capHalfWidth: number;
+	/** Half-width of the gold accent inside the stem; 0 skips it (too thin to inset). */
+	stemInnerHalfWidth: number;
+	/** Half-width of the gold accent inside each serif cap. */
+	capInnerHalfWidth: number;
+}
+
+/**
+ * The file-view caret's ink-and-gold I-beam, sized off the font's actual
+ * per-character advance. It shipped as flat 4px-stem/8px-cap pixel counts,
+ * tuned against Courier New's charWidth (~7.8px at this font size) without
+ * accounting for how close that was to a full character — the caps alone
+ * were nearly a whole glyph wide, so the caret visibly sat on the character
+ * beside the clicked boundary instead of in the gap before/after it. Scaling
+ * both to a fraction of charWidth (clamped so a very narrow or very wide
+ * font still gets a sane caret) keeps it inside that gap.
+ */
+export function caretGeometry(charWidth: number): CaretGeometry {
+	const capHalfWidth = Math.min(4, Math.max(2, Math.round(charWidth * 0.28)));
+	const stemHalfWidth = Math.max(1, capHalfWidth - 1);
+	return {
+		stemHalfWidth,
+		capHalfWidth,
+		stemInnerHalfWidth: Math.max(0, stemHalfWidth - 1),
+		capInnerHalfWidth: Math.max(1, capHalfWidth - 1),
+	};
+}
+
 /**
  * FileScene world point -> document offset. Line `i` is drawn centred on
  * `y = i * lineHeight` (its text box spans half a line either side), so the

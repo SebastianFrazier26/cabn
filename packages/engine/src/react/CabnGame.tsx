@@ -129,7 +129,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<SettingsCorner store={handle.store} />
 					<WorldMap store={handle.store} bus={handle.bus} />
 					<MonsterCounter store={handle.store} />
-					<EncounterBanner store={handle.store} />
+					<EncounterBanner store={handle.store} bus={handle.bus} />
 					<VictoryToast store={handle.store} />
 					<GuideDialog store={handle.store} />
 					<UniverseBadge store={handle.store} />

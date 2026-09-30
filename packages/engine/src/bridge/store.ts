@@ -295,9 +295,9 @@ export interface CabnActions {
 	closeEditor(): void;
 	setMonsters(monsters: MonsterSummary[]): void;
 	setDefeatedMonsterIds(ids: string[]): void;
-	/** Walking into a monster + E — shows the encounter banner (mode: "encounter"); FileScene opens the quill on top of it after a beat, same as any other openEditor() call. */
+	/** Clicking (or Alt+Enter beside) a monster — shows the encounter popup (mode: "encounter"). It no longer auto-advances on a timer (2026-09-29): the popup owns the keyboard until the player dismisses it (see react/EncounterBanner.tsx), and only a dismiss-to-continue opens the quill via `encounter:continue`, same as any other openEditor() call. */
 	startEncounter(monsterId: string): void;
-	/** Back to `mode: "file"` with no active monster — either the player cancelled the banner (Esc) or a battle just resolved (win or shrug) and its animation finished. */
+	/** Back to `mode: "file"` with no active monster — either the player cancelled the popup (Esc) or a battle just resolved (win or shrug) and its animation finished. */
 	endEncounter(): void;
 	/** The wand tool starting a run — sets `mode: "run"` and the overlay's initial snapshot in one go. */
 	startRun(run: RunOverlayState): void;

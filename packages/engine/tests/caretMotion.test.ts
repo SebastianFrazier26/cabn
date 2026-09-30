@@ -2,6 +2,7 @@ import { Text } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
 import {
 	type CaretLayout,
+	caretGeometry,
 	columnFromDisplay,
 	columnFromPaintedSpans,
 	deletionRange,
@@ -218,6 +219,35 @@ describe("wordRangeAt", () => {
 		expect(wordRangeAt(d, 10)).toEqual({ from: 10, to: 11 });
 		expect(wordRangeAt(d, 15)).toEqual({ from: 14, to: 16 });
 		expect(wordRangeAt(doc(""), 0)).toEqual({ from: 0, to: 0 });
+	});
+});
+
+describe("caretGeometry", () => {
+	it("keeps the caps within a fraction of a narrow charWidth, not a whole glyph", () => {
+		// Regression: the file view's real charWidth (Courier New, 13px) is
+		// ~7.8, where the old flat 8px cap was wider than the character.
+		const geo = caretGeometry(7.8);
+		expect(geo.capHalfWidth * 2).toBeLessThan(7.8);
+		expect(geo.stemHalfWidth).toBeLessThan(geo.capHalfWidth);
+	});
+
+	it("never collapses to zero width on a very narrow font", () => {
+		const geo = caretGeometry(2);
+		expect(geo.stemHalfWidth).toBeGreaterThanOrEqual(1);
+		expect(geo.capHalfWidth).toBeGreaterThanOrEqual(geo.stemHalfWidth);
+	});
+
+	it("clamps the caps on a very wide font instead of growing unbounded", () => {
+		const geo = caretGeometry(40);
+		expect(geo.capHalfWidth).toBeLessThanOrEqual(4);
+	});
+
+	it("keeps the gold accent inside the ink outline", () => {
+		for (const charWidth of [2, 5, 7.8, 12, 20, 40]) {
+			const geo = caretGeometry(charWidth);
+			expect(geo.stemInnerHalfWidth).toBeLessThanOrEqual(geo.stemHalfWidth);
+			expect(geo.capInnerHalfWidth).toBeLessThanOrEqual(geo.capHalfWidth);
+		}
 	});
 });
 

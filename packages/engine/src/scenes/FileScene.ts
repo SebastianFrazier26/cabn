@@ -38,6 +38,7 @@ import { checkMonsterFixed } from "../systems/battle.js";
 import {
 	type CaretLayout,
 	type CaretMotion,
+	caretGeometry,
 	columnFromPaintedSpans,
 	type DeleteMotion,
 	deletionRange,
@@ -54,6 +55,7 @@ import {
 	type MdSegment,
 	type MdSegmentStyle,
 } from "../systems/enchantMd.js";
+import { shouldContinueEncounter } from "../systems/encounterPopup.js";
 import { getActiveExecutionProvider } from "../systems/execution/executionProvider.js";
 import { isActiveFileDirty, saveActiveFile } from "../systems/fileBuffer.js";
 import {
@@ -139,7 +141,6 @@ const MONSTER_X = PATH_X + 50;
 const MONSTER_APPROACH_RADIUS = 90;
 /** Alt+Enter (or the hotbar's Use) fights the nearest monster within this many lines of the caret. */
 const MONSTER_REACH_LINES = 2;
-const ENCOUNTER_BANNER_MS = 1400;
 
 // The run "spark" travels the same path lane, one line at a time — sharing
 // PATH_X reads as "the same road", not a separate lane.
@@ -373,6 +374,7 @@ export class FileScene extends Phaser.Scene {
 		this.bus.on("editor:save", this.onEditorSave);
 		this.bus.on("tool:opener-use", this.onOpenerUse);
 		this.bus.on("file:leave", this.onFileLeave);
+		this.bus.on("encounter:continue", this.onEncounterContinue);
 		this.unsubscribeStore = this.store.subscribe((state, prev) => {
 			if (state.mode !== prev.mode) {
 				// Not a bus event: closing the editor is a store.closeEditor() call
@@ -417,6 +419,7 @@ export class FileScene extends Phaser.Scene {
 		this.bus.off("editor:save", this.onEditorSave);
 		this.bus.off("tool:opener-use", this.onOpenerUse);
 		this.bus.off("file:leave", this.onFileLeave);
+		this.bus.off("encounter:continue", this.onEncounterContinue);
 		this.unsubscribeStore?.();
 		this.unsubscribeStore = null;
 		this.destroyCaretInput();
@@ -517,8 +520,23 @@ export class FileScene extends Phaser.Scene {
 		this.followCaret();
 	}
 
+	/**
+	 * A Phaser Text object's `.width` is its backing canvas's width, which
+	 * Phaser rounds up to a whole pixel — dividing that by a 40-char sample
+	 * used to bias charWidth about 0.3% wide (7.825 vs Courier New's actual
+	 * ~7.801 at this size), a drift that compounds with every column and
+	 * visibly pulled the caret off the boundary on long lines. Measuring off
+	 * a scratch 2D context (the same font string every rendered line is
+	 * drawn with) matches what fillText will actually lay out.
+	 */
 	private measureCharWidth(): void {
+		const ctx = document.createElement("canvas").getContext("2d");
 		const sample = "M".repeat(40);
+		if (ctx) {
+			ctx.font = `${BASE_FONT_SIZE}px ${MONO_FONT}`;
+			this.charWidth = ctx.measureText(sample).width / sample.length || 8;
+			return;
+		}
 		const probe = this.add.text(0, 0, sample, {
 			fontFamily: MONO_FONT,
 			fontSize: `${BASE_FONT_SIZE}px`,
@@ -745,17 +763,32 @@ export class FileScene extends Phaser.Scene {
 	private startEncounterFor(monster: Monster): void {
 		this.encounterMonsterId = monster.id;
 		this.store.getState().startEncounter(monster.id);
-		this.time.delayedCall(ENCOUNTER_BANNER_MS, () => {
-			const state = this.store.getState();
-			if (state.mode !== "encounter" || state.activeMonsterId !== monster.id) {
-				return; // the player already cancelled (Esc) — see update()'s encounter-mode branch
-			}
-			state.openEditor({
-				initialLine: this.monsterLine(monster),
-				language: this.file.language,
-			});
-		});
+		// No auto-advance timer (2026-09-29 fix) — the popup (EncounterBanner)
+		// owns the keyboard and stays up until the player dismisses it, then
+		// emits encounter:continue (see onEncounterContinue) or, for Esc,
+		// calls endEncounter() itself without ever emitting that event.
 	}
+
+	/** The popup was dismissed with something other than Esc — open the quill on the monster's line, same place the old timer used to land. */
+	private onEncounterContinue = ({
+		monsterId,
+	}: {
+		monsterId: string;
+	}): void => {
+		const state = this.store.getState();
+		const monster = this.monsters.find((m) => m.id === monsterId);
+		const proceed = shouldContinueEncounter({
+			mode: state.mode,
+			activeMonsterId: state.activeMonsterId,
+			dismissedMonsterId: monsterId,
+			monsterStillPresent: monster !== undefined,
+		});
+		if (!proceed || !monster) return; // stale: the popup for a since-ended (or since-defeated) encounter caught up late
+		state.openEditor({
+			initialLine: this.monsterLine(monster),
+			language: this.file.language,
+		});
+	};
 
 	/**
 	 * Every monster currently shown in this file gets re-checked against the
@@ -1307,12 +1340,10 @@ export class FileScene extends Phaser.Scene {
 		this.renderVisibleWindow();
 		if (mode === "editor") return;
 		if (mode === "encounter") {
-			// The only input the banner listens for — everything else stays
-			// inert until it resolves into either the editor or back to plain
-			// "file" mode.
-			if (Phaser.Input.Keyboard.JustDown(this.keys.esc)) {
-				this.store.getState().endEncounter();
-			}
+			// The popup (react/EncounterBanner.tsx) owns the keyboard while
+			// this is up — keyboardFocusGate has already switched Phaser's
+			// keyboard manager off by the time it's focused, so there's
+			// nothing left for this scene to read here.
 			return;
 		}
 		if (mode === "run") {
@@ -1775,17 +1806,47 @@ export class FileScene extends Phaser.Scene {
 		}
 
 		// The old gold path-lane marker, now an I-beam at the exact character:
-		// ink outline so it reads on the parchment, gold stem and serifs.
+		// ink outline so it reads on the parchment, gold stem and serifs,
+		// sized off charWidth (caretGeometry) so it sits in the gap between
+		// glyphs instead of overlapping the one beside it.
 		const top = head.y - LINE_HEIGHT / 2 + 1;
 		const height = LINE_HEIGHT - 2;
+		const geo = caretGeometry(this.charWidth);
 		caret.fillStyle(PALETTE.ink, 1);
-		caret.fillRect(head.x - 2, top, 4, height);
-		caret.fillRect(head.x - 4, top, 8, 3);
-		caret.fillRect(head.x - 4, top + height - 3, 8, 3);
+		caret.fillRect(
+			head.x - geo.stemHalfWidth,
+			top,
+			geo.stemHalfWidth * 2,
+			height,
+		);
+		caret.fillRect(head.x - geo.capHalfWidth, top, geo.capHalfWidth * 2, 3);
+		caret.fillRect(
+			head.x - geo.capHalfWidth,
+			top + height - 3,
+			geo.capHalfWidth * 2,
+			3,
+		);
 		caret.fillStyle(PALETTE.gold, 1);
-		caret.fillRect(head.x - 1, top + 1, 2, height - 2);
-		caret.fillRect(head.x - 3, top + 1, 6, 1);
-		caret.fillRect(head.x - 3, top + height - 2, 6, 1);
+		if (geo.stemInnerHalfWidth > 0) {
+			caret.fillRect(
+				head.x - geo.stemInnerHalfWidth,
+				top + 1,
+				geo.stemInnerHalfWidth * 2,
+				height - 2,
+			);
+		}
+		caret.fillRect(
+			head.x - geo.capInnerHalfWidth,
+			top + 1,
+			geo.capInnerHalfWidth * 2,
+			1,
+		);
+		caret.fillRect(
+			head.x - geo.capInnerHalfWidth,
+			top + height - 2,
+			geo.capInnerHalfWidth * 2,
+			1,
+		);
 	}
 
 	/** Solid while typing or moving, blinking once idle; dimmed while something else holds the keyboard (a panel, the spellbook). */

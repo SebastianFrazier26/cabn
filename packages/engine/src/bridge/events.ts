@@ -51,6 +51,8 @@ export type CabnEvents = {
 	"file:content-reset": { portalId: string; content: string };
 	/** A battle's edit resolved the annotation that spawned this monster (FileScene, after re-running its originating annotator on save) -> WorldScene: persist it in the save and drop the monster from every rendered scene (this file's, and its portal's arch-hover sprite). */
 	"monster:defeated": { monsterId: string };
+	/** The encounter popup (EncounterBanner) -> FileScene: the player dismissed it with something other than Esc (a click, Enter/Space, any other key) — open the quill on the monster's line, same as it used to do on its own timer. Esc alone just calls store.endEncounter() and stops there. */
+	"encounter:continue": { monsterId: string };
 	/** FileScene, after a save during an encounter that didn't fix the encountered monster -> EditorOverlay: a small transient toast (the editor stays open, the shrug animation plays behind it). */
 	"battle:hint": { message: string };
 	/** Hotbar R press -> FileScene: start a run of the currently-open file with the active ExecutionProvider (TraceProvider by default). */
