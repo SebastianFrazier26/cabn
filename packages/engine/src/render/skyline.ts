@@ -12,7 +12,9 @@ import { hashStringSeed, mulberry32 } from "../systems/deterministicRandom.js";
 import {
 	LAYER_SCROLL_FACTOR,
 	parallaxCenter,
+	planGrownSkyline,
 	planSkyline,
+	type SkylineElement,
 	type SkylineLayer,
 	type SkylinePieceName,
 } from "../systems/skylineLayout.js";
@@ -56,9 +58,15 @@ export interface SkylineOptions {
 	reducedMotion: boolean;
 	/** A world skin's multiply tint on the sky, moon and skyline pieces (systems/worldLayer.ts). */
 	tint?: number;
+	/** The base world's bounds when a layer has grown `bounds`: pieces are laid out from these (planGrownSkyline), so the horizon keeps its pieces across the toggle. */
+	baseBounds?: { minX: number; maxX: number };
+	/** A world skin's sky gradient, used by day and by night. */
+	skyKey?: string;
 }
 
 export interface SkylineHandle {
+	/** Where every piece stands (read by the shadow owner e2e). */
+	elements: readonly SkylineElement[];
 	destroy(): void;
 }
 
@@ -90,7 +98,9 @@ export function attachSkyline(
 	const nightTwins: Phaser.GameObjects.Image[] = [];
 	const dayOnly: { image: Phaser.GameObjects.Image; alpha: number }[] = [];
 
-	for (const key of [SKY_DAY_KEY, SKY_NIGHT_KEY]) {
+	const dayKey = opts.skyKey ?? SKY_DAY_KEY;
+	const nightKey = opts.skyKey ?? SKY_NIGHT_KEY;
+	for (const key of [dayKey, nightKey]) {
 		scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
 	}
 	// Screen-locked horizontally (the gradient is uniform across x), world-
@@ -98,13 +108,13 @@ export function attachSkyline(
 	const skyWidth = viewWidth * 2;
 	const skyHeight = horizonY - skyTop + 4;
 	const skyDay = scene.add
-		.image(-viewWidth / 2, skyTop, SKY_DAY_KEY)
+		.image(-viewWidth / 2, skyTop, dayKey)
 		.setOrigin(0, 0)
 		.setDisplaySize(skyWidth, skyHeight)
 		.setScrollFactor(0, 1)
 		.setDepth(SKY_DEPTH);
 	const skyNight = scene.add
-		.image(-viewWidth / 2, skyTop, SKY_NIGHT_KEY)
+		.image(-viewWidth / 2, skyTop, nightKey)
 		.setOrigin(0, 0)
 		.setDisplaySize(skyWidth, skyHeight)
 		.setScrollFactor(0, 1)
@@ -113,8 +123,13 @@ export function attachSkyline(
 	nightTwins.push(skyNight);
 
 	const rand = mulberry32(hashStringSeed(`sky:${opts.seed}`));
+	const base = opts.baseBounds;
+	const layoutMin = base ? base.minX : scrollMin;
+	const layoutMax = base
+		? Math.max(base.minX, base.maxX - scene.scale.width)
+		: scrollMax;
 	const screenCenter = (sf: number) =>
-		parallaxCenter(scrollMin, scrollMax, scene.scale.width, sf);
+		parallaxCenter(layoutMin, layoutMax, scene.scale.width, sf);
 
 	const sun = scene.add
 		.image(
@@ -180,13 +195,24 @@ export function attachSkyline(
 			}
 		).width;
 	}
-	const elements = planSkyline({
-		seed: opts.seed,
-		scrollMin,
-		scrollMax,
-		viewWidth,
-		widths,
-	});
+	const elements = base
+		? planGrownSkyline(
+				{
+					seed: opts.seed,
+					scrollMin: layoutMin,
+					scrollMax: layoutMax,
+					viewWidth,
+					widths,
+				},
+				{ scrollMin, scrollMax },
+			)
+		: planSkyline({
+				seed: opts.seed,
+				scrollMin,
+				scrollMax,
+				viewWidth,
+				widths,
+			});
 	for (const el of elements) {
 		const sf = LAYER_SCROLL_FACTOR[el.layer];
 		const y = horizonY + LAYER_BASE_OFFSET[el.layer];
@@ -239,6 +265,7 @@ export function attachSkyline(
 	scene.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
 
 	return {
+		elements,
 		destroy: () => {
 			scene.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);
 			for (const object of objects) object.destroy();

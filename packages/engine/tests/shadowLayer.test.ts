@@ -3,9 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCabnStore } from "../src/bridge/store.js";
 import { NIGHT_TOKENS } from "../src/react/pixelThemeTokens.js";
 import { createShadowLayer } from "../src/shadow/provider.js";
-import { SHADOW_SKIN } from "../src/shadow/skin.js";
+import { NETHER_SKIN, SHADOW_SKIN } from "../src/shadow/skin.js";
 import { CRIMSON_TOKENS } from "../src/shadow/tokens.js";
-import { DEFAULT_SKIN } from "../src/systems/worldLayer.js";
+import {
+	DEFAULT_SKIN,
+	resolveSkin,
+	skinTextures,
+} from "../src/systems/worldLayer.js";
 
 // worldLayerSeam.ts draws with Phaser, which can't load outside a browser;
 // its save-slot and file logic never touch Phaser, so a stub is enough here.
@@ -303,12 +307,49 @@ describe("world layer store lifecycle", () => {
 });
 
 describe("skins", () => {
-	it("the default skin changes nothing; the shadow skin is tints and a crimson HUD", () => {
+	it("the default skin changes nothing; the shadow skin is the nether art and a crimson HUD", () => {
 		for (const [key, value] of Object.entries(DEFAULT_SKIN))
 			if (key !== "id") expect(value, key).toBeNull();
-		expect(SHADOW_SKIN.grade?.night).toBe(0x5a1a14);
-		expect(SHADOW_SKIN.uiTokens).toBe(CRIMSON_TOKENS);
+		expect(SHADOW_SKIN).toBe(NETHER_SKIN);
+		expect(NETHER_SKIN.uiTokens).toBe(CRIMSON_TOKENS);
+		expect(skinTextures(DEFAULT_SKIN)).toEqual([]);
+		const textures = skinTextures(NETHER_SKIN);
+		expect(textures.length).toBeGreaterThan(15);
+		for (const t of textures) {
+			expect(t.key.startsWith("shadow-"), t.key).toBe(true);
+			expect(t.path.startsWith("/assets/shadow/"), t.path).toBe(true);
+		}
+		expect(new Set(textures.map((t) => t.key)).size).toBe(textures.length);
 		expect(CRIMSON_TOKENS.diffAddText).toBe(NIGHT_TOKENS.diffAddText);
 		expect(CRIMSON_TOKENS.panelBody).not.toBe(NIGHT_TOKENS.panelBody);
+	});
+});
+
+describe("skin resolution", () => {
+	it("hands DEFAULT_SKIN back untouched, whatever has loaded", () => {
+		expect(resolveSkin(DEFAULT_SKIN, () => false)).toBe(DEFAULT_SKIN);
+		expect(resolveSkin(DEFAULT_SKIN, () => true)).toBe(DEFAULT_SKIN);
+	});
+
+	it("keeps a fully loaded skin as is", () => {
+		expect(resolveSkin(NETHER_SKIN, () => true)).toBe(NETHER_SKIN);
+	});
+
+	it("falls back to today's look per texture group, never half-skinned", () => {
+		const missing = new Set([
+			NETHER_SKIN.pathTextures?.cobbles[2]?.key,
+			NETHER_SKIN.arch?.overlay.key,
+			NETHER_SKIN.scenery?.oak?.key,
+		]);
+		const skin = resolveSkin(NETHER_SKIN, (k) => !missing.has(k));
+		expect(skin.pathTextures).toBeNull();
+		expect(skin.arch).toBeNull();
+		expect(skin.scenery?.oak).toBeUndefined();
+		expect(skin.scenery?.["blossom-oak"]).toBeUndefined();
+		expect(skin.scenery?.pine).toBe(NETHER_SKIN.scenery?.pine);
+		expect(skin.fieldTiles).toBe(NETHER_SKIN.fieldTiles);
+		expect(skin.brazier).toBe(NETHER_SKIN.brazier);
+		expect(skin.grade).toBe(NETHER_SKIN.grade);
+		expect(skinTextures(skin).every((t) => !missing.has(t.key))).toBe(true);
 	});
 });

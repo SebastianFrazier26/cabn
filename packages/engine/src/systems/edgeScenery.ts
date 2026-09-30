@@ -450,3 +450,99 @@ export function planEdgeScenery(input: EdgeSceneryInput): EdgeSceneryPlan {
 	const all = [...items, ...kept].sort((a, b) => a.y - b.y || a.x - b.x);
 	return { items: all, pointsOfInterest };
 }
+
+/** Content a world layer adds over the base world, for planLayeredEdgeScenery. */
+export interface EdgeSceneryLayer {
+	/** The world's bounds with the layer on (they only ever grow). */
+	bounds: SceneryBounds;
+	circles: readonly CircleKeepout[];
+	segments: readonly SegmentKeepout[];
+}
+
+export interface LayeredSceneryItem extends SceneryItem {
+	/** True for scenery planned for ground only the layer exposes. */
+	layer?: true;
+}
+
+export interface LayeredEdgeSceneryPlan {
+	items: LayeredSceneryItem[];
+	pointsOfInterest: PointOfInterest[];
+	/** Base items dropped because the layer's content stands on them. */
+	removed: number;
+}
+
+function boxOverlapsBounds(
+	x: number,
+	y: number,
+	fp: Footprint,
+	b: SceneryBounds,
+): boolean {
+	return (
+		x + fp.w / 2 > b.minX &&
+		x - fp.w / 2 < b.maxX &&
+		y > b.minY &&
+		y - fp.h < b.maxY
+	);
+}
+
+/**
+ * Edge scenery that stays put when a world layer comes and goes: the base
+ * plan is made from the base world alone (its bounds, clearings, paths and
+ * seed), exactly as without the layer. With a layer, base items its content
+ * would stand on are dropped, and a second plan, seeded apart, fills only
+ * ground outside the base bounds. Planning over the grown bounds instead
+ * reshuffled the whole forest, the windmill and the ponds on every toggle.
+ */
+export function planLayeredEdgeScenery(
+	base: EdgeSceneryInput,
+	layer: EdgeSceneryLayer | null,
+): LayeredEdgeSceneryPlan {
+	const plan = planEdgeScenery(base);
+	if (!layer) return { ...plan, removed: 0 };
+	const clearance = base.clearance ?? DEFAULT_CLEARANCE;
+	const clearOfLayer = (x: number, y: number, fp: Footprint): boolean =>
+		footprintClear(x, y, fp, layer.circles, layer.segments, clearance);
+	const poiFootprint = (kind: PoiKind): Footprint =>
+		kind === "mushroom-ring" ? base.footprints.mushroom : base.footprints[kind];
+	const kept = plan.items.filter((item) =>
+		clearOfLayer(item.x, item.y, base.footprints[item.kind]),
+	);
+	const pointsOfInterest = plan.pointsOfInterest.filter((poi) =>
+		clearOfLayer(poi.x, poi.y, poiFootprint(poi.kind)),
+	);
+	const grown =
+		layer.bounds.minX < base.bounds.minX ||
+		layer.bounds.minY < base.bounds.minY ||
+		layer.bounds.maxX > base.bounds.maxX ||
+		layer.bounds.maxY > base.bounds.maxY;
+	const extra: LayeredSceneryItem[] = [];
+	if (grown) {
+		const outer = planEdgeScenery({
+			...base,
+			bounds: layer.bounds,
+			seed: `${base.seed}#layer`,
+			circles: [...base.circles, ...layer.circles],
+			segments: [...base.segments, ...layer.segments],
+		});
+		for (const item of outer.items) {
+			if (
+				!boxOverlapsBounds(
+					item.x,
+					item.y,
+					base.footprints[item.kind],
+					base.bounds,
+				)
+			)
+				extra.push({ ...item, layer: true });
+		}
+		for (const poi of outer.pointsOfInterest) {
+			if (!boxOverlapsBounds(poi.x, poi.y, poiFootprint(poi.kind), base.bounds))
+				pointsOfInterest.push(poi);
+		}
+	}
+	return {
+		items: [...kept, ...extra].sort((a, b) => a.y - b.y || a.x - b.x),
+		pointsOfInterest,
+		removed: plan.items.length - kept.length,
+	};
+}

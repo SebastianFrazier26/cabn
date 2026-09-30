@@ -101,6 +101,10 @@ export interface FileSceneData {
 	saveToDisk?: (content: string) => Promise<boolean>;
 	/** The active world skin's parchment colour, if it has one. */
 	parchmentTint?: number;
+	/** The active world skin's tiling parchment texture (already loaded by WorldScene). */
+	parchmentTexture?: string;
+	/** The active world skin's arch strip for the exit portal, and its looping animation. */
+	archStrip?: { key: string; anim: string };
 }
 
 // A vertical parchment scroll beside a line-numbered page of the file's
@@ -252,6 +256,9 @@ export class FileScene extends Phaser.Scene {
 	/** Bumped per init(): the scene instance is reused for every file, so an async save outcome checks it still belongs to this visit. */
 	private visit = 0;
 	private parchmentTint: number | undefined;
+	private parchmentTexture: string | undefined;
+	private parchmentTile: Phaser.GameObjects.TileSprite | null = null;
+	private archStrip: FileSceneData["archStrip"];
 	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private monsterBobTweens = new Map<string, Phaser.Tweens.Tween>();
 	private monsterBaseY = new Map<string, number>();
@@ -302,6 +309,17 @@ export class FileScene extends Phaser.Scene {
 		this.visit++;
 		this.saveToDisk = data.saveToDisk;
 		this.parchmentTint = data.parchmentTint;
+		this.parchmentTexture =
+			data.parchmentTexture && this.textures.exists(data.parchmentTexture)
+				? data.parchmentTexture
+				: undefined;
+		this.parchmentTile = null;
+		this.archStrip =
+			data.archStrip &&
+			this.textures.exists(data.archStrip.key) &&
+			this.anims.exists(data.archStrip.anim)
+				? data.archStrip
+				: undefined;
 		this.monsterSprites = new Map();
 		this.monsterBobTweens = new Map();
 		this.monsterBaseY = new Map();
@@ -524,13 +542,20 @@ export class FileScene extends Phaser.Scene {
 		const height = this.totalHeight();
 		const g = this.backingGraphic;
 		g.clear();
-		g.fillStyle(this.parchmentTint ?? PALETTE.parchment, 1);
-		g.fillRect(
-			SCROLL_MIN_X,
-			-EXIT_MARGIN,
-			this.pageRight - SCROLL_MIN_X,
-			height + EXIT_MARGIN + 200,
-		);
+		const width = this.pageRight - SCROLL_MIN_X;
+		const fullHeight = height + EXIT_MARGIN + 200;
+		if (this.parchmentTexture) {
+			this.parchmentTile ??= this.add
+				.tileSprite(0, 0, 1, 1, this.parchmentTexture)
+				.setOrigin(0, 0)
+				.setDepth(-0.01);
+			this.parchmentTile
+				.setPosition(SCROLL_MIN_X, -EXIT_MARGIN)
+				.setSize(width, fullHeight);
+		} else {
+			g.fillStyle(this.parchmentTint ?? PALETTE.parchment, 1);
+			g.fillRect(SCROLL_MIN_X, -EXIT_MARGIN, width, fullHeight);
+		}
 		// Faint seams every ~20 lines read as "tiled parchment" without tiling an
 		// actual texture — cheap (one Graphics object) regardless of file length.
 		g.lineStyle(1, PALETTE.trail, 0.08);
@@ -550,10 +575,10 @@ export class FileScene extends Phaser.Scene {
 		const sprite = this.add.sprite(
 			this.exitPortalPos.x,
 			this.exitPortalPos.y,
-			ASSET_KEYS.portalArchStrip,
+			this.archStrip?.key ?? ASSET_KEYS.portalArchStrip,
 		);
 		sprite.setScale(PORTAL_SCALE).setDepth(3);
-		sprite.play(PORTAL_IDLE_ANIM);
+		sprite.play(this.archStrip?.anim ?? PORTAL_IDLE_ANIM);
 	}
 
 	// --- Monsters / battle loop -----------------------------------------

@@ -115,6 +115,7 @@ export function createOwnerGitClient(opts: OwnerGitClientOptions): OwnerGitApi {
 	};
 }
 
+export { SHADOW_TEXTURES, SUDO_ICON_PATH } from "./shadow/assets.js";
 // The shadow realm (hidden files) — owner-only, so reachable from this
 // entry alone; the main entry has only the neutral world-layer seam.
 export {
@@ -122,7 +123,7 @@ export {
 	type OwnerShadowClientOptions,
 } from "./shadow/client.js";
 export { createShadowLayer, SHADOW_LAYER_ID } from "./shadow/provider.js";
-export { SHADOW_SKIN } from "./shadow/skin.js";
+export { NETHER_SKIN, SHADOW_SKIN } from "./shadow/skin.js";
 export { CRIMSON_TOKENS } from "./shadow/tokens.js";
 export type {
 	OwnerCapability,

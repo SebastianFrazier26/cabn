@@ -18,7 +18,11 @@ import { dirname, join } from "node:path";
 import * as git from "isomorphic-git";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isAllowedShadowSignPath } from "../../src/serve/ownerSigns.js";
-import { type ServeHandle, startServe } from "../../src/serve/server.js";
+import {
+	isShadowAssetPath,
+	type ServeHandle,
+	startServe,
+} from "../../src/serve/server.js";
 
 interface RawResponse {
 	status: number;
@@ -218,6 +222,44 @@ describe("shadow routes exist only with --owner", () => {
 			"content-type": "application/json",
 		});
 		expect(res.status).toBe(404);
+	});
+
+	it("serves the shadow art only with --owner, however the path is spelled", async () => {
+		for (const spelled of [
+			"/assets/shadow/sky_ember.png",
+			"/assets/SHADOW/sky_ember.png",
+			"/assets//shadow/sky_ember.png",
+			"/assets/./shadow/sky_ember.png",
+		])
+			expect(isShadowAssetPath(spelled.slice("/assets/".length)), spelled).toBe(
+				true,
+			);
+		expect(isShadowAssetPath("placeholders/fx_spark.png")).toBe(false);
+		const plain = await serve(false);
+		for (const path of [
+			"/assets/shadow/sky_ember.png",
+			"/assets/SHADOW/sky_ember.png",
+			"/assets//shadow/sky_ember.png",
+		]) {
+			const res = await raw(plain.port, "GET", path, {
+				host: `127.0.0.1:${plain.port}`,
+			});
+			expect(res.status, path).toBe(404);
+		}
+		const spark = await raw(
+			plain.port,
+			"GET",
+			"/assets/placeholders/fx_spark.png",
+			{
+				host: `127.0.0.1:${plain.port}`,
+			},
+		);
+		expect(spark.status).toBe(200);
+		const owner = await serve();
+		const art = await raw(owner.port, "GET", "/assets/shadow/sky_ember.png", {
+			host: `127.0.0.1:${owner.port}`,
+		});
+		expect(art.status).toBe(200);
 	});
 });
 

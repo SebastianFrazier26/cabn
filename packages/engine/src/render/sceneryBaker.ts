@@ -15,6 +15,13 @@ export interface SceneryBakeBounds {
 
 const CHUNK_SIZE_PX = 512;
 
+/** Two multiply tints applied as one, channel by channel. */
+export function multiplyTint(a: number, b: number): number {
+	const ch = (shift: number) =>
+		Math.round((((a >> shift) & 0xff) * ((b >> shift) & 0xff)) / 255);
+	return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 export function sceneryTextureKey(kind: SceneryKind): string {
 	return sceneryKey(kind);
 }
@@ -52,6 +59,11 @@ export function bakeScenery(
 	items: readonly SceneryItem[],
 	footprints: Readonly<Record<SceneryKind, Footprint>>,
 	depth: number,
+	/** A world skin's replacement textures and tint (render/worldDressing.ts). */
+	skin: {
+		textureFor?: (kind: SceneryKind) => string | undefined;
+		tint?: number;
+	} = {},
 ): Phaser.GameObjects.RenderTexture[] {
 	const startCol = Math.floor(bounds.minX / CHUNK_SIZE_PX);
 	const startRow = Math.floor(bounds.minY / CHUNK_SIZE_PX);
@@ -77,7 +89,7 @@ export function bakeScenery(
 
 	const stamps = new Map<string, Phaser.GameObjects.Image>();
 	const stampFor = (kind: SceneryKind): Phaser.GameObjects.Image => {
-		const key = sceneryTextureKey(kind);
+		const key = skin.textureFor?.(kind) ?? sceneryTextureKey(kind);
 		let image = stamps.get(key);
 		if (!image) {
 			image = scene.make.image({ key }, false).setOrigin(0.5, 1);
@@ -101,7 +113,14 @@ export function bakeScenery(
 		rt.beginDraw();
 		for (const item of list) {
 			const image = stampFor(item.kind);
-			image.setFlipX(item.flipX).setTint(item.tint);
+			const swapped = skin.textureFor?.(item.kind) !== undefined;
+			image
+				.setFlipX(item.flipX)
+				.setTint(
+					skin.tint === undefined || swapped
+						? item.tint
+						: multiplyTint(item.tint, skin.tint),
+				);
 			rt.batchDraw(image, item.x - originX, item.y - originY);
 		}
 		rt.endDraw();
@@ -120,10 +139,12 @@ export function addWindmillSails(
 	bodyHeight: number,
 	depth: number,
 	reducedMotion: boolean,
+	tint?: number,
 ): Phaser.GameObjects.Image {
 	const sails = scene.add
 		.image(x, y - bodyHeight * 0.62, sceneryKey("windmill-sails"))
 		.setDepth(depth);
+	if (tint !== undefined) sails.setTint(tint);
 	if (!reducedMotion) {
 		scene.tweens.add({
 			targets: sails,

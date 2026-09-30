@@ -3,8 +3,11 @@ import { sceneryKey } from "../assetPaths.js";
 import { PALETTE } from "../palette.js";
 import {
 	type CircleKeepout,
+	type EdgeSceneryLayer,
 	FILLER_KINDS,
-	planEdgeScenery,
+	type LayeredSceneryItem,
+	type PointOfInterest,
+	planLayeredEdgeScenery,
 	type SceneryKind,
 	type SegmentKeepout,
 } from "../systems/edgeScenery.js";
@@ -20,6 +23,7 @@ import {
 	attachSkyline,
 	HORIZON_OVERLAP_PX,
 	SKY_BAND_HEIGHT_PX,
+	type SkylineHandle,
 } from "./skyline.js";
 
 export interface Bounds {
@@ -60,12 +64,21 @@ export interface EdgeDressingInput {
 	circles: readonly CircleKeepout[];
 	segments: readonly SegmentKeepout[];
 	reducedMotion: boolean;
+	/** A world layer's content and grown bounds; `bounds`, `circles` and `segments` then describe the base world alone (planLayeredEdgeScenery). */
+	layer?: EdgeSceneryLayer | null;
+	/** A world skin's replacement textures, by kind (same pixel size as the originals). */
+	textureFor?: (kind: SceneryKind) => string | undefined;
+	/** A world skin's multiply tint on every piece it doesn't redraw. */
+	tint?: number;
 }
 
 export interface EdgeDressing {
 	/** Night light sources the dressing adds (the windmill's window) — merged into the scene's atmosphere lights. */
 	lights: LightPoolOptions[];
 	itemCount: number;
+	/** The planned pieces (read by the shadow owner e2e to check the scenery never moves). */
+	items: readonly LayeredSceneryItem[];
+	pointsOfInterest: readonly PointOfInterest[];
 	destroy(): void;
 }
 
@@ -82,21 +95,25 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 		.getSourceImage() as {
 		width: number;
 	};
-	const plan = planEdgeScenery({
-		bounds: input.bounds,
-		seed: input.seed,
-		circles: input.circles,
-		segments: input.segments,
-		footprints,
-		windmillSailSpan: sails.width,
-		topMargin: SCENERY_TOP_MARGIN,
-	});
+	const plan = planLayeredEdgeScenery(
+		{
+			bounds: input.bounds,
+			seed: input.seed,
+			circles: input.circles,
+			segments: input.segments,
+			footprints,
+			windmillSailSpan: sails.width,
+			topMargin: SCENERY_TOP_MARGIN,
+		},
+		input.layer ?? null,
+	);
 	const chunks = bakeScenery(
 		scene,
-		input.bounds,
+		input.layer?.bounds ?? input.bounds,
 		plan.items,
 		footprints,
 		SCENERY_DEPTH,
+		{ textureFor: input.textureFor, tint: input.tint },
 	);
 
 	const live: Phaser.GameObjects.GameObject[] = [];
@@ -111,6 +128,7 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 				footprints.windmill.h,
 				SAILS_DEPTH,
 				input.reducedMotion,
+				input.tint,
 			),
 		);
 		// Window rows 16-19 of the 30-row windmill grid (world-art/scenery.ts).
@@ -126,6 +144,8 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 	return {
 		lights,
 		itemCount: plan.items.length,
+		items: plan.items,
+		pointsOfInterest: plan.pointsOfInterest,
 		destroy: () => {
 			for (const chunk of chunks) chunk.destroy();
 			for (const object of live) object.destroy();
@@ -141,13 +161,17 @@ export function attachSky(
 	atmosphere: AtmosphereHandle,
 	reducedMotion: boolean,
 	skylineTint?: number,
-): { destroy(): void } {
+	/** With a world layer on: the base world's bounds (the skyline keeps its pieces) and the skin's sky gradient. */
+	options: { baseBounds?: Bounds; skyKey?: string } = {},
+): { skyline: SkylineHandle; destroy(): void } {
 	const skyline = attachSkyline(scene, {
 		bounds,
 		seed,
 		atmosphere,
 		reducedMotion,
 		...(skylineTint !== undefined ? { tint: skylineTint } : {}),
+		...(options.baseBounds ? { baseBounds: options.baseBounds } : {}),
+		...(options.skyKey ? { skyKey: options.skyKey } : {}),
 	});
 	const clouds = attachCloudShadows(
 		scene,
@@ -157,6 +181,7 @@ export function attachSky(
 		reducedMotion,
 	);
 	return {
+		skyline,
 		destroy: () => {
 			skyline.destroy();
 			clouds.destroy();

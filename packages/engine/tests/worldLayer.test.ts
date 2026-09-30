@@ -8,6 +8,8 @@ import {
 	layerPathRoutes,
 	layerSaveSlotId,
 	mergeLayer,
+	pointsAlongPolyline,
+	polylineMidpoint,
 	ringPathsFor,
 	signWriterFor,
 	type WorldLayerProvider,
@@ -288,5 +290,41 @@ describe("layer helpers", () => {
 		]);
 		const plain = summarizeWorldMap(base, positions);
 		expect(plain.clusters.some((c) => c.layer)).toBe(false);
+	});
+});
+
+describe("polyline helpers", () => {
+	it("finds the midpoint by length on a bent path, with that segment's heading", () => {
+		const { center, angle } = polylineMidpoint([
+			{ x: 0, y: 0 },
+			{ x: 100, y: 0 },
+			{ x: 100, y: 300 },
+		]);
+		expect(center).toEqual({ x: 100, y: 100 });
+		expect(angle).toBeCloseTo(Math.PI / 2);
+		expect(
+			polylineMidpoint([
+				{ x: 0, y: 0 },
+				{ x: 50, y: 50 },
+			]).center,
+		).toEqual({ x: 25, y: 25 });
+	});
+
+	it("spaces points evenly across bends", () => {
+		const pts = pointsAlongPolyline(
+			[
+				{ x: 0, y: 0 },
+				{ x: 100, y: 0 },
+				{ x: 100, y: 100 },
+			],
+			50,
+		);
+		expect(pts).toEqual([
+			{ x: 0, y: 0 },
+			{ x: 50, y: 0 },
+			{ x: 100, y: 0 },
+			{ x: 100, y: 50 },
+			{ x: 100, y: 100 },
+		]);
 	});
 });

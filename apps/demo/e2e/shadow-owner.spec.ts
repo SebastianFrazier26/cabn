@@ -20,8 +20,10 @@ import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 // dotfile fixture is ever committed): the toolkit's Sudo entry (O) raises the hidden
 // clusters without moving anything visible, hidden files open and save to
 // disk, a hidden-folder sign lands on disk, pets never see any of it, and a
-// reload starts with the realm off. CABN_REVIEW_SHOTS=1 writes the review
-// screenshots to assets/generated/review/shadow/.
+// reload starts with the realm off. Since M3 it also checks the nether skin
+// is drawn and that the base world's scenery (edge forest, ponds, windmill,
+// skyline) stands exactly where it did. CABN_REVIEW_SHOTS=1 writes the review
+// screenshots to assets/generated/review/shadow-m3/.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = join(here, "..", "..", "..");
@@ -34,7 +36,7 @@ const FIXTURE = join(
 	"fixtures",
 	"serve-project",
 );
-const SHOTS_DIR = join(REPO, "assets", "generated", "review", "shadow");
+const SHOTS_DIR = join(REPO, "assets", "generated", "review", "shadow-m3");
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 const PORT = Number(process.env.CABN_SHADOW_E2E_PORT ?? 5043);
 
@@ -174,6 +176,68 @@ async function archSprites(
 	});
 }
 
+interface SceneryView {
+	items: string[];
+	baseItems: string[];
+	pois: string[];
+	skyline: string[];
+	archTextures: string[];
+	textures: Record<string, boolean>;
+	fieldTexture: string | null;
+}
+
+/** WorldScene's own scenery plan and a few texture facts, straight off the scene. */
+async function scenery(page: Page): Promise<SceneryView> {
+	return page.evaluate(() => {
+		const game = (
+			window as unknown as {
+				__cabnGame: {
+					scene: { getScene(k: string): unknown };
+					textures: { exists(k: string): boolean };
+				};
+			}
+		).__cabnGame;
+		type Item = { kind: string; x: number; y: number; layer?: boolean };
+		const world = game.scene.getScene("world") as {
+			edgeDressing: {
+				items: Item[];
+				pointsOfInterest: { kind: string; x: number; y: number }[];
+			} | null;
+			sky: {
+				skyline: {
+					elements: { piece: string; layer: string; u: number }[];
+				};
+			} | null;
+			portalSprites: Map<string, { texture: { key: string } }>;
+			skin: { fieldTiles: { key: string } | null };
+		};
+		const key = (i: { kind: string; x: number; y: number }) =>
+			`${i.kind}@${i.x.toFixed(2)},${i.y.toFixed(2)}`;
+		const items = world.edgeDressing?.items ?? [];
+		return {
+			items: items.map(key),
+			baseItems: items.filter((i) => !i.layer).map(key),
+			pois: (world.edgeDressing?.pointsOfInterest ?? []).map(key),
+			skyline: (world.sky?.skyline.elements ?? []).map(
+				(e) => `${e.piece}/${e.layer}@${e.u.toFixed(2)}`,
+			),
+			archTextures: [
+				...new Set([...world.portalSprites.values()].map((s) => s.texture.key)),
+			],
+			textures: Object.fromEntries(
+				[
+					"shadow-netherrack-tiles",
+					"shadow-portal-arch",
+					"shadow-brazier",
+					"shadow-sky-ember",
+					"shadow-path-lava-bed",
+				].map((k) => [k, game.textures.exists(k)]),
+			),
+			fieldTexture: world.skin.fieldTiles?.key ?? null,
+		};
+	});
+}
+
 async function waitForWorld(page: Page) {
 	await expect
 		.poll(async () => (await snap(page)).mapPortals.length, { timeout: 30_000 })
@@ -296,6 +360,18 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(before.clusters.some((c) => c.layer)).toBe(false);
 	const beforeSprites = await archSprites(page);
 	expect(Object.keys(beforeSprites).length).toBeGreaterThan(0);
+	const beforeScenery = await scenery(page);
+	expect(beforeScenery.items.length).toBeGreaterThan(20);
+	expect(beforeScenery.archTextures).toEqual(["portal-arch-strip"]);
+	expect(beforeScenery.fieldTexture).toBeNull();
+	// The normal world never even loads the nether art.
+	expect(Object.values(beforeScenery.textures)).toEqual([
+		false,
+		false,
+		false,
+		false,
+		false,
+	]);
 	await shoot(page, "day-normal");
 
 	// Sudo raises the hidden clusters; nothing visible moves, even mid-rise.
@@ -331,6 +407,28 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	).toEqual(hiddenIds.sort());
 	expect(shadow.clusters.some((c) => c.layer)).toBe(true);
 	expect(shadow.theme).toBe("shadow");
+	// The nether skin is drawn: its textures loaded and in use.
+	const shadowScenery = await scenery(page);
+	expect(Object.values(shadowScenery.textures)).toEqual([
+		true,
+		true,
+		true,
+		true,
+		true,
+	]);
+	expect(shadowScenery.archTextures).toEqual(["shadow-portal-arch"]);
+	expect(shadowScenery.fieldTexture).toBe("shadow-netherrack-tiles");
+	// Scenery stays put: every base piece still standing is where it was
+	// (only pieces the hidden clusters and paths stand on go), the skyline
+	// keeps every base piece (ponds and the windmill are items too).
+	const beforeSet = new Set(beforeScenery.items);
+	expect(shadowScenery.baseItems.filter((i) => !beforeSet.has(i))).toEqual([]);
+	expect(shadowScenery.baseItems.length).toBeGreaterThan(
+		beforeScenery.items.length * 0.5,
+	);
+	expect(shadowScenery.skyline.slice(0, beforeScenery.skyline.length)).toEqual(
+		beforeScenery.skyline,
+	);
 	await shoot(page, "day-shadow");
 
 	// .env opens and reads.
@@ -495,6 +593,11 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(Object.keys(offSprites).filter(isHidden)).toEqual([]);
 	for (const [id, pos] of Object.entries(beforeSprites))
 		expect(offSprites[id], id).toEqual(pos);
+	const offScenery = await scenery(page);
+	expect(offScenery.items).toEqual(beforeScenery.items);
+	expect(offScenery.pois).toEqual(beforeScenery.pois);
+	expect(offScenery.skyline).toEqual(beforeScenery.skyline);
+	expect(offScenery.archTextures).toEqual(["portal-arch-strip"]);
 	await shoot(page, "night-normal");
 
 	// A reload always starts with the realm off.

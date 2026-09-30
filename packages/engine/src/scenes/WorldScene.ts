@@ -112,7 +112,12 @@ import {
 	clampToBounds,
 	type Interactable,
 } from "../systems/clickWalk.js";
-import type { CircleKeepout, SegmentKeepout } from "../systems/edgeScenery.js";
+import {
+	type CircleKeepout,
+	type EdgeSceneryLayer,
+	keepoutDistance,
+	type SegmentKeepout,
+} from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import {
 	monsterClearancePx,
@@ -171,7 +176,14 @@ import {
 	inLayerClearing,
 	isHiddenPath,
 	type LayerClearing,
+	pointsAlongPolyline,
+	polylineMidpoint,
 	type RingGeometry,
+	resolveSkin,
+	type SkinSceneryKind,
+	type SkinStrip,
+	skinAnimKey,
+	skinTextures,
 	type WorldSkin,
 } from "../systems/worldLayer.js";
 import { summarizeWorldMap } from "../systems/worldMap.js";
@@ -327,6 +339,14 @@ const EDGE_SCENERY_CLEARING_PAD = 36;
 const EDGE_SCENERY_PATH_HALF_WIDTH = 20;
 /** Subtle per-world identity tint over the tiled ground — a low-alpha overlay rather than Phaser's multiplicative sprite tint, which would recolor the tile art itself instead of just washing over it. */
 const GROUND_THEME_TINT_ALPHA = 0.12;
+/** A skin's arch overlay (runes) sits on the stone, under the portal-type trim. */
+const ARCH_SKIN_OVERLAY_DEPTH = 3.005;
+/** The brazier standing in for the root bonfire reads as the world's hearth: a little larger than a cluster's. */
+const ROOT_BRAZIER_SCALE = 0.9;
+/** Where a brazier's flames sit relative to its sprite centre (the skin's brazier art), for its night light. */
+const BRAZIER_FLAME_OFFSET_Y = -28;
+/** A base cluster's prop this close to a layer path's centreline is hidden while the layer shows (props were placed without layer paths, so they never move). */
+const LAYER_PATH_PROP_CLEARANCE = 42;
 
 export class WorldScene extends Phaser.Scene {
 	private manifest!: WorldManifest;
@@ -347,6 +367,7 @@ export class WorldScene extends Phaser.Scene {
 	private baseManifest!: WorldManifest;
 	private layerSeam: WorldLayerSeam | null = null;
 	private skin: WorldSkin = DEFAULT_SKIN;
+	private skinLoadFailed = new Set<string>();
 	private layerSwitching = false;
 	/** Set the instant a return-to-shelf is confirmed, guarding the transition-hold window (see handleReturnToShelf) against a second Esc press re-triggering scene.start before the first one fires. */
 	private returningToShelf = false;
@@ -384,7 +405,7 @@ export class WorldScene extends Phaser.Scene {
 	private ambientEffects: { destroy(): void } | null = null;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
-	private sky: { destroy(): void } | null = null;
+	private sky: ReturnType<typeof attachSky> | null = null;
 	private unsubscribeBagSlots: (() => void) | null = null;
 	private unsubscribeAmbientTimeOfDay: (() => void) | null = null;
 
@@ -444,8 +465,62 @@ export class WorldScene extends Phaser.Scene {
 		this.bus = this.registry.get("bus");
 	}
 
+	/**
+	 * A layer skin's textures load here, lazily, the first time that layer
+	 * shows (and stay cached for the next toggle). Nothing here runs for
+	 * DEFAULT_SKIN, which names no textures.
+	 */
+	preload(): void {
+		this.skinLoadFailed = new Set();
+		const pending = skinTextures(this.skin).filter(
+			(t) => !this.textures.exists(t.key),
+		);
+		if (pending.length === 0) return;
+		const onError = (file: Phaser.Loader.File): void => {
+			this.skinLoadFailed.add(file.key);
+		};
+		this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, onError);
+		this.load.once(Phaser.Loader.Events.COMPLETE, () =>
+			this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, onError),
+		);
+		for (const t of pending) {
+			if ("frameWidth" in t)
+				this.load.spritesheet(t.key, t.path, {
+					frameWidth: t.frameWidth,
+					frameHeight: t.frameHeight,
+				});
+			else this.load.image(t.key, t.path);
+		}
+	}
+
+	/** Drops any skin texture group that didn't load, and registers the skin's animations once per game. */
+	private settleSkin(): void {
+		this.skin = resolveSkin(
+			this.skin,
+			(key) => this.textures.exists(key) && !this.skinLoadFailed.has(key),
+		);
+		const strips: (SkinStrip | null | undefined)[] = [
+			this.skin.arch?.strip,
+			this.skin.arch?.overlay,
+			this.skin.brazier,
+		];
+		for (const strip of strips) {
+			if (!strip || this.anims.exists(skinAnimKey(strip))) continue;
+			this.anims.create({
+				key: skinAnimKey(strip),
+				frames: this.anims.generateFrameNumbers(strip.key, {
+					start: 0,
+					end: strip.frames - 1,
+				}),
+				frameRate: strip.frameRate,
+				repeat: -1,
+			});
+		}
+	}
+
 	create(): void {
 		perfMark("cabn:world:create-start");
+		this.settleSkin();
 		for (const cluster of this.manifest.clusters)
 			this.clustersById.set(cluster.id, cluster);
 		for (const portal of this.manifest.portals) {
@@ -485,12 +560,16 @@ export class WorldScene extends Phaser.Scene {
 		const spawn = this.resolveSpawnPos();
 
 		const beforeBake = new Set(this.children.list);
+		// Scatter keeps clear of where a fresh visit starts, not of wherever
+		// the player happens to stand: a layer toggle restarts the scene at
+		// the player's spot, and props and scenery must not move with it.
+		const sceneryKeepout = this.defaultSpawnPos();
 		perfMark("cabn:world:bake-start");
-		this.drawGround(spawn);
+		this.drawGround(sceneryKeepout);
 		perfMark("cabn:world:ground-baked");
 		this.drawPaths();
 		perfMark("cabn:world:paths-baked");
-		this.drawEdgeScenery(spawn);
+		this.drawEdgeScenery(sceneryKeepout);
 		perfMark("cabn:world:edge-scenery-baked");
 		this.drawClusters();
 		this.drawPortals();
@@ -727,9 +806,21 @@ export class WorldScene extends Phaser.Scene {
 			});
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
+		lights.push(...this.pathGlowLights());
 		if (this.availability.worldArt) {
 			for (const cluster of this.manifest.clusters) {
 				if (cluster === root) continue;
+				if (this.hasBrazier(cluster)) {
+					lights.push({
+						x: cluster.pos.x,
+						y: cluster.pos.y + BRAZIER_FLAME_OFFSET_Y,
+						radiusPx: 70,
+						color: warmLight,
+						alpha: 0.8,
+						flicker: true,
+					});
+					continue;
+				}
 				lights.push(
 					{
 						x: cluster.pos.x,
@@ -788,6 +879,10 @@ export class WorldScene extends Phaser.Scene {
 				this.atmosphere,
 				reducedMotion,
 				this.skin.skylineTint ?? undefined,
+				{
+					...(this.layerSeam ? { baseBounds: this.baseWorldBounds() } : {}),
+					...(this.skin.sky ? { skyKey: this.skin.sky.key } : {}),
+				},
 			);
 		}
 
@@ -802,6 +897,7 @@ export class WorldScene extends Phaser.Scene {
 				chimneyPositions,
 				reducedMotion,
 				particles: this.skin.particles,
+				ambient: this.skin.ambient,
 			});
 		};
 		rebuild();
@@ -936,11 +1032,27 @@ export class WorldScene extends Phaser.Scene {
 			const otherId = path.from === cluster.id ? path.to : path.from;
 			const other = this.clustersById.get(otherId);
 			if (!other) continue;
-			for (const point of stampPointsAlongSegment(
-				cluster.pos,
-				other.pos,
-				PATH_CORRIDOR_SAMPLE_SPACING,
-			)) {
+			// A layer path bends just past its base ring (layerPathRoutes), so
+			// its corridor is sampled along the bend; a straight path keeps
+			// exactly today's samples, from this cluster outward.
+			const from = this.clustersById.get(path.from);
+			const to = this.clustersById.get(path.to);
+			const polyline =
+				from && to ? this.pathPolyline(path, from, to) : [cluster.pos];
+			const samples =
+				polyline.length > 2
+					? polyline.flatMap((a, i) => {
+							const b = polyline[i + 1];
+							return b
+								? stampPointsAlongSegment(a, b, PATH_CORRIDOR_SAMPLE_SPACING)
+								: [];
+						})
+					: stampPointsAlongSegment(
+							cluster.pos,
+							other.pos,
+							PATH_CORRIDOR_SAMPLE_SPACING,
+						);
+			for (const point of samples) {
 				if (
 					Phaser.Math.Distance.Between(
 						point.x,
@@ -1026,7 +1138,7 @@ export class WorldScene extends Phaser.Scene {
 		for (const field of bakeGroundField(
 			this,
 			this.computeWorldBounds(),
-			biomeTileSheetKey("meadow"),
+			this.skin.fieldTiles?.key ?? biomeTileSheetKey("meadow"),
 			FIELD_SEED,
 			this.skin.groundTint ?? undefined,
 		)) {
@@ -1043,7 +1155,8 @@ export class WorldScene extends Phaser.Scene {
 			bakeClusterGround({
 				scene: this,
 				clusterId: cluster.id,
-				biomeSheetKey: biomeTileSheetKey(cluster.biome),
+				biomeSheetKey:
+					this.skin.clearingTiles?.key ?? biomeTileSheetKey(cluster.biome),
 				centerX: cluster.pos.x,
 				centerY: cluster.pos.y,
 				radiusX,
@@ -1053,6 +1166,7 @@ export class WorldScene extends Phaser.Scene {
 				ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
 				seed: 20260928,
 				tint: this.skin.groundTint ?? undefined,
+				...(this.skin.decals ? { decalSheetKey: this.skin.decals.key } : {}),
 			}).setDepth(0.5);
 
 			tintOverlay.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
@@ -1078,6 +1192,47 @@ export class WorldScene extends Phaser.Scene {
 				}),
 			);
 		}
+		this.clearPropsOffLayerPaths();
+		const scatterTint = this.skin.scatterTint;
+		if (scatterTint !== null)
+			for (const prop of this.placedProps) prop.sprite.setTint(scatterTint);
+	}
+
+	/**
+	 * Base props were placed without the layer's paths (so they never move
+	 * across the toggle); the few a layer path now runs over are removed
+	 * while the layer shows.
+	 */
+	private clearPropsOffLayerPaths(): void {
+		const seam = this.layerSeam;
+		if (!seam) return;
+		const segments: [Position, Position][] = [];
+		for (const path of this.manifest.paths) {
+			if (!seam.isLayerPath(path)) continue;
+			const from = this.clustersById.get(path.from);
+			const to = this.clustersById.get(path.to);
+			if (!from || !to) continue;
+			const points = this.pathPolyline(path, from, to);
+			for (let i = 1; i < points.length; i++) {
+				const a = points[i - 1];
+				const b = points[i];
+				if (a && b) segments.push([a, b]);
+			}
+		}
+		if (segments.length === 0) return;
+		this.placedProps = this.placedProps.filter((prop) => {
+			const onPath = segments.some(
+				([a, b]) =>
+					keepoutDistance(
+						prop.x,
+						prop.y,
+						[],
+						[{ ax: a.x, ay: a.y, bx: b.x, by: b.y, halfWidth: 0 }],
+					) < LAYER_PATH_PROP_CLEARANCE,
+			);
+			if (onPath) prop.sprite.destroy();
+			return !onPath;
+		});
 	}
 
 	private drawPaths(): void {
@@ -1126,8 +1281,22 @@ export class WorldScene extends Phaser.Scene {
 			// Same bounds as the ground field/camera (computeWorldBounds), not a
 			// tighter box hugging just the path endpoints — a mismatch there used
 			// to leave the path's own bake canvas clipping a stamp right at its edge.
+			const skinPath = this.skin.pathTextures;
 			const rt = this.availability.atmosphereArt
-				? bakePathRibbons(this, this.computeWorldBounds(), list, tint).rt
+				? bakePathRibbons(
+						this,
+						this.computeWorldBounds(),
+						list,
+						tint,
+						skinPath
+							? {
+									edge: skinPath.edge.key,
+									bed: skinPath.bed.key,
+									cobbles: skinPath.cobbles.map((c) => c.key),
+									cobbleFraction: skinPath.cobbleFraction,
+								}
+							: undefined,
+					).rt
 				: bakePaths(this, this.computeWorldBounds(), list, tint);
 			rt.setDepth(1);
 			if (isLayer) this.layerPathBake = rt;
@@ -1142,26 +1311,25 @@ export class WorldScene extends Phaser.Scene {
 	 */
 	private drawEdgeScenery(spawn: Position): void {
 		if (!this.availability.atmosphereArt) return;
-		const circles: CircleKeepout[] = this.manifest.clusters.map((cluster) => ({
+		const seam = this.layerSeam;
+		const isLayerCluster = (id: string) =>
+			seam?.layer.clusterIds.has(id) ?? false;
+		const clusterCircle = (cluster: Cluster): CircleKeepout => ({
 			x: cluster.pos.x,
 			y: cluster.pos.y,
 			radius: this.groundReach(cluster) + EDGE_SCENERY_CLEARING_PAD,
-		}));
-		circles.push({ x: spawn.x, y: spawn.y, radius: SPAWN_EXCLUSION_RADIUS });
-		for (const pos of this.portalWorldPos.values()) {
-			circles.push({ x: pos.x, y: pos.y, radius: PORTAL_EXCLUSION_RADIUS });
-		}
-		const segments: SegmentKeepout[] = [];
-		for (const path of this.manifest.paths) {
+		});
+		const pathSegments = (path: WorldPath): SegmentKeepout[] => {
 			const from = this.clustersById.get(path.from);
 			const to = this.clustersById.get(path.to);
-			if (!from || !to) continue;
+			if (!from || !to) return [];
 			const points = this.pathPolyline(path, from, to);
+			const out: SegmentKeepout[] = [];
 			for (let i = 1; i < points.length; i++) {
 				const a = points[i - 1];
 				const b = points[i];
 				if (!a || !b) continue;
-				segments.push({
+				out.push({
 					ax: a.x,
 					ay: a.y,
 					bx: b.x,
@@ -1169,14 +1337,62 @@ export class WorldScene extends Phaser.Scene {
 					halfWidth: EDGE_SCENERY_PATH_HALF_WIDTH,
 				});
 			}
+			return out;
+		};
+		// The base world alone decides the scenery (planLayeredEdgeScenery);
+		// a layer only takes away what its content stands on and fills the
+		// ground it adds.
+		const base = this.baseManifest;
+		const circles: CircleKeepout[] = base.clusters.map((c) =>
+			clusterCircle(this.clustersById.get(c.id) ?? c),
+		);
+		circles.push({ x: spawn.x, y: spawn.y, radius: SPAWN_EXCLUSION_RADIUS });
+		for (const portal of base.portals) {
+			const pos = this.portalWorldPos.get(portal.id);
+			if (pos)
+				circles.push({ x: pos.x, y: pos.y, radius: PORTAL_EXCLUSION_RADIUS });
 		}
+		const segments = base.paths.flatMap(pathSegments);
+		let layer: EdgeSceneryLayer | null = null;
+		if (seam) {
+			const layerCircles: CircleKeepout[] = [];
+			for (const cluster of this.manifest.clusters) {
+				if (!isLayerCluster(cluster.id)) continue;
+				layerCircles.push(clusterCircle(cluster));
+				for (const id of cluster.portalIds) {
+					const pos = this.portalWorldPos.get(id);
+					if (pos)
+						layerCircles.push({
+							x: pos.x,
+							y: pos.y,
+							radius: PORTAL_EXCLUSION_RADIUS,
+						});
+				}
+			}
+			layer = {
+				bounds: this.computeWorldBounds(),
+				circles: layerCircles,
+				segments: this.manifest.paths
+					.filter((p) => seam.isLayerPath(p))
+					.flatMap(pathSegments),
+			};
+		}
+		const swaps = this.skin.scenery;
+		const scatterTint = this.skin.scatterTint;
 		this.edgeDressing = dressEdges({
 			scene: this,
-			bounds: this.computeWorldBounds(),
+			bounds: this.baseWorldBounds(),
 			seed: this.worldId,
 			circles,
 			segments,
 			reducedMotion: prefersReducedMotion(),
+			layer,
+			...(swaps
+				? {
+						textureFor: (kind: string) => swaps[kind as SkinSceneryKind]?.key,
+					}
+				: {}),
+			...(scatterTint !== null ? { tint: scatterTint } : {}),
 		});
 	}
 
@@ -1188,7 +1404,14 @@ export class WorldScene extends Phaser.Scene {
 			const isRoot = cluster === this.rootCluster();
 			let sprite: Phaser.GameObjects.Sprite | Phaser.GameObjects.Image;
 
-			if (isRoot) {
+			const brazier = this.skin.brazier;
+			if (brazier && (isRoot || this.hasBrazier(cluster))) {
+				sprite = this.add
+					.sprite(cluster.pos.x, cluster.pos.y, brazier.key, 0)
+					.setScale(isRoot ? ROOT_BRAZIER_SCALE : 1)
+					.setDepth(2)
+					.play(skinAnimKey(brazier));
+			} else if (isRoot) {
 				sprite = this.drawBonfire(cluster.pos);
 			} else if (this.availability.worldArt) {
 				// Drawn unscaled (props density). The world's theme colour goes on
@@ -1201,6 +1424,7 @@ export class WorldScene extends Phaser.Scene {
 					0,
 				);
 				fountain.setDepth(2).play(WORLD_FOUNTAIN_IDLE_ANIM);
+				if (this.skin.archTint !== null) fountain.setTint(this.skin.archTint);
 				this.add
 					.image(cluster.pos.x, cluster.pos.y, WORLD_FOUNTAIN_GEM_KEY)
 					.setTint(this.gemTint())
@@ -1252,6 +1476,48 @@ export class WorldScene extends Phaser.Scene {
 		const sprite = this.add.sprite(pos.x, pos.y, ASSET_KEYS.portalArchStrip, 0);
 		sprite.setScale(BONFIRE_SCALE).setTint(PALETTE.gold).setDepth(2);
 		return sprite;
+	}
+
+	/** A layer's own clusters get the skin's brazier in place of a fountain. */
+	private hasBrazier(cluster: Cluster): boolean {
+		return (
+			this.skin.brazier !== null &&
+			this.availability.worldArt &&
+			(this.layerSeam?.layer.clusterIds.has(cluster.id) ?? false)
+		);
+	}
+
+	/** The skin's night light pools along every path (lava glow), evenly spaced and capped. */
+	private pathGlowLights(): LightPoolOptions[] {
+		const glow = this.skin.pathGlow;
+		if (!glow) return [];
+		const lights: LightPoolOptions[] = [];
+		for (const path of this.manifest.paths) {
+			const from = this.clustersById.get(path.from);
+			const to = this.clustersById.get(path.to);
+			if (!from || !to) continue;
+			const points = this.pathPolyline(path, from, to);
+			// Skip the stretch inside each clearing, where the hub's own light is.
+			const fromReach = this.groundReach(from) * 0.6;
+			const toReach = this.groundReach(to) * 0.6;
+			for (const p of pointsAlongPolyline(points, glow.spacingPx)) {
+				if (
+					Math.hypot(p.x - from.pos.x, p.y - from.pos.y) < fromReach ||
+					Math.hypot(p.x - to.pos.x, p.y - to.pos.y) < toReach
+				)
+					continue;
+				lights.push({
+					x: p.x,
+					y: p.y,
+					radiusPx: glow.radiusPx,
+					color: glow.color,
+					alpha: glow.alpha,
+					flicker: glow.flicker,
+				});
+				if (lights.length >= glow.maxPools) return lights;
+			}
+		}
+		return lights;
 	}
 
 	private gemTint(): number {
@@ -1342,14 +1608,24 @@ export class WorldScene extends Phaser.Scene {
 				const pos = this.portalWorldPos.get(portalId);
 				if (!pos) return; // computePortalPositions() populates every id from this same manifest — defensive only
 
+				const arch = this.skin.arch;
 				const sprite = this.add.sprite(
 					pos.x,
 					pos.y,
-					ASSET_KEYS.portalArchStrip,
+					arch?.strip.key ?? ASSET_KEYS.portalArchStrip,
 				);
 				sprite.setScale(WORLD_PORTAL_SCALE).setDepth(3);
-				if (this.skin.archTint !== null) sprite.setTint(this.skin.archTint);
-				sprite.play(PORTAL_IDLE_ANIM);
+				if (arch) {
+					sprite.play(skinAnimKey(arch.strip));
+					this.add
+						.sprite(pos.x, pos.y, arch.overlay.key, 0)
+						.setScale(WORLD_PORTAL_SCALE)
+						.setDepth(ARCH_SKIN_OVERLAY_DEPTH)
+						.play(skinAnimKey(arch.overlay));
+				} else {
+					if (this.skin.archTint !== null) sprite.setTint(this.skin.archTint);
+					sprite.play(PORTAL_IDLE_ANIM);
+				}
 				this.portalSprites.set(portalId, sprite);
 				const portal = this.portalsById.get(portalId);
 				if (portal) {
@@ -1552,10 +1828,13 @@ export class WorldScene extends Phaser.Scene {
 		const to = toId ? this.clustersById.get(toId) : undefined;
 		if (!from || !to) return;
 
-		const center = {
-			x: (from.pos.x + to.pos.x) / 2,
-			y: (from.pos.y + to.pos.y) / 2,
-		};
+		// On the path as drawn: a layer path's bend, not the straight chord.
+		const path = this.manifest.paths.find(
+			(p) => p.from === from.id && p.to === to.id,
+		);
+		const { center, angle } = polylineMidpoint(
+			path ? this.pathPolyline(path, from, to) : [from.pos, to.pos],
+		);
 		const { sprite, drawn } = this.addMonsterSprite(
 			monster,
 			center.x,
@@ -1565,7 +1844,7 @@ export class WorldScene extends Phaser.Scene {
 		this.monsterOrbits?.add(monster.id, sprite, drawn, {
 			kind: "path",
 			center,
-			pathAngle: Math.atan2(to.pos.y - from.pos.y, to.pos.x - from.pos.x),
+			pathAngle: angle,
 			halfLength: PATH_MONSTER_LOOP_PX,
 		});
 	}
@@ -1741,6 +2020,14 @@ export class WorldScene extends Phaser.Scene {
 	private computeWorldBounds(): WorldBounds {
 		return sharedComputeWorldBounds(
 			this.manifest.clusters.map((c) => c.pos),
+			{ width: this.scale.width, height: this.scale.height },
+		);
+	}
+
+	/** The same box for the base world alone: what edge scenery and the skyline are laid out from, so a layer never moves them. */
+	private baseWorldBounds(): WorldBounds {
+		return sharedComputeWorldBounds(
+			this.baseManifest.clusters.map((c) => c.pos),
 			{ width: this.scale.width, height: this.scale.height },
 		);
 	}
@@ -2241,6 +2528,17 @@ export class WorldScene extends Phaser.Scene {
 					: {}),
 				...(this.skin.parchmentTint !== null
 					? { parchmentTint: this.skin.parchmentTint }
+					: {}),
+				...(this.skin.parchment
+					? { parchmentTexture: this.skin.parchment.key }
+					: {}),
+				...(this.skin.arch
+					? {
+							archStrip: {
+								key: this.skin.arch.strip.key,
+								anim: skinAnimKey(this.skin.arch.strip),
+							},
+						}
 					: {}),
 			});
 		}

@@ -21,6 +21,7 @@ const distDir = join(demoRoot, "dist");
 
 const FORBIDDEN_JS_MARKERS = [
 	"/owner/shadow/",
+	"/assets/shadow/",
 	"createShadowLayer",
 	"createOwnerShadowClient",
 	"__CABN_SHADOW",

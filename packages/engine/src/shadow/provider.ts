@@ -7,7 +7,7 @@ import {
 	createOwnerShadowClient,
 	type OwnerShadowClientOptions,
 } from "./client.js";
-import { SHADOW_SKIN } from "./skin.js";
+import { NETHER_SKIN } from "./skin.js";
 import { createSudoTool } from "./sudoTool.js";
 
 export const SHADOW_LAYER_ID = "shadow";
@@ -30,7 +30,7 @@ export function createShadowLayer(
 		id: SHADOW_LAYER_ID,
 		label: "hidden",
 		tools: [createSudoTool(SHADOW_LAYER_ID)],
-		skin: SHADOW_SKIN,
+		skin: NETHER_SKIN,
 		async load() {
 			index = null;
 			return client.manifest();

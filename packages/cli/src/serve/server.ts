@@ -7,7 +7,7 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { createRequire } from "node:module";
-import { basename, extname, resolve as resolvePath } from "node:path";
+import { basename, extname, posix, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	convert,
@@ -175,6 +175,15 @@ function serveWorldAsset(
 	}
 	res.writeHead(200, { "content-type": contentTypeFor(key) });
 	res.end(value);
+}
+
+/** `shadow/...` under the asset root, however spelled (case-insensitive filesystems, `./`, doubled slashes). */
+export function isShadowAssetPath(relPath: string): boolean {
+	const first = posix
+		.normalize(relPath)
+		.split("/")
+		.find((s) => s !== "" && s !== ".");
+	return first?.toLowerCase() === "shadow";
 }
 
 async function serveRepoAsset(
@@ -357,7 +366,14 @@ async function handleRequest(
 		return;
 	}
 	if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
-		await serveRepoAsset(res, url.pathname.slice("/assets/".length));
+		const rel = url.pathname.slice("/assets/".length);
+		// The shadow realm's art exists only for the owner, like its routes.
+		if (!ctx.ownerToken && isShadowAssetPath(rel)) {
+			res.writeHead(404);
+			res.end("not found");
+			return;
+		}
+		await serveRepoAsset(res, rel);
 		return;
 	}
 	if (req.method === "GET" && url.pathname === PDF_WORKER_ROUTE) {

@@ -1,7 +1,10 @@
 import Phaser from "phaser";
 import { FX_SPARK_KEY } from "../assetPaths.js";
 import type { TimeOfDay } from "../systems/timeOfDay.js";
-import type { WorldParticleSkin } from "../systems/worldLayer.js";
+import type {
+	SkinAmbientParticles,
+	WorldParticleSkin,
+} from "../systems/worldLayer.js";
 
 export interface EffectBounds {
 	minX: number;
@@ -19,6 +22,8 @@ export interface WorldEffectsOptions {
 	reducedMotion: boolean;
 	/** A world skin's particle colours; omitted, today's. */
 	particles?: WorldParticleSkin | null;
+	/** A world skin's world-wide particles, replacing motes and fireflies (day and night alike). */
+	ambient?: SkinAmbientParticles | null;
 }
 
 export interface WorldEffectsHandle {
@@ -148,6 +153,55 @@ function createChimneySmoke(
 	return emitter;
 }
 
+/** Ash drifting down across the whole scene — cut under reduced motion, like the motes it replaces. */
+function createAsh(
+	scene: Phaser.Scene,
+	bounds: EffectBounds,
+	ash: SkinAmbientParticles["ash"],
+): Phaser.GameObjects.Particles.ParticleEmitter {
+	const pos = randomInBounds(bounds);
+	const emitter = scene.add.particles(0, 0, ash.texture.key, {
+		x: pos.x,
+		y: pos.y,
+		frame: Array.from({ length: ash.texture.frames }, (_, i) => i),
+		lifespan: { min: 6000, max: 11000 },
+		speedX: { min: -14, max: 6 },
+		speedY: { min: 8, max: 22 },
+		rotate: { min: 0, max: 360 },
+		scale: { start: 1, end: 0.6 },
+		alpha: { start: 0, end: ash.alpha, ease: "Sine.easeInOut" },
+		tint: ash.tint,
+		frequency: ash.frequencyMs,
+		quantity: 1,
+	});
+	emitter.setDepth(AMBIENT_DEPTH);
+	return emitter;
+}
+
+/** Sparks rising from anywhere in the scene, above the night grade so they glow. */
+function createEmberField(
+	scene: Phaser.Scene,
+	bounds: EffectBounds,
+	embers: SkinAmbientParticles["embers"],
+): Phaser.GameObjects.Particles.ParticleEmitter {
+	const pos = randomInBounds(bounds);
+	const emitter = scene.add.particles(0, 0, embers.texture.key, {
+		x: pos.x,
+		y: pos.y,
+		lifespan: { min: 1800, max: 3200 },
+		speedY: { min: -38, max: -14 },
+		speedX: { min: -10, max: 10 },
+		scale: { start: 0.45, end: 0 },
+		alpha: { start: 0.95, end: 0 },
+		tint: [...embers.colors],
+		blendMode: Phaser.BlendModes.ADD,
+		frequency: embers.frequencyMs,
+		quantity: 1,
+	});
+	emitter.setDepth(EMBER_DEPTH);
+	return emitter;
+}
+
 /**
  * Cheap ambient particle layer: fireflies at night or drifting motes by day
  * across the whole scene (one emitter, capped by lifespan/frequency rather
@@ -163,7 +217,14 @@ export function attachWorldEffects(
 	const objects: Phaser.GameObjects.GameObject[] = [];
 	const colors = options.particles ?? DEFAULT_PARTICLES;
 
-	if (options.timeOfDay === "night") {
+	if (options.ambient) {
+		if (!options.reducedMotion) {
+			objects.push(
+				createAsh(scene, options.bounds, options.ambient.ash),
+				createEmberField(scene, options.bounds, options.ambient.embers),
+			);
+		}
+	} else if (options.timeOfDay === "night") {
 		objects.push(
 			createFireflies(
 				scene,
