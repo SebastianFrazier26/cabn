@@ -1,7 +1,15 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import sharp from "sharp";
 import { describe, expect, test } from "vitest";
 import type { RGB } from "../src/color.js";
-import { paletteJsonPath } from "../src/paths.js";
+import { defeatFrames, hitFrame } from "../src/monster-fx.js";
+import {
+	generatedDir,
+	paletteJsonPath,
+	placeholdersDir,
+} from "../src/paths.js";
+import type { PixelMap } from "../src/pixelmap.js";
 import { portalArchFrame } from "../src/pixelmaps/portal-arch.js";
 import {
 	brazierFrame,
@@ -11,7 +19,10 @@ import {
 	obsidianTileFrames,
 	sudoIconGrid,
 } from "../src/shadow/grids.js";
+import { hudIconSources, isGreen, netherIcons } from "../src/shadow/icons.js";
+import { netherMonsters, normalMonsterFrames } from "../src/shadow/monsters.js";
 import { buildNetherPalette } from "../src/shadow/palette.js";
+import { deadPlantProps, deadPlantScenery } from "../src/shadow/plants.js";
 import {
 	NETHER_SCENERY_KINDS,
 	netherPropPalette,
@@ -27,6 +38,7 @@ const base: RGB[] = JSON.parse(
 	readFileSync(paletteJsonPath, "utf8"),
 ).colors.map((c: { rgb: RGB }) => c.rgb);
 const pal = buildNetherPalette(base);
+const shadowAssetsDir = join(generatedDir, "shadow");
 
 describe("shadow art", () => {
 	test("nether colours are appended, never shifting palette.json's indices", () => {
@@ -115,8 +127,159 @@ describe("nether prop, scenery and skyline variants", () => {
 		).toEqual([]);
 	});
 
-	test("damage is deterministic", () => {
+	test("damage and the dead-plant redraws are deterministic", () => {
 		expect(netherProps(pal)).toEqual(netherProps(pal));
 		expect(netherScenery(pal)).toEqual(netherScenery(pal));
+	});
+});
+
+describe("nether monsters", () => {
+	const monsters = netherMonsters(pal);
+	const usedGreen = (map: PixelMap) => {
+		const used = new Set(map.rows.join(""));
+		return Object.entries(map.legend)
+			.filter(([ch, i]) => used.has(ch) && isGreen(pal.colors[i]))
+			.map(([ch]) => `${map.name}:${ch}`);
+	};
+
+	test("all eleven species, each frame exactly its original's size and layout", () => {
+		expect(monsters.map((m) => m.slug).sort()).toEqual(
+			[
+				"bramble",
+				"ghost",
+				"gremlin",
+				"imp",
+				"magpie",
+				"ouroboros",
+				"rot_sprite",
+				"shade",
+				"skeleton",
+				"warded_mimic",
+				"will_o_wisp",
+			].sort(),
+		);
+		for (const m of monsters) {
+			const normal = normalMonsterFrames(m.slug);
+			expect(m.idle, m.slug).toHaveLength(normal.length);
+			expect(m.idle).toHaveLength(m.slug === "ghost" ? 1 : 2);
+			for (const [i, f] of m.idle.entries()) {
+				expect(f.rows, `${m.slug} idle${i}`).toEqual(normal[i]?.rows);
+				expect([f.width, f.height]).toEqual([
+					normal[i]?.width,
+					normal[i]?.height,
+				]);
+			}
+			const idle0 = normal[0] as PixelMap;
+			const normalFx = [
+				hitFrame(idle0, pal.colors, "n"),
+				...defeatFrames(idle0, pal.colors, "n"),
+			];
+			expect(m.defeat).toHaveLength(3);
+			for (const [i, f] of [m.hit, ...m.defeat].entries()) {
+				expect([f.width, f.height], `${m.slug} fx${i}`).toEqual([
+					idle0.width,
+					idle0.height,
+				]);
+				expect([f.width, f.height]).toEqual([
+					normalFx[i]?.width,
+					normalFx[i]?.height,
+				]);
+			}
+		}
+	});
+
+	test("no frame uses green, and output is deterministic", () => {
+		expect(
+			monsters.flatMap((m) =>
+				[...m.idle, m.hit, ...m.defeat].flatMap(usedGreen),
+			),
+		).toEqual([]);
+		expect(netherMonsters(pal)).toEqual(monsters);
+	});
+});
+
+describe("crimson HUD icons", () => {
+	const icons = netherIcons(pal);
+	const hasGreen = (map: PixelMap) => {
+		const used = new Set(map.rows.join(""));
+		return Object.entries(map.legend).some(
+			([ch, i]) => used.has(ch) && isGreen(pal.colors[i]),
+		);
+	};
+
+	test("every icon drawn with green gets a variant, the same size and cells, with no green left", () => {
+		const green = hudIconSources()
+			.map((s) => s.map)
+			.filter(hasGreen);
+		expect(icons.map((i) => i.map.name)).toEqual(
+			green.map((m) => `${m.name}_nether`),
+		);
+		expect(icons.map((i) => i.map.name)).toContain("ui_tool_replace_nether");
+		for (const [k, icon] of icons.entries()) {
+			expect(icon.map.rows).toEqual(green[k]?.rows);
+			expect(hasGreen(icon.map), icon.map.name).toBe(false);
+		}
+		expect(netherIcons(pal)).toEqual(icons);
+	});
+});
+
+describe("dead plants", () => {
+	test("the plant props and scenery are the hand-drawn redraws, not recolours", () => {
+		const props = new Map(netherProps(pal).map((v) => [v.name, v.grid]));
+		for (const [name, grid] of Object.entries(deadPlantProps(pal.n, pal.ink)))
+			expect(props.get(name), name).toEqual(grid);
+		const scenery = new Map(netherScenery(pal).map((v) => [v.name, v.grid]));
+		for (const [name, grid] of Object.entries(deadPlantScenery(pal.n, pal.ink)))
+			expect(scenery.get(name), name).toEqual(grid);
+		expect(Object.keys(deadPlantProps(pal.n, pal.ink)).sort()).toEqual([
+			"bush",
+			"hedge",
+			"tree-large",
+			"tree-small",
+		]);
+		expect(Object.keys(deadPlantScenery(pal.n, pal.ink)).sort()).toEqual([
+			"berry-shrub",
+			"blossom-oak",
+			"flower-patch",
+			"oak",
+			"shrub",
+		]);
+	});
+});
+
+describe("generated crimson icons, pixel by pixel", () => {
+	const greenPixels = async (file: string) => {
+		const { data } = await sharp(file)
+			.ensureAlpha()
+			.raw()
+			.toBuffer({ resolveWithObject: true });
+		let count = 0;
+		for (let i = 0; i < data.length; i += 4) {
+			if ((data[i + 3] ?? 0) < 64) continue;
+			const r = data[i] ?? 0;
+			const g = data[i + 1] ?? 0;
+			const b = data[i + 2] ?? 0;
+			const lo = Math.min(r, b);
+			if (g - lo < 30 || g < r || g < b) continue;
+			const hue = 60 * ((b - r) / (g - lo)) + 120;
+			if (hue >= 75 && hue <= 165) count++;
+		}
+		return count;
+	};
+
+	test("every HUD icon whose normal art shows green has a variant, and no variant shows any", async () => {
+		const names = hudIconSources().map((s) => s.map.name);
+		const greenNormals: string[] = [];
+		for (const name of names)
+			if ((await greenPixels(join(placeholdersDir, `${name}_soft.png`))) > 0)
+				greenNormals.push(name);
+		expect(greenNormals).toContain("ui_tool_replace");
+		expect(netherIcons(pal).map((i) => i.map.name)).toEqual(
+			greenNormals.map((n) => `${n}_nether`),
+		);
+		for (const name of greenNormals) {
+			const file = join(shadowAssetsDir, `${name}_nether_soft.png`);
+			expect(await greenPixels(file), name).toBe(0);
+		}
 	});
 });

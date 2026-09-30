@@ -76,7 +76,7 @@ const CRISP_UPSCALE = 8; // sparkles especially are tiny (9x9) — need a big mu
 // threshold (180) and blew out into a starburst indistinguishable from the
 // wand's tip glow — raising the threshold above the lens's own luminance
 // keeps it a flat, readable disc instead.
-const SOFTEN_OVERRIDES: Record<string, Parameters<typeof soften>[1]> = {
+export const SOFTEN_OVERRIDES: Record<string, Parameters<typeof soften>[1]> = {
 	ui_icon_spyglass: { bloomThreshold: 235, bloomStrength: 0.15 },
 };
 

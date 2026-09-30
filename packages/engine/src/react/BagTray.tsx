@@ -3,6 +3,7 @@ import type { StoreApi } from "zustand/vanilla";
 import { uiIconPath, uiScreenPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import { iconFallback, useLayerIcon } from "./layerIcons.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface BagTrayProps {
@@ -24,6 +25,7 @@ export function BagTray({
 	store,
 	bus,
 }: BagTrayProps): React.ReactElement | null {
+	const iconFor = useLayerIcon(store);
 	const slots = useCabnStore(store, (s) => s.bagSlots);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const bagOpen = useCabnStore(store, (s) => s.bagOpen);
@@ -153,7 +155,11 @@ export function BagTray({
 					title="open the bag"
 					onClick={() => store.getState().setBagOpen(true)}
 				>
-					<img src={uiIconPath("bag")} alt="" />
+					<img
+						src={iconFor(uiIconPath("bag"))}
+						onError={iconFallback(uiIconPath("bag"))}
+						alt=""
+					/>
 					<span className="cabn-badge">{slots.length}</span>
 				</button>
 			)}

@@ -7,6 +7,7 @@ import {
 	type SceneryPalette,
 } from "../world-art/scenery.js";
 import type { NetherPalette } from "./palette.js";
+import { deadPlantProps, deadPlantScenery } from "./plants.js";
 
 /**
  * Nether variants of the normal world's clearing props, edge scenery and
@@ -14,8 +15,9 @@ import type { NetherPalette } from "./palette.js";
  * normal art with nether palette indices, so every variant is exactly the
  * original's size (the engine swaps textures without moving anything), then
  * gets deterministic damage where the shape alone would still read as the
- * green world: charred foliage with embers, burnt-through roofs, tattered
- * sails. Before this, the realm multiply-tinted the green art, which left it
+ * green world: burnt-through roofs, tattered sails. The plants are redrawn
+ * dead instead (plants.ts): a recoloured canopy still reads as a living
+ * tree. Before this, the realm multiply-tinted the green art, which left it
  * olive.
  */
 
@@ -140,32 +142,16 @@ function damage(
 	);
 }
 
-/** Embers smouldering in charred foliage. */
-function smoulder(grid: Grid, n: N, seed: number): Grid {
-	return damage(
-		damage(grid, [n.charLight], n.emberRed, 0.05, seed),
-		[n.ashMid],
-		n.emberOrange,
-		0.06,
-		seed + 1,
-	);
-}
-
 const PROP_SEED = 20262900;
 const SCENERY_SEED = 20262950;
 
 export function netherProps(p: NetherPalette): NetherVariant[] {
 	const { n } = p;
+	const plants = deadPlantProps(n, p.ink);
 	return buildProps(netherPropPalette(p)).map((prop, i) => {
 		const seed = PROP_SEED + i * 7;
-		let grid = prop.grid;
+		let grid = plants[prop.name] ?? prop.grid;
 		switch (prop.name) {
-			case "hedge":
-			case "bush":
-			case "tree-small":
-			case "tree-large":
-				grid = smoulder(grid, n, seed);
-				break;
 			case "cottage":
 				// Burnt through: fire glows where the roof has fallen in, and soot streaks the plaster.
 				grid = damage(grid, [n.char, n.charLight], n.emberRed, 0.14, seed);
@@ -182,8 +168,10 @@ export function netherProps(p: NetherPalette): NetherVariant[] {
 	});
 }
 
-/** Edge scenery the realm's first nether pass (M3) left to a multiply tint; pine/oak/blossom-oak/boulder/pond have their own redraws in grids.ts. */
+/** Edge scenery with a nether variant here (the plants redrawn, the rest recoloured); pine/boulder/pond have their own redraws in grids.ts. */
 export const NETHER_SCENERY_KINDS = [
+	"oak",
+	"blossom-oak",
 	"shrub",
 	"berry-shrub",
 	"rock-small",
@@ -201,16 +189,18 @@ export const NETHER_SCENERY_KINDS = [
 export function netherScenery(p: NetherPalette): NetherVariant[] {
 	const { n } = p;
 	const wanted = new Set<string>(NETHER_SCENERY_KINDS);
+	const plants = deadPlantScenery(n, p.ink);
+	// Seeded by position in the M3 list (before the oaks joined it), so the
+	// recoloured pieces keep their damage exactly.
+	const m3Order = NETHER_SCENERY_KINDS.filter(
+		(k) => k !== "oak" && k !== "blossom-oak",
+	) as string[];
 	return buildScenery(netherSceneryPalette(p))
 		.filter((piece) => wanted.has(piece.name))
-		.map((piece, i) => {
-			const seed = SCENERY_SEED + i * 7;
-			let grid = piece.grid;
+		.map((piece) => {
+			const seed = SCENERY_SEED + m3Order.indexOf(piece.name) * 7;
+			let grid = plants[piece.name] ?? piece.grid;
 			switch (piece.name) {
-				case "shrub":
-				case "berry-shrub":
-					grid = smoulder(grid, n, seed);
-					break;
 				case "windmill-sails":
 					// A dead mill: the cloth hangs in rags off the spars.
 					grid = damage(grid, [n.ashMid], null, 0.45, seed);

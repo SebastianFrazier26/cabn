@@ -5,10 +5,13 @@ import {
 	type SpellbookToolId,
 	toolTooltip,
 } from "../systems/spellbookTools.js";
+import { iconFallback } from "./layerIcons.js";
 
 export interface SpellbookToolbarProps {
 	isMac: boolean;
 	onTool(id: SpellbookToolId): void;
+	/** The active layer skin's icon swap (layerIcons.ts); icons show as they are without one. */
+	iconFor?: (src: string) => string;
 }
 
 function iconSrc(tool: SpellbookTool): string {
@@ -27,6 +30,7 @@ const GROUP_ENDS = new Set<SpellbookToolId>([
 export function SpellbookToolbar({
 	isMac,
 	onTool,
+	iconFor = (src) => src,
 }: SpellbookToolbarProps): React.ReactElement {
 	return (
 		<div
@@ -47,7 +51,11 @@ export function SpellbookToolbar({
 						onMouseDown={(event) => event.preventDefault()}
 						onClick={() => onTool(tool.id)}
 					>
-						<img src={iconSrc(tool)} alt="" />
+						<img
+							src={iconFor(iconSrc(tool))}
+							alt=""
+							onError={iconFallback(iconSrc(tool))}
+						/>
 						<span>{tool.label}</span>
 					</button>
 					{GROUP_ENDS.has(tool.id) && (

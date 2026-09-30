@@ -8,6 +8,7 @@ import {
 	stepPick,
 } from "../systems/ownerToolkit.js";
 import { KEYBOARD_OWNER_ATTR } from "../systems/uiFocus.js";
+import { iconFallback, useLayerIcon } from "./layerIcons.js";
 import { useOwnerToolkitStyles } from "./ownerToolkitStyles.js";
 
 export interface OwnerToolkitProps {
@@ -34,6 +35,7 @@ export function OwnerToolkit({
 	const entriesRef = useRef(entries);
 	entriesRef.current = entries;
 
+	const iconFor = useLayerIcon(store);
 	const close = () => store.getState().setOwnerToolkitOpen(false);
 	const confirm = (entry: OwnerToolkitEntry | undefined) => {
 		if (!entry) return;
@@ -156,7 +158,11 @@ export function OwnerToolkit({
 							>
 								<kbd>{index + 1}</kbd>
 								{entry.icon ? (
-									<img src={entry.icon} alt="" />
+									<img
+										src={iconFor(entry.icon)}
+										alt=""
+										onError={iconFallback(entry.icon)}
+									/>
 								) : (
 									<span
 										className="cabn-owner-toolkit-glyph"

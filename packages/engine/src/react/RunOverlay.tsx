@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand/vanilla";
 import { uiIconPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import { iconFallback, useLayerIcon } from "./layerIcons.js";
 import { RunConsole } from "./RunConsole.js";
 import { useCabnStore } from "./useCabnStore.js";
 
@@ -34,6 +35,7 @@ export function RunOverlay({
 	store,
 	bus,
 }: RunOverlayProps): React.ReactElement | null {
+	const iconFor = useLayerIcon(store);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const run = useCabnStore(store, (s) => s.run);
 	// The buffer, not the saved text: the wand runs unsaved edits too.
@@ -70,7 +72,8 @@ export function RunOverlay({
 			<div className="cabn-rune-dot" style={{ top: "94%", left: "50%" }} />
 			<div className="cabn-rune-dot" style={{ top: "50%", left: "6%" }} />
 			<img
-				src={uiIconPath("wand")}
+				src={iconFor(uiIconPath("wand"))}
+				onError={iconFallback(uiIconPath("wand"))}
 				alt=""
 				className="cabn-wand-cast-icon"
 				aria-hidden="true"

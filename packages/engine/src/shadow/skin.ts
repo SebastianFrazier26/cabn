@@ -2,6 +2,8 @@ import { PROP_NAMES, SKYLINE_PIECES } from "../assetPaths.js";
 import { DAY_GLOW_PARAMS, NIGHT_GLOW_PARAMS } from "../fx/glowParams.js";
 import type { WorldSkin } from "../systems/worldLayer.js";
 import {
+	CRIMSON_UI_ICONS,
+	NETHER_MONSTERS,
 	netherProp,
 	netherScenery,
 	netherSkyline,
@@ -9,8 +11,10 @@ import {
 } from "./assets.js";
 import { CRIMSON_TOKENS } from "./tokens.js";
 
-/** Edge scenery with a palette-remapped nether variant (shadow-art.ts); the rest have their own redraws. */
+/** Edge scenery with a nether variant from shadow/props.ts (plants redrawn dead, the rest recoloured); the rest have their own redraws. */
 export const REMAPPED_SCENERY = [
+	"oak",
+	"blossom-oak",
 	"shrub",
 	"berry-shrub",
 	"rock-small",
@@ -32,7 +36,8 @@ export const REMAPPED_SCENERY = [
  * shows its day look whatever the player's setting, with the lava and
  * braziers kept glowing through that day. Every prop, scenery piece and
  * skyline piece has a nether variant, so nothing is left to the multiply
- * tint, which turned the green art olive.
+ * tint, which turned the green art olive; the monsters wear nether art too,
+ * and the HUD icons lose their green.
  */
 export const NETHER_SKIN: WorldSkin = {
 	id: "shadow",
@@ -75,8 +80,6 @@ export const NETHER_SKIN: WorldSkin = {
 	brazier: T.brazier,
 	scenery: {
 		pine: T.basaltPillar,
-		oak: T.deadTree,
-		"blossom-oak": T.deadTree,
 		boulder: T.magmaRock,
 		pond: T.lavaPond,
 		...Object.fromEntries(REMAPPED_SCENERY.map((k) => [k, netherScenery(k)])),
@@ -85,6 +88,10 @@ export const NETHER_SKIN: WorldSkin = {
 	skyline: Object.fromEntries(
 		SKYLINE_PIECES.map((piece) => [piece, netherSkyline(piece)]),
 	),
+	monsters: NETHER_MONSTERS,
+	// A dead mill: its torn sails hang still.
+	stillScenery: ["windmill-sails"],
+	uiIcons: CRIMSON_UI_ICONS,
 	scatterTint: 0x7a4a44,
 	ambient: {
 		ash: { texture: T.ash, tint: 0xd8ccc8, frequencyMs: 140, alpha: 0.7 },

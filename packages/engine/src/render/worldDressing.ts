@@ -71,6 +71,8 @@ export interface EdgeDressingInput {
 	textureFor?: (kind: SceneryName) => string | undefined;
 	/** A world skin's multiply tint on every piece it doesn't redraw. */
 	tint?: number;
+	/** Kinds that hold still (a world skin's stillScenery): the windmill's sails don't turn. */
+	still?: ReadonlySet<SceneryName>;
 }
 
 export interface EdgeDressing {
@@ -128,7 +130,7 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 				poi.y,
 				footprints.windmill.h,
 				SAILS_DEPTH,
-				input.reducedMotion,
+				input.reducedMotion || (input.still?.has("windmill-sails") ?? false),
 				input.tint,
 				input.textureFor?.("windmill-sails"),
 			),

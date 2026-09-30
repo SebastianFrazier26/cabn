@@ -29,6 +29,7 @@ import { dashedLine } from "../render/dashedLine.js";
 import {
 	addHoverBob,
 	createMonsterSprite,
+	type MonsterSkinArt,
 	playMonsterDefeat,
 	playMonsterHit,
 } from "../render/monsterSprite.js";
@@ -107,6 +108,8 @@ export interface FileSceneData {
 	backdrop?: number;
 	/** The active world skin's arch strip for the exit portal, and its looping animation. */
 	archStrip?: { key: string; anim: string };
+	/** The active world skin's monster art (already loaded and animated by WorldScene). */
+	monsterSkin?: MonsterSkinArt;
 }
 
 // A vertical parchment scroll beside a line-numbered page of the file's
@@ -259,6 +262,7 @@ export class FileScene extends Phaser.Scene {
 	private visit = 0;
 	private parchmentTint: number | undefined;
 	private backdrop: number | undefined;
+	private monsterSkin: MonsterSkinArt = null;
 	private parchmentTexture: string | undefined;
 	private parchmentTile: Phaser.GameObjects.TileSprite | null = null;
 	private archStrip: FileSceneData["archStrip"];
@@ -313,6 +317,7 @@ export class FileScene extends Phaser.Scene {
 		this.saveToDisk = data.saveToDisk;
 		this.parchmentTint = data.parchmentTint;
 		this.backdrop = data.backdrop;
+		this.monsterSkin = data.monsterSkin ?? null;
 		this.parchmentTexture =
 			data.parchmentTexture && this.textures.exists(data.parchmentTexture)
 				? data.parchmentTexture
@@ -641,6 +646,7 @@ export class FileScene extends Phaser.Scene {
 				pos.y,
 				monster.species,
 				MONSTER_FILE_SIZE[monster.species] ?? 20,
+				this.monsterSkin,
 			);
 			sprite.setDepth(4);
 			// Wisps are cosmetic (see onEditorSave/onBagUse-adjacent doc below) —

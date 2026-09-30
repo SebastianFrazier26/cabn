@@ -1,5 +1,19 @@
-import type { PropName, SkylinePiece } from "../assetPaths.js";
-import type { SkinImage, SkinSheet, SkinStrip } from "../systems/worldLayer.js";
+import {
+	BATTLE_FX_MONSTER_SPECIES,
+	MONSTER_DEFEAT_FRAME_COUNT,
+	type PropName,
+	type SkylinePiece,
+	type UiIconName,
+	type UiToolIconName,
+	uiIconPath,
+	uiToolIconPath,
+} from "../assetPaths.js";
+import type {
+	SkinImage,
+	SkinMonster,
+	SkinSheet,
+	SkinStrip,
+} from "../systems/worldLayer.js";
 
 /**
  * The shadow realm's art (tools/asset-pipeline's shadow-art.ts). `cabn
@@ -79,7 +93,6 @@ export const SHADOW_TEXTURES = {
 		6,
 		8,
 	),
-	deadTree: image("dead-tree", "scenery_dead_tree_soft.png"),
 	basaltPillar: image("basalt-pillar", "scenery_basalt_pillar_soft.png"),
 	magmaRock: image("magma-rock", "scenery_magma_rock_soft.png"),
 	lavaPond: image("lava-pond", "scenery_lava_pond_soft.png"),
@@ -99,3 +112,59 @@ export const netherScenery = (name: string): SkinImage =>
 
 export const netherSkyline = (piece: SkylinePiece): SkinImage =>
 	image(`skyline-${piece}`, `skyline_${piece}_nether_soft.png`);
+
+/** Every species, as the nether shows it (shadow/monsters.ts in the asset pipeline); ghost is the one static species. */
+export const NETHER_MONSTERS: Record<string, SkinMonster> = Object.fromEntries(
+	BATTLE_FX_MONSTER_SPECIES.map((species) => {
+		const file = slug(species);
+		return [
+			species,
+			{
+				idle:
+					species === "ghost"
+						? [image("monster-ghost", "ghost_nether_soft.png")]
+						: [0, 1].map((i) =>
+								image(
+									`monster-${species}-${i}`,
+									`${file}_idle${i}_nether_soft.png`,
+								),
+							),
+				hit: image(`monster-${species}-hit`, `${file}_hit_nether_soft.png`),
+				defeat: Array.from({ length: MONSTER_DEFEAT_FRAME_COUNT }, (_, i) =>
+					image(
+						`monster-${species}-defeat${i}`,
+						`${file}_defeat${i}_nether_soft.png`,
+					),
+				),
+			},
+		];
+	}),
+);
+
+/** HUD icons drawn with green, and their ember variants (shadow/icons.ts). */
+const CRIMSON_TOOL_ICONS: readonly UiToolIconName[] = ["replace", "goto"];
+const CRIMSON_ITEM_ICONS: readonly UiIconName[] = [
+	"orb",
+	"spyglass",
+	"bag",
+	"quill",
+	"wand",
+	"key",
+	"sign",
+	"owner",
+];
+
+export const CRIMSON_UI_ICONS: Readonly<Record<string, string>> = {
+	...Object.fromEntries(
+		CRIMSON_TOOL_ICONS.map((name) => [
+			uiToolIconPath(name),
+			`${SHADOW_ASSET_BASE}/ui_tool_${name}_nether_soft.png`,
+		]),
+	),
+	...Object.fromEntries(
+		CRIMSON_ITEM_ICONS.map((name) => [
+			uiIconPath(name),
+			`${SHADOW_ASSET_BASE}/ui_icon_${name}_nether_soft.png`,
+		]),
+	),
+};

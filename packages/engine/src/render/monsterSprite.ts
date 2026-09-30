@@ -6,6 +6,7 @@ import {
 	monsterIdleAnim,
 } from "../scenes/PreloadScene.js";
 import { resolveMonsterSpecies } from "../systems/monsterOrbit.js";
+import { type SkinMonster, skinMonsterAnims } from "../systems/worldLayer.js";
 import { fitSpriteToSize } from "./scale.js";
 
 /** The species whose art will actually be drawn for `species` — itself if its idle animation loaded, else shade, else ghost (see systems/monsterOrbit.ts's resolveMonsterSpecies). */
@@ -20,40 +21,88 @@ export function renderedMonsterSpecies(
 	);
 }
 
-/** Ghost (M2) is a single static image with no idle animation — see assetPaths.ts's ANIMATED_MONSTER_SPECIES comment — so it's the one species that never gets `.play()`'d. */
+/** A layer skin's monster art by species (WorldSkin.monsters), already loaded and animated by WorldScene. */
+export type MonsterSkinArt = Partial<Record<string, SkinMonster>> | null;
+
+/** What a sprite plays: a still texture (ghost) or an idle loop, plus its battle animations when they exist. */
+interface MonsterLook {
+	/** The species whose art is shown (a fallback species when its own normal art is missing). */
+	drawn: string;
+	still: string;
+	idle: string | null;
+	hit: string | null;
+	defeat: string | null;
+}
+
+function lookFor(
+	scene: Phaser.Scene,
+	species: string,
+	skin: MonsterSkinArt,
+): MonsterLook {
+	const art = skin?.[species];
+	if (art?.idle[0]) {
+		const anims = skinMonsterAnims(art);
+		const has = (key: string | null) =>
+			key !== null && scene.anims.exists(key) ? key : null;
+		if (anims.idle === null || has(anims.idle)) {
+			return {
+				drawn: species,
+				still: art.idle[0].key,
+				idle: has(anims.idle),
+				hit: has(anims.hit),
+				defeat: has(anims.defeat),
+			};
+		}
+	}
+	const drawn = renderedMonsterSpecies(scene, species);
+	const has = (key: string) => (scene.anims.exists(key) ? key : null);
+	return {
+		drawn,
+		still: drawn === "ghost" ? MONSTER_GHOST_KEY : monsterFrameKey(drawn, 0),
+		idle: drawn === "ghost" ? null : monsterIdleAnim(drawn),
+		hit: has(monsterHitAnim(drawn)),
+		defeat: has(monsterDefeatAnim(drawn)),
+	};
+}
+
+/** Ghost (M2) is a single static image with no idle animation — see assetPaths.ts's ANIMATED_MONSTER_SPECIES comment — so it's the one species that never gets `.play()`'d. A skin's art for the species, when given and loaded, takes its place at the same size. */
 export function createMonsterSprite(
 	scene: Phaser.Scene,
 	x: number,
 	y: number,
 	species: string,
 	targetPx: number,
+	skin: MonsterSkinArt = null,
 ): Phaser.GameObjects.Sprite {
-	const drawn = renderedMonsterSpecies(scene, species);
-	const sprite =
-		drawn === "ghost"
-			? scene.add.sprite(x, y, MONSTER_GHOST_KEY)
-			: scene.add.sprite(x, y, monsterFrameKey(drawn, 0));
+	const look = lookFor(scene, species, skin);
+	const sprite = scene.add.sprite(x, y, look.still);
 	fitSpriteToSize(sprite, targetPx);
-	sprite.setData(DRAWN_SPECIES, drawn);
-	if (drawn !== "ghost") sprite.play(monsterIdleAnim(drawn));
+	sprite.setData(DRAWN_SPECIES, look.drawn);
+	sprite.setData(LOOK, look);
+	if (look.idle) sprite.play(look.idle);
 	return sprite;
 }
 
+/** Read by the e2e specs to find a species' sprite. */
 const DRAWN_SPECIES = "monsterDrawnSpecies";
+const LOOK = "monsterLook";
 const HIT_FLASH_MS = 180;
 const DEFEAT_HIT_MS = 110;
 
-function drawnSpecies(sprite: Phaser.GameObjects.Sprite): string | undefined {
-	return sprite.getData(DRAWN_SPECIES) as string | undefined;
+function lookOf(sprite: Phaser.GameObjects.Sprite): MonsterLook | undefined {
+	return sprite.getData(LOOK) as MonsterLook | undefined;
 }
 
-function resumeIdle(sprite: Phaser.GameObjects.Sprite, species: string): void {
+function resumeIdle(
+	sprite: Phaser.GameObjects.Sprite,
+	look: MonsterLook,
+): void {
 	if (!sprite.active) return;
-	if (species === "ghost") {
-		sprite.stop();
-		sprite.setTexture(MONSTER_GHOST_KEY);
+	if (look.idle) {
+		sprite.play(look.idle);
 	} else {
-		sprite.play(monsterIdleAnim(species));
+		sprite.stop();
+		sprite.setTexture(look.still);
 	}
 }
 
@@ -62,10 +111,10 @@ export function playMonsterHit(
 	scene: Phaser.Scene,
 	sprite: Phaser.GameObjects.Sprite,
 ): boolean {
-	const species = drawnSpecies(sprite);
-	if (!species || !scene.anims.exists(monsterHitAnim(species))) return false;
-	sprite.play(monsterHitAnim(species));
-	scene.time.delayedCall(HIT_FLASH_MS, () => resumeIdle(sprite, species));
+	const look = lookOf(sprite);
+	if (!look?.hit) return false;
+	sprite.play(look.hit);
+	scene.time.delayedCall(HIT_FLASH_MS, () => resumeIdle(sprite, look));
 	return true;
 }
 
@@ -79,12 +128,13 @@ export function playMonsterDefeat(
 	scene: Phaser.Scene,
 	sprite: Phaser.GameObjects.Sprite,
 ): boolean {
-	const species = drawnSpecies(sprite);
-	if (!species || !scene.anims.exists(monsterDefeatAnim(species))) return false;
+	const look = lookOf(sprite);
+	const defeat = look?.defeat;
+	if (!look || !defeat) return false;
 	const poof = () => {
 		if (!sprite.active) return;
 		sprite.once(
-			`${Phaser.Animations.Events.ANIMATION_COMPLETE_KEY}${monsterDefeatAnim(species)}`,
+			`${Phaser.Animations.Events.ANIMATION_COMPLETE_KEY}${defeat}`,
 			() =>
 				scene.tweens.add({
 					targets: sprite,
@@ -93,10 +143,10 @@ export function playMonsterDefeat(
 					onComplete: () => sprite.destroy(),
 				}),
 		);
-		sprite.play(monsterDefeatAnim(species));
+		sprite.play(defeat);
 	};
-	if (scene.anims.exists(monsterHitAnim(species))) {
-		sprite.play(monsterHitAnim(species));
+	if (look.hit) {
+		sprite.play(look.hit);
 		scene.time.delayedCall(DEFEAT_HIT_MS, poof);
 	} else {
 		poof();
