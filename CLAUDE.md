@@ -31,7 +31,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `CABN_OWNER_E2E_PORT` — `cabn serve --owner` port for `signs-owner.spec.ts` (default 5042)
 - `CABN_OWNER_KEY_E2E_PORT` — `owner-key.spec.ts` (default `CABN_OWNER_E2E_PORT` + 3, so 5045)
 - `CABN_SHADOW_E2E_PORT` — `shadow-owner.spec.ts` (default 5043)
-- `CABN_SPELLBOOK_E2E_PORT` — `spellbook-serve.spec.ts` (default 5043, the same as the shadow spec: set one of them when those two specs can run in parallel workers)
+- `CABN_SPELLBOOK_E2E_PORT` — `spellbook-serve.spec.ts` (default 5044). The serve-spawning specs' defaults (5042-5045) and the preview port are all distinct, so parallel workers don't collide; override them all per worktree
 - `CABN_REVIEW_SHOTS=1` — specs that support it write review screenshots under `assets/generated/review/<topic>/`; `CABN_REVIEW_PREFIX` (default `after`) and `CABN_SHOT_SUFFIX` name them in the specs that read them
 - `CABN_E2E_LIVE_WEB=1` — `embeds.spec.ts` loads the real sites instead of stubs
 - `CABN_PERF=1` — `monsters.spec.ts` logs frame-time stats

@@ -1,4 +1,13 @@
-export const CLI_VERSION = "0.0.0";
+import { readFileSync } from "node:fs";
+
+// Read at runtime rather than inlined: tsc emits dist/help.js one level
+// below package.json, the same relative spot as src/help.ts, and the
+// published package always ships package.json.
+export const CLI_VERSION: string = (
+	JSON.parse(
+		readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+	) as { version: string }
+).version;
 
 export function helpText(): string {
 	return [

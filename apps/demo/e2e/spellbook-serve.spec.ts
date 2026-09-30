@@ -28,7 +28,7 @@ const FIXTURE = join(
 	"fixtures",
 	"serve-project",
 );
-const PORT = Number(process.env.CABN_SPELLBOOK_E2E_PORT ?? 5043);
+const PORT = Number(process.env.CABN_SPELLBOOK_E2E_PORT ?? 5044);
 
 let serve: ChildProcess | undefined;
 let url: string;
