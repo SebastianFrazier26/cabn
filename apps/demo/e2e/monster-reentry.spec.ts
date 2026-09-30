@@ -113,15 +113,19 @@ async function leaveFile(page: Page) {
 	await page.waitForTimeout(600);
 }
 
-/** The monster's line as FileScene tracks it, and the row its sprite is drawn on. */
-function monsterView(page: Page, rule: string) {
-	return page.evaluate((rule) => {
+/** The line FileScene tracks for the monster with this rule (or species), and the row its sprite is drawn on. */
+function monsterView(page: Page, key: string) {
+	return page.evaluate((key) => {
 		const scene = (
 			window as unknown as {
 				__cabnGame: {
 					scene: {
 						getScene(k: string): {
-							monsters: { id: string; error: { rule: string } }[];
+							monsters: {
+								id: string;
+								species: string;
+								error: { rule: string };
+							}[];
 							monsterSprites: Map<string, { y: number }>;
 							monsterLine(m: unknown): number;
 						};
@@ -129,14 +133,16 @@ function monsterView(page: Page, rule: string) {
 				};
 			}
 		).__cabnGame.scene.getScene("file");
-		const m = scene.monsters.find((x) => x.error.rule === rule);
+		const m = scene.monsters.find(
+			(x) => x.error.rule === key || x.species === key,
+		);
 		if (!m) return null;
 		return {
 			line: scene.monsterLine(m),
 			// The hover bob moves the sprite a few px off its line.
 			row: Math.round((scene.monsterSprites.get(m.id)?.y ?? Number.NaN) / 20),
 		};
-	}, rule);
+	}, key);
 }
 
 test("a monster stays on its moved line after save, leave, re-enter and reload", async ({
@@ -176,6 +182,52 @@ test("a monster stays on its moved line after save, leave, re-enter and reload",
 	expect(await monsterView(page, RULE)).toEqual({
 		line: original + INSERTED,
 		row: original + INSERTED,
+	});
+	await leaveFile(page);
+	expect(pageErrors).toEqual([]);
+});
+
+// 2026-09-29: a todo rule used to carry the marker's line:col, so a blank
+// line above it made the save count the wisp as fixed.
+test("a TODO wisp survives a blank line saved above it, on the moved line", async ({
+	page,
+}) => {
+	test.setTimeout(120_000);
+	const pageErrors: string[] = [];
+	page.on("pageerror", (err) => pageErrors.push(err.message));
+	const defeated = () =>
+		page.evaluate(
+			() =>
+				(
+					window as unknown as {
+						__cabnStore: { getState(): { defeatedMonsterIds: string[] } };
+					}
+				).__cabnStore.getState().defeatedMonsterIds.length,
+		);
+
+	await openWorld(page);
+	await enterFile(page, "src/routes/gardeners.ts");
+	const before = await monsterView(page, "will-o-wisp");
+	expect(before).not.toBeNull();
+	const original = before?.line ?? -1;
+	const defeatedBefore = await defeated();
+
+	await page.keyboard.press("ControlOrMeta+Home");
+	await page.keyboard.press("Enter");
+	await page.keyboard.press("ControlOrMeta+s");
+	await expect.poll(async () => (await state(page))?.dirty).toBe(false);
+	await page.waitForTimeout(400);
+	expect(await monsterView(page, "will-o-wisp")).toEqual({
+		line: original + 1,
+		row: original + 1,
+	});
+	expect(await defeated()).toBe(defeatedBefore);
+
+	await leaveFile(page);
+	await enterFile(page, "src/routes/gardeners.ts");
+	expect(await monsterView(page, "will-o-wisp")).toEqual({
+		line: original + 1,
+		row: original + 1,
 	});
 	await leaveFile(page);
 	expect(pageErrors).toEqual([]);

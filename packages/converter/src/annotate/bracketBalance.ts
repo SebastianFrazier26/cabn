@@ -1,5 +1,7 @@
+import { shortHash } from "../hash.js";
 import { scanCode } from "./codeScanner.js";
 import { langConfigFor } from "./langConfig.js";
+import { normalizeLine, uniquifyRules } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 function messageFor(issue: { type: string; ch: string }): string {
@@ -32,13 +34,14 @@ export const bracketBalance: Annotator = (ctx) => {
 	if (!config) return [];
 
 	const { bracketIssues } = scanCode(content, config);
+	const lines = content.split("\n");
 	const results: ErrorAnnotation[] = bracketIssues.map((issue) => ({
 		code: "IoError",
-		rule: `bracket:${issue.type}:${issue.ch}@${issue.loc.line}:${issue.loc.col}`,
+		rule: `bracket:${issue.type}:${issue.ch}:${shortHash(normalizeLine(lines[issue.loc.line] ?? ""), 8)}`,
 		message: messageFor(issue),
 		loc: issue.loc,
 		species: "gremlin",
 		tier: 1,
 	}));
-	return results;
+	return uniquifyRules(results);
 };

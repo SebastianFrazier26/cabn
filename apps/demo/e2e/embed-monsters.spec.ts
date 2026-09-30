@@ -25,10 +25,12 @@ const SHOTS_DIR = join(
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 
 const WEB_PORTAL = "docs/threejs.md";
-const MOVED_MONSTERS = [
-	"monster:af1a5cd4",
-	"monster:9c82fc16",
-	"monster:6ea2657a",
+// Picked by their home portal, not by id: ids hash the rule, and rules
+// change whenever an annotator's keying does (2026-09-29).
+const MOVED_FROM = [
+	"config/settings.json",
+	"lib/utils.py",
+	"src/routes/health.ts",
 ];
 const ARCH_HALF = 96;
 const STUB_PAGE = `<!doctype html><html><head><title>stub</title>
@@ -198,11 +200,16 @@ for (const viewport of [
 		const errors: string[] = [];
 		page.on("pageerror", (err) => errors.push(err.message));
 		await stubSites(page);
+		const MOVED_MONSTERS: string[] = [];
 		await page.route("**/worlds/sample/world.json", async (route) => {
 			const res = await route.fetch();
 			const world = await res.json();
+			MOVED_MONSTERS.length = 0;
 			for (const m of world.monsters)
-				if (MOVED_MONSTERS.includes(m.id)) m.portalId = WEB_PORTAL;
+				if (MOVED_FROM.includes(m.portalId)) {
+					m.portalId = WEB_PORTAL;
+					MOVED_MONSTERS.push(m.id);
+				}
 			await route.fulfill({ response: res, json: world });
 		});
 		await page.setViewportSize(viewport);

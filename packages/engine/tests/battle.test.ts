@@ -21,97 +21,106 @@ function file(path: string, overrides: Partial<PortalFile> = {}): PortalFile {
 }
 
 describe("checkMonsterFixed", () => {
-	it("NullTypeError: fixed once the broken import is removed", () => {
-		const monster = {
-			code: "NullTypeError" as const,
-			rule: "broken-import:./missing.js@0:24",
-		};
-		const worldFiles = new Set(["src/a.ts"]);
-		expect(
-			checkMonsterFixed(
-				monster,
-				file("src/a.ts"),
-				'import { helper } from "./missing.js";\n',
-				worldFiles,
-			),
-		).toBe(false);
-		expect(
-			checkMonsterFixed(
-				monster,
-				file("src/a.ts"),
-				"export const x = 1;\n",
-				worldFiles,
-			),
-		).toBe(true);
-	});
+	const jsonFile = file("config.json", { language: "json", kind: "config" });
 
-	it("NullTypeError: not fixed if a different broken import remains, even with the same rule text coincidentally absent", () => {
-		const monster = {
-			code: "NullTypeError" as const,
-			rule: "broken-import:./missing.js@0:24",
-		};
-		const worldFiles = new Set(["src/a.ts"]);
-		// The exact rule (same spec, same loc) is still present verbatim.
-		expect(
-			checkMonsterFixed(
-				monster,
-				file("src/a.ts"),
-				'import { helper } from "./missing.js";\n',
-				worldFiles,
-			),
-		).toBe(false);
-	});
-
-	it("IoError: fixed once the unclosed bracket is closed", () => {
-		const monster = {
-			code: "IoError" as const,
-			rule: "bracket:unclosed:(@0:10",
-		};
-		const worldFiles = new Set(["src/a.ts"]);
-		expect(
-			checkMonsterFixed(
-				monster,
-				file("src/a.ts"),
-				"const x = (1 + 2\n",
-				worldFiles,
-			),
-		).toBe(false);
-		expect(
-			checkMonsterFixed(
-				monster,
-				file("src/a.ts"),
-				"const x = (1 + 2)\n",
-				worldFiles,
-			),
-		).toBe(true);
-	});
-
-	it("Corrupted: fixed once the JSON parses", () => {
-		const monster = { code: "Corrupted" as const, rule: "json-parse@2:0" };
-		const jsonFile = file("config.json", { language: "json", kind: "config" });
-		const worldFiles = new Set(["config.json"]);
-		expect(
-			checkMonsterFixed(monster, jsonFile, '{\n  "a": 1,\n}\n', worldFiles),
-		).toBe(false);
-		expect(checkMonsterFixed(monster, jsonFile, '{"a": 1}', worldFiles)).toBe(
-			true,
+	/** The monster the build would spawn for `code` in `content` — rules come from the annotators, never hand-written. */
+	function found(code: ErrorCode, f: PortalFile, content: string) {
+		const hit = annotateFileLive(f, content, new Set([f.path])).find(
+			(r) => r.code === code,
 		);
+		if (!hit) throw new Error(`no ${code} in fixture`);
+		return { code, rule: hit.rule };
+	}
+
+	// 2026-09-29: these five used to bake line:col into the rule, so any line
+	// inserted above counted as a fix. Each case: the bug moved down is still
+	// there; the bug actually fixed is gone.
+	const cases: {
+		code: ErrorCode;
+		f: PortalFile;
+		broken: string;
+		fixed: string;
+	}[] = [
+		{
+			code: "NullTypeError",
+			f: file("src/a.ts"),
+			broken: 'import { helper } from "./missing.js";\nhelper();\n',
+			fixed: "export const x = 1;\n",
+		},
+		{
+			code: "IoError",
+			f: file("src/a.ts"),
+			broken: "export const x = (1 + 2\n",
+			fixed: "export const x = (1 + 2)\n",
+		},
+		{
+			code: "Corrupted",
+			f: jsonFile,
+			broken: '{\n  "a": 1,\n}\n',
+			fixed: '{"a": 1}',
+		},
+		{
+			code: "WispNote",
+			f: file("src/a.ts"),
+			broken: "// TODO: later\nexport const x = 1;\n",
+			fixed: "// done\nexport const x = 1;\n",
+		},
+		{
+			code: "InvalidMode",
+			f: file("notes.txt", { kind: "text", language: undefined }),
+			broken: "caf� au lait\n",
+			fixed: "café au lait\n",
+		},
+	];
+
+	for (const { code, f, broken, fixed } of cases) {
+		it(`${code}: lines inserted above don't fix it; fixing the problem does`, () => {
+			const monster = found(code, f, broken);
+			expect(monster.rule).not.toMatch(/@\d+:\d+/);
+			const worldFiles = new Set([f.path]);
+			expect(checkMonsterFixed(monster, f, broken, worldFiles)).toBe(false);
+			expect(checkMonsterFixed(monster, f, `\n\n\n${broken}`, worldFiles)).toBe(
+				false,
+			);
+			expect(checkMonsterFixed(monster, f, fixed, worldFiles)).toBe(true);
+		});
+	}
+
+	it("NullTypeError: a second import of the same missing spec keeps the first one's monster alive", () => {
+		const f = file("src/a.ts");
+		const twice =
+			'import { a } from "./missing.js";\nimport { b } from "./missing.js";\n';
+		const rules = annotateFileLive(f, twice, new Set([f.path]))
+			.filter((r) => r.code === "NullTypeError")
+			.map((r) => r.rule);
+		expect(rules).toEqual([
+			"broken-import:./missing.js",
+			"broken-import:./missing.js#2",
+		]);
+		expect(
+			checkMonsterFixed(
+				{ code: "NullTypeError", rule: "broken-import:./missing.js" },
+				f,
+				'import { b } from "./missing.js";\n',
+				new Set([f.path]),
+			),
+		).toBe(false);
 	});
 
-	it("WispNote: fixed once the TODO comment is removed", () => {
-		const monster = { code: "WispNote" as const, rule: "todo:TODO@0:3" };
-		const worldFiles = new Set(["src/a.ts"]);
+	it("WispNote: rewording the note is a different note", () => {
+		const f = file("src/a.ts");
+		const monster = found("WispNote", f, "// TODO: later\n");
+		expect(
+			checkMonsterFixed(monster, f, "// TODO: sooner\n", new Set([f.path])),
+		).toBe(true);
 		expect(
 			checkMonsterFixed(
 				monster,
-				file("src/a.ts"),
-				"// TODO: later\n",
-				worldFiles,
+				f,
+				"\n//   TODO:   later\n",
+				new Set([f.path]),
 			),
 		).toBe(false);
-		expect(
-			checkMonsterFixed(monster, file("src/a.ts"), "// done\n", worldFiles),
-		).toBe(true);
 	});
 
 	it("OuroborosError: fixed once the file drops its import edge into the recorded cycle", () => {
@@ -243,30 +252,26 @@ describe("relocateMonsters (re-entering a file with saved edits)", () => {
 		expect(fixedIds).toEqual([dead.id]);
 	});
 
-	it("never disagrees with a save's verdict, even for a loc-keyed rule", () => {
+	it("a wisp moved down by blank lines survives on its new line; removing the TODO fixes it", () => {
 		const wisp = monsterFrom(
 			"// TODO: prune\nexport const y = 2;\n",
 			"WispNote",
 		);
-		for (const saved of [
-			"// TODO: prune\nexport const y = 2;\n",
+		const moved = relocateMonsters(
+			[wisp],
+			file("src/a.ts"),
 			"\n\n// TODO: prune\nexport const y = 2;\n",
+			worldFiles,
+		);
+		expect(moved.fixedIds).toEqual([]);
+		expect(moved.monsters[0]?.error.loc?.line).toBe(2);
+		const removed = relocateMonsters(
+			[wisp],
+			file("src/a.ts"),
 			"export const y = 2;\n",
-		]) {
-			const saveVerdict = checkMonsterFixed(
-				{ code: wisp.error.code, rule: wisp.error.rule },
-				file("src/a.ts"),
-				saved,
-				worldFiles,
-			);
-			const { fixedIds } = relocateMonsters(
-				[wisp],
-				file("src/a.ts"),
-				saved,
-				worldFiles,
-			);
-			expect(fixedIds.includes(wisp.id)).toBe(saveVerdict);
-		}
+			worldFiles,
+		);
+		expect(removed.fixedIds).toEqual([wisp.id]);
 	});
 
 	it("follows an ouroboros to its import's new line", () => {
