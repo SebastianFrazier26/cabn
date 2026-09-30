@@ -3,8 +3,10 @@ export interface LangConfig {
 	blockComment?: readonly [string, string];
 	/** Single-character string delimiters. */
 	strings: readonly string[];
-	/** Multi-character string delimiters checked before `strings` (Python's triple quotes). */
+	/** Multi-character string delimiters checked before `strings` (Python's triple quotes) — also reused for Go's backtick raw strings (a single-char delimiter, but sharing tripleStrings' escape-free, newline-tolerant handling: no interpolation, no backslash processing, closes only on the matching delimiter). */
 	tripleStrings?: readonly string[];
+	/** JS/TS template literal delimiter (backtick) — unlike `strings`/`tripleStrings`, this supports backslash escapes *and* `${expr}` interpolation (including nested template literals inside the expression), so it gets its own state machine in codeScanner rather than the single-char string path. */
+	templateLiteralDelim?: string;
 }
 
 // Scope is deliberately narrow — js/ts/py/rs/go plus the classic curly-brace
@@ -15,12 +17,14 @@ export const LANG_CONFIGS: Readonly<Record<string, LangConfig>> = {
 	javascript: {
 		lineComment: "//",
 		blockComment: ["/*", "*/"],
-		strings: ['"', "'", "`"],
+		strings: ['"', "'"],
+		templateLiteralDelim: "`",
 	},
 	typescript: {
 		lineComment: "//",
 		blockComment: ["/*", "*/"],
-		strings: ['"', "'", "`"],
+		strings: ['"', "'"],
+		templateLiteralDelim: "`",
 	},
 	python: {
 		lineComment: "#",
@@ -39,7 +43,13 @@ export const LANG_CONFIGS: Readonly<Record<string, LangConfig>> = {
 	go: {
 		lineComment: "//",
 		blockComment: ["/*", "*/"],
-		strings: ['"', "`"],
+		strings: ['"'],
+		// Backtick raw strings: no escapes, no interpolation, span lines freely
+		// — the same "consume until literal closer" handling tripleStrings
+		// already gives Python's triple quotes, not the single-char `strings`
+		// path (which would misreport a multi-line raw string as unterminated
+		// at its first newline).
+		tripleStrings: ["`"],
 	},
 	c: { lineComment: "//", blockComment: ["/*", "*/"], strings: ['"', "'"] },
 	cpp: { lineComment: "//", blockComment: ["/*", "*/"], strings: ['"', "'"] },

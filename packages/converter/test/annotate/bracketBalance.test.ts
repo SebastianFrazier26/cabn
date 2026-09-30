@@ -95,6 +95,60 @@ describe("bracketBalance", () => {
 		);
 	});
 
+	test("handles a multi-line backtick template literal without cascading (regression: changesets/changesets get-changelog-entry.test.ts shape)", () => {
+		// Real shape from the wide-pass report: a multi-line backtick containing
+		// markdown with nested single/double quotes used to be read as
+		// "unterminated" at its first newline, dumping the rest of the file
+		// back into normal-code scanning and cascading into ~1000 bogus issues
+		// from one 74-line file — see docs/testing/2026-09-29-wide-pass.md,
+		// Bug 3.
+		const content = [
+			'test("formats a changelog entry", () => {',
+			"  expect(entry).toMatchInlineSnapshot(`",
+			'    - Adds a "feature" flag',
+			"    - Fixes 'a bug' in the release plan",
+			"    - See [notes](./notes.md) for details",
+			"  `);",
+			"});",
+			"",
+		].join("\n");
+		expect(run("get-changelog-entry.test.ts", content)).toHaveLength(0);
+	});
+
+	test("tracks a template literal's interpolation, including a nested template", () => {
+		const content =
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+			"const s = `outer ${`inner ${x + 1}`} tail ${[1, 2, { a: 1 }]}`;\n";
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("does not treat an escaped backtick or an escaped interpolation-opener as ending/opening template content", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+		const content = "const s = `a \\` b \\${notInterp} c`;\n";
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("still catches a real unclosed bracket after a template literal", () => {
+		const content =
+			"const s = `multi\nline`;\nfunction f(a, b {\n  return a;\n}\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:unclosed:("))).toBe(
+			true,
+		);
+	});
+
+	test("still flags a template literal left open at end of file", () => {
+		const results = run("a.ts", "const s = `never closed\nstill going\n");
+		expect(
+			results.some((r) => r.rule.startsWith("bracket:unterminated-string")),
+		).toBe(true);
+	});
+
+	test("Go: backtick raw strings span multiple lines without false positives", () => {
+		const content = 'const s = `line one\nline two "quoted"\nline three`\n';
+		expect(run("a.go", content)).toHaveLength(0);
+	});
+
 	test("skips languages outside the supported set entirely", () => {
 		expect(run("a.rb", "def f( unbalanced")).toHaveLength(0);
 	});
