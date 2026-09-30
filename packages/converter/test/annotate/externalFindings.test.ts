@@ -3,6 +3,7 @@ import {
 	checkExternalFindingFixed,
 	classifyFinding,
 	type ExternalFinding,
+	externalFindingLine,
 	externalFindingMessage,
 	externalFindingRule,
 	FindingsValidationError,
@@ -252,5 +253,20 @@ describe("external finding messages, rules and re-checks", () => {
 				"export const a = 1;\nconst password = process.env.PW;\n",
 			),
 		).toBe(true);
+	});
+
+	test("externalFindingLine follows the flagged line when code moves, n-th for a #n repeat", () => {
+		const flagged = "const password = 'hunter2-supersecret';";
+		const content = `export const a = 1;\n${flagged}\n`;
+		const rule = externalFindingRule(finding, content);
+		expect(externalFindingLine(rule, content)).toBe(1);
+		expect(externalFindingLine(rule, `// a\n// b\n${content}`)).toBe(3);
+		const twice = `${flagged}\nlet x;\n  ${flagged}\n`;
+		expect(externalFindingLine(rule, twice)).toBe(0);
+		expect(externalFindingLine(`${rule}#2`, twice)).toBe(2);
+		expect(externalFindingLine(`${rule}#3`, twice)).toBe(2);
+		expect(
+			externalFindingLine(rule, "const password = process.env.PW;\n"),
+		).toBeUndefined();
 	});
 });

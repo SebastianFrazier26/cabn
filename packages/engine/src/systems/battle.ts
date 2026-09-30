@@ -2,12 +2,12 @@ import {
 	type Annotator,
 	bracketBalance,
 	brokenImport,
-	checkExternalFindingFixed,
 	codeSmell,
 	deadCode,
 	type ErrorAnnotation,
 	EXTERNAL_RULE_PREFIX,
 	encodingIssue,
+	externalFindingLine,
 	extractRelativeRefs,
 	leakedSecret,
 	parseFailure,
@@ -16,7 +16,7 @@ import {
 	syntaxError,
 	todoMarker,
 } from "@cabn/converter/core";
-import type { ErrorCode, PortalFile } from "@cabn/world-schema";
+import type { ErrorCode, Monster, PortalFile } from "@cabn/world-schema";
 
 /**
  * Per-file re-check only — OuroborosError doesn't fit this shape (see
@@ -66,34 +66,96 @@ export function checkMonsterFixed(
 	content: string,
 	worldFiles: ReadonlySet<string>,
 ): boolean {
+	return recheckMonster(monster, file, content, worldFiles).fixed;
+}
+
+export type MonsterRecheck =
+	| { fixed: true }
+	/** `loc`: where the same bug is now, when the re-check can say. */
+	| { fixed: false; loc?: { line: number; col: number } };
+
+/**
+ * checkMonsterFixed's verdict plus where the still-present bug sits in
+ * `content` — the one re-check both a save and a re-entry into an edited
+ * file run, so they can never disagree about which monsters survive.
+ */
+export function recheckMonster(
+	monster: BattleMonster,
+	file: PortalFile,
+	content: string,
+	worldFiles: ReadonlySet<string>,
+): MonsterRecheck {
 	// External-tool findings (any code, including UnknownBug) can't be re-run
 	// in the browser; they die when the line they flagged changes.
 	if (monster.rule.startsWith(EXTERNAL_RULE_PREFIX)) {
-		return checkExternalFindingFixed(monster.rule, content);
+		const line = externalFindingLine(monster.rule, content);
+		return line === undefined
+			? { fixed: true }
+			: { fixed: false, loc: { line, col: 0 } };
 	}
 	if (monster.code === "OuroborosError") {
-		if (!monster.rule.startsWith(CIRCULAR_IMPORT_RULE_PREFIX)) return true;
+		if (!monster.rule.startsWith(CIRCULAR_IMPORT_RULE_PREFIX))
+			return { fixed: true };
 		const members = new Set(
 			monster.rule.slice(CIRCULAR_IMPORT_RULE_PREFIX.length).split(","),
 		);
 		for (const ref of extractRelativeRefs(file.path, content)) {
 			if (ref.isMarkdownLink) continue;
 			const candidates = resolveRelativeRefTarget(file.path, ref);
-			if (candidates.some((c) => members.has(c))) return false;
+			if (candidates.some((c) => members.has(c)))
+				return { fixed: false, loc: { line: ref.line, col: ref.col } };
 		}
-		return true;
+		return { fixed: true };
 	}
 
 	const annotator = PER_FILE_ANNOTATOR_BY_CODE[monster.code];
-	if (!annotator) return true; // no re-check for an unrecognized code — never leaves the player permanently stuck
+	if (!annotator) return { fixed: true }; // no re-check for an unrecognized code — never leaves the player permanently stuck
 	// A CodeSmell rule carries the threshold it was judged by (a world's
 	// cabn.json may have changed the default), so re-judge with that one.
 	const options =
 		monster.code === "CodeSmell"
 			? smellOptionsFromRule(monster.rule)
 			: undefined;
-	const results = annotator({ file, content, worldFiles, options });
-	return !results.some((r) => r.rule === monster.rule);
+	const match = annotator({ file, content, worldFiles, options }).find(
+		(r) => r.rule === monster.rule,
+	);
+	if (!match) return { fixed: true };
+	return match.loc ? { fixed: false, loc: match.loc } : { fixed: false };
+}
+
+/**
+ * A file's monsters against its saved-edit content: the ones the edit fixed
+ * (by the same re-check a save runs) come back as `fixedIds`, the rest carry
+ * the line their bug is on now instead of the build-time one. A FileScene
+ * visit anchors monsters from `error.loc`, so without this a re-entry after
+ * a save that moved code starts them on the old lines.
+ */
+export function relocateMonsters(
+	monsters: readonly Monster[],
+	file: PortalFile,
+	content: string,
+	worldFiles: ReadonlySet<string>,
+): { monsters: Monster[]; fixedIds: string[] } {
+	const kept: Monster[] = [];
+	const fixedIds: string[] = [];
+	for (const monster of monsters) {
+		const check = recheckMonster(
+			{ code: monster.error.code, rule: monster.error.rule },
+			file,
+			content,
+			worldFiles,
+		);
+		if (check.fixed) {
+			fixedIds.push(monster.id);
+			continue;
+		}
+		kept.push(
+			check.loc
+				? { ...monster, error: { ...monster.error, loc: check.loc } }
+				: monster,
+		);
+	}
+	return { monsters: kept, fixedIds };
 }
 
 /**
