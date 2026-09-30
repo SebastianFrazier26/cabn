@@ -666,7 +666,6 @@ const PIXEL_THEME_CSS = `
 	font-size: 10px; line-height: 15px; vertical-align: middle;
 	background: var(--cabn-layer-badge-bg, #b3202c); color: var(--cabn-layer-badge-text, #fff3ef);
 }
-.cabn-hotbar-slot.layer-tool img { filter: hue-rotate(-40deg) saturate(1.6); }
 /* A world layer switch: a radial pulse in the layer's colour, peaking (40%)
    while WorldScene restarts under it. Never fully opaque, so the layer's
    objects rising out of the ground read through its tail. */

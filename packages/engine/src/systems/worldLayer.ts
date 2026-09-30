@@ -316,12 +316,15 @@ export type WorldLayerSaveResult =
 	| { ok: true; sha256: string }
 	| { ok: false; conflict: boolean; message: string };
 
+/** A layer's toolkit entry: a tool without a hotkey of its own. */
+export type LayerTool = Omit<Tool, "hotkey">;
+
 export interface WorldLayerProvider {
 	id: string;
 	/** Short badge text for the layer's entries in search results. */
 	label: string;
-	/** Entries the layer adds to the owner's toolkit (world mode only). Their own `hotkey` is never bound: the toolkit's one key reaches them. */
-	tools: readonly Tool[];
+	/** Entries the layer adds to the owner's toolkit (world mode only), reached through the toolkit's one key. */
+	tools: readonly LayerTool[];
 	/** The layer without contents; fetched afresh every time the layer is entered. */
 	load(): Promise<WorldLayerManifest>;
 	fetchChunk(clusterId: string): Promise<WorldChunk>;

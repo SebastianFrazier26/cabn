@@ -1,6 +1,6 @@
 import { uiIconPath } from "../assetPaths.js";
 import type { Tool, ToolContext } from "./tools.js";
-import type { WorldLayerProvider } from "./worldLayer.js";
+import type { LayerTool, WorldLayerProvider } from "./worldLayer.js";
 
 /**
  * The one owner key (2026-09-29: "there should be 1 singular owner key for
@@ -49,7 +49,7 @@ const GIT_ENTRIES: readonly {
 ];
 
 /** A tool named "Label (what it does)" shows just "what it does" under its label. */
-function layerToolDetail(tool: Tool): string {
+function layerToolDetail(tool: LayerTool): string {
 	const label = tool.label ?? tool.name;
 	const m = /^(.*) \((.+)\)$/.exec(tool.name);
 	return m && m[1] === label ? (m[2] as string) : tool.name;
@@ -103,7 +103,7 @@ export function createOwnerToolkitTool(): Tool {
 		id: "owner",
 		label: "Owner",
 		name: "Owner's toolkit",
-		icon: uiIconPath("sign"),
+		icon: uiIconPath("owner"),
 		hotkey: OWNER_TOOLKIT_HOTKEY,
 		onUse: ({ store }) => {
 			const state = store.getState();

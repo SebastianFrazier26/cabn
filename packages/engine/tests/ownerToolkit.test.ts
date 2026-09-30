@@ -7,19 +7,21 @@ import {
 	ownerToolkitEntries,
 	stepPick,
 } from "../src/systems/ownerToolkit.js";
-import { createDefaultTools, type Tool } from "../src/systems/tools.js";
-import type { WorldLayerProvider } from "../src/systems/worldLayer.js";
+import { createDefaultTools } from "../src/systems/tools.js";
+import type {
+	LayerTool,
+	WorldLayerProvider,
+} from "../src/systems/worldLayer.js";
 
-function fakeLayer(id: string, tool: Tool): WorldLayerProvider {
+function fakeLayer(id: string, tool: LayerTool): WorldLayerProvider {
 	return { id, tools: [tool] } as unknown as WorldLayerProvider;
 }
 
-const layerTool = (onUse = vi.fn()): Tool => ({
+const layerTool = (onUse = vi.fn()): LayerTool => ({
 	id: "peek",
 	label: "Peek",
 	name: "Peek (extra files)",
 	icon: "peek.png",
-	hotkey: "H",
 	onUse,
 });
 
