@@ -2,7 +2,10 @@ import type { WorldLayerManifest, WorldManifest } from "@cabn/world-schema";
 import { describe, expect, it } from "vitest";
 import { layoutPortalRing } from "../src/systems/portalRing.js";
 import {
+	drawnClearingRadii,
+	EMPTY_CLEARING_PATCH,
 	editorSaveTarget,
+	emptyBaseClusters,
 	isHiddenPath,
 	LAYER_PATH_GATE_OUT_PX,
 	layerPathRoutes,
@@ -11,6 +14,7 @@ import {
 	pointsAlongPolyline,
 	polylineMidpoint,
 	ringPathsFor,
+	signShown,
 	signWriterFor,
 	type WorldLayerProvider,
 } from "../src/systems/worldLayer.js";
@@ -180,6 +184,147 @@ describe("mergeLayer", () => {
 			),
 		).toEqual(["root::.github"]);
 		expect(ringPathsFor(base, "root", null)).toEqual(base.paths);
+	});
+});
+
+describe("mergeLayer with an exclusive layer", () => {
+	const merged = mergeLayer(base, delta, { exclusive: true });
+
+	it("drops every base portal and base monster, and keeps the layer's", () => {
+		expect(merged.exclusive).toBe(true);
+		expect(merged.manifest.portals.map((p) => p.id)).toEqual([
+			".env",
+			".github/ci.yml",
+			".github/owners",
+		]);
+		expect(merged.manifest.monsters.map((m) => m.id)).toEqual(["m2"]);
+	});
+
+	it("keeps every clearing and path, base ones untouched, as the layer's skeleton", () => {
+		expect(merged.manifest.clusters.slice(0, 2)).toEqual(base.clusters);
+		expect(merged.manifest.clusters.map((c) => c.id)).toEqual([
+			"root",
+			"src",
+			"root#shadow",
+			".github",
+		]);
+		expect(merged.manifest.paths).toEqual([...base.paths, ...delta.paths]);
+		expect(base.portals).toHaveLength(6);
+		expect(base.monsters).toHaveLength(1);
+	});
+
+	it("lays every ring out exactly as without the layer, and routes layer paths the same", () => {
+		const inclusive = mergeLayer(base, delta);
+		for (const c of base.clusters)
+			expect(
+				ringAngles(
+					merged.manifest,
+					c.id,
+					ringPathsFor(merged.manifest, c.id, merged.layer),
+				),
+			).toEqual(
+				ringAngles(
+					inclusive.manifest,
+					c.id,
+					ringPathsFor(inclusive.manifest, c.id, inclusive.layer),
+				),
+			);
+		const rootRing = ringAngles(base, "root", base.paths);
+		const ring = (id: string) =>
+			id === "root"
+				? { radius: rootRing.radius, archAngles: rootRing.angles }
+				: undefined;
+		expect(layerPathRoutes(merged.manifest, merged.layer, ring)).toEqual(
+			layerPathRoutes(inclusive.manifest, inclusive.layer, ring),
+		);
+	});
+
+	it("puts no base portal or monster on the map, but every clearing and path", () => {
+		const map = summarizeWorldMap(
+			merged.manifest,
+			new Map(
+				[...base.portals, ...delta.portals].map((p, i) => [
+					p.id,
+					{ x: i, y: i },
+				]),
+			),
+			merged.layer,
+		);
+		expect(map.portals.map((p) => p.id)).toEqual([
+			".env",
+			".github/ci.yml",
+			".github/owners",
+		]);
+		expect(map.monsters.map((m) => m.id)).toEqual(["m2"]);
+		expect(map.clusters).toHaveLength(4);
+		expect(map.paths).toHaveLength(3);
+	});
+
+	it("is off by default: a layer without the option merges as before", () => {
+		const plain = mergeLayer(base, delta);
+		expect(plain.exclusive).toBe(false);
+		expect(mergeLayer(base, delta, { exclusive: false })).toEqual(plain);
+		expect(plain.manifest.portals).toHaveLength(9);
+		expect(plain.manifest.monsters.map((m) => m.id)).toEqual(["m1", "m2"]);
+	});
+});
+
+describe("empty clearings", () => {
+	it("an exclusive layer marks the base clusters left with no portal and no layer path", () => {
+		// root keeps the layer paths to its hidden clusters; src has neither.
+		expect([
+			...mergeLayer(base, delta, { exclusive: true }).emptyClusterIds,
+		]).toEqual(["src"]);
+		expect(mergeLayer(base, delta).emptyClusterIds.size).toBe(0);
+	});
+
+	it("a base path alone doesn't keep a clearing busy, a layer path or a shown portal does", () => {
+		const merged = mergeLayer(base, delta, { exclusive: true });
+		const noLayerPaths = {
+			...merged.manifest,
+			paths: merged.manifest.paths.filter(
+				(p) => !merged.layer.pathIds.has(`${p.from}::${p.to}`),
+			),
+		};
+		expect([...emptyBaseClusters(noLayerPaths, merged.layer)].sort()).toEqual([
+			"root",
+			"src",
+		]);
+		expect([
+			...emptyBaseClusters(
+				{
+					...noLayerPaths,
+					portals: [...noLayerPaths.portals, portal("src/x.ts", "src")],
+				},
+				merged.layer,
+			),
+		]).toEqual(["root"]);
+	});
+
+	it("only an empty clearing's drawn ground shrinks, and never grows", () => {
+		const full = { x: 300, y: 200 };
+		expect(drawnClearingRadii(full, false)).toBe(full);
+		expect(drawnClearingRadii(full, true)).toEqual(EMPTY_CLEARING_PATCH);
+		expect(drawnClearingRadii({ x: 90, y: 60 }, true)).toEqual({
+			x: 90,
+			y: 60,
+		});
+	});
+});
+
+describe("signShown", () => {
+	const layer = { signPaths: new Set([".github/github.seyn"]) };
+
+	it("shows every sign unless a layer hides the base world", () => {
+		expect(signShown({ path: "src/src.seyn" }, null, false)).toBe(true);
+		expect(signShown({ path: "src/src.seyn" }, layer, false)).toBe(true);
+	});
+
+	it("an exclusive layer shows only its own signs, including hidden-folder ones written since", () => {
+		expect(signShown({ path: "src/src.seyn" }, layer, true)).toBe(false);
+		expect(signShown({ path: "cabn.seyn" }, layer, true)).toBe(false);
+		expect(signShown({ path: ".github/github.seyn" }, layer, true)).toBe(true);
+		expect(signShown({ path: ".vscode/new.seyn" }, layer, true)).toBe(true);
 	});
 });
 

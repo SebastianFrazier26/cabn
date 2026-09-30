@@ -31,6 +31,8 @@ export function createShadowLayer(
 		label: "hidden",
 		tools: [createSudoTool(SHADOW_LAYER_ID)],
 		skin: NETHER_SKIN,
+		// User decision 2026-09-29: the realm shows only hidden files.
+		exclusive: true,
 		async load() {
 			index = null;
 			return client.manifest();

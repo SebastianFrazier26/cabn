@@ -38,4 +38,21 @@ describe("pet world access", () => {
 		expect(await access.readText("a.ts")).toBe("text of a.ts");
 		expect(await access.search("canary", 10)).toEqual([{ path: "a.ts" }]);
 	});
+
+	it("finds nothing when it is handed no files (a layer hiding the base world)", async () => {
+		const fetchSpy = vi.fn();
+		vi.stubGlobal("fetch", fetchSpy);
+		const access = createPetWorldAccess({
+			worldBase: "/w/",
+			files: [],
+			loadedText: () => undefined,
+			savedOverride: () => undefined,
+			chunkFor: () => undefined,
+			withheld: () => null,
+		});
+		expect(access.files()).toEqual([]);
+		expect(await access.search("canary", 10)).toEqual([]);
+		expect(await access.readText("a.ts")).toBeNull();
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
 });
