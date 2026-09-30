@@ -31,7 +31,8 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `CABN_OWNER_E2E_PORT` — `cabn serve --owner` port for `signs-owner.spec.ts` (default 5042)
 - `CABN_OWNER_KEY_E2E_PORT` — `owner-key.spec.ts` (default `CABN_OWNER_E2E_PORT` + 3, so 5045)
 - `CABN_SHADOW_E2E_PORT` — `shadow-owner.spec.ts` (default 5043)
-- `CABN_SPELLBOOK_E2E_PORT` — `spellbook-serve.spec.ts` (default 5044). The serve-spawning specs' defaults (5042-5045) and the preview port are all distinct, so parallel workers don't collide; override them all per worktree
+- `loading-screen-owner.spec.ts` serves on `CABN_OWNER_E2E_PORT` + 6 (default 5048); it has no variable of its own
+- `CABN_SPELLBOOK_E2E_PORT` — `spellbook-serve.spec.ts` (default 5044). The serve-spawning specs' defaults (5042-5045, 5048) and the preview port are all distinct, so parallel workers don't collide; override them all per worktree
 - `CABN_REVIEW_SHOTS=1` — specs that support it write review screenshots under `assets/generated/review/<topic>/`; `CABN_REVIEW_PREFIX` (default `after`) and `CABN_SHOT_SUFFIX` name them in the specs that read them
 - `CABN_E2E_LIVE_WEB=1` — `embeds.spec.ts` loads the real sites instead of stubs
 - `CABN_PERF=1` — `monsters.spec.ts` logs frame-time stats
@@ -53,6 +54,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
   - `./local-exec` — `LocalRunProvider`, imported only by a `cabn serve --allow-exec` page
   - `./owner` — owner sign and git clients and everything in `src/shadow/` (the shadow realm's provider, client, skin, palette, sudo tool), imported only by a `cabn serve --owner` page. `src/shadow/` is owner-only: `tests/importGraph.test.ts` fails if `index.ts` reaches it
 - The world-layer seam: the main engine knows only a neutral "world layer" (`systems/worldLayer.ts`: `WorldLayerProvider`, `WorldSkin`, `mergeLayer`, `DEFAULT_SKIN`; `scenes/worldLayerSeam.ts`). The shadow realm is one provider plugged in through `owner.layers`. Never name shadow things in the main entry; add skin fields with a null default in `DEFAULT_SKIN` so normal worlds keep today's code path
+- The loading screen: `systems/loadingScreen.ts` (`LoadingTracker`: per-load tokens, shown after `LOADING_SHOW_DELAY_MS` = 500, kept at least `LOADING_MIN_VISIBLE_MS` = 250; `loadingTips()` reuses Wren's single-line pages from `guideContent.ts`, minus the monsters topic), `systems/sceneLoading.ts` (`SceneLoadCoordinator`: scene switches announced on the bus, ended from game.ts on the world/shelf scene's CREATE, and the washed-out/torn boot errors from `BootScene`), `react/LoadingOverlay.tsx` (the panel, plus `LoadingFallback` for Suspense). A new slow load holds a token through the store's `beginLoading`/`endLoading` or `react/useLoadingWhile.ts` rather than drawing its own spinner
 - The owner's toolkit: `systems/ownerToolkit.ts` builds a generic entry list from `owner.signs`, `owner.git` and each `owner.layers[].tools`; `react/OwnerToolkit.tsx` renders it
 - `packages/cli` — `@cabn/cli`: `build`/`inspect`/`shelf`/`serve`. `src/serve/ownerAuth.ts` is the one gate for `ownerSigns.ts`, `ownerGit.ts` and `ownerShadow.ts`; every `/owner/` route answers 404 without `--owner`. The shadow layer is computed lazily in the serve process and never written into the bundle. `scripts/copy-assets.mjs` bundles the engine's art (its `SHADOW` list only for `--owner`); `tests/serve/bundled-assets.test.ts` checks coverage
 - `apps/backend` — private, `@cabn/backend`: authenticated Fastify service (`POST /v1/worlds`, `GET /healthz`)
@@ -72,4 +74,4 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - Comments load-bearing only: explain why, never narrate what the code says
 - Branch per feature off `main`; never commit to `main` directly; never push without explicit user authorization
 - User-visible changes get a dated `CHANGELOG.md` entry. Don't delete old entries; mark a statement a later change overrides as superseded
-- A change to a key, tool or tip: update `guideContent.ts`, regenerate with `CABN_UPDATE_GUIDE=1`, and keep `docs/USER_GUIDE.md`'s prose in step
+- A change to a key, tool or tip: update `guideContent.ts`, regenerate with `CABN_UPDATE_GUIDE=1`, and keep `docs/USER_GUIDE.md`'s prose in step. Tips also rotate on the loading screen, which skips any page over 170 characters or with a line break

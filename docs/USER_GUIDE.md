@@ -47,6 +47,25 @@ The spellbook's own shortcuts are in [Editing: the spellbook](#editing-the-spell
 
 When a text box has focus (the orb's search box, the spellbook or the file page's caret), every key goes to it and none to the game.
 
+### The loading screen
+
+Most switches are over before you notice. When one takes longer than half a second, a loading panel appears on the black between scenes: a swirl, a line saying what's happening ("Walking to *world name*…", "Opening the rift to *branch*…"), a stepped progress bar when cabn knows how far along it is (while the art downloads at startup), and one of Wren's tips, changing every few seconds. Once it's up it stays for at least a quarter of a second, so a load that finishes just then doesn't flash it. Until it appears, clicks don't reach the scene you're leaving.
+
+You'll see it when:
+
+- cabn starts up, on the shelf or straight into a world
+- you walk into a world from the shelf, or back to the shelf from the bonfire
+- you travel through the rift to a universe (the browser builds that branch's world on the spot) or back home
+- a world owner opens or leaves the shadow realm
+- a panel's code loads slowly: the big map's history and timeline, the pensieve, the rift's picker, a PDF, or an owner's commit or branch change (which reloads the page under the panel)
+
+If a world or shelf can't be loaded, the panel turns into a message instead:
+
+- **"The path to this world has washed out."** The file couldn't be fetched (the line under it says why, for example the HTTP status). **Try again** often helps.
+- **"The map of this world is torn."** The file arrived but this version of cabn can't read it. Trying again won't fix that; the world needs rebuilding.
+
+(The shelf's versions say "the shelf" instead of "this world".) **Try again** reloads the same place. **Back to shelf** appears when you came from a shelf and takes you back to it. The message stays until you pick one.
+
 ## Tools
 
 ### Current-world map
