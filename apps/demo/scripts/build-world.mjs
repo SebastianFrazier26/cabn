@@ -2,17 +2,30 @@
 // Runs at dev/build time (see package.json predev/prebuild), not committed —
 // public/worlds and public/assets are gitignored and regenerated from
 // {sample-project,notes-vault}/ and assets/generated/ on demand.
-import { cp, mkdir, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import {
+	cp,
+	mkdir,
+	readdir,
+	readFile,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runBuild, runShelf } from "@cabn/cli";
 import { createSampleHistory, demoGithubFetch } from "./gen-git-fixture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const demoRoot = join(here, "..");
+const repoRoot = join(demoRoot, "..", "..");
 const worldsOutDir = join(demoRoot, "public", "worlds");
-const assetsSourceDir = join(demoRoot, "..", "..", "assets", "generated");
+const assetsSourceDir = join(repoRoot, "assets", "generated");
 const assetsOutDir = join(demoRoot, "public", "assets");
+// Outside public/ so it never ships in the bundle (or trips the postbuild
+// scans); losing it (a fresh node_modules) only costs one rebuild.
+const fingerprintDir = join(demoRoot, "node_modules", ".cache", "cabn-worlds");
 
 // Two contrasting worlds, not one: a TS/Python "codebase" and a markdown-only
 // notes vault, so the shelf visibly shows worlds with different biomes/file
@@ -38,6 +51,20 @@ const WORLDS = [
 	{ sourceDir: join(demoRoot, "notes-vault"), name: "notes" },
 ];
 
+// Everything a built world is a function of besides its own inputs: the
+// packages that convert it (runBuild lives in the cli) and the git fixture
+// generator. dist/assets is the cli's copy of the sprites for `cabn serve`,
+// never read by a build.
+const TOOLCHAIN = [
+	{
+		name: "@cabn/world-schema",
+		dir: join(repoRoot, "packages", "world-schema"),
+	},
+	{ name: "@cabn/converter", dir: join(repoRoot, "packages", "converter") },
+	{ name: "@cabn/cli", dir: join(repoRoot, "packages", "cli") },
+];
+const TOOLCHAIN_SKIP = new Set(["assets"]);
+
 export async function pathExists(path) {
 	try {
 		await stat(path);
@@ -47,22 +74,128 @@ export async function pathExists(path) {
 	}
 }
 
-/** Pure decision, exported for testing: skip the (slow-ish) convert() pass when the world is already built, unless forced. */
-export function shouldBuild(outputExists, force) {
-	return force || !outputExists;
+/**
+ * Pure decision, exported for testing: skip the (slow-ish) convert() pass
+ * only when the world is built and was built from exactly the current inputs.
+ * A world with no stored fingerprint (built before this check, or by hand)
+ * counts as stale.
+ */
+export function shouldBuild(
+	outputExists,
+	force,
+	storedFingerprint,
+	fingerprint,
+) {
+	return force || !outputExists || storedFingerprint !== fingerprint;
+}
+
+/**
+ * sha256 over every file under `dir` (relative path + bytes, in sorted
+ * order so it's the same on every machine), skipping top-level entries named
+ * in `skip`. Content rather than mtimes: a `pnpm -r build` rewrites every
+ * dist file, and that alone must not force a world rebuild.
+ */
+export async function hashTree(dir, skip = new Set()) {
+	const files = [];
+	async function walk(current) {
+		for (const entry of await readdir(current, { withFileTypes: true })) {
+			const full = join(current, entry.name);
+			if (current === dir && skip.has(entry.name)) continue;
+			if (entry.isDirectory()) await walk(full);
+			else if (entry.isFile()) files.push(full);
+		}
+	}
+	await walk(dir);
+	files.sort();
+	const hash = createHash("sha256");
+	for (const file of files) {
+		hash.update(relative(dir, file).split(sep).join("/"));
+		hash.update("\0");
+		hash.update(await readFile(file));
+		hash.update("\0");
+	}
+	return hash.digest("hex");
+}
+
+/** Hashes that don't depend on which world is being built — computed once per run. */
+export async function toolchainFingerprint(toolchain = TOOLCHAIN) {
+	const parts = {};
+	for (const pkg of toolchain) {
+		const manifest = JSON.parse(
+			await readFile(join(pkg.dir, "package.json"), "utf8"),
+		);
+		parts[pkg.name] = {
+			version: manifest.version,
+			dist: await hashTree(join(pkg.dir, "dist"), TOOLCHAIN_SKIP),
+		};
+	}
+	const schema = await import(
+		pathToFileURL(
+			join(repoRoot, "packages", "world-schema", "dist", "index.js"),
+		).href
+	);
+	parts.schemaVersion = schema.CABN_VERSION;
+	parts.gitFixture = createHash("sha256")
+		.update(await readFile(join(here, "gen-git-fixture.mjs")))
+		.digest("hex");
+	return parts;
+}
+
+/**
+ * One world's fingerprint: its source tree (cabn.json included — it's a file
+ * in the tree), any findings files, the build options, and the toolchain.
+ * The git fixture is generated from the source tree plus gen-git-fixture.mjs,
+ * so both already cover it.
+ */
+export async function worldFingerprint(world, toolchain) {
+	const findings = [];
+	for (const path of world.findingsPaths ?? []) {
+		findings.push({
+			path: relative(demoRoot, path).split(sep).join("/"),
+			hash: createHash("sha256")
+				.update(await readFile(path))
+				.digest("hex"),
+		});
+	}
+	const inputs = {
+		name: world.name,
+		source: await hashTree(world.sourceDir),
+		findings,
+		gitFixture: world.gitFixture === true,
+		toolchain,
+	};
+	return createHash("sha256").update(JSON.stringify(inputs)).digest("hex");
+}
+
+async function readStoredFingerprint(name) {
+	try {
+		return (await readFile(join(fingerprintDir, `${name}.txt`), "utf8")).trim();
+	} catch {
+		return undefined;
+	}
 }
 
 async function main() {
 	const force = process.argv.includes("--force");
+	const toolchain = await toolchainFingerprint();
 
 	const bundleDirs = [];
 	for (const world of WORLDS) {
 		const outDir = join(worldsOutDir, world.name);
 		const manifestPath = join(outDir, "world.json");
 		bundleDirs.push(outDir);
+		const fingerprint = await worldFingerprint(world, toolchain);
+		const stored = await readStoredFingerprint(world.name);
+		const outputExists = await pathExists(manifestPath);
 
-		if (shouldBuild(await pathExists(manifestPath), force)) {
-			if (force) await rm(outDir, { recursive: true, force: true });
+		if (shouldBuild(outputExists, force, stored, fingerprint)) {
+			if (outputExists && !force)
+				console.log(
+					`cabn demo: "${world.name}" world is stale (inputs or converter changed), rebuilding`,
+				);
+			// A stale world's leftover chunk files must not outlive the rebuild.
+			await rm(outDir, { recursive: true, force: true });
+			await rm(join(fingerprintDir, `${world.name}.txt`), { force: true });
 			const fixture = world.gitFixture
 				? await createSampleHistory(world.sourceDir)
 				: undefined;
@@ -78,6 +211,8 @@ async function main() {
 			} finally {
 				await fixture?.cleanup();
 			}
+			await mkdir(fingerprintDir, { recursive: true });
+			await writeFile(join(fingerprintDir, `${world.name}.txt`), fingerprint);
 			const history = summary.history
 				? `, git: ${summary.history.branches} branches, ${Math.round(summary.history.packBytes / 1024)} KB pack`
 				: "";
@@ -88,7 +223,7 @@ async function main() {
 				console.warn(`cabn demo: ${warning}`);
 		} else {
 			console.log(
-				`cabn demo: "${world.name}" world already built, skipping (pass --force to rebuild)`,
+				`cabn demo: "${world.name}" world up to date, skipping (pass --force to rebuild)`,
 			);
 		}
 	}
@@ -116,7 +251,7 @@ async function main() {
 	console.log(`cabn demo: synced sprites -> ${assetsOutDir}`);
 }
 
-// Guarded so vitest can import shouldBuild/pathExists for testing without
+// Guarded so vitest can import the fingerprint helpers for testing without
 // triggering the actual filesystem build as a side effect of the import.
 if (import.meta.url === `file://${process.argv[1]}`) {
 	await main();
