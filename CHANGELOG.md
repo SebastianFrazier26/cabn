@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-30 — Empty clearings shrink in the shadow realm
+
+- **User decision (2026-09-30): shrink the empty clearings.** In a layer that hides the base world, a base clearing with nothing left to show (no arch of its own in view and no layer path leaving it) draws only a small patch of ground around its fountain or bonfire (at most 110×80 px radii): the tiles, flower ring, decals, theme tint and prop scatter all shrink to it. Its paths still run right into the patch. Arch spots, path gates, sign placement and scenery keepouts keep the full clearing, so nothing else moves, and leaving the realm draws the full clearing again.
+- **Neutral seam.** `mergeLayer` now reports `emptyClusterIds` (from the new `emptyBaseClusters`; always empty without an exclusive layer), and WorldScene hands the ground bake the radii from `drawnClearingRadii(full, empty)`. The bake itself is unchanged.
+- **Tests:** `worldLayer.test.ts` (which clusters count as empty, and that the radius only ever shrinks, and only for an empty one); `shadow-owner.spec.ts` (the `docs` clearing draws a small patch in the realm, root keeps its full clearing, and every clearing is back to full after exit). Refreshed `empty-clearing-shadow.png` and `day-shadow.png`.
+
 ## 2026-09-29 — The shadow realm shows only hidden files
 
 - **User decision: "nether regions should ONLY show . files".** While Sudo is on, the realm hides the normal world's contents: every normal arch with its preview, media preview, live embed and orbiting monsters, the base path monsters, the normal signs and edited marks. The orb finds no normal file (by text or name), the spyglass and the map list only hidden files, the monster counter counts only the realm's monsters, and the pet sees and finds nothing at all.

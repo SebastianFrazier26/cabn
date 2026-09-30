@@ -2,7 +2,10 @@ import type { WorldLayerManifest, WorldManifest } from "@cabn/world-schema";
 import { describe, expect, it } from "vitest";
 import { layoutPortalRing } from "../src/systems/portalRing.js";
 import {
+	drawnClearingRadii,
+	EMPTY_CLEARING_PATCH,
 	editorSaveTarget,
+	emptyBaseClusters,
 	isHiddenPath,
 	LAYER_PATH_GATE_OUT_PX,
 	layerPathRoutes,
@@ -263,6 +266,49 @@ describe("mergeLayer with an exclusive layer", () => {
 		expect(mergeLayer(base, delta, { exclusive: false })).toEqual(plain);
 		expect(plain.manifest.portals).toHaveLength(9);
 		expect(plain.manifest.monsters.map((m) => m.id)).toEqual(["m1", "m2"]);
+	});
+});
+
+describe("empty clearings", () => {
+	it("an exclusive layer marks the base clusters left with no portal and no layer path", () => {
+		// root keeps the layer paths to its hidden clusters; src has neither.
+		expect([
+			...mergeLayer(base, delta, { exclusive: true }).emptyClusterIds,
+		]).toEqual(["src"]);
+		expect(mergeLayer(base, delta).emptyClusterIds.size).toBe(0);
+	});
+
+	it("a base path alone doesn't keep a clearing busy, a layer path or a shown portal does", () => {
+		const merged = mergeLayer(base, delta, { exclusive: true });
+		const noLayerPaths = {
+			...merged.manifest,
+			paths: merged.manifest.paths.filter(
+				(p) => !merged.layer.pathIds.has(`${p.from}::${p.to}`),
+			),
+		};
+		expect([...emptyBaseClusters(noLayerPaths, merged.layer)].sort()).toEqual([
+			"root",
+			"src",
+		]);
+		expect([
+			...emptyBaseClusters(
+				{
+					...noLayerPaths,
+					portals: [...noLayerPaths.portals, portal("src/x.ts", "src")],
+				},
+				merged.layer,
+			),
+		]).toEqual(["root"]);
+	});
+
+	it("only an empty clearing's drawn ground shrinks, and never grows", () => {
+		const full = { x: 300, y: 200 };
+		expect(drawnClearingRadii(full, false)).toBe(full);
+		expect(drawnClearingRadii(full, true)).toEqual(EMPTY_CLEARING_PATCH);
+		expect(drawnClearingRadii({ x: 90, y: 60 }, true)).toEqual({
+			x: 90,
+			y: 60,
+		});
 	});
 });
 

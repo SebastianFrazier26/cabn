@@ -174,6 +174,7 @@ import { activeFocusOwner } from "../systems/uiFocus.js";
 import {
 	type ActiveWorldLayer,
 	DEFAULT_SKIN,
+	drawnClearingRadii,
 	editorSaveTarget,
 	inLayerClearing,
 	isHiddenPath,
@@ -385,6 +386,7 @@ export class WorldScene extends Phaser.Scene {
 	private portalsById = new Map<string, Portal>();
 	private portalWorldPos = new Map<string, Position>();
 	private portalRingRadii = new Map<string, number>();
+	private drawnGroundRadii = new Map<string, { x: number; y: number }>();
 	private clearingRadiiY = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private portalVariantOverlays = new Map<string, Phaser.GameObjects.Image>();
@@ -1186,12 +1188,8 @@ export class WorldScene extends Phaser.Scene {
 			const g = this.add.graphics().setDepth(0);
 			for (const cluster of this.manifest.clusters) {
 				g.fillStyle(PALETTE.biome[cluster.biome], 0.35);
-				g.fillEllipse(
-					cluster.pos.x,
-					cluster.pos.y,
-					this.groundRadius(cluster) * 2,
-					this.groundRadiusY(cluster) * 2,
-				);
+				const drawn = this.drawnGround(cluster);
+				g.fillEllipse(cluster.pos.x, cluster.pos.y, drawn.x * 2, drawn.y * 2);
 			}
 			return;
 		}
@@ -1209,8 +1207,7 @@ export class WorldScene extends Phaser.Scene {
 
 		const tintOverlay = this.add.graphics().setDepth(0.6);
 		for (const cluster of this.manifest.clusters) {
-			const radiusX = this.groundRadius(cluster);
-			const radiusY = this.groundRadiusY(cluster);
+			const { x: radiusX, y: radiusY } = this.drawnGround(cluster);
 			const exclusions = this.clusterExclusions(cluster, spawn);
 
 			bakeClusterGround({
@@ -1648,6 +1645,16 @@ export class WorldScene extends Phaser.Scene {
 			this.clearingRadiiY.get(cluster.id) ??
 			this.groundRadius(cluster) * GROUND_RADIUS_Y_RATIO
 		);
+	}
+
+	/** The clearing's drawn ground, which an empty clearing in a layer shrinks (drawnClearingRadii); records it for the e2e. */
+	private drawnGround(cluster: Cluster): { x: number; y: number } {
+		const drawn = drawnClearingRadii(
+			{ x: this.groundRadius(cluster), y: this.groundRadiusY(cluster) },
+			this.layerSeam?.emptyClusterIds.has(cluster.id) ?? false,
+		);
+		this.drawnGroundRadii.set(cluster.id, drawn);
+		return drawn;
 	}
 
 	/** Circle around the hub that contains the whole clearing, for circular keepouts. */
@@ -2679,6 +2686,7 @@ export class WorldScene extends Phaser.Scene {
 		this.portalsById = new Map();
 		this.portalWorldPos = new Map();
 		this.portalRingRadii = new Map();
+		this.drawnGroundRadii = new Map();
 		this.portalSprites = new Map();
 		this.portalVariantOverlays = new Map();
 		this.portalVariants = new Map();

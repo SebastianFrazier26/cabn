@@ -52,6 +52,8 @@ export class WorldLayerSeam {
 	readonly provider: WorldLayerProvider;
 	/** The layer hides the base world's portals, monsters and signs while it shows. */
 	readonly exclusive: boolean;
+	/** Base clusters the layer leaves with nothing to show; they draw only a small patch of ground. */
+	readonly emptyClusterIds: ReadonlySet<string>;
 	private layerManifest: WorldLayerManifest;
 	private routes = new Map<string, Position[]>();
 	private slot: SaveData | null = null;
@@ -61,6 +63,7 @@ export class WorldLayerSeam {
 		this.manifest = merged.manifest;
 		this.layer = merged.layer;
 		this.exclusive = merged.exclusive;
+		this.emptyClusterIds = merged.emptyClusterIds;
 		this.riser = new GroundRiser(active.provider.skin);
 		this.provider = active.provider;
 		this.layerManifest = active.manifest;

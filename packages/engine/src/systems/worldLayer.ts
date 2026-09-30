@@ -452,6 +452,8 @@ export interface MergedWorld {
 	layer: LayerIds;
 	/** The layer hides the base world's portals, monsters and signs (WorldLayerProvider.exclusive). */
 	exclusive: boolean;
+	/** Base clusters an exclusive layer leaves with nothing to show (emptyBaseClusters); always empty otherwise. */
+	emptyClusterIds: ReadonlySet<string>;
 }
 
 export interface MergeOptions {
@@ -483,27 +485,72 @@ export function mergeLayer(
 	assertWorldLayerFits(base, delta);
 	const exclusive = options.exclusive === true;
 	const layerMonsters = [...delta.monsters, ...delta.extendedMonsters];
+	const manifest: WorldManifest = {
+		...base,
+		clusters: [...base.clusters, ...delta.clusters],
+		portals: exclusive
+			? [...delta.portals]
+			: [...base.portals, ...delta.portals],
+		paths: [...base.paths, ...delta.paths],
+		monsters: exclusive ? layerMonsters : [...base.monsters, ...layerMonsters],
+	};
+	const layer: LayerIds = {
+		clusterIds: new Set(delta.clusters.map((c) => c.id)),
+		portalIds: new Set(delta.portals.map((p) => p.id)),
+		pathIds: new Set(delta.paths.map(worldPathId)),
+		monsterIds: new Set(layerMonsters.map((m) => m.id)),
+		signPaths: new Set(delta.signs.map((s) => s.path)),
+	};
 	return {
 		exclusive,
-		manifest: {
-			...base,
-			clusters: [...base.clusters, ...delta.clusters],
-			portals: exclusive
-				? [...delta.portals]
-				: [...base.portals, ...delta.portals],
-			paths: [...base.paths, ...delta.paths],
-			monsters: exclusive
-				? layerMonsters
-				: [...base.monsters, ...layerMonsters],
-		},
-		layer: {
-			clusterIds: new Set(delta.clusters.map((c) => c.id)),
-			portalIds: new Set(delta.portals.map((p) => p.id)),
-			pathIds: new Set(delta.paths.map(worldPathId)),
-			monsterIds: new Set(layerMonsters.map((m) => m.id)),
-			signPaths: new Set(delta.signs.map((s) => s.path)),
-		},
+		manifest,
+		layer,
+		emptyClusterIds: exclusive
+			? emptyBaseClusters(manifest, layer)
+			: new Set<string>(),
 	};
+}
+
+/**
+ * Base clusters with nothing left to show in a merged view: no portal of
+ * theirs in it and no layer path leaving them. Base paths don't count —
+ * they only pass through on the way to somewhere else.
+ */
+export function emptyBaseClusters(
+	manifest: Pick<WorldManifest, "clusters" | "portals" | "paths">,
+	layer: Pick<LayerIds, "clusterIds" | "pathIds">,
+): Set<string> {
+	const busy = new Set(manifest.portals.map((p) => p.clusterId));
+	for (const path of manifest.paths) {
+		if (!layer.pathIds.has(worldPathId(path))) continue;
+		busy.add(path.from);
+		busy.add(path.to);
+	}
+	return new Set(
+		manifest.clusters
+			.filter((c) => !layer.clusterIds.has(c.id) && !busy.has(c.id))
+			.map((c) => c.id),
+	);
+}
+
+/** An empty clearing's drawn ground: a patch just big enough for its fountain or bonfire. */
+export const EMPTY_CLEARING_PATCH = { x: 110, y: 80 } as const;
+
+/**
+ * The ground a clearing draws (tiles, flower ring, decals, props). Only an
+ * empty one shrinks, to a patch around its centre; its layout (arch spots,
+ * path gates, scenery keepouts) keeps the full size either way.
+ */
+export function drawnClearingRadii(
+	full: { x: number; y: number },
+	empty: boolean,
+): { x: number; y: number } {
+	return empty
+		? {
+				x: Math.min(full.x, EMPTY_CLEARING_PATCH.x),
+				y: Math.min(full.y, EMPTY_CLEARING_PATCH.y),
+			}
+		: full;
 }
 
 /**

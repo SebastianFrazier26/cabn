@@ -205,6 +205,8 @@ interface Drawn {
 	monsterSprites: string[];
 	editedMarkers: string[];
 	signs: string[];
+	/** Each clearing's drawn ground radii, by cluster id (a hidden annex shares its folder's label). */
+	ground: Record<string, [number, number]>;
 }
 
 /** What WorldScene itself has drawn, beyond the arches. */
@@ -220,7 +222,10 @@ async function drawn(page: Page): Promise<Drawn> {
 			monsterSprites: Map<string, { active: boolean }>;
 			editedMarkers: Map<string, unknown>;
 			signs: { placed: Map<string, unknown> } | null;
+			drawnGroundRadii: Map<string, { x: number; y: number }>;
 		};
+		const ground: Record<string, [number, number]> = {};
+		for (const [id, r] of world.drawnGroundRadii) ground[id] = [r.x, r.y];
 		const spots: Record<string, [number, number]> = {};
 		for (const [id, p] of world.portalWorldPos) spots[id] = [p.x, p.y];
 		return {
@@ -230,6 +235,7 @@ async function drawn(page: Page): Promise<Drawn> {
 				.map(([id]) => id),
 			editedMarkers: [...world.editedMarkers.keys()],
 			signs: [...(world.signs?.placed.keys() ?? [])],
+			ground,
 		};
 	});
 }
@@ -584,6 +590,23 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(before.portals.length).toBeGreaterThan(0);
 	expect(before.monsters.length).toBeGreaterThan(0);
 	expect(beforeDrawn.monsterSprites.length).toBeGreaterThan(0);
+	const docsId = await page.evaluate(
+		() =>
+			(
+				window as unknown as { __cabnStore: { getState(): CabnStore } }
+			).__cabnStore
+				.getState()
+				.worldMap?.clusters.find((c) => c.label === "docs")?.id ?? "",
+	);
+	const rootId = await page.evaluate(
+		() =>
+			(
+				window as unknown as { __cabnStore: { getState(): CabnStore } }
+			).__cabnStore
+				.getState()
+				.worldMap?.clusters.find((c) => c.label === "root")?.id ?? "",
+	);
+	expect(beforeDrawn.ground[docsId]?.[0]).toBeGreaterThan(150);
 	const beforeScenery = await scenery(page);
 	expect(beforeScenery.items.length).toBeGreaterThan(20);
 	expect(beforeScenery.archTextures).toEqual(["portal-arch-strip"]);
@@ -647,6 +670,11 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	).toEqual([]);
 	expect(realmDrawn.signs.filter((p) => !isHidden(p))).toEqual([]);
 	expect(realmDrawn.editedMarkers.filter((p) => !isHidden(p))).toEqual([]);
+	// docs, with nothing hidden under it, draws only a small patch; root,
+	// which a layer path still leaves, keeps its full clearing.
+	expect(realmDrawn.ground[docsId]?.[0]).toBeLessThanOrEqual(110);
+	expect(realmDrawn.ground[docsId]?.[1]).toBeLessThanOrEqual(80);
+	expect(realmDrawn.ground[rootId]).toEqual(beforeDrawn.ground[rootId]);
 	// The normal arch spots keep their places in the layout, undrawn.
 	for (const [id, pos] of Object.entries(beforeDrawn.spots))
 		expect(realmDrawn.spots[id], id).toEqual(pos);
@@ -946,8 +974,8 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(pet?.search).toEqual([]);
 	expect(pet?.env).toBeNull();
 
-	// For review: a normal folder with no hidden file under it keeps its
-	// clearing in the realm, empty.
+	// For review: a normal folder with no hidden file under it keeps a small
+	// patch of its clearing in the realm.
 	if (TAKE_SHOTS) {
 		const docs = await page.evaluate(() => {
 			const s = (
@@ -1025,6 +1053,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 		[...beforeDrawn.monsterSprites].sort(),
 	);
 	expect(offDrawn.spots).toEqual(beforeDrawn.spots);
+	expect(offDrawn.ground).toEqual(beforeDrawn.ground);
 	expect(offDrawn.signs.sort()).toEqual([...beforeDrawn.signs].sort());
 	await expect(page.getByText(/bugs? remains? in this world/)).toHaveText(
 		`${before.monsters.length} bug${before.monsters.length === 1 ? "" : "s"} remain in this world`,
