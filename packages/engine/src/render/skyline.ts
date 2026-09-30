@@ -62,6 +62,8 @@ export interface SkylineOptions {
 	baseBounds?: { minX: number; maxX: number };
 	/** A world skin's sky gradient, used by day and by night. */
 	skyKey?: string;
+	/** A world skin's day art for a piece (same size as the original); a redrawn piece takes no tint. */
+	pieceTextureFor?: (piece: SkylinePieceName) => string | undefined;
 }
 
 export interface SkylineHandle {
@@ -213,18 +215,22 @@ export function attachSkyline(
 				viewWidth,
 				widths,
 			});
+	const redrawn = new Set<Phaser.GameObjects.Image>();
 	for (const el of elements) {
 		const sf = LAYER_SCROLL_FACTOR[el.layer];
 		const y = horizonY + LAYER_BASE_OFFSET[el.layer];
 		for (const variant of ["day", "night"] as const) {
+			const swap =
+				variant === "day" ? opts.pieceTextureFor?.(el.piece) : undefined;
 			const image = scene.add
-				.image(el.u, y, skylineKey(el.piece, variant))
+				.image(el.u, y, swap ?? skylineKey(el.piece, variant))
 				.setOrigin(0.5, 1)
 				.setScale(el.scale)
 				.setFlipX(el.flipX)
 				.setScrollFactor(sf, 1)
 				.setDepth(LAYER_DEPTH[el.layer] + (variant === "night" ? 0.001 : 0));
 			objects.push(image);
+			if (swap) redrawn.add(image);
 			if (variant === "night") nightTwins.push(image);
 		}
 	}
@@ -235,7 +241,8 @@ export function attachSkyline(
 			if (
 				object instanceof Phaser.GameObjects.Image &&
 				object.blendMode !== Phaser.BlendModes.ADD &&
-				object.texture.key !== SKY_STAR_KEY
+				object.texture.key !== SKY_STAR_KEY &&
+				!redrawn.has(object)
 			)
 				object.setTint(tint);
 		}

@@ -1,5 +1,5 @@
 import type Phaser from "phaser";
-import { sceneryKey } from "../assetPaths.js";
+import { type SceneryName, sceneryKey } from "../assetPaths.js";
 import { PALETTE } from "../palette.js";
 import {
 	type CircleKeepout,
@@ -24,6 +24,7 @@ import {
 	HORIZON_OVERLAP_PX,
 	SKY_BAND_HEIGHT_PX,
 	type SkylineHandle,
+	type SkylineOptions,
 } from "./skyline.js";
 
 export interface Bounds {
@@ -67,7 +68,7 @@ export interface EdgeDressingInput {
 	/** A world layer's content and grown bounds; `bounds`, `circles` and `segments` then describe the base world alone (planLayeredEdgeScenery). */
 	layer?: EdgeSceneryLayer | null;
 	/** A world skin's replacement textures, by kind (same pixel size as the originals). */
-	textureFor?: (kind: SceneryKind) => string | undefined;
+	textureFor?: (kind: SceneryName) => string | undefined;
 	/** A world skin's multiply tint on every piece it doesn't redraw. */
 	tint?: number;
 }
@@ -129,6 +130,7 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 				SAILS_DEPTH,
 				input.reducedMotion,
 				input.tint,
+				input.textureFor?.("windmill-sails"),
 			),
 		);
 		// Window rows 16-19 of the 30-row windmill grid (world-art/scenery.ts).
@@ -162,7 +164,10 @@ export function attachSky(
 	reducedMotion: boolean,
 	skylineTint?: number,
 	/** With a world layer on: the base world's bounds (the skyline keeps its pieces) and the skin's sky gradient. */
-	options: { baseBounds?: Bounds; skyKey?: string } = {},
+	options: Pick<
+		SkylineOptions,
+		"baseBounds" | "skyKey" | "pieceTextureFor"
+	> = {},
 ): { skyline: SkylineHandle; destroy(): void } {
 	const skyline = attachSkyline(scene, {
 		bounds,
@@ -170,8 +175,7 @@ export function attachSky(
 		atmosphere,
 		reducedMotion,
 		...(skylineTint !== undefined ? { tint: skylineTint } : {}),
-		...(options.baseBounds ? { baseBounds: options.baseBounds } : {}),
-		...(options.skyKey ? { skyKey: options.skyKey } : {}),
+		...options,
 	});
 	const clouds = attachCloudShadows(
 		scene,

@@ -192,6 +192,38 @@ export const SHADOW = [
 	"fx_ash.png",
 	"fx_ember.png",
 	"parchment_scorched.png",
+	...[
+		"fence",
+		"hedge",
+		"lamp_post",
+		"tree_small",
+		"tree_large",
+		"bush",
+		"well",
+		"signpost",
+		"flower_pot",
+		"stone_wall",
+		"cottage",
+		"flower_bed",
+		"bench",
+	].map((p) => `prop_${p}_nether_soft.png`),
+	...[
+		"shrub",
+		"berry_shrub",
+		"rock_small",
+		"flower_patch",
+		"reeds",
+		"mushroom",
+		"fallen_log",
+		"stump",
+		"ruin",
+		"windmill",
+		"windmill_sails",
+		"waymarker",
+	].map((s) => `scenery_${s}_nether_soft.png`),
+	...["castle", "watchtower", "village", "hill", "treeline"].map(
+		(s) => `skyline_${s}_nether_soft.png`,
+	),
 ];
 
 async function copyInto(subdir, files) {

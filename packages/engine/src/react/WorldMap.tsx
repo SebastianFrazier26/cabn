@@ -299,6 +299,21 @@ function MapDrawing({
 	const layerColor = toCssColor(
 		layerTokens?.accentPink ?? LAYER_FALLBACK_COLOR,
 	);
+	// A layer's HUD palette recolours the base world's clearings too; the
+	// green defaults are the normal world's meadow and would clash with it.
+	const baseInk = layerTokens
+		? {
+				visited: toCssColor(layerTokens.borderOuter),
+				unvisited: toCssColor(layerTokens.panelBody),
+				rim: toCssColor(layerTokens.textSecondary),
+				portal: toCssColor(layerTokens.accentYellow),
+			}
+		: {
+				visited: "#668763",
+				unvisited: "#354a3d",
+				rim: "#a1b58b",
+				portal: "#71d6d9",
+			};
 	const width = large ? 720 : 200;
 	const height = large ? 400 : 140;
 	const project = useMemo(
@@ -341,8 +356,10 @@ function MapDrawing({
 							cx={p.x}
 							cy={p.y}
 							r={large ? 24 : 9}
-							fill={visited.includes(c.id) ? "#668763" : "#354a3d"}
-							stroke={c.layer ? layerColor : "#a1b58b"}
+							fill={
+								visited.includes(c.id) ? baseInk.visited : baseInk.unvisited
+							}
+							stroke={c.layer ? layerColor : baseInk.rim}
 							strokeWidth={c.layer ? 3 : 1}
 							data-layer={c.layer ? "" : undefined}
 						/>
@@ -399,7 +416,7 @@ function MapDrawing({
 							y={point.y - 5}
 							width={10}
 							height={10}
-							fill={p.layer ? layerColor : "#71d6d9"}
+							fill={p.layer ? layerColor : baseInk.portal}
 							style={{ cursor: "pointer" }}
 							onClick={() => {
 								if (store.getState().guideOpen) return;
