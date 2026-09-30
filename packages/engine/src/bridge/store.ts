@@ -19,6 +19,7 @@ import type { DisplayPreview } from "../systems/archPreview.js";
 import { addBagSlot, type BagSlot, removeBagSlot } from "../systems/bag.js";
 import { createFileBufferState } from "../systems/fileBuffer.js";
 import type { OwnerSignsApi } from "../systems/ownerSigns.js";
+import type { OwnerGitAction } from "../systems/ownerToolkit.js";
 import type { RunSpeed, RunStatus } from "../systems/runPlayback.js";
 import {
 	resolveTimeOfDay,
@@ -161,6 +162,10 @@ export interface CabnState {
 	git: GitContext | null;
 	/** True while the rift's universe picker is open — WorldScene holds the player still meanwhile. */
 	universeOpen: boolean;
+	/** The owner git flow the picker was opened for from the owner's toolkit (its Owner tab, that section); null otherwise. */
+	universeOwnerFocus: OwnerGitAction | null;
+	/** The owner's toolkit menu (react/OwnerToolkit.tsx); only ever true on an owner page, in world mode. */
+	ownerToolkitOpen: boolean;
 	/** The portal whose file history (the pensieve) is open, if any. */
 	pensievePortalId: string | null;
 	/** Where the rift stands (render/rift.ts publishes it) — the map draws it; null without one. */
@@ -310,6 +315,10 @@ export interface CabnActions {
 	setGit(git: GitContext | null): void;
 	/** Opens only in world mode, with history loaded and nothing else modal. */
 	setUniverseOpen(open: boolean): void;
+	/** Opens the rift's picker on its Owner tab at one git flow; same conditions as setUniverseOpen. */
+	openOwnerGit(action: OwnerGitAction): void;
+	/** Opens only in world mode, with nothing else modal. */
+	setOwnerToolkitOpen(open: boolean): void;
 	setPensievePortalId(portalId: string | null): void;
 	setRiftPos(pos: Position | null): void;
 	/** A world's signs and its folder -> cluster map, together, at world start. */
@@ -376,6 +385,8 @@ const initialState: CabnState = {
 	guideOpen: false,
 	git: null,
 	universeOpen: false,
+	universeOwnerFocus: null,
+	ownerToolkitOpen: false,
 	pensievePortalId: null,
 	riftPos: null,
 	signs: [],
@@ -433,6 +444,8 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				guideOpen: false,
 				git: null,
 				universeOpen: false,
+				universeOwnerFocus: null,
+				ownerToolkitOpen: false,
 				pensievePortalId: null,
 				riftPos: null,
 				signs: [],
@@ -456,6 +469,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 			set({
 				mode: "file",
 				mapOpen: false,
+				ownerToolkitOpen: false,
 				activePortalId: portalId,
 				activePortalContent: content,
 				activeFileState: buffer,
@@ -561,7 +575,13 @@ export function createCabnStore(): StoreApi<CabnStore> {
 		setNearWebPortal: (nearWebPortal) => set({ nearWebPortal }),
 		setGuideNpc: (guideNpc) => set({ guideNpc }),
 		setGuideOpen: (guideOpen) => set({ guideOpen }),
-		setGit: (git) => set({ git, universeOpen: false, pensievePortalId: null }),
+		setGit: (git) =>
+			set({
+				git,
+				universeOpen: false,
+				universeOwnerFocus: null,
+				pensievePortalId: null,
+			}),
 		setUniverseOpen: (open) => {
 			const s = get();
 			set({
@@ -571,6 +591,25 @@ export function createCabnStore(): StoreApi<CabnStore> {
 					s.mode === "world" &&
 					!s.guideOpen &&
 					!s.mapOpen,
+				universeOwnerFocus: null,
+			});
+		},
+		openOwnerGit: (action) => {
+			get().setUniverseOpen(true);
+			if (get().universeOpen) set({ universeOwnerFocus: action });
+		},
+		setOwnerToolkitOpen: (open) => {
+			const s = get();
+			set({
+				ownerToolkitOpen:
+					open &&
+					s.mode === "world" &&
+					!s.guideOpen &&
+					!s.mapOpen &&
+					!s.universeOpen &&
+					s.pensievePortalId === null &&
+					s.openSignPath === null &&
+					s.signDraft === null,
 			});
 		},
 		setPensievePortalId: (pensievePortalId) => set({ pensievePortalId }),

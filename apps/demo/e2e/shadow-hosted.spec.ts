@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 
-// The hosted demo is a normal world: no world layers, so no sudo item, and
-// the shadow realm's routes don't exist on its server.
-test("hosted: no sudo item, no world layers, and no shadow routes", async ({
+// The hosted demo is a normal world: no world layers and no owner toolkit
+// (so O does nothing), and the shadow realm's routes don't exist on its server.
+test("hosted: no owner toolkit, no world layers, and no shadow routes", async ({
 	page,
 	request,
 }) => {
@@ -19,9 +19,11 @@ test("hosted: no sudo item, no world layers, and no shadow routes", async ({
 			).__cabnStore.getState().worldLayers.length,
 	);
 	expect(layers).toBe(0);
-	await expect(page.locator('[data-tool="sudo"]')).toHaveCount(0);
+	await expect(page.locator('[data-tool="owner"]')).toHaveCount(0);
+	await page.keyboard.press("o");
 	await page.keyboard.press("h");
 	await page.waitForTimeout(300);
+	await expect(page.getByTestId("owner-toolkit")).toHaveCount(0);
 	const active = await page.evaluate(
 		() =>
 			(

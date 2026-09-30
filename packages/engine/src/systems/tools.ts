@@ -138,25 +138,6 @@ export function createDefaultTools(): Tool[] {
 	];
 }
 
-/**
- * The world owner's sign item. Deliberately not in createDefaultTools(): the
- * hotbar adds it only while the store holds the owner capability (a local
- * `cabn serve` page), so no visitor, hosted build or demo ever has it.
- */
-export function createSignTool(): Tool {
-	return {
-		id: "sign",
-		label: "Sign",
-		name: "Signpost",
-		icon: uiIconPath("sign"),
-		hotkey: "P",
-		onUse: (ctx) => {
-			const state = ctx.store.getState();
-			state.setSignPlacing(!state.signPlacing);
-		},
-	};
-}
-
 export function createDefaultToolRegistry(): ToolRegistry {
 	const registry = new ToolRegistry();
 	for (const tool of createDefaultTools()) registry.register(tool);

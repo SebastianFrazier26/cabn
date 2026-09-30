@@ -1,19 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import type { OwnerCapability } from "../systems/ownerApi.js";
+import {
+	createOwnerToolkitTool,
+	OWNER_TOOLKIT_HOTKEY,
+	ownerToolkitEntries,
+} from "../systems/ownerToolkit.js";
 import {
 	createDefaultToolRegistry,
-	createSignTool,
 	type Tool,
 	type ToolRegistry,
 } from "../systems/tools.js";
 import { classifyFocus, type FocusCandidate } from "../systems/uiFocus.js";
+import { OwnerToolkit } from "./OwnerToolkit.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface ToolHotbarProps {
 	store: StoreApi<CabnStore>;
 	bus: CabnBus;
+	/** Only whether it has `git` is read here: the toolkit's git entries. */
+	owner?: OwnerCapability;
 }
 
 // Which tool's slot gets the mockup's gold-ring "selected" treatment — most
@@ -40,21 +48,45 @@ function isToolSelected(
 }
 
 /**
- * Bottom hotbar rendering the tool registry's slots. Owns the one global
- * keydown listener for the React-side tools (L/F/B/Q/R, Cmd/Ctrl+F) — Enter
+ * Bottom hotbar rendering the tool registry's slots, plus the owner's one
+ * toolkit slot on an owner page. Owns the one global keydown listener for
+ * the React-side tools (L/F/B/Q/R, O, Cmd/Ctrl+F) — Enter
  * stays Phaser-only (each scene polls it directly for frame-accurate feel;
  * see systems/tools.ts's opener comment) so it isn't bound here.
  */
 export function ToolHotbar({
 	store,
 	bus,
+	owner,
 }: ToolHotbarProps): React.ReactElement | null {
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
-	const [signTool] = useState(createSignTool);
-	const owner = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const [ownerTool] = useState(createOwnerToolkitTool);
+	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const hasGitHistory = useCabnStore(store, (s) => s.git !== null);
 	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
 	const activeLayerId = useCabnStore(store, (s) => s.activeLayerId);
 	const signPlacing = useCabnStore(store, (s) => s.signPlacing);
+	const toolkitOpen = useCabnStore(store, (s) => s.ownerToolkitOpen);
+	const ownerGit = owner?.git !== undefined;
+	const toolkitEntries = useMemo(
+		() =>
+			ownerToolkitEntries({
+				signs: ownerSigns,
+				git: ownerGit && hasGitHistory,
+				layers: worldLayers,
+				signPlacing,
+				activeLayerId,
+			}),
+		[
+			ownerSigns,
+			ownerGit,
+			hasGitHistory,
+			worldLayers,
+			signPlacing,
+			activeLayerId,
+		],
+	);
+	const hasToolkit = toolkitEntries.length > 0;
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
@@ -94,20 +126,11 @@ export function ToolHotbar({
 			// quit) — they used to fire the wand/quill on their way through.
 			if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-			if (key === "p" && store.getState().ownerSigns) {
-				if (currentMode !== "world") return;
+			if (key === OWNER_TOOLKIT_HOTKEY.toLowerCase()) {
+				// No slot means no owner capability (the hosted demo): O is inert.
+				if (!hasToolkit || currentMode !== "world" || event.repeat) return;
 				event.preventDefault();
-				signTool.onUse({ store, bus });
-				return;
-			}
-			const layerTool = store
-				.getState()
-				.worldLayers.flatMap((layer) => layer.tools)
-				.find((tool) => tool.hotkey.toLowerCase() === key);
-			if (layerTool) {
-				if (currentMode !== "world" || event.repeat) return;
-				event.preventDefault();
-				layerTool.onUse({ store, bus });
+				ownerTool.onUse({ store, bus });
 				return;
 			}
 			const toolId = HOTKEY_TOOL_IDS[key];
@@ -119,7 +142,7 @@ export function ToolHotbar({
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [registry, signTool, store, bus]);
+	}, [registry, ownerTool, hasToolkit, store, bus]);
 
 	// Hidden rather than just non-interactive while the editor is open — its
 	// tools (opener/spyglass/orb/bag-as-selection) all read as "world/file
@@ -153,31 +176,21 @@ export function ToolHotbar({
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
-			{owner && mode === "world" && (
-				<HotbarSlot
-					tool={signTool}
-					badge={null}
-					selected={signPlacing}
-					showLabel={false}
-					writing={false}
-					onUse={() => signTool.onUse({ store, bus })}
-				/>
+			{hasToolkit && mode === "world" && (
+				<span style={{ position: "relative", display: "flex" }}>
+					<HotbarSlot
+						tool={ownerTool}
+						badge={null}
+						selected={toolkitOpen || signPlacing}
+						showLabel={false}
+						writing={false}
+						onUse={() => ownerTool.onUse({ store, bus })}
+					/>
+					{toolkitOpen && (
+						<OwnerToolkit store={store} bus={bus} entries={toolkitEntries} />
+					)}
+				</span>
 			)}
-			{mode === "world" &&
-				worldLayers.flatMap((layer) =>
-					layer.tools.map((tool) => (
-						<HotbarSlot
-							key={`${layer.id}:${tool.id}`}
-							tool={tool}
-							badge={null}
-							selected={activeLayerId === layer.id}
-							showLabel={false}
-							writing={false}
-							extraClass="layer-tool"
-							onUse={() => tool.onUse({ store, bus })}
-						/>
-					)),
-				)}
 		</div>
 	);
 }
@@ -189,10 +202,8 @@ function HotbarSlot({
 	showLabel,
 	writing,
 	onUse,
-	extraClass,
 }: {
 	tool: Tool;
-	extraClass?: string;
 	badge: number | null;
 	selected: boolean;
 	showLabel: boolean;
@@ -213,7 +224,7 @@ function HotbarSlot({
 			}}
 			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
 			data-tool={tool.id}
-			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}${extraClass ? ` ${extraClass}` : ""}`}
+			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
 			<img src={tool.icon} alt={tool.name} />

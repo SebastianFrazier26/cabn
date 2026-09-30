@@ -14,6 +14,7 @@
  * markdown renderer in the dialogue box, for a handful of sentences.
  */
 import type { Species } from "@cabn/world-schema";
+import { OWNER_TOOLKIT_HOTKEY } from "./ownerToolkit.js";
 import {
 	SPELLBOOK_TOOLS,
 	type SpellbookToolId,
@@ -199,6 +200,7 @@ export function guideTopics(style: KeyStyle = "both"): GuideTopic[] {
 				`Bag (${alt}+${toolKey("bag")}): copies the caret's selection, or its whole line, into your bag. Shift+arrows or dragging selects text.`,
 				`Quill (${alt}+${toolKey("quill")}) opens the spellbook on the page's caret and edits. Wand (${alt}+${toolKey("wand")}) runs the current buffer as a gentle, simulated trace.`,
 				`Inside a text file, use ${alt}+${toolKey("spyglass")} for the spyglass and ${alt}+${toolKey("orb")} for the orb. ${alt}+${toolKey("opener")} faces a nearby monster; plain Enter inserts a newline.`,
+				`On the world owner's own local page, ${OWNER_TOOLKIT_HOTKEY} opens the owner's toolkit: place a sign, commit, switch or create a branch, and whatever else that page offers. Arrows or numbers pick, Enter uses, Esc closes. Visitors never have it.`,
 			],
 		},
 		{

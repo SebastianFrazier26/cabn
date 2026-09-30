@@ -148,7 +148,7 @@ This is the *entry point*.
 
 `@near` says what it stands beside (a file, or a folder ending in `/`). `#` starts the title; `- ` starts a bullet; `*stars*` emphasise; `[[target|label]]` links. [`SEYN.md`](SEYN.md) has every rule.
 
-Only on your own `cabn serve` page can you place signs from inside the world: press `P` (the signpost in the hotbar), click where it should stand, write it in the editor (the preview updates as you type), and save. It's written into your folder and appears at once. Open one of your signs to edit or delete it. Nobody else ever gets the signpost item, including visitors to a hosted world. It only appears when you start the server with `cabn serve --owner`, which also lets you commit edits and switch branches from the rift (see the [README](../README.md)).
+Only on your own `cabn serve` page can you place signs from inside the world: press `O` for the owner's toolkit (or click its slot at the end of the hotbar), pick **Place sign** (arrow keys or its number, then `Enter`), click where it should stand, write it in the editor (the preview updates as you type), and save. It's written into your folder and appears at once. Open one of your signs to edit or delete it. Nobody else ever gets the toolkit, including visitors to a hosted world: without it `O` does nothing. It only appears when you start the server with `cabn serve --owner`. The same menu also holds **Sudo** (show the hidden files, the shadow realm) and, in a world with git history, **Commit**, **Switch branch** and **Create branch**, which open the rift's Owner tab at that step (see the [README](../README.md)).
 
 ## AI pets (bring your own key)
 
@@ -238,6 +238,7 @@ Everything Wren says, word for word. On macOS she names `Cmd` and `Option` where
 - Bag (Alt/Option+B): copies the caret's selection, or its whole line, into your bag. Shift+arrows or dragging selects text.
 - Quill (Alt/Option+Q) opens the spellbook on the page's caret and edits. Wand (Alt/Option+R) runs the current buffer as a gentle, simulated trace.
 - Inside a text file, use Alt/Option+L for the spyglass and Alt/Option+F for the orb. Alt/Option+Enter faces a nearby monster; plain Enter inserts a newline.
+- On the world owner's own local page, O opens the owner's toolkit: place a sign, commit, switch or create a branch, and whatever else that page offers. Arrows or numbers pick, Enter uses, Esc closes. Visitors never have it.
 
 #### Monsters
 

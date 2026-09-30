@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 
 // Owner mode end to end, against a real `cabn serve` of a temp copy of the
 // CLI's serve fixture (not the demo's vite preview, which has no owner mode):
-// the sign item is in the hotbar, placing shows a ghost, the editor saves a
+// the owner's toolkit (O) offers Place sign, placing shows a ghost, the editor saves a
 // .seyn file to disk, the world and the orb search show it live (and after
 // a reload), and edit/delete round-trip.
 // CABN_REVIEW_SHOTS=1 writes the placing-flow screenshots to
@@ -114,11 +114,23 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	await page.goto(url);
 	const canvas = page.locator("canvas").first();
 	await expect(canvas).toBeVisible();
-	const slot = page.locator('[data-tool="sign"]');
+	const slot = page.locator('[data-tool="owner"]');
 	await expect(slot).toBeVisible({ timeout: 20_000 });
+	await expect(page.locator('[data-tool="sign"]')).toHaveCount(0);
 	await page.waitForTimeout(1500);
 
-	await slot.click();
+	// P is no longer an owner key; O opens the toolkit with Place sign first.
+	await page.keyboard.press("p");
+	await expect(page.getByTestId("sign-placing")).toHaveCount(0);
+	await page.keyboard.press("o");
+	const toolkit = page.getByTestId("owner-toolkit");
+	await expect(toolkit).toBeVisible();
+	await expect(toolkit.locator('[data-entry="sign"]')).toHaveAttribute(
+		"data-picked",
+		"true",
+	);
+	await page.keyboard.press("Enter");
+	await expect(toolkit).toHaveCount(0);
 	await expect(page.getByTestId("sign-placing")).toBeVisible();
 	const box = await canvas.boundingBox();
 	if (!box) throw new Error("no canvas box");

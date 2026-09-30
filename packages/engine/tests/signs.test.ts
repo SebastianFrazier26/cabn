@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { createCabnStore } from "../src/bridge/store.js";
 import { footprintClear } from "../src/systems/edgeScenery.js";
 import type { OwnerSignsApi } from "../src/systems/ownerSigns.js";
+import { ownerToolkitEntries } from "../src/systems/ownerToolkit.js";
 import {
 	defaultSignSpot,
 	filterSignTargets,
@@ -16,7 +17,7 @@ import {
 	standInFront,
 	suggestSignPath,
 } from "../src/systems/signs.js";
-import { createDefaultTools, createSignTool } from "../src/systems/tools.js";
+import { createDefaultTools } from "../src/systems/tools.js";
 
 describe("filterSignTargets", () => {
 	const targets = [
@@ -324,16 +325,28 @@ describe("owner gating", () => {
 		suggestedPath: "welcome.seyn",
 	};
 
-	test("no sign item among the default tools; it exists only on its own", () => {
+	const signEntry = () => {
+		const entry = ownerToolkitEntries({
+			signs: true,
+			git: false,
+			layers: [],
+			signPlacing: false,
+			activeLayerId: null,
+		}).find((e) => e.id === "sign");
+		if (!entry) throw new Error("no sign entry");
+		return entry;
+	};
+
+	test("no sign item among the default tools; it lives in the owner's toolkit", () => {
 		expect(createDefaultTools().map((t) => t.id)).not.toContain("sign");
-		expect(createSignTool().id).toBe("sign");
+		expect(signEntry().label).toBe("Place sign");
 	});
 
 	test("without the owner capability, placing and the editor stay shut", () => {
 		const store = createCabnStore();
 		store.getState().setSignPlacing(true);
 		store.getState().setSignDraft(draft);
-		createSignTool().onUse({ store, bus: undefined as never });
+		signEntry().run({ store, bus: undefined as never });
 		expect(store.getState().signPlacing).toBe(false);
 		expect(store.getState().signDraft).toBeNull();
 	});
@@ -341,7 +354,7 @@ describe("owner gating", () => {
 	test("with it, the tool toggles placing and a draft ends placing", () => {
 		const store = createCabnStore();
 		store.getState().setOwnerSigns(api);
-		createSignTool().onUse({ store, bus: undefined as never });
+		signEntry().run({ store, bus: undefined as never });
 		expect(store.getState().signPlacing).toBe(true);
 		store.getState().setSignDraft(draft);
 		expect(store.getState().signPlacing).toBe(false);

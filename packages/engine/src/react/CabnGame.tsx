@@ -54,8 +54,9 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	 * Owner capability — only `cabn serve --owner`'s host page passes one
 	 * (built by `@cabn/engine/owner` against its loopback owner API). `git`
 	 * gives the rift's picker an Owner tab (commit edits, create/switch
-	 * branches in the real repository); `signs` gives the sign item and edit
-	 * controls. A hosted build or the demo never passes it.
+	 * branches in the real repository); `signs` gives sign placing and edit
+	 * controls; `layers` their toggles. The owner reaches all of them through
+	 * one key, O, the owner's toolkit. A hosted build or the demo never passes it.
 	 */
 	owner?: OwnerCapability;
 	/** Older spelling of `owner.signs`, still accepted; `owner.signs` wins when both are given. */
@@ -121,7 +122,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<FileOverlay store={handle.store} />
 					<FileStatusLine store={handle.store} bus={handle.bus} />
 					<PortalPreviewDock store={handle.store} bus={handle.bus} />
-					<ToolHotbar store={handle.store} bus={handle.bus} />
+					<ToolHotbar store={handle.store} bus={handle.bus} owner={owner} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />
 					<BagTray store={handle.store} bus={handle.bus} />
