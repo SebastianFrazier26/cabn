@@ -284,6 +284,9 @@ export const UI_ICON_NAMES = [
 	"wand",
 	"key",
 	"sign",
+	// The owner's toolkit item (2026-09-29), drawn beside the sign item by
+	// tools/asset-pipeline's signpost.ts.
+	"owner",
 ] as const;
 export type UiIconName = (typeof UI_ICON_NAMES)[number];
 

@@ -5,6 +5,7 @@ import { type RawImage, upscaleNearest, writeRawRgbaPng } from "./image-io.js";
 import { paletteJsonPath, placeholdersDir } from "./paths.js";
 import { renderPixelMap } from "./pixelmap.js";
 import { signIconMap, signpostMap } from "./pixelmaps/signpost.js";
+import { ownerIconMap } from "./pixelmaps/ui-item-owner.js";
 import {
 	DEFAULT_SOFTEN_OPTIONS,
 	type SoftenOptions,
@@ -26,17 +27,23 @@ export interface SignpostImages {
 	soft: RawImage;
 	iconCrisp: RawImage;
 	iconSoft: RawImage;
+	/** The owner's toolkit item (ui-item-owner.ts), the sign item's sibling. */
+	ownerCrisp: RawImage;
+	ownerSoft: RawImage;
 }
 
 /** Pure (no file IO) so the test can assert determinism on the exact bytes the script writes. */
 export function renderSignpost(palette: readonly RGB[]): SignpostImages {
 	const crisp = renderPixelMap(signpostMap(), palette);
 	const iconCrisp = renderPixelMap(signIconMap(), palette);
+	const ownerCrisp = renderPixelMap(ownerIconMap(), palette);
 	return {
 		crisp,
 		soft: soften(crisp, SIGNPOST_SOFTEN),
 		iconCrisp,
 		iconSoft: soften(iconCrisp, SIGNPOST_SOFTEN),
+		ownerCrisp,
+		ownerSoft: soften(ownerCrisp, SIGNPOST_SOFTEN),
 	};
 }
 
@@ -58,8 +65,14 @@ async function main() {
 		out("ui_icon_sign@8x.png"),
 	);
 	await writeRawRgbaPng(images.iconSoft, out("ui_icon_sign_soft.png"));
+	await writeRawRgbaPng(images.ownerCrisp, out("ui_icon_owner.png"));
+	await writeRawRgbaPng(
+		await upscaleNearest(images.ownerCrisp, UPSCALE_FACTOR),
+		out("ui_icon_owner@8x.png"),
+	);
+	await writeRawRgbaPng(images.ownerSoft, out("ui_icon_owner_soft.png"));
 	console.log(
-		`signpost: ${images.soft.width}x${images.soft.height} sprite + sign item icon -> ${placeholdersDir}`,
+		`signpost: ${images.soft.width}x${images.soft.height} sprite + sign and owner item icons -> ${placeholdersDir}`,
 	);
 }
 

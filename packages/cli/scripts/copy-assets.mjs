@@ -52,6 +52,7 @@ export const PLACEHOLDERS = [
 	"npc_guide_portrait_soft.png",
 	"prop_seyn_sign_soft.png",
 	"ui_icon_sign_soft.png",
+	"ui_icon_owner_soft.png",
 	"imp_idle0_soft.png",
 	"imp_idle1_soft.png",
 	"magpie_idle0_soft.png",
@@ -169,6 +170,30 @@ export const PLACEHOLDERS = [
 	...[0, 1, 2, 3].map((i) => `path_cobble_${i}_soft.png`),
 ];
 
+// The shadow realm's art (engine src/shadow/assets.ts), served by `cabn
+// serve` only with --owner. tests/serve/bundled-assets.test.ts walks
+// shadow/skin.ts so a skin texture missing here fails the build.
+export const SHADOW = [
+	"ui_icon_sudo_soft.png",
+	"netherrack_tiles_soft.png",
+	"obsidian_tiles_soft.png",
+	"nether_decals_soft.png",
+	"sky_ember.png",
+	"path_lava_edge_disc_soft.png",
+	"path_lava_bed_disc_soft.png",
+	...[0, 1, 2, 3].map((i) => `path_basalt_${i}_soft.png`),
+	"portal_arch_nether_strip_soft.png",
+	"portal_arch_rune_overlay_soft.png",
+	"prop_nether_brazier_strip_soft.png",
+	"scenery_dead_tree_soft.png",
+	"scenery_basalt_pillar_soft.png",
+	"scenery_magma_rock_soft.png",
+	"scenery_lava_pond_soft.png",
+	"fx_ash.png",
+	"fx_ember.png",
+	"parchment_scorched.png",
+];
+
 async function copyInto(subdir, files) {
 	const srcDir = join(repoAssetsDir, subdir);
 	const destDir = join(outDir, subdir);
@@ -189,8 +214,9 @@ async function copyInto(subdir, files) {
 async function main() {
 	await copyInto("originals", ORIGINALS);
 	await copyInto("placeholders", PLACEHOLDERS);
+	await copyInto("shadow", SHADOW);
 	console.log(
-		`cabn cli: bundled ${ORIGINALS.length + PLACEHOLDERS.length} sprites -> ${outDir}`,
+		`cabn cli: bundled ${ORIGINALS.length + PLACEHOLDERS.length + SHADOW.length} sprites -> ${outDir}`,
 	);
 }
 

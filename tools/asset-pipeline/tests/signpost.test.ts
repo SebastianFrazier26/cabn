@@ -49,5 +49,7 @@ describe("signpost pixelmap", () => {
 		expect(a.iconSoft.data.equals(b.iconSoft.data)).toBe(true);
 		expect(a.soft.width).toBe(SIGNPOST_WIDTH * 16);
 		expect(a.soft.height).toBe(SIGNPOST_HEIGHT * 16);
+		expect(a.ownerSoft.data.equals(b.ownerSoft.data)).toBe(true);
+		expect([a.ownerSoft.width, a.ownerSoft.height]).toEqual([384, 512]);
 	});
 });
