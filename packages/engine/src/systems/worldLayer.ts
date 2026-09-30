@@ -90,7 +90,7 @@ export interface WorldLayerProvider {
 	id: string;
 	/** Short badge text for the layer's entries in search results. */
 	label: string;
-	/** Hotbar items the layer adds beside the sign slot (world mode only). */
+	/** Entries the layer adds to the owner's toolkit (world mode only). Their own `hotkey` is never bound: the toolkit's one key reaches them. */
 	tools: readonly Tool[];
 	/** The layer without contents; fetched afresh every time the layer is entered. */
 	load(): Promise<WorldLayerManifest>;

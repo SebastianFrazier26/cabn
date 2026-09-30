@@ -174,10 +174,11 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 		.toBe(3);
 	await page.waitForTimeout(1200);
 
-	// Hosted: no owner capability, so no sign item — not hidden, absent.
+	// Hosted: no owner capability, so no owner slot or toolkit — not hidden, absent.
 	expect((await state(page))?.ownerSigns).toBeNull();
-	await expect(page.locator('[data-tool="sign"]')).toHaveCount(0);
-	await holdKey(page, "p");
+	await expect(page.locator('[data-tool="owner"]')).toHaveCount(0);
+	await holdKey(page, "o");
+	expect(await page.getByTestId("owner-toolkit").count()).toBe(0);
 	expect(await page.getByTestId("sign-placing").count()).toBe(0);
 
 	const spots = await signSpots(page);

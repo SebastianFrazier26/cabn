@@ -5,7 +5,7 @@ import {
 	RELEASES_FILENAME,
 	type ReleasesFile,
 } from "@cabn/world-schema";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, GitContext } from "../bridge/store.js";
@@ -33,10 +33,12 @@ import {
 	type OwnerCapability,
 	type OwnerGitStatus,
 } from "../systems/ownerApi.js";
+import type { OwnerGitAction } from "../systems/ownerToolkit.js";
 import { hashSeed } from "../systems/portalFx.js";
 import { fetchJsonOnce } from "./gitShared.js";
 import { LoadingSwirl } from "./LoadingSwirl.js";
 import { MarkdownLite } from "./MarkdownLite.js";
+import { useCabnStore } from "./useCabnStore.js";
 
 interface Props {
 	store: StoreApi<CabnStore>;
@@ -63,7 +65,11 @@ export function UniversePickerDialog({
 	git,
 	close,
 }: Props & { git: GitContext; close: () => void }): React.ReactElement {
-	const [tab, setTab] = useState<Tab>("universes");
+	// Opened from the owner's toolkit: straight to the Owner tab's flow.
+	const ownerFocus = useCabnStore(store, (s) => s.universeOwnerFocus);
+	const [tab, setTab] = useState<Tab>(() =>
+		ownerFocus && owner?.git ? "owner" : "universes",
+	);
 	const tint = universeTint(git.universe?.slug ?? null);
 	return (
 		<div
@@ -148,7 +154,7 @@ export function UniversePickerDialog({
 				)}
 				{tab === "releases" && <ReleaseList git={git} />}
 				{tab === "owner" && owner?.git && (
-					<OwnerPanel git={git} owner={owner} bus={bus} />
+					<OwnerPanel git={git} owner={owner} bus={bus} focus={ownerFocus} />
 				)}
 			</div>
 		</div>
@@ -436,10 +442,12 @@ function OwnerPanel({
 	git,
 	owner,
 	bus,
+	focus,
 }: {
 	git: GitContext;
 	owner: OwnerCapability;
 	bus: CabnBus;
+	focus: OwnerGitAction | null;
 }): React.ReactElement {
 	const api = owner.git;
 	const [status, setStatus] = useState<OwnerGitStatus | null>(null);
@@ -459,6 +467,25 @@ function OwnerPanel({
 	);
 	const [stash, setStash] = useState<BrowserStash | null>(null);
 	const storage = safeStorage();
+	const sections = {
+		commit: useRef<HTMLFieldSetElement>(null),
+		branch: useRef<HTMLFieldSetElement>(null),
+		switch: useRef<HTMLFieldSetElement>(null),
+	};
+	const focusSection = focus ? sections[focus] : null;
+	const branchCount = status?.branches.length ?? 0;
+	// Re-run once the status lands: the switch section's buttons only exist then.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: branchCount is the trigger, not a value read here.
+	useEffect(() => {
+		const section = focusSection?.current;
+		if (!section) return;
+		section.scrollIntoView({ block: "nearest" });
+		section
+			.querySelector<HTMLElement>(
+				"textarea, input:not([type=checkbox]), button:not(:disabled)",
+			)
+			?.focus({ preventScroll: true });
+	}, [focusSection, branchCount]);
 
 	useEffect(() => {
 		api
@@ -581,10 +608,10 @@ function OwnerPanel({
 				</div>
 			)}
 			<fieldset
-				style={{
-					border: "2px solid var(--cabn-border-outer)",
-					borderRadius: 8,
-				}}
+				ref={sections.commit}
+				data-owner-section="commit"
+				data-focused={focus === "commit" ? "true" : undefined}
+				style={sectionStyle(focus === "commit")}
 			>
 				<legend>Commit my saved edits</legend>
 				{editPaths.length === 0 ? (
@@ -661,10 +688,10 @@ function OwnerPanel({
 				)}
 			</fieldset>
 			<fieldset
-				style={{
-					border: "2px solid var(--cabn-border-outer)",
-					borderRadius: 8,
-				}}
+				ref={sections.branch}
+				data-owner-section="branch"
+				data-focused={focus === "branch" ? "true" : undefined}
+				style={sectionStyle(focus === "branch")}
 			>
 				<legend>New branch from here</legend>
 				<input
@@ -692,10 +719,10 @@ function OwnerPanel({
 				</button>
 			</fieldset>
 			<fieldset
-				style={{
-					border: "2px solid var(--cabn-border-outer)",
-					borderRadius: 8,
-				}}
+				ref={sections.switch}
+				data-owner-section="switch"
+				data-focused={focus === "switch" ? "true" : undefined}
+				style={sectionStyle(focus === "switch")}
 			>
 				<legend>Switch branch (real checkout)</legend>
 				{(status?.branches ?? [])
@@ -743,4 +770,11 @@ function OwnerPanel({
 			</fieldset>
 		</div>
 	);
+}
+
+function sectionStyle(focused: boolean): React.CSSProperties {
+	return {
+		border: `2px solid var(${focused ? "--cabn-accent-yellow" : "--cabn-border-outer"})`,
+		borderRadius: 8,
+	};
 }

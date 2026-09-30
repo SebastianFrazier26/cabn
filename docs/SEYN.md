@@ -117,6 +117,6 @@ search index.
 
 Everyone sees signs, including in hosted builds. Only the world owner can
 place, edit or delete them, and only through a local `cabn serve` page, which
-gets the sign item in its hotbar. Saves go through a loopback-only,
+gets the owner's toolkit (`O`) with a Place sign entry. Saves go through a loopback-only,
 token-authenticated owner API that writes only `.seyn` files inside the served
 folder. See the `cabn serve` section of the README.

@@ -23,7 +23,8 @@ export function helpText(): string {
 		"                                          you run with the wand tool — only pass it for code you trust.",
 		"                                          --owner turns on owner mode: the page can write .seyn signs into <dir>,",
 		"                                          commit your in-game edits and create/switch branches in the real",
-		"                                          repository (local only; never push/fetch). Off by default.",
+		"                                          repository (local only; never push/fetch), and show hidden files.",
+		"                                          In the game, O opens the owner's toolkit for all of these. Off by default.",
 		"  cabn --version                         Print the CLI version",
 		"  cabn --help                            Show this help text",
 	].join("\n");

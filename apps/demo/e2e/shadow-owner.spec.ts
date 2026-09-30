@@ -17,7 +17,7 @@ import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 
 // The shadow realm (M2) end to end against a real `cabn serve --owner` of a
 // temp copy of the CLI's serve fixture plus hidden files written here (so no
-// dotfile fixture is ever committed): the sudo item (H) raises the hidden
+// dotfile fixture is ever committed): the toolkit's Sudo entry (O) raises the hidden
 // clusters without moving anything visible, hidden files open and save to
 // disk, a hidden-folder sign lands on disk, pets never see any of it, and a
 // reload starts with the realm off. CABN_REVIEW_SHOTS=1 writes the review
@@ -219,6 +219,25 @@ async function walkToAndOpen(page: Page, portalId: string) {
 		.toBe(portalId);
 }
 
+/** Toggles the realm through the owner's toolkit, by keyboard (O, its number, Enter) or by mouse. */
+async function sudo(page: Page, via: "keys" | "mouse") {
+	const toolkit = page.getByTestId("owner-toolkit");
+	if (via === "keys") {
+		await page.keyboard.press("o");
+		await expect(toolkit).toBeVisible();
+		await page.keyboard.press("2");
+		await expect(toolkit.locator('[data-entry="shadow:sudo"]')).toHaveAttribute(
+			"data-picked",
+			"true",
+		);
+		await page.keyboard.press("Enter");
+	} else {
+		await page.locator('[data-tool="owner"]').click();
+		await toolkit.locator('[data-entry="shadow:sudo"]').click();
+	}
+	await expect(toolkit).toHaveCount(0);
+}
+
 async function hold(page: Page, key: string) {
 	await page.keyboard.down(key);
 	await page.waitForTimeout(150);
@@ -236,7 +255,7 @@ async function storageText(page: Page): Promise<string> {
 	});
 }
 
-test("owner: the sudo item raises the shadow realm, hidden files read and save to disk, and nothing leaks", async ({
+test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read and save to disk, and nothing leaks", async ({
 	page,
 }) => {
 	test.setTimeout(240_000);
@@ -264,7 +283,7 @@ test("owner: the sudo item raises the shadow realm, hidden files read and save t
 			(window as unknown as { __CABN_OWNER_TOKEN__: string })
 				.__CABN_OWNER_TOKEN__,
 	);
-	await expect(page.locator('[data-tool="sudo"]')).toBeVisible({
+	await expect(page.locator('[data-tool="owner"]')).toBeVisible({
 		timeout: 20_000,
 	});
 	await page.waitForTimeout(1500);
@@ -279,8 +298,8 @@ test("owner: the sudo item raises the shadow realm, hidden files read and save t
 	expect(Object.keys(beforeSprites).length).toBeGreaterThan(0);
 	await shoot(page, "day-normal");
 
-	// H raises the hidden clusters; nothing visible moves, even mid-rise.
-	await page.keyboard.press("h");
+	// Sudo raises the hidden clusters; nothing visible moves, even mid-rise.
+	await sudo(page, "keys");
 	await expect
 		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
 		.toBe("shadow");
@@ -460,7 +479,7 @@ test("owner: the sudo item raises the shadow realm, hidden files read and save t
 	await shoot(page, "night-shadow");
 
 	// Toggling off takes everything hidden away again.
-	await page.keyboard.press("h");
+	await sudo(page, "mouse");
 	await expect
 		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
 		.toBeNull();
@@ -479,7 +498,7 @@ test("owner: the sudo item raises the shadow realm, hidden files read and save t
 	await shoot(page, "night-normal");
 
 	// A reload always starts with the realm off.
-	await page.keyboard.press("h");
+	await sudo(page, "mouse");
 	await expect
 		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
 		.toBe("shadow");
