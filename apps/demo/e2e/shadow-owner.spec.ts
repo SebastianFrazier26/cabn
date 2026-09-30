@@ -24,8 +24,10 @@ import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 // is drawn and that the base world's scenery (edge forest, ponds, windmill,
 // skyline) stands exactly where it did. Since 2026-09-29 it checks the realm
 // has no night (the Night setting shows its day look; off, night returns) and
-// that every placed piece wears nether art. CABN_REVIEW_SHOTS=1 writes the review
-// screenshots to assets/generated/review/shadow-m3/.
+// that every placed piece wears nether art; since the second polish pass that
+// the monsters (world and file view) wear nether recolours, the windmill's
+// sails hold still and the HUD icons lose their green. CABN_REVIEW_SHOTS=1
+// writes the review screenshots to assets/generated/review/shadow-m3/.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = join(here, "..", "..", "..");
@@ -46,6 +48,8 @@ const HIDDEN_FILES: Record<string, string> = {
 	".env": "SHADOW_E2E_ENV=canary\n",
 	".github/ci.yml": "name: ci\non: push\n# shadowgithubcanary\n",
 	".vscode/settings.json": '{\n\t"editor.tabSize": 2\n}\n',
+	// Unbalanced on purpose, so the realm has a monster of its own to wear nether art.
+	".github/check.py": "def check(:\n    return [1, 2\n",
 };
 
 let dir: string;
@@ -326,6 +330,44 @@ async function look(page: Page): Promise<Look> {
 	);
 }
 
+interface Creatures {
+	/** Texture keys of every live world monster sprite. */
+	monsters: string[];
+	/** Every windmill's sails: texture and current angle. */
+	sails: { key: string; angle: number }[];
+}
+
+async function creatures(page: Page): Promise<Creatures> {
+	return page.evaluate(() => {
+		const game = (
+			window as unknown as {
+				__cabnGame: { scene: { getScene(k: string): unknown } };
+			}
+		).__cabnGame;
+		type Obj = { texture?: { key: string }; angle?: number; active: boolean };
+		const world = game.scene.getScene("world") as {
+			monsterSprites: Map<string, Obj>;
+			children: { list: Obj[] };
+		};
+		return {
+			monsters: [...world.monsterSprites.values()]
+				.filter((m) => m.active)
+				.map((m) => m.texture?.key ?? ""),
+			sails: world.children.list
+				.filter((o) => o.active && o.texture?.key.includes("windmill-sails"))
+				.map((o) => ({ key: o.texture?.key ?? "", angle: o.angle ?? 0 })),
+		};
+	});
+}
+
+/** The sails' angles a moment apart. */
+async function sailTurn(page: Page): Promise<[number[], number[]]> {
+	const a = (await creatures(page)).sails.map((s) => s.angle);
+	await page.waitForTimeout(700);
+	const b = (await creatures(page)).sails.map((s) => s.angle);
+	return [a, b];
+}
+
 async function expectDayLook(page: Page) {
 	await expect.poll(async () => (await look(page)).blend).toBe(0);
 	const now = await look(page);
@@ -474,6 +516,15 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 		false,
 	]);
 	await shoot(page, "day-normal");
+	const normalCreatures = await creatures(page);
+	expect(
+		normalCreatures.monsters.filter((k) => k.startsWith("shadow-")),
+	).toEqual([]);
+	const hasWindmill = normalCreatures.sails.length > 0;
+	if (hasWindmill) {
+		const [a, b] = await sailTurn(page);
+		expect(b, "normal sails turn").not.toEqual(a);
+	}
 
 	// Sudo raises the hidden clusters; nothing visible moves, even mid-rise.
 	await sudo(page, "keys");
@@ -538,6 +589,34 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	).toEqual([]);
 	expect(realmLook.unswappedScenery).toEqual([]);
 	expect(realmLook.normalArt).toEqual([]);
+	// Monsters, base and realm alike, wear nether art; the dead mill's sails hang still.
+	// A hidden cluster can stand where the windmill was, which removes it.
+	const realmMills = shadowScenery.pois.filter((p) =>
+		p.startsWith("windmill@"),
+	).length;
+	await expect
+		.poll(async () => (await creatures(page)).sails.length, {
+			timeout: 10_000,
+		})
+		.toBe(realmMills);
+	const realmCreatures = await creatures(page);
+	expect(realmCreatures.monsters.length).toBeGreaterThan(0);
+	expect(
+		realmCreatures.monsters.filter((k) => !k.startsWith("shadow-monster-")),
+	).toEqual([]);
+	if (realmMills > 0) {
+		expect(
+			realmCreatures.sails.filter(
+				(s) => s.key !== "shadow-scenery-windmill-sails",
+			),
+		).toEqual([]);
+		const [a, b] = await sailTurn(page);
+		expect(b, "realm sails hold still").toEqual(a);
+	}
+	await expect(page.locator('[data-tool="spyglass"] img')).toHaveAttribute(
+		"src",
+		"/assets/shadow/ui_icon_spyglass_nether_soft.png",
+	);
 	await shoot(page, "day-shadow");
 
 	// .env opens and reads.
@@ -547,13 +626,74 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(envView.content).toBe(HIDDEN_FILES[".env"]);
 	await page.waitForTimeout(800);
 	await shoot(page, "file-view-shadow");
-	// The spellbook goes crimson too.
+	// The spellbook goes crimson too, and its icons lose their green.
 	await page.locator('[data-tool="quill"]').click();
 	await expect(page.locator(".cabn-spellbook-frame")).toBeVisible();
+	await expect(page.locator('[data-tool="replace"] img')).toHaveAttribute(
+		"src",
+		"/assets/shadow/ui_tool_replace_nether_soft.png",
+	);
+	await expect(page.locator('[data-tool="goto"] img')).toHaveAttribute(
+		"src",
+		"/assets/shadow/ui_tool_goto_nether_soft.png",
+	);
+	await expect(page.locator('[data-tool="find"] img')).toHaveAttribute(
+		"src",
+		"/assets/placeholders/ui_tool_find_soft.png",
+	);
+	// Every icon image actually loaded (none fell back or broke).
+	expect(
+		await page.evaluate(() =>
+			[...document.querySelectorAll<HTMLImageElement>(".cabn-pixel-root img")]
+				.filter((img) => img.complete && img.naturalWidth === 0)
+				.map((img) => img.getAttribute("src")),
+		),
+	).toEqual([]);
 	await page.waitForTimeout(700);
 	await shoot(page, "spellbook-shadow");
 	await page.keyboard.press("Escape");
 	await expect(page.locator(".cabn-spellbook-frame")).toBeHidden();
+	await hold(page, "Escape");
+	await expect
+		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.toBe("world");
+
+	// The realm's own monster, met in its file, is the nether gremlin, with nether battle frames.
+	await walkToAndOpen(page, ".github/check.py");
+	await expect
+		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.toBe("file");
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const game = (
+					window as unknown as {
+						__cabnGame: {
+							scene: { getScene(k: string): unknown };
+							anims: { exists(k: string): boolean };
+						};
+					}
+				).__cabnGame;
+				const file = game.scene.getScene("file") as {
+					monsterSprites: Map<string, { texture: { key: string } }>;
+				};
+				return {
+					sprites: [...file.monsterSprites.values()].map((m) => m.texture.key),
+					battle: [
+						"shadow-monster-gremlin-hit:hit",
+						"shadow-monster-gremlin-0:defeat",
+					].map((k) => game.anims.exists(k)),
+				};
+			}),
+		)
+		.toEqual({
+			sprites: expect.arrayContaining([
+				expect.stringMatching(/^shadow-monster-gremlin-[01]$/),
+			]),
+			battle: [true, true],
+		});
+	await page.waitForTimeout(600);
+	await shoot(page, "file-view-monster-shadow");
 	await hold(page, "Escape");
 	await expect
 		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
