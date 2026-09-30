@@ -106,6 +106,7 @@ import {
 	archVariantFrame,
 	archVariantGlow,
 } from "../systems/archVariant.js";
+import { relocateMonsters } from "../systems/battle.js";
 import { touchChunk } from "../systems/chunkCache.js";
 import {
 	type ClickTarget,
@@ -389,6 +390,11 @@ export class WorldScene extends Phaser.Scene {
 	private portalMonsterIds = new Map<string, string[]>();
 	private monsterSprites = new Map<string, Phaser.GameObjects.Sprite>();
 	private monsterOrbits: MonsterOrbits | null = null;
+	/** portalId -> its monsters re-checked against that saved override text, so re-entering an unchanged edited file doesn't re-run the annotators. */
+	private overrideMonsters = new Map<
+		string,
+		{ content: string; monsters: Monster[] }
+	>();
 
 	/** clusterId -> path -> file content, exactly as fetched — never mutated, so a "reset this file" always has the pristine original to fall back to. */
 	private chunkContents = new Map<string, Record<string, string>>();
@@ -579,6 +585,10 @@ export class WorldScene extends Phaser.Scene {
 			behind: MONSTER_BEHIND_ARCH_DEPTH,
 			front: MONSTER_DEPTH,
 		});
+		// Before the orbits are drawn: an override that never went through a
+		// save's re-check (a restored stash) may already have fixed some.
+		for (const portalId of Object.keys(this.save.fileOverrides))
+			this.liveMonstersFor(portalId);
 		this.drawMonsters();
 		this.guideNpc = GuideNpc.spawn(this, {
 			manifest: this.baseManifest,
@@ -2513,9 +2523,7 @@ export class WorldScene extends Phaser.Scene {
 		// camera position and the chunk cache survive the round trip.
 		if (content !== null) {
 			this.persistPlayerPos();
-			const monsters = (this.portalMonsterIds.get(target) ?? [])
-				.map((id) => this.monstersById.get(id))
-				.filter((m): m is Monster => m !== undefined && !this.isDefeated(m.id));
+			const monsters = this.liveMonstersFor(target);
 			this.scene.switch("file", {
 				portalId: target,
 				file: portal.file,
@@ -2613,6 +2621,7 @@ export class WorldScene extends Phaser.Scene {
 		this.monstersById = new Map();
 		this.portalMonsterIds = new Map();
 		this.monsterSprites = new Map();
+		this.overrideMonsters = new Map();
 		this.chunkContents = new Map();
 		this.effectiveChunkContents = new Map();
 		this.chunkLoadOrder = [];
@@ -2677,6 +2686,43 @@ export class WorldScene extends Phaser.Scene {
 			const pos = this.portalWorldPos.get(p.id);
 			return pos ? [pos] : [];
 		});
+	}
+
+	/**
+	 * A portal's undefeated monsters. For a file with a saved edit they're
+	 * re-checked against that text, once per distinct text: the ones it fixed
+	 * are defeated the way a save defeats them, the rest carry their lines in
+	 * it (systems/battle.ts's relocateMonsters).
+	 */
+	private liveMonstersFor(portalId: string): Monster[] {
+		const monsters = (this.portalMonsterIds.get(portalId) ?? [])
+			.map((id) => this.monstersById.get(id))
+			.filter((m): m is Monster => m !== undefined && !this.isDefeated(m.id));
+		const content = this.save.fileOverrides[portalId]?.content;
+		const portal = this.portalsById.get(portalId);
+		if (
+			content === undefined ||
+			!portal ||
+			monsters.length === 0 ||
+			this.layerSeam?.isLayerPortal(portalId)
+		)
+			return monsters;
+		const cached = this.overrideMonsters.get(portalId);
+		if (cached?.content === content)
+			return cached.monsters.filter((m) => !this.isDefeated(m.id));
+		const relocated = relocateMonsters(
+			monsters,
+			portal.file,
+			content,
+			this.worldFiles,
+		);
+		this.overrideMonsters.set(portalId, {
+			content,
+			monsters: relocated.monsters,
+		});
+		for (const monsterId of relocated.fixedIds)
+			this.onMonsterDefeated({ monsterId });
+		return relocated.monsters;
 	}
 
 	private isDefeated(monsterId: string): boolean {
@@ -2990,6 +3036,7 @@ export class WorldScene extends Phaser.Scene {
 
 	private onResetFileEdits = ({ portalId }: { portalId: string }): void => {
 		this.save = withoutFileOverride(this.save, portalId);
+		this.overrideMonsters.delete(portalId);
 		persistSave(this.save);
 		this.removeEditedMarker(portalId);
 		this.publishPortalIndex();
@@ -3025,6 +3072,7 @@ export class WorldScene extends Phaser.Scene {
 
 	private onResetWorld = (): void => {
 		const resetPortalIds = Object.keys(this.save.fileOverrides);
+		this.overrideMonsters.clear();
 		const revivedMonsterIds = [
 			...this.save.defeatedMonsterIds,
 			...(this.layerSeam?.defeatedMonsters() ?? []),

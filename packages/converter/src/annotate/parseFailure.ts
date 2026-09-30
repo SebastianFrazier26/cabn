@@ -35,7 +35,11 @@ function checkJson(content: string): ErrorAnnotation[] {
 		return [
 			{
 				code: "Corrupted",
-				rule: `json-parse@${loc.line}:${loc.col}`,
+				// A parse only reports its first error, so a file has at most one
+				// of these: "still fails to parse" is the whole identity. Keying on
+				// the message would tie it to one JS engine's wording (the build
+				// runs in Node, the re-check in whatever browser the player uses).
+				rule: "json-parse",
 				message: `Invalid JSON: ${message}`,
 				loc,
 				species: "rot-sprite",

@@ -39,7 +39,14 @@ pnpm lint
 pnpm -F @cabn/demo dev
 ```
 
-First run converts `apps/demo/sample-project/` and `apps/demo/notes-vault/` into two world bundles (`apps/demo/public/worlds/{sample,notes}/`), writes a `shelf.json` listing both, and copies sprites into `apps/demo/public/assets/` — all gitignored, regenerated on demand (`pnpm -F @cabn/demo build:world`, or add `-- --force` to rebuild worlds that already exist). Then open the printed local URL.
+First run converts `apps/demo/sample-project/` and `apps/demo/notes-vault/` into two world bundles (`apps/demo/public/worlds/{sample,notes}/`), writes a `shelf.json` listing both, and copies sprites into `apps/demo/public/assets/` — all gitignored, regenerated on demand (`pnpm -F @cabn/demo build:world`). Then open the printed local URL.
+
+Every `dev`/`build` (and `build:world`) checks whether each world is stale and rebuilds only the ones that are. A world's fingerprint is a sha256 over:
+
+- its source tree, every file's path and bytes (`cabn.json` included) plus any findings file (`sample-findings.eslint.json`) and its build options;
+- the toolchain: the `version` and built `dist/` contents of `@cabn/world-schema`, `@cabn/converter` and `@cabn/cli` (minus the cli's bundled sprites), the world-schema `CABN_VERSION`, and `scripts/gen-git-fixture.mjs`, which with the source tree fully determines the sample world's git history.
+
+The fingerprint is written to `apps/demo/node_modules/.cache/cabn-worlds/<name>.txt` after a successful build, outside `public/` so it never ships. A world is rebuilt (its output directory cleared first) when its `world.json` is missing, its fingerprint is missing or different, or you pass `-- --force`. Anything else skips it; the check hashes a few MB and takes well under a second. Hashing contents rather than mtimes means a `pnpm -r build` that rewrites identical `dist/` files doesn't trigger a rebuild. Remember to rebuild the packages (`pnpm -r build`) after converter changes: the fingerprint follows `dist/`, not `src/`.
 
 ### Browser smoke test
 

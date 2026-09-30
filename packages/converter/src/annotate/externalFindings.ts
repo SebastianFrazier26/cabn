@@ -345,6 +345,26 @@ export function checkExternalFindingFixed(
 	rule: string,
 	content: string,
 ): boolean {
+	return externalFindingLine(rule, content) === undefined;
+}
+
+/**
+ * The 0-based line an external finding's flagged text is on in `content`
+ * now, or undefined once it's gone (exactly when checkExternalFindingFixed
+ * says fixed). A `#n` repeat takes the n-th matching line; with fewer left it
+ * takes the last one, because the finding still isn't fixed.
+ */
+export function externalFindingLine(
+	rule: string,
+	content: string,
+): number | undefined {
+	const repeat = /#(\d+)$/.exec(rule);
 	const anchor = rule.replace(/#\d+$/, "").split(":").pop() ?? "";
-	return !content.split("\n").some((line) => lineHash(line) === anchor);
+	const matches: number[] = [];
+	content.split("\n").forEach((line, index) => {
+		if (lineHash(line) === anchor) matches.push(index);
+	});
+	if (matches.length === 0) return undefined;
+	const nth = repeat ? Number(repeat[1]) : 1;
+	return matches[Math.min(nth, matches.length) - 1];
 }

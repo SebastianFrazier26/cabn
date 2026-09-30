@@ -1,6 +1,8 @@
+import { shortHash } from "../hash.js";
 import { type CommentSpan, scanCode } from "./codeScanner.js";
 import { langConfigFor } from "./langConfig.js";
 import { locAt } from "./loc.js";
+import { normalizeLine, uniquifyRules } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 const MARKER_PATTERN = /\b(TODO|FIXME|XXX|HACK)\b/g;
@@ -40,11 +42,18 @@ export const todoMarker: Annotator = (ctx) => {
 	while (match !== null) {
 		const index = match.index;
 		const marker = match[1] ?? "";
-		if (spans.some((s) => index >= s.start && index < s.end)) {
+		const span = spans.find((s) => index >= s.start && index < s.end);
+		if (span) {
 			const loc = locAt(content, index);
+			const lineEnd = content.indexOf("\n", index);
+			const noteEnd = Math.min(
+				span.end,
+				lineEnd === -1 ? content.length : lineEnd,
+			);
+			const note = normalizeLine(content.slice(index, noteEnd));
 			results.push({
 				code: "WispNote",
-				rule: `todo:${marker}@${loc.line}:${loc.col}`,
+				rule: `todo:${marker}:${shortHash(note, 8)}`,
 				message: `${marker} marker left in a comment.`,
 				loc,
 				species: "will-o-wisp",
@@ -53,7 +62,7 @@ export const todoMarker: Annotator = (ctx) => {
 		}
 		match = MARKER_PATTERN.exec(content);
 	}
-	return results;
+	return uniquifyRules(results);
 };
 
 function commentSpansFor(

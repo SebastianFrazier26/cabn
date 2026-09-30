@@ -2,6 +2,7 @@ import {
 	extractRelativeRefs,
 	resolveRelativeRefTarget,
 } from "./importGraph.js";
+import { uniquifyRules } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 /**
@@ -27,7 +28,7 @@ export const brokenImport: Annotator = (ctx) => {
 
 		results.push({
 			code: "NullTypeError",
-			rule: `broken-import:${ref.spec}@${ref.line}:${ref.col}`,
+			rule: `broken-import:${ref.spec}`,
 			message: ref.isMarkdownLink
 				? `Link "${ref.spec}" doesn't point to any file in this world.`
 				: `Import "${ref.spec}" doesn't resolve to any file in this world.`,
@@ -36,5 +37,5 @@ export const brokenImport: Annotator = (ctx) => {
 			tier: 1,
 		});
 	}
-	return results;
+	return uniquifyRules(results);
 };
