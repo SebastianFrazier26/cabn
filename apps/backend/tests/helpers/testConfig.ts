@@ -18,7 +18,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 		maxUploadBytes: 25 * 1024 * 1024,
 		corsOrigins: [],
 		apiKeyHashes: [],
-		trustProxy: false,
+		trustProxy: 0,
 		requestTimeoutMs: 30_000,
 		rateLimitMax: 20,
 		rateLimitWindowMs: 60_000,

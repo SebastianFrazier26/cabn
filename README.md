@@ -330,7 +330,7 @@ This prints a new key once (`cabn_...`) and its SHA-256 hash. With `NODE_ENV=pro
 
 **Abuse limits.** Upload size is capped (`MAX_UPLOAD_BYTES`, default 25MB) by `@fastify/multipart`'s streaming limit (413 on overflow). Exactly one file is accepted (400 otherwise) and it must be a zip by its magic bytes (415 otherwise). The converter's own caps always apply, and secret-pattern files are never read. `@fastify/rate-limit` enforces independent per-IP and per-key limits. Requests time out after `REQUEST_TIMEOUT_MS` (default 30s). CORS is closed unless `CORS_ORIGINS` is set. The logger redacts `Authorization` headers.
 
-See `.env.example` for every variable and `apps/backend/Dockerfile` for the production container. Behind a proxy (Railway or similar), set `CABN_TRUST_PROXY=true` so rate limits key off the real client IP.
+See `.env.example` for every variable and `apps/backend/Dockerfile` for the production container. Behind a proxy, set `CABN_TRUST_PROXY` to the number of proxies in front of the app (Railway: `1`) so rate limits key off the real client IP; the client-written part of `X-Forwarded-For` is never trusted. The old value `true` still means one proxy.
 
 ## Releasing
 
@@ -349,7 +349,7 @@ Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publis
 
 ## Deploying the backend
 
-`.github/workflows/deploy-backend.yml` deploys `apps/backend` to [Railway](https://railway.app) with the Railway CLI. It runs on pushes to `main` that touch the backend or its dependencies, and on `workflow_dispatch`. The deploy step is a no-op until a `RAILWAY_TOKEN` repository secret exists. To wire it up: create a Railway project and service, add a Railway API token as the `RAILWAY_TOKEN` secret, and set the backend's env vars on the service (`CABN_API_KEY_SHA256`, `NODE_ENV=production` and `CABN_TRUST_PROXY=true` at minimum).
+`.github/workflows/deploy-backend.yml` deploys `apps/backend` to [Railway](https://railway.app) with the Railway CLI. It runs on pushes to `main` that touch the backend or its dependencies, and on `workflow_dispatch`. The deploy step is a no-op until a `RAILWAY_TOKEN` repository secret exists. To wire it up: create a Railway project and service, add a Railway API token as the `RAILWAY_TOKEN` secret, and set the backend's env vars on the service (`CABN_API_KEY_SHA256`, `NODE_ENV=production` and `CABN_TRUST_PROXY=1` at minimum).
 
 ## License
 
