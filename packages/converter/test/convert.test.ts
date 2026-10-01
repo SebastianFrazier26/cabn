@@ -2,13 +2,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { validateManifest, type WorldManifest } from "@cabn/world-schema";
+import { zipSync } from "fflate";
+import MiniSearch from "minisearch";
 import { afterEach, describe, expect, test } from "vitest";
 import { convert } from "../src/convert.js";
+import { SEARCH_FIELDS, SEARCH_STORE_FIELDS } from "../src/search-index.js";
 import { DirSource } from "../src/sources/dir.js";
+import type { FileSource, SourceEntry } from "../src/sources/types.js";
 import { ZipSource } from "../src/sources/zip.js";
 
 const FIXTURES = join(import.meta.dirname, "fixtures");
 const FIXED_NOW = () => new Date("2026-01-01T00:00:00.000Z");
+const utf8 = (s: string) => new TextEncoder().encode(s);
 
 function parseBundleEntry<T>(
 	bundle: Map<string, Uint8Array | string>,
@@ -251,6 +256,101 @@ describe("convert (ZipSource)", () => {
 		expect(zipRest).toEqual(dirRest);
 		expect(zipMeta.source).toBe("mini-python.zip");
 		expect(zipMeta.fileCount).toBe(dirMeta.fileCount);
+	});
+});
+
+// 2026-10-01: an entry withheld by a source's own total-bytes cap — not its
+// own per-file cap — used to reach convert() as a real Uint8Array of length
+// 0 (ZipSource's read() defaulted to an empty buffer instead of signalling
+// "withheld"). It then looked exactly like a legitimate empty text file: a
+// "" chunk entry and a "" doc in the search index, instead of the sealed
+// portal every other content-less file gets.
+describe("convert: an archive-wide total-bytes cap reached partway through conversion", () => {
+	function hasSearchDoc(
+		bundle: Map<string, Uint8Array | string>,
+		id: string,
+	): boolean {
+		const raw = bundle.get("search-index.json");
+		if (typeof raw !== "string") throw new Error("missing search-index.json");
+		const file = JSON.parse(raw) as { index: unknown };
+		const mini = MiniSearch.loadJSON<{
+			id: string;
+			path: string;
+			name: string;
+			content: string;
+		}>(JSON.stringify(file.index), {
+			fields: [...SEARCH_FIELDS],
+			storeFields: [...SEARCH_STORE_FIELDS],
+		});
+		return mini.has(id);
+	}
+
+	test("zip source: a later small entry under maxFileBytes is sealed, not an empty-text portal, and reports its real size", async () => {
+		// a.txt (740) retains fully; b.txt (16) is well under maxFileBytes on
+		// its own, but 740 + 16 > 750 trips the archive-wide total mid-stream.
+		const zipped = zipSync({
+			"a.txt": new Uint8Array(740).fill(65),
+			"b.txt": utf8("small but capped"),
+		});
+		const bundle = await convert(
+			new ZipSource(zipped, { maxTotalBytes: 750 }),
+			{ name: "cap-test", source: "cap-test.zip", now: FIXED_NOW },
+		);
+
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		const bPortal = manifest.portals.find((p) => p.id === "b.txt");
+		expect(bPortal).toBeDefined();
+		expect(bPortal?.richPreview).toEqual({ kind: "sealed" });
+		expect(bPortal?.file.bytes).toBe(utf8("small but capped").length);
+
+		const rootChunk = parseBundleEntry<{ files: Record<string, unknown> }>(
+			bundle,
+			"chunks/root.json",
+		);
+		expect(Object.hasOwn(rootChunk.files, "b.txt")).toBe(false);
+		expect(hasSearchDoc(bundle, "b.txt")).toBe(false);
+		expect(hasSearchDoc(bundle, "a.txt")).toBe(true);
+	});
+
+	// DirSource has no total-bytes cap of its own (local trees are trusted,
+	// unlike an uploaded zip) — this exercises convert()'s generic handling of
+	// any FileSource that withholds content below maxFileBytes, the same
+	// contract a future directory-side budget would need.
+	test("directory-like source: an entry whose content the source withheld is sealed, not an empty-text portal", async () => {
+		const withheldPath = "b.txt";
+		const source: FileSource = {
+			async *entries(): AsyncIterable<SourceEntry> {
+				yield {
+					path: "a.txt",
+					bytes: 5,
+					read: () => Promise.resolve(utf8("hello")),
+				};
+				yield {
+					path: withheldPath,
+					bytes: 17, // the real size, known even though content was withheld
+					read: () => Promise.resolve(undefined),
+				};
+			},
+		};
+		const bundle = await convert(source, {
+			name: "cap-test",
+			source: "cap-test",
+			now: FIXED_NOW,
+		});
+
+		const manifest = parseBundleEntry<WorldManifest>(bundle, "world.json");
+		const bPortal = manifest.portals.find((p) => p.id === withheldPath);
+		expect(bPortal).toBeDefined();
+		expect(bPortal?.richPreview).toEqual({ kind: "sealed" });
+		expect(bPortal?.file.bytes).toBe(17);
+
+		const rootChunk = parseBundleEntry<{ files: Record<string, unknown> }>(
+			bundle,
+			"chunks/root.json",
+		);
+		expect(Object.hasOwn(rootChunk.files, withheldPath)).toBe(false);
+		expect(hasSearchDoc(bundle, withheldPath)).toBe(false);
+		expect(hasSearchDoc(bundle, "a.txt")).toBe(true);
 	});
 });
 
