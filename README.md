@@ -340,12 +340,13 @@ The four publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/e
 pnpm changeset
 ```
 
-Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. One-time setup:
+Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. The workflow has two jobs: `build` (install, build, test, lint, audit; `contents: read` only) and `publish`, which runs only after `build` passes, only on `main`, only inside the `npm` environment, and is the only job allowed to mint an OIDC token (`id-token: write`). It publishes with `pnpm publish -r --provenance`, which skips private packages and versions already on npm, exchanges the OIDC token for a short-lived npm token itself, and attaches a provenance attestation. One-time setup:
 
 1. Create the `cabn` org on npmjs.com (a manual web step).
 2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm -r publish --access public`.
-3. Attach the trusted publisher per package, on npmjs.com (GitHub Actions, owner `SebastianFrazier26`, repo `cabn`, workflow `release.yml`) or with npm ≥ 11.15: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --allow-publish`. Trusted publishing needs npm ≥ 11.5.1 and Node ≥ 22.14 in the workflow.
-4. Run the "Release" workflow from the Actions tab. It installs, builds, tests, then runs `changeset publish` with npm provenance.
+3. Create the GitHub environment: repo Settings → Environments → New environment, named exactly `npm`. Under "Deployment protection rules" tick **Required reviewers** and add yourself (and anyone else allowed to approve a release). Under "Deployment branches and tags" choose "Selected branches and tags" and add `main`. Every run of the publish job then waits for an approval in the Actions tab.
+4. Attach the trusted publisher to each of the four packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish`. Naming the environment means a token minted by any other job or workflow is refused.
+5. Run the "Release" workflow from the Actions tab on `main`, then approve the `npm` deployment when it asks.
 
 ## Deploying the backend
 
