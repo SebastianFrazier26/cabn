@@ -27,6 +27,8 @@ export interface WorldEffectsOptions {
 }
 
 export interface WorldEffectsHandle {
+	/** One more chimney, after construction — a streamed-in cottage's smoke joins the same object list attachWorldEffects's own chimneyPositions built up front, instead of a second system (or, worse, tearing down and rebuilding every existing emitter just to add one). */
+	addChimney(pos: { x: number; y: number }): void;
 	destroy(): void;
 }
 
@@ -247,6 +249,10 @@ export function attachWorldEffects(
 	}
 
 	return {
+		addChimney: (pos) => {
+			if (options.reducedMotion) return;
+			objects.push(createChimneySmoke(scene, pos, colors.smoke));
+		},
 		destroy: () => {
 			for (const object of objects) object.destroy();
 		},

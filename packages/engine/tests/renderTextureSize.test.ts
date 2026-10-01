@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeGroundGrid, GROUND_TILE_SIZE } from "../src/render/groundTiles.js";
+import {
+	computeGroundGrid,
+	GROUND_TILE_SIZE,
+} from "../src/render/groundTiles.js";
 import { WORLD_CHUNK_SIZE_PX } from "../src/render/worldChunkGrid.js";
 
 // M10 stream-bake: the whole point of chunking the ground field, edge
@@ -41,7 +44,8 @@ describe("chunked bakes never request an oversized RenderTexture", () => {
 		// Documents where the real ceiling is, so a future change to
 		// GROUND_TILE_SIZE or the +2 margin in computeGroundGrid gets a
 		// clear signal if it eats into the safety margin above.
-		const radiusAtGuard = (MAX_SAFE_RENDER_TEXTURE_PX / 2 - GROUND_TILE_SIZE) / 1;
+		const radiusAtGuard =
+			(MAX_SAFE_RENDER_TEXTURE_PX / 2 - GROUND_TILE_SIZE) / 1;
 		const grid = computeGroundGrid(radiusAtGuard, radiusAtGuard);
 		const widthPx = grid.cols * GROUND_TILE_SIZE;
 		expect(widthPx).toBeGreaterThan(MAX_SAFE_RENDER_TEXTURE_PX * 0.9);

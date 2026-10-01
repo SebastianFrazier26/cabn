@@ -48,7 +48,11 @@ import {
 	physicsBounds,
 } from "../render/clickWalker.js";
 import { dashedLine } from "../render/dashedLine.js";
-import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
+import {
+	attachLanternFlicker,
+	attachWorldEffects,
+	type WorldEffectsHandle,
+} from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundFieldChunk, CHUNK_SIZE_PX } from "../render/groundField.js";
 import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
@@ -469,11 +473,9 @@ export class WorldScene extends Phaser.Scene {
 		string,
 		Phaser.GameObjects.RenderTexture | null
 	> | null = null;
-	private ambientEffects: { destroy(): void } | null = null;
-	/** Grows as streamed-in clusters' cottages are materialized (registerPropAmbient) — mutable, read live by ambientRebuild's own closure. */
+	private ambientEffects: WorldEffectsHandle | null = null;
+	/** Grows as streamed-in clusters' cottages are materialized (registerPropAmbient) — mutable, kept accurate so a *future* full rebuild (a day/night toggle) still finds every chimney, even ones added after the last rebuild. */
 	private chimneyPositions: Position[] = [];
-	/** setupAmbientEffects()'s own rebuild closure, kept so registerPropAmbient can re-trigger it after adding a chimney position — null before setupAmbientEffects has run at all (no atmosphere art / not yet reached in create()). */
-	private ambientRebuild: (() => void) | null = null;
 	private ambientReducedMotion = false;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
@@ -1002,7 +1004,6 @@ export class WorldScene extends Phaser.Scene {
 				ambient: this.skin.ambient,
 			});
 		};
-		this.ambientRebuild = rebuild;
 		rebuild();
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
 			if (state.timeOfDay !== prev.timeOfDay) rebuild();
@@ -1035,8 +1036,18 @@ export class WorldScene extends Phaser.Scene {
 		}
 		const smokePos = propSmokeWorldPos(prop);
 		if (smokePos) {
+			// Kept up to date for any *future* full rebuild (a day/night toggle
+			// swaps fireflies for motes and needs every chimney again, not just
+			// the ones that existed when it fires) — but the chimney itself
+			// joins the running effects incrementally, not via a full rebuild:
+			// destroying and recreating every existing emitter just to add one
+			// cottage's smoke was a real (not hypothetical) source of a >50ms
+			// task on every later cluster's first cottage — see this task's own
+			// report. this.ambientEffects is still null during entry
+			// materialization (setupAmbientEffects hasn't run yet); its own
+			// first attachWorldEffects() call picks up chimneyPositions in full.
 			this.chimneyPositions.push(smokePos);
-			this.ambientRebuild?.();
+			this.ambientEffects?.addChimney(smokePos);
 		}
 	}
 
