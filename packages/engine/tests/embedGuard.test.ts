@@ -1,4 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
+import { PortalEmbed } from "../src/react/PortalEmbed.js";
 import {
 	canOpenPortalLink,
 	openPortalLink,
@@ -34,6 +37,61 @@ describe("shouldMountEmbed", () => {
 
 	test("refuses everything against an empty allowlist", () => {
 		expect(shouldMountEmbed("https://example.com", [], true)).toBe(false);
+	});
+
+	test("refuses the page's own origin even when the allowlist names it", () => {
+		const own = ["https://cabn.example", "https://example.com"];
+		expect(
+			shouldMountEmbed(
+				"https://cabn.example/x",
+				own,
+				true,
+				"https://cabn.example",
+			),
+		).toBe(false);
+		expect(
+			shouldMountEmbed(
+				"https://example.com/x",
+				own,
+				true,
+				"https://cabn.example",
+			),
+		).toBe(true);
+	});
+
+	test("an opaque page origin doesn't block anything", () => {
+		expect(
+			shouldMountEmbed("https://example.com/page", allowed, true, "null"),
+		).toBe(true);
+	});
+});
+
+describe("PortalEmbed's fallback card", () => {
+	function render(url: string, allowedEmbedOrigins: readonly string[]) {
+		return renderToStaticMarkup(
+			createElement(PortalEmbed, {
+				url,
+				allowedEmbedOrigins,
+				worldBaseUrl: "/world/",
+				active: true,
+			}),
+		);
+	}
+
+	test.each([
+		["javascript:alert(1)", "javascript: scheme"],
+		["https://evil.example/", "origin not allowlisted"],
+		["http://example.com/", "non-https"],
+	])("has no link for %s (%s)", (url) => {
+		const html = render(url, ["https://example.com"]);
+		expect(html).toContain("cabn-panel");
+		expect(html).not.toContain("<iframe");
+		expect(html).not.toContain("href=");
+	});
+
+	test("an allowlisted url still embeds", () => {
+		const html = render("https://example.com/", ["https://example.com"]);
+		expect(html).toContain("<iframe");
 	});
 });
 

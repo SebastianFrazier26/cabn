@@ -14,8 +14,32 @@ export function shouldMountEmbed(
 	url: string,
 	allowedEmbedOrigins: readonly string[],
 	active: boolean,
+	pageOrigin: string | undefined = currentPageOrigin(),
 ): boolean {
-	return active && isAllowedEmbedOrigin(url, allowedEmbedOrigins);
+	return (
+		active &&
+		isAllowedEmbedOrigin(url, allowedEmbedOrigins) &&
+		!isPageOrigin(url, pageOrigin)
+	);
+}
+
+function currentPageOrigin(): string | undefined {
+	return typeof window === "undefined" ? undefined : window.location.origin;
+}
+
+/**
+ * The iframe's `allow-scripts allow-same-origin` is only a sandbox when the
+ * framed page is another origin; framing the page's own origin lets it
+ * script its way out (reach `parent`, drop the sandbox attribute). An
+ * allowlist naming the host's own origin must not make that possible.
+ */
+function isPageOrigin(url: string, pageOrigin: string | undefined): boolean {
+	if (!pageOrigin || pageOrigin === "null") return false;
+	try {
+		return new URL(url).origin === pageOrigin;
+	} catch {
+		return false;
+	}
 }
 
 /**

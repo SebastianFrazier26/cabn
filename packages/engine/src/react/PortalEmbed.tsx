@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { resolveRelativeUrl } from "../render/resolveUrl.js";
-import { shouldMountEmbed } from "../systems/embedGuard.js";
+import { canOpenPortalLink, shouldMountEmbed } from "../systems/embedGuard.js";
 
 export interface PortalEmbedProps {
 	/** The url preview's target — already schema-checked as https:// at convert time, re-checked against allowedEmbedOrigins below regardless. */
@@ -23,11 +23,16 @@ function FallbackCard({
 	url,
 	title,
 	fallbackImageUrl,
+	allowedEmbedOrigins,
 }: {
 	url: string;
 	title: string | undefined;
 	fallbackImageUrl: string | undefined;
+	allowedEmbedOrigins: readonly string[];
 }): React.ReactElement {
+	// The card also shows when the origin check failed, so the link gets the
+	// same allowlist check as every other portal link (no javascript: hrefs).
+	const canOpen = canOpenPortalLink(url, allowedEmbedOrigins);
 	return (
 		<div
 			className="cabn-panel"
@@ -50,15 +55,17 @@ function FallbackCard({
 				/>
 			)}
 			<span>{title ?? url}</span>
-			<a
-				className="cabn-btn neutral"
-				href={url}
-				target="_blank"
-				rel="noopener noreferrer"
-				style={{ textDecoration: "none" }}
-			>
-				Open in new tab
-			</a>
+			{canOpen && (
+				<a
+					className="cabn-btn neutral"
+					href={url}
+					target="_blank"
+					rel="noopener noreferrer"
+					style={{ textDecoration: "none" }}
+				>
+					Open in new tab
+				</a>
+			)}
 		</div>
 	);
 }
@@ -77,8 +84,8 @@ function FallbackCard({
  * - allow-scripts: without it most real sites (a portfolio, a demo) are
  *   inert — the whole feature is pointless without this.
  * - allow-same-origin: kept. The framed page is always a *different* origin
- *   than the host (never the cabn app's own origin — that's not a supported
- *   override), so this mainly restores the framed site's own cookies/
+ *   than the host (shouldMountEmbed refuses the page's own origin even when
+ *   the allowlist names it), so this mainly restores the framed site's own cookies/
  *   localStorage/session, which most real sites need to render or function
  *   at all. The classic "allow-same-origin defeats the sandbox" escape
  *   requires the framed content to *be* (or navigate into) the same origin
@@ -154,6 +161,7 @@ export function PortalEmbed({
 				url={url}
 				title={title}
 				fallbackImageUrl={fallbackImageUrl}
+				allowedEmbedOrigins={allowedEmbedOrigins}
 			/>
 		);
 	}
