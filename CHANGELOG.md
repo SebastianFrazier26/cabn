@@ -1,5 +1,54 @@
 # Changelog
 
+## 2026-10-01 — M10 performance: non-regex quadratics in the tree-based annotators
+
+Follows the ReDoS pass below with the remaining non-regex quadratic hot
+spots it measured in the tree-based annotators, all in
+`packages/converter/src/annotate/`:
+
+- **`lineAnchor` (syntaxTree.ts).** `lineTextAt` already cached a finding's
+  line text per line, but `lineAnchor` re-hashed that text on every call; on
+  a file with no newlines (a minified bundle, or an adversarial payload up
+  to the 200KB tree cap) that "line" is the whole file, and `deadCode`/
+  `codeSmell` can report one finding per node on it. Hashing it once per line
+  instead of once per finding took `function f(){return;x;}` repeated to
+  ~190KB from ~5.9s to under 150ms, and `console.log(1);` repeated the same
+  way from ~2.7s to under 100ms.
+- **`pythonUnusedLocals` (deadCode.ts).** Walked a function body with
+  `body.cursor()` and a raw `.next()` loop; a Lezer cursor's `.next()` has no
+  notion of "stay inside this node" and climbs out to keep walking the rest
+  of the file once a node's own descendants are exhausted. One call per
+  top-level function made the whole pass O(functions²) — ~12s on a file of
+  ~8,260 one-line Python functions. Switched to `body.cursor().iterate(...)`,
+  which is bounded to the node it starts from (same as `codeSmell.ts`'s tree
+  walk); under 150ms.
+- **`bracketBalance.ts`.** Re-derived each issue's line text from
+  `content.split("\n")` and hashed it per issue instead of per line — the
+  same "rehash the whole file per finding" shape as `lineAnchor` above, just
+  not routed through it. A dense unclosed-bracket run at the 512KB file cap
+  didn't finish; hashing each line once now takes ~250ms.
+- **`leakedSecret.ts`'s overlap bookkeeping.** Every claimed span was
+  checked against every previously claimed span with a linear `.some()` —
+  spans are pairwise disjoint by construction, so this was an unindexed
+  interval-membership test, O(hits²) overall. Replaced with a sorted-array
+  binary search and one merge per scanned pattern/line rather than one
+  check-and-insert per match; a dense run of distinct AWS-shaped keys that
+  took ~1.6s at 2MB (the 512KB cap only partly masked it, ~0.1s there) is
+  now linear.
+- **`resolveFindingPath` (externalFindings.ts).** A findings-file path with
+  no direct match fell back to scanning every world path — O(findings ×
+  world files). Indexed world paths by their last path segment (a necessary
+  condition for the existing suffix-match rule), so the fallback only scans
+  the handful of files that could possibly match: ~4.5s for 20,000
+  unmatched findings against 2,000 world files is now under 15ms.
+
+Detection behavior is unchanged: a baseline-vs-fixed diff over this repo's
+own ~660 source files (1,939 findings across every built-in annotator), the
+demo's sample and notes worlds' `monsters.json`, and a shallow clone of
+Flask converted through the CLI all came back byte-identical. New timed
+adversarial tests at the file caps live in
+`packages/converter/test/annotate/quadratics.test.ts`.
+
 ## 2026-10-01 — M10 security hardening: ReDoS, atomic owner commits, proxy trust, embed and asset guards, CI hygiene
 
 Fixes the clear-cut findings of the M10 read-only security audit. The

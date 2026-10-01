@@ -219,6 +219,38 @@ function normalizePath(raw: string): string {
 	return p;
 }
 
+// A findings file can carry up to MAX_FINDINGS_INPUT entries, and
+// addExternalFindings calls this once per entry on the same worldFiles set;
+// a findings file whose paths don't line up with the world (wrong root, a
+// stale tool run) sent every one of them through the fallback below, scanning
+// every world path per finding. `p.endsWith(`/${w}`)` can only hold when w's
+// own last segment is p's last segment, so indexing world paths by that last
+// segment turns "scan everything" into "scan the (usually tiny) handful of
+// files that could possibly match" — one slot, like parseFile's cache, since
+// one addExternalFindings call reuses the same worldFiles reference throughout.
+let basenameIndexFiles: ReadonlySet<string> | undefined;
+let basenameIndex: Map<string, string[]> | undefined;
+
+function basenameOf(path: string): string {
+	return path.slice(path.lastIndexOf("/") + 1);
+}
+
+function basenameIndexFor(
+	worldFiles: ReadonlySet<string>,
+): Map<string, string[]> {
+	if (basenameIndexFiles === worldFiles && basenameIndex) return basenameIndex;
+	const index = new Map<string, string[]>();
+	for (const w of worldFiles) {
+		const base = basenameOf(w);
+		const list = index.get(base);
+		if (list) list.push(w);
+		else index.set(base, [w]);
+	}
+	basenameIndexFiles = worldFiles;
+	basenameIndex = index;
+	return index;
+}
+
 /**
  * Maps a results-file path onto a world path: relative to `root` (the source
  * directory the tool ran in) when given, else as a relative path, else by
@@ -241,7 +273,8 @@ export function resolveFindingPath(
 
 	let best: string | undefined;
 	let ambiguous = false;
-	for (const w of worldFiles) {
+	const candidates = basenameIndexFor(worldFiles).get(basenameOf(p)) ?? [];
+	for (const w of candidates) {
 		if (!p.endsWith(`/${w}`)) continue;
 		if (!best || w.length > best.length) {
 			best = w;

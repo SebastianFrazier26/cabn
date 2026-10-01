@@ -377,10 +377,14 @@ function pythonUnusedLocals(parsed: ParsedFile, fn: SyntaxNode): Finding[] {
 	if (!body) return [];
 
 	const targets: Binding[] = [];
-	const cursor = body.cursor();
-	do {
-		if (cursor.name !== "AssignStatement") continue;
-		const node = cursor.node;
+	// cursor().next() has no notion of "stay inside this node" — once it runs
+	// out of body's own descendants it climbs out and keeps walking the rest
+	// of the file (every function after this one), which made one call here
+	// per top-level function quadratic in the function count. cursor().iterate
+	// is bounded to the node it starts from (same as codeSmell.ts's tree walk).
+	body.cursor().iterate((ref) => {
+		if (ref.name !== "AssignStatement") return;
+		const node = ref.node;
 		const first = node.firstChild;
 		// Single plain-name targets only: tuple unpacking and attribute/
 		// subscript targets are either idiomatic or not a local at all.
@@ -394,7 +398,7 @@ function pythonUnusedLocals(parsed: ParsedFile, fn: SyntaxNode): Finding[] {
 				index: first.from,
 			});
 		}
-	} while (cursor.next());
+	});
 
 	const out: Finding[] = [];
 	const reported = new Set<string>();
