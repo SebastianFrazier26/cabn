@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { columnFromPaintedSpans } from "../src/systems/caretMotion.js";
 import { enchantMdLine, type MdSegment } from "../src/systems/enchantMd.js";
 
 /** Text/style/href only — source offsets have their own tests below. */
@@ -74,6 +75,33 @@ describe("enchantMdLine", () => {
 		).toEqual([{ text: "cabn", style: "link", href: "https://example.com" }]);
 	});
 
+	it("keeps one level of balanced parens in a link target", () => {
+		expect(
+			shape(
+				enchantMdLine("[w](https://en.wikipedia.org/wiki/Foo_(bar))").segments,
+			),
+		).toEqual([
+			{
+				text: "w",
+				style: "link",
+				href: "https://en.wikipedia.org/wiki/Foo_(bar)",
+			},
+		]);
+	});
+
+	it("does not link a target with an unbalanced paren", () => {
+		const segments = enchantMdLine("[x](a(b)").segments;
+		expect(segments.some((s) => s.style === "link")).toBe(false);
+		expect(segments.map((s) => s.text).join("")).toBe("[x](a(b)");
+	});
+
+	it("links only the inner part of `[[x](u)`", () => {
+		expect(shape(enchantMdLine("[[x](u)").segments)).toEqual([
+			{ text: "[", style: "plain" },
+			{ text: "x", style: "link", href: "u" },
+		]);
+	});
+
 	it("mixes plain text and inline styles on one line, preserving order", () => {
 		const parsed = enchantMdLine("see **bold** and `code` here");
 		expect(shape(parsed.segments)).toEqual([
@@ -125,7 +153,38 @@ describe("enchantMdLine", () => {
 			[" ", 30],
 			["i", 32],
 		]);
+		expect(offsets("a [w](https://x.y/Foo_(bar)) b")).toEqual([
+			["a ", 0],
+			["w", 3],
+			[" b", 28],
+		]);
 		expect(enchantMdLine("# ").segments[0]).toMatchObject({ from: 2, to: 2 });
 		expect(enchantMdLine("").segments[0]).toMatchObject({ from: 0, to: 0 });
+	});
+});
+
+describe("caret mapping across a link whose target has parens", () => {
+	it("maps clicks after the link to their source columns", () => {
+		const line = "see [w](https://x.y/Foo_(bar)) then";
+		const glyph = 8;
+		const textX = 64;
+		let x = textX;
+		const spans = enchantMdLine(line).segments.map((s) => {
+			const span = { x, width: s.text.length * glyph, from: s.from, to: s.to };
+			x += span.width;
+			return span;
+		});
+		const at = (painted: number) =>
+			columnFromPaintedSpans(
+				spans,
+				textX + painted * glyph + 1,
+				textX,
+				line.length,
+			);
+		// Painted "see w then": the link text is the 5th glyph, "t" of "then" the 7th.
+		expect(line[at(4)]).toBe("w");
+		expect(at(4)).toBe(5);
+		expect(line.slice(at(6))).toBe("then");
+		expect(at(6)).toBe(31);
 	});
 });

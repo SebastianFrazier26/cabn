@@ -71,6 +71,9 @@ describe("inline markdown links", () => {
 	test.each([
 		["`[`", "["],
 		["`[a](`", "[a]("],
+		["`((((`", "(((("],
+		["`[a](b(`", "[a](b("],
+		["`[a](b(c)`", "[a](b(c)"],
 	])("%s repeated on one line stays fast", (_label, unit) => {
 		expectFast(() => enchantMdLine(unit.repeat(LINE / unit.length)));
 	});
