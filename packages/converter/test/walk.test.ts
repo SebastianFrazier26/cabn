@@ -170,6 +170,30 @@ describe("walk", () => {
 		expect(result.files[0]?.content).toEqual(utf8("SECRET=1"));
 	});
 
+	// 2026-10-01: a source whose own total-bytes budget (ZipSource's archive-wide
+	// cap today; any future directory-side budget tomorrow) withholds one
+	// entry's content must signal that with undefined, not an empty buffer —
+	// walk() trusts read() over bytes, so this is the generic contract every
+	// FileSource (dir or zip) relies on, not a zip-specific fix.
+	test("an entry under maxFileBytes whose source withheld content stays metadata-only, not an empty file", async () => {
+		const source: FileSource = {
+			async *entries(): AsyncIterable<SourceEntry> {
+				yield {
+					path: "small.txt",
+					bytes: 5,
+					// Simulates a source-level total-bytes cap tripping mid-entry:
+					// the entry is well under maxFileBytes, but its content was
+					// never retained.
+					read: () => Promise.resolve(undefined),
+				};
+			},
+		};
+		const result = await walk(source, { maxFileBytes: 1000 });
+		expect(result.files).toHaveLength(1);
+		expect(result.files[0]?.bytes).toBe(5);
+		expect(result.files[0]?.content).toBeUndefined();
+	});
+
 	test("uses a source's droppedEntryCount to report truncation", async () => {
 		const source: FileSource = {
 			async *entries(): AsyncIterable<SourceEntry> {

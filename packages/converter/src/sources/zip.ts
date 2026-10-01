@@ -20,18 +20,32 @@ interface ExtractedEntry {
 	content?: Uint8Array;
 }
 
-// Rejects zip-slip payloads: backslash-as-separator, absolute paths, and
-// '.'/'..'/empty path segments (including the ones hidden by double slashes).
-// fflate does no path safety of its own — entry names are attacker-controlled.
+// Rejects zip-slip payloads: absolute paths, '.'/'..'/empty path segments
+// (including ones hidden by double slashes), and traversal that only reads as
+// dangerous on Windows — any backslash (so a UNC share `\\server\share\x` or
+// an extended-length `\\?\C:\x` is caught by the backslash alone), a
+// drive-relative segment ("C:", "C:..", "C:foo" — all valid on Windows
+// without a leading slash or backslash), and NUL. This runs on every host
+// platform regardless of which OS extracts the zip, so a payload that's only
+// a traversal on Windows must still be rejected when built on a Mac/Linux
+// host for a world someone else serves. fflate does no path safety of its
+// own — entry names are attacker-controlled.
+const DRIVE_RELATIVE = /^[A-Za-z]:/;
+
 function sanitizeZipPath(rawName: string): string | undefined {
-	const normalized = rawName.replace(/\\/g, "/");
-	if (normalized.startsWith("/")) return undefined;
-	const isDir = normalized.endsWith("/");
-	const body = isDir ? normalized.slice(0, -1) : normalized;
+	if (rawName.includes("\\") || rawName.includes("\0")) return undefined;
+	if (rawName.startsWith("/")) return undefined;
+	const isDir = rawName.endsWith("/");
+	const body = isDir ? rawName.slice(0, -1) : rawName;
 	if (body.length === 0) return undefined;
 	const segments = body.split("/");
 	for (const segment of segments) {
-		if (segment.length === 0 || segment === "." || segment === "..")
+		if (
+			segment.length === 0 ||
+			segment === "." ||
+			segment === ".." ||
+			DRIVE_RELATIVE.test(segment)
+		)
 			return undefined;
 	}
 	return isDir ? `${body}/` : body;
@@ -116,8 +130,11 @@ function extractCapped(
 				settle();
 				return;
 			}
+			// Tracked unconditionally, capped or not — `bytes` in settle() must
+			// report this entry's real size, not freeze at whatever had arrived
+			// the moment a cap tripped.
+			received += chunk.length;
 			if (!capped) {
-				received += chunk.length;
 				if (
 					received > maxFileBytes ||
 					totalRetainedBytes + received > maxTotalBytes
@@ -160,7 +177,12 @@ export class ZipSource implements FileSource {
 					yield {
 						path: entry.path,
 						bytes: entry.bytes,
-						read: () => Promise.resolve(entry.content ?? new Uint8Array(0)),
+						// entry.content is genuinely undefined, not "", when a cap
+						// withheld it (oversized or archive-wide-budget-capped) — see
+						// SourceEntry.read()'s doc comment. Defaulting to an empty
+						// array here used to make a withheld file indistinguishable
+						// from a real zero-byte one.
+						read: () => Promise.resolve(entry.content),
 					};
 				}
 			},

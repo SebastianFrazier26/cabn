@@ -41,6 +41,55 @@ isolation, the release workflow) are not part of this change.
   `.gitignore` and `.dockerignore` skip `.env.*` (except `.env.example`), and
   the Docker context skips `.claude/`.
 
+## 2026-10-01 — Converter: over-cap entries no longer masquerade as empty files; sanitizeZipPath rejects Windows drive-relative paths
+
+Two long-standing follow-up tickets from the M10 plan.
+
+- **Fixed:** an entry withheld by `ZipSource`'s archive-wide `maxTotalBytes`
+  cap (not its own per-file cap) used to reach `walk()`/`convert()` as a real
+  zero-length `Uint8Array` — `ZipSource.entries().read()` defaulted an
+  internally content-less entry to `new Uint8Array(0)` instead of signalling
+  "withheld". It then looked exactly like a legitimate empty text file: an
+  empty chunk entry and an empty doc in `search-index.json`, instead of the
+  sealed portal every other content-less file (oversized, secret-patterned,
+  binary) already gets. `SourceEntry.read()` now returns
+  `Promise<Uint8Array | undefined>`, and `undefined` means "content
+  withheld" everywhere it's read (`walk.ts`, `cabnConfig.ts`'s cabn.json and
+  override loading) — distinct from a real zero-byte file. No change was
+  needed in `convert.ts` itself: once `walk()` reports `content: undefined`,
+  the existing sealed-portal path already used for oversized/binary files
+  covers it.
+- **Fixed:** the same entry's reported `bytes` used to freeze at whatever had
+  arrived in `ZipSource` the moment the cap tripped, rather than its real
+  size. `extractCapped`'s `ondata` handler now accumulates `received`
+  unconditionally (capped or not), so `bytes` always reports the entry's true
+  decompressed size.
+- **Fixed:** `sanitizeZipPath` (in `packages/converter/src/sources/zip.ts`)
+  normalized backslashes to `/` and only rejected the `.`/`..` segments that
+  fell out of that — a Windows drive-relative entry (`C:foo`, `C:..`,
+  `C:/Windows/...`) or a UNC/extended-length prefix (`\\server\share\...`,
+  `\\?\C:\...`) sailed through untouched on a non-Windows build host. It now
+  rejects any raw entry name containing a backslash or NUL outright, and any
+  `/`-split segment matching a drive-letter-colon pattern
+  (`/^[A-Za-z]:/`) — consistent with how `packages/cli`'s
+  `resolveOwnerTarget` already guards the owner API's path confinement.
+  **Found, not fixed (reported for a follow-up decision):** `resolveOwnerTarget`
+  only checks that pattern at the very start of the whole path, not per
+  segment, so a relative path like `notes/C:evil` isn't caught by it either
+  — believed low-severity (Node's `path.join`/`dirname` don't treat an
+  embedded drive-letter mid-path specially on any platform) but not yet
+  proven safe. `DirSource` needed no change: it builds posix-separated paths
+  from real `stat()` calls on the host filesystem, never from
+  attacker-supplied strings.
+- Tests: `packages/converter/test/walk.test.ts` (the generic contract: any
+  `FileSource` whose `read()` resolves `undefined` under `maxFileBytes` stays
+  metadata-only), `packages/converter/test/zip-security.test.ts` (a real
+  mid-extraction archive-wide cap on a later small entry, plus the new
+  drive-relative/UNC/NUL path rejections), `packages/converter/test/convert.test.ts`
+  (end-to-end: the capped entry's portal is sealed, absent from its chunk,
+  and absent from `search-index.json`, for both a `ZipSource` and a generic
+  directory-shaped `FileSource`).
+
 ## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
 
 Completes the contrast item the 2026-09-30 a11y pass reported rather than

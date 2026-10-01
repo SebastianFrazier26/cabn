@@ -47,6 +47,14 @@ export async function loadCabnConfig(
 	if (!configEntry) return { config: undefined, entries };
 
 	const raw = await configEntry.read();
+	// Only reachable if cabn.json itself tripped a source's archive-wide byte
+	// cap (it's never secret-patterned or oversized on its own — checkOverrideTargetsExist
+	// never runs, so this is the clearest place to say so).
+	if (raw === undefined) {
+		throw new CabnConfigError(
+			"could not be read (the archive's total size cap was reached before its content)",
+		);
+	}
 	let json: unknown;
 	try {
 		json = JSON.parse(decoder.decode(raw));
@@ -110,7 +118,16 @@ async function readOverrideBytes(
 			`previews["${overriddenPath}"].${fieldLabel} "${src}" is ${entry.bytes} bytes, over the ${maxFileBytes}-byte cap applied to every file in this conversion`,
 		);
 	}
-	return entry.read();
+	const bytes = await entry.read();
+	// Under maxFileBytes but still content-less: the archive-wide total cap
+	// withheld it (see SourceEntry.read()'s doc comment), not a per-file one —
+	// the check above already ruled that out.
+	if (bytes === undefined) {
+		throw new CabnConfigError(
+			`previews["${overriddenPath}"].${fieldLabel} "${src}" could not be read (the archive's total size cap was reached before its content)`,
+		);
+	}
+	return bytes;
 }
 
 export interface ResolvedOverride {
