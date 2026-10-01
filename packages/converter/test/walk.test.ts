@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { FileSource, SourceEntry } from "../src/sources/types.js";
-import { isHiddenPath, walk } from "../src/walk.js";
+import { isHiddenPath, isSecretPath, walk } from "../src/walk.js";
 
 function fakeSource(files: Record<string, Uint8Array>): FileSource {
 	return {
@@ -162,6 +162,32 @@ describe("walk", () => {
 			).toBeUndefined();
 		}
 		expect(byPath.get("README.md")?.content).toEqual(utf8("keep me"));
+	});
+
+	// 2026-10-01: widened for git history, where hidden files do ship.
+	test.each([
+		".pypirc",
+		".yarnrc.yml",
+		".envrc",
+		".terraformrc",
+		".docker/config.json",
+		".kube/config",
+		"home/.docker/config.json",
+		"ops/.kube/config",
+	])("%s is secret-named", (path) => {
+		expect(isSecretPath(path)).toBe(true);
+		expect(isSecretPath(path, true)).toBe(false);
+	});
+
+	test.each([
+		"config.json",
+		"docker/config.json",
+		".docker/config.json.bak",
+		"kube/config",
+		".kube/config/notes.md",
+		".yarnrc",
+	])("%s is not secret-named", (path) => {
+		expect(isSecretPath(path)).toBe(false);
 	});
 
 	test("includeSecrets: true restores normal content reads for secret-pattern files", async () => {

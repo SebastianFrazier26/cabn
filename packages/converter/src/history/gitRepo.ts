@@ -60,30 +60,36 @@ export async function openGitRepo(
 		};
 	}
 	const root = dir;
-	let gitdir = `${root}/.git`;
-	let stat: { isFile(): boolean };
+	const gitdir = `${root}/.git`;
+	// lstat, and only a real directory: a `.git` symlink or a `gitdir:`
+	// pointer file (worktrees, submodules) can name any repository on the
+	// machine, and converting a folder must never publish history from
+	// outside it. `--git-dir` is the explicit opt-in for those layouts.
+	let stat: { isDirectory(): boolean; isSymbolicLink(): boolean };
 	try {
-		stat = (await input.fs.promises.stat(gitdir)) as { isFile(): boolean };
+		stat = await input.fs.promises.lstat(gitdir);
 	} catch {
 		return { ok: false, reason: "not a git repository root" };
 	}
-	if (stat.isFile()) {
-		// A worktree or submodule: `.git` is a "gitdir: <path>" pointer.
-		const text = String(
-			await input.fs.promises.readFile(gitdir, { encoding: "utf8" }),
-		);
-		const match = /^gitdir:\s*(.+)\s*$/m.exec(text);
-		if (!match?.[1]) return { ok: false, reason: "unreadable .git file" };
-		const target = match[1].trim();
-		gitdir = target.startsWith("/") ? target : `${root}/${target}`;
-	}
+	if (stat.isSymbolicLink())
+		return {
+			ok: false,
+			reason:
+				".git is a symlink, which cabn doesn't follow; pass --git-dir to read that repository",
+		};
+	if (!stat.isDirectory())
+		return {
+			ok: false,
+			reason:
+				".git is a pointer file (a linked worktree or submodule), which cabn doesn't follow; pass --git-dir to read that repository",
+		};
 	const exists = async (path: string) =>
 		input.fs.promises.stat(path).then(
 			() => true,
 			() => false,
 		);
 	if (!(await exists(`${gitdir}/HEAD`)))
-		return { ok: false, reason: `unreadable git directory (${gitdir})` };
+		return { ok: false, reason: "unreadable git directory (.git has no HEAD)" };
 	// isomorphic-git doesn't follow `commondir`, so a linked worktree's refs and objects are out of its reach.
 	if (await exists(`${gitdir}/commondir`))
 		return {
@@ -96,11 +102,26 @@ export async function openGitRepo(
 		repo: {
 			fs: input.fs,
 			root,
-			gitdir: trimSlash(gitdir),
+			gitdir,
 			prefix: "",
 			cache: {},
 		},
 	};
+}
+
+/**
+ * Warnings and owner API errors reach a terminal or a page; an error raised
+ * inside isomorphic-git can carry the repository's absolute paths, which
+ * neither needs.
+ */
+export function redactRepoPaths(
+	message: string,
+	repo: { root: string; gitdir: string },
+): string {
+	let out = message.split(repo.gitdir).join("<git-dir>");
+	if (repo.root.length > 1)
+		out = out.split(`${repo.root}/`).join("").split(repo.root).join(".");
+	return out;
 }
 
 export async function readTreeEntries(
@@ -213,7 +234,7 @@ export class GitTreeSource implements FileSource {
 				yield {
 					path,
 					bytes: this.opts.omittedSizes?.[entry.oid]?.size ?? 0,
-					read: () => Promise.resolve(new Uint8Array(0)),
+					read: () => Promise.resolve(undefined),
 				};
 				continue;
 			}

@@ -218,6 +218,10 @@ export async function resolveOwnerTarget(
 		throw new OwnerPathError("path must not contain empty, . or .. segments");
 	if (segments.some((s) => s.toLowerCase() === ".git"))
 		throw new OwnerPathError("path must not be inside .git");
+	// Any segment, not just the first: "src/C:x" is drive-relative on Windows,
+	// the same per-segment rule sanitizeZipPath applies.
+	if (segments.some((s) => /^[A-Za-z]:/.test(s)))
+		throw new OwnerPathError("path must not contain a drive letter");
 	if (opts.extension !== undefined && !relPath.endsWith(opts.extension))
 		throw new OwnerPathError(`only ${opts.extension} files can be written`);
 

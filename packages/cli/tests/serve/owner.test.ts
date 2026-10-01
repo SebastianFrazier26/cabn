@@ -141,7 +141,9 @@ describe("owner mode is opt-in", () => {
 	// Plain `cabn serve` (no owner routes, no client) is covered for both route groups in ownerSigns.test.ts.
 	it("with --owner the page carries a separate token and the host app wires the owner client", async () => {
 		const h = await serveOwner();
-		const page = await raw(h.port, "GET", "/", { host: `127.0.0.1:${h.port}` });
+		const page = await raw(h.port, "GET", `/?token=${h.token}`, {
+			host: `127.0.0.1:${h.port}`,
+		});
 		expect(page.body).toContain(
 			`window.__CABN_OWNER_TOKEN__ = "${h.ownerToken}"`,
 		);
@@ -239,6 +241,48 @@ describe("owner request gate", () => {
 		const h = await serveOwner();
 		const res = await raw(h.port, "GET", "/owner/git/commit", ownerHeaders(h));
 		expect(res.status).toBe(405);
+	});
+});
+
+describe("owner git reads only <root>/.git", () => {
+	async function moveGitOut(): Promise<string> {
+		const moved = join(outsideDir, "repo.git");
+		await fs.promises.rename(join(repoDir, ".git"), moved);
+		return moved;
+	}
+
+	async function statusOf(h: ServeHandle) {
+		return raw(h.port, "GET", "/owner/git/status", ownerHeaders(h));
+	}
+
+	it.each([
+		["a gitdir: pointer file", "pointer file"],
+		["a .git symlink", "symlink"],
+	])("%s is refused with a path-free reason", async (_label, word) => {
+		const moved = await moveGitOut();
+		if (word === "symlink") await symlink(moved, join(repoDir, ".git"));
+		else await writeFile(join(repoDir, ".git"), `gitdir: ${moved}\n`);
+		const h = await serveOwner();
+		const res = await statusOf(h);
+		expect(res.status).toBe(409);
+		expect(String(res.json.error)).toContain(word);
+		expect(res.body).not.toContain(outsideDir);
+		expect(res.body).not.toContain(repoDir);
+		expect(res.body).not.toContain(tmpdir());
+	});
+
+	it("--git-dir opts in to a repository outside the folder", async () => {
+		const moved = await moveGitOut();
+		await writeFile(join(repoDir, ".git"), `gitdir: ${moved}\n`);
+		handle = await startServe(repoDir, {
+			port: 0,
+			offline: true,
+			owner: true,
+			gitDir: moved,
+		});
+		const res = await statusOf(handle);
+		expect(res.status).toBe(200);
+		expect(res.json.branch).toBe("main");
 	});
 });
 

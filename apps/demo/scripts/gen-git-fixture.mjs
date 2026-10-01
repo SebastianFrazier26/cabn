@@ -107,10 +107,11 @@ function appendText(buf, extra) {
 	return encoder.encode(`${new TextDecoder().decode(buf)}${extra}`);
 }
 
-// History ships as-is, so the hosted demo's pack holds every version of every
-// ordinary file: the "oops" commit uses an obvious placeholder rather than
-// anything key-shaped. A secret-NAMED file (config/credentials.json on the
-// festival branch, .env on main) shows the one thing that is left out.
+// The hosted demo's pack holds every version of every ordinary file except
+// one with a key in its text (src/plantNamer.ts's demo key): the "oops"
+// commit uses an obvious placeholder, which the detector lets through, so its
+// diff still shows. A secret-NAMED file (config/credentials.json on the
+// festival branch, .env on main) is the other thing left out.
 const FAKE_WEATHER_KEY = "your-weather-key-here";
 
 async function writeFiles(gitdir, files) {

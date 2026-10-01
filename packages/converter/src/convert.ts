@@ -42,7 +42,11 @@ import { checkEmbedUrls, type EmbedCheckNetwork } from "./embedCheck.js";
 import { worldTreeSeed } from "./hash.js";
 import type { GithubNetwork } from "./history/githubReleases.js";
 import { buildGitDirectory } from "./history/gitPack.js";
-import { type GitHistoryInput, openGitRepo } from "./history/gitRepo.js";
+import {
+	type GitHistoryInput,
+	openGitRepo,
+	redactRepoPaths,
+} from "./history/gitRepo.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
 	isImageFormat,
@@ -479,7 +483,9 @@ async function addGitDirectory(
 		});
 	} catch (err) {
 		// isomorphic-git can't read every repository layout — a world without history beats no world.
-		warn(`git history skipped: ${(err as Error).message}`);
+		warn(
+			`git history skipped: ${redactRepoPaths((err as Error).message, opened.repo)}`,
+		);
 		return;
 	}
 	if (!files) return;
