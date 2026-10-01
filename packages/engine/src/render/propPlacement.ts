@@ -2,6 +2,22 @@ import type Phaser from "phaser";
 import { PROP_NAMES, type PropName, propKey } from "../assetPaths.js";
 import { placeScatter, type ScatterExclusion } from "../systems/scatter.js";
 
+/** Every prop kind's real texture size, read off the loaded textures — same technique as sceneryFootprints (render/sceneryBaker.ts) — so keepout math sized from PlannedProp data (no sprite yet) uses the same boxes a materialized prop actually draws. */
+export function propFootprints(
+	scene: Phaser.Scene,
+	names: readonly PropName[] = PROP_NAMES,
+): Record<PropName, { w: number; h: number }> {
+	const out = {} as Record<PropName, { w: number; h: number }>;
+	for (const name of names) {
+		const source = scene.textures.get(propKey(name)).getSourceImage() as {
+			width: number;
+			height: number;
+		};
+		out[name] = { w: source.width, h: source.height };
+	}
+	return out;
+}
+
 export interface PlacePropsParams {
 	scene: Phaser.Scene;
 	clusterId: string;
@@ -111,17 +127,25 @@ export function assignCappedPropNames(
 	});
 }
 
+export interface PlannedProp {
+	name: PropName;
+	x: number;
+	y: number;
+}
+
 /**
- * Props are real sprites, not baked into the ground `RenderTexture` the way
- * decals are (see groundBaker.ts's doc comment) — a handful per cluster is
- * nowhere near "thousands," and unlike a flat decal, a prop wants a fixed
- * depth of its own to sit above the tiled ground but (like every other
- * cluster-level GameObject in this codebase — cabinets, portals, the
- * bonfire) below the always-on-top player; there's no y-sort anywhere else
- * in WorldScene/ShelfScene either, so introducing one just for props would
- * be an inconsistent one-off, not a real fix.
+ * Where a cluster's props go — pure position/name data, no sprites, split
+ * out of placeProps (M10 stream-bake round 3) so WorldScene can plan every
+ * cluster's props up front (cheap: placeScatter is a scatter algorithm over
+ * a handful of points, not a per-cluster grid) while only *materializing*
+ * (creating the actual sprites) for clusters that have streamed in — anyone
+ * needing prop positions before a cluster is loaded (sign/spawn/click-walk
+ * keepouts, the layer seam's riser collection) reads this instead of
+ * `PlacedProp.sprite`.
  */
-export function placeProps(params: PlacePropsParams): PlacedProp[] {
+export function planProps(
+	params: Omit<PlacePropsParams, "scene" | "depth">,
+): PlannedProp[] {
 	const pool = params.allowedNames?.length ? params.allowedNames : PROP_NAMES;
 	const points = placeScatter({
 		clusterId: `${params.clusterId}:props`,
@@ -135,15 +159,39 @@ export function placeProps(params: PlacePropsParams): PlacedProp[] {
 		exclusions: params.exclusions,
 		minRadiusFrac: params.minRadiusFrac,
 	});
-
 	const names = assignCappedPropNames(
 		points.map((point) => point.variant),
 		pool,
 	);
-	return points.map((point, i) => {
-		const name = names[i] as PropName;
-		const sprite = params.scene.add.image(point.x, point.y, propKey(name));
-		sprite.setDepth(params.depth);
-		return { sprite, name, x: point.x, y: point.y };
-	});
+	return points.map((point, i) => ({
+		name: names[i] as PropName,
+		x: point.x,
+		y: point.y,
+	}));
+}
+
+/**
+ * Props are real sprites, not baked into the ground `RenderTexture` the way
+ * decals are (see groundBaker.ts's doc comment) — a handful per cluster is
+ * nowhere near "thousands," and unlike a flat decal, a prop wants a fixed
+ * depth of its own to sit above the tiled ground but (like every other
+ * cluster-level GameObject in this codebase — cabinets, portals, the
+ * bonfire) below the always-on-top player; there's no y-sort anywhere else
+ * in WorldScene/ShelfScene either, so introducing one just for props would
+ * be an inconsistent one-off, not a real fix.
+ */
+export function materializeProp(
+	scene: Phaser.Scene,
+	planned: PlannedProp,
+	depth: number,
+): PlacedProp {
+	const sprite = scene.add.image(planned.x, planned.y, propKey(planned.name));
+	sprite.setDepth(depth);
+	return { sprite, name: planned.name, x: planned.x, y: planned.y };
+}
+
+export function placeProps(params: PlacePropsParams): PlacedProp[] {
+	return planProps(params).map((planned) =>
+		materializeProp(params.scene, planned, params.depth),
+	);
 }

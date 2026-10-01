@@ -2,12 +2,16 @@ import type Phaser from "phaser";
 import { type SceneryName, sceneryKey } from "../assetPaths.js";
 import { PALETTE } from "../palette.js";
 import {
+	buildLazySceneryContext,
 	type CircleKeepout,
 	type EdgeSceneryLayer,
+	type EdgeSceneryWorld,
 	FILLER_KINDS,
 	type Footprint,
 	type LayeredSceneryItem,
+	type LazySceneryContext,
 	type PointOfInterest,
+	planFillerChunkForContext,
 	planLayeredEdgeScenery,
 	type SceneryItem,
 	type SceneryKind,
@@ -83,8 +87,7 @@ export interface EdgeDressingInput {
 export interface EdgeDressing {
 	/** Night light sources the dressing adds (the windmill's window) — merged into the scene's atmosphere lights. */
 	lights: LightPoolOptions[];
-	itemCount: number;
-	/** The planned pieces (read by the shadow owner e2e to check the scenery never moves). */
+	/** The planned pieces (read by the shadow owner e2e to check the scenery never moves) — under lazy planning (WorldScene) this is only whatever's currently loaded, not the whole world; ShelfScene's un-streamed dressEdges below still returns everything, so this stays a plain readonly array either way. */
 	items: readonly LayeredSceneryItem[];
 	pointsOfInterest: readonly PointOfInterest[];
 	destroy(): void;
@@ -152,10 +155,80 @@ export function bakeEdgeSceneryChunk(
 	);
 }
 
+/**
+ * The lazy counterpart to planEdgeScenery (M10 stream-bake round 3) — POIs
+ * and the shared keepout indexes are computed whole-world (cheap, see
+ * edgeScenery.ts's own doc comment), but filler is left unplanned until a
+ * specific chunk is actually baked (bakeLazyEdgeSceneryChunk). WorldScene
+ * uses this; ShelfScene keeps the whole-bounds planEdgeScenery/dressEdges
+ * above (its cabin count is small and fixed, so there's nothing to stream).
+ */
+export interface LazyEdgeSceneryPlan {
+	context: LazySceneryContext;
+	footprints: Readonly<Record<SceneryKind, Footprint>>;
+	poiChunkItems: Map<string, LayeredSceneryItem[]>;
+	pointsOfInterest: readonly PointOfInterest[];
+}
+
+export function planLazyEdgeScenery(
+	input: Pick<
+		EdgeDressingInput,
+		"scene" | "bounds" | "seed" | "circles" | "segments" | "layer"
+	>,
+): LazyEdgeSceneryPlan {
+	const { scene } = input;
+	const footprints = sceneryFootprints(scene, ALL_KINDS);
+	const sails = scene.textures
+		.get(sceneryKey("windmill-sails"))
+		.getSourceImage() as { width: number };
+	const world: EdgeSceneryWorld = {
+		bounds: input.bounds,
+		seed: input.seed,
+		circles: input.circles,
+		segments: input.segments,
+		footprints,
+		windmillSailSpan: sails.width,
+		topMargin: SCENERY_TOP_MARGIN,
+	};
+	const { context, pois } = buildLazySceneryContext(world, input.layer ?? null);
+	return {
+		context,
+		footprints,
+		poiChunkItems: groupSceneryItemsByChunk(pois.items, footprints),
+		pointsOfInterest: pois.pointsOfInterest,
+	};
+}
+
+/** One chunk's bake under lazy planning — filler is planned here, on demand, not up front; POIs (already planned whole-world) join in wherever their own position's chunk lands. Returns the items too, not just the RenderTexture, so the caller can track what's actually loaded for tests/e2e (see this task's own report on why the whole-world item list no longer exists). */
+export function bakeLazyEdgeSceneryChunk(
+	scene: Phaser.Scene,
+	plan: LazyEdgeSceneryPlan,
+	chunkKey: string,
+	chunkCol: number,
+	chunkRow: number,
+	skin: SceneryChunkSkin,
+): {
+	rt: Phaser.GameObjects.RenderTexture | null;
+	items: LayeredSceneryItem[];
+} {
+	const filler = planFillerChunkForContext(plan.context, chunkCol, chunkRow);
+	const poiItems = plan.poiChunkItems.get(chunkKey) ?? [];
+	const items = [...poiItems, ...filler].sort((a, b) => a.y - b.y || a.x - b.x);
+	const rt = bakeSceneryChunk(
+		scene,
+		chunkCol,
+		chunkRow,
+		items,
+		SCENERY_DEPTH,
+		skin,
+	);
+	return { rt, items };
+}
+
 /** The windmill sails (live sprite) and its window light — sparse (a world has at most a couple of windmills, never scaling with world size), so kept synchronous rather than streamed, unlike the chunked forest/meadow bake above. */
 export function materializeEdgeSceneryExtras(
 	scene: Phaser.Scene,
-	plan: EdgeSceneryPlan,
+	plan: Pick<EdgeSceneryPlan, "pointsOfInterest" | "footprints">,
 	reducedMotion: boolean,
 	tint?: number,
 	sailsTextureKey?: string,
@@ -222,7 +295,6 @@ export function dressEdges(input: EdgeDressingInput): EdgeDressing {
 	);
 	return {
 		lights: extras.lights,
-		itemCount: plan.items.length,
 		items: plan.items,
 		pointsOfInterest: plan.pointsOfInterest,
 		destroy: () => {

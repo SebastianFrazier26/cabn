@@ -48,7 +48,11 @@ import {
 	physicsBounds,
 } from "../render/clickWalker.js";
 import { dashedLine } from "../render/dashedLine.js";
-import { attachLanternFlicker, attachWorldEffects } from "../render/effects.js";
+import {
+	attachLanternFlicker,
+	attachWorldEffects,
+	type WorldEffectsHandle,
+} from "../render/effects.js";
 import { bakeClusterGround } from "../render/groundBaker.js";
 import { bakeGroundFieldChunk, CHUNK_SIZE_PX } from "../render/groundField.js";
 import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
@@ -80,8 +84,11 @@ import {
 } from "../render/playerController.js";
 import { PortalFx } from "../render/portalFx.js";
 import {
+	materializeProp,
 	type PlacedProp,
-	placeProps,
+	type PlannedProp,
+	planProps,
+	propFootprints,
 	propLightWorldPos,
 	propSmokeWorldPos,
 } from "../render/propPlacement.js";
@@ -103,11 +110,11 @@ import {
 } from "../render/worldChunkGrid.js";
 import {
 	attachSky,
-	bakeEdgeSceneryChunk,
+	bakeLazyEdgeSceneryChunk,
 	boundsWithSky,
 	type EdgeDressing,
 	materializeEdgeSceneryExtras,
-	planEdgeScenery,
+	planLazyEdgeScenery,
 } from "../render/worldDressing.js";
 import {
 	type DisplayPreview,
@@ -130,6 +137,7 @@ import {
 	type CircleKeepout,
 	type EdgeSceneryLayer,
 	keepoutDistance,
+	type LayeredSceneryItem,
 	type SegmentKeepout,
 } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
@@ -445,8 +453,12 @@ export class WorldScene extends Phaser.Scene {
 	private scenerySeed = "";
 	private save: SaveData = emptySaveData("");
 	private editedMarkers = new Map<string, Phaser.GameObjects.Text>();
-	/** Every prop drawGround() scattered, across every cluster — setupAmbientEffects() reads this afterward to find light-emitting props (cottage windows, lamp posts) without drawGround needing to know anything about lighting itself. */
+	/** Every prop materialized so far, across every cluster whose ground has streamed in — setupAmbientEffects() reads this once, at entry, to find light-emitting props (cottage windows, lamp posts); anything materialized later goes through registerPropAmbient instead (see drawGround()'s doc comment). */
 	private placedProps: PlacedProp[] = [];
+	/** Where every cluster's props go — planned for the whole world up front (cheap position data, no sprites), independent of which clusters have actually streamed in. Signs/spawn/click-walk keepouts and the shadow-owner e2e's "props never move" expectations read this instead of waiting on placedProps. */
+	private plannedProps = new Map<string, PlannedProp[]>();
+	/** True once raiseLayer() has run its one-time seam.collect() scan — a cluster's ground/props materialized before that point are picked up by that scan; materialized after, they need an explicit layerSeam.addRiser() instead (see bakeOneClusterGround/materializeClusterProps). */
+	private layerRisersCollected = false;
 	/** Ground-field grid chunks streamed in/out around the camera (render/chunkStream.ts) — see drawGround()'s doc comment for why only the field itself evicts and per-cluster ground below doesn't. */
 	private groundFieldStreamer: ChunkStreamer<
 		string,
@@ -463,11 +475,16 @@ export class WorldScene extends Phaser.Scene {
 		string,
 		Phaser.GameObjects.RenderTexture | null
 	> | null = null;
+	/** Filler is planned lazily per chunk (edgeScenery.ts's planFillerChunkForContext), so unlike every other streamer here there's no whole-world item list to fall back on — this is the only record of what's actually been planned/baked so far, read by EdgeDressing.items (see drawEdgeScenery). */
+	private edgeSceneryLoadedItems = new Map<string, LayeredSceneryItem[]>();
 	private pathStreamer: ChunkStreamer<
 		string,
 		Phaser.GameObjects.RenderTexture | null
 	> | null = null;
-	private ambientEffects: { destroy(): void } | null = null;
+	private ambientEffects: WorldEffectsHandle | null = null;
+	/** Grows as streamed-in clusters' cottages are materialized (registerPropAmbient) — mutable, kept accurate so a *future* full rebuild (a day/night toggle) still finds every chimney, even ones added after the last rebuild. */
+	private chimneyPositions: Position[] = [];
+	private ambientReducedMotion = false;
 	private atmosphere: AtmosphereHandle | null = null;
 	private edgeDressing: EdgeDressing | null = null;
 	private sky: ReturnType<typeof attachSky> | null = null;
@@ -781,12 +798,17 @@ export class WorldScene extends Phaser.Scene {
 	/** Signposts for the bundle's .seyn files (render/signposts.ts) — placed last so they can keep clear of the props, the guide and the spawn point too. */
 	private spawnSigns(): void {
 		const spawn = this.defaultSpawnPos();
-		const obstacles: CircleKeepout[] = this.placedProps.map((prop) => ({
-			x: prop.x,
-			y: prop.y,
-			radius:
-				Math.max(prop.sprite.displayWidth, prop.sprite.displayHeight) * 0.4,
-		}));
+		// From plannedProps (data), not placedProps (sprites) — every cluster's
+		// props are planned up front regardless of which have streamed in yet
+		// (see drawGround()'s doc comment), so signs keep clear of all of them,
+		// not just whichever happen to be materialized when spawnSigns() runs.
+		const footprints = propFootprints(this);
+		const obstacles: CircleKeepout[] = [...this.plannedProps.values()]
+			.flat()
+			.map((prop) => {
+				const fp = footprints[prop.name];
+				return { x: prop.x, y: prop.y, radius: Math.max(fp.w, fp.h) * 0.4 };
+			});
 		obstacles.push({ x: spawn.x, y: spawn.y, radius: 40 });
 		if (this.guideNpc)
 			obstacles.push({
@@ -882,18 +904,16 @@ export class WorldScene extends Phaser.Scene {
 	/** Day/night grade + light pools (render/atmosphere.ts), fireflies/motes/embers/smoke (render/effects.ts), and the lamp-post/cottage-window flicker. */
 	private setupAmbientEffects(): void {
 		const reducedMotion = prefersReducedMotion();
+		this.ambientReducedMotion = reducedMotion;
 		const root =
 			this.manifest.clusters.find((c) => c.path === ".") ??
 			this.manifest.clusters[0];
-		const chimneyPositions = this.placedProps
-			.map(propSmokeWorldPos)
-			.filter((pos): pos is { x: number; y: number } => pos !== null);
-		for (const prop of this.placedProps) {
-			if (prop.name === "lamp-post" || prop.name === "cottage") {
-				attachLanternFlicker(this, prop.sprite, reducedMotion);
-			}
-		}
-
+		// this.chimneyPositions and every entry prop's lantern flicker are
+		// already set by registerPropAmbient, called as each prop materialized
+		// (drawGround runs — and therefore materializes every entry cluster's
+		// props — before create() ever reaches this method); a cluster
+		// streamed in later pushes its own cottage chimneys the same way and
+		// re-triggers rebuild() below, so neither needs recomputing here.
 		const warmLight = this.skin.lightColor ?? PALETTE.gold;
 		const lights: LightPoolOptions[] = this.placedProps.flatMap((prop) => {
 			const pos = propLightWorldPos(prop);
@@ -1017,7 +1037,7 @@ export class WorldScene extends Phaser.Scene {
 				bounds: this.computeWorldBounds(),
 				timeOfDay: this.store.getState().timeOfDay,
 				bonfirePos: root?.pos,
-				chimneyPositions,
+				chimneyPositions: this.chimneyPositions,
 				reducedMotion,
 				particles: this.skin.particles,
 				ambient: this.skin.ambient,
@@ -1027,6 +1047,47 @@ export class WorldScene extends Phaser.Scene {
 		this.unsubscribeAmbientTimeOfDay = this.store.subscribe((state, prev) => {
 			if (state.timeOfDay !== prev.timeOfDay) rebuild();
 		});
+	}
+
+	/**
+	 * The incremental counterpart to setupAmbientEffects()'s own one-time
+	 * lantern/light/chimney setup — called for a prop materialized *after*
+	 * that method already ran (a cluster streaming in as the player walks).
+	 * A no-op before setupAmbientEffects has run at all (this.atmosphere is
+	 * still null then; that method's own initial pass will pick up any
+	 * already-materialized prop itself, so nothing is lost either way).
+	 */
+	private registerPropAmbient(prop: PlacedProp): void {
+		if (prop.name === "lamp-post" || prop.name === "cottage") {
+			attachLanternFlicker(this, prop.sprite, this.ambientReducedMotion);
+		}
+		const lightPos = propLightWorldPos(prop);
+		if (lightPos) {
+			const warmLight = this.skin.lightColor ?? PALETTE.gold;
+			this.atmosphere?.addLight({
+				x: lightPos.x,
+				y: lightPos.y,
+				radiusPx: 44,
+				color: warmLight,
+				alpha: 0.7,
+				flicker: prop.name === "lamp-post",
+			});
+		}
+		const smokePos = propSmokeWorldPos(prop);
+		if (smokePos) {
+			// Kept up to date for any *future* full rebuild (a day/night toggle
+			// swaps fireflies for motes and needs every chimney again, not just
+			// the ones that existed when it fires) — but the chimney itself
+			// joins the running effects incrementally, not via a full rebuild:
+			// destroying and recreating every existing emitter just to add one
+			// cottage's smoke was a real (not hypothetical) source of a >50ms
+			// task on every later cluster's first cottage — see this task's own
+			// report. this.ambientEffects is still null during entry
+			// materialization (setupAmbientEffects hasn't run yet); its own
+			// first attachWorldEffects() call picks up chimneyPositions in full.
+			this.chimneyPositions.push(smokePos);
+			this.ambientEffects?.addChimney(smokePos);
+		}
 	}
 
 	// The spyglass panel and the orb's world-search results both read this off
@@ -1278,6 +1339,16 @@ export class WorldScene extends Phaser.Scene {
 			radiusX * 2,
 			radiusY * 2,
 		);
+		// Entry clusters exist before raiseLayer()'s one-time seam.collect()
+		// scan runs, so that scan already picks them up; a cluster streamed in
+		// afterward (the player walked toward it) needs an explicit riser so
+		// it still sinks correctly if the layer is later turned off.
+		if (
+			this.layerRisersCollected &&
+			(this.layerSeam?.layer.clusterIds.has(clusterId) ?? false)
+		) {
+			this.layerSeam?.addRiser(rt);
+		}
 		return rt;
 	}
 
@@ -1352,6 +1423,29 @@ export class WorldScene extends Phaser.Scene {
 		perfMark("cabn:world:ground-field-baked");
 
 		this.groundTintOverlay = this.add.graphics().setDepth(0.6);
+		// Props: planned for every cluster up front (planProps is pure position
+		// data, no sprites — cheap even for hundreds of clusters), materialized
+		// only as each cluster's own ground streams in, in the same bake
+		// callback below. Anything that needs a prop's position before its
+		// cluster has streamed in (spawnSigns, the shadow-owner e2e) reads
+		// plannedProps instead of waiting on a sprite to exist.
+		const layerPathSegments = this.layerPathKeepoutSegments();
+		for (const cluster of this.manifest.clusters) {
+			const { x: radiusX, y: radiusY } = this.drawnGround(cluster);
+			const exclusions = this.clusterExclusions(cluster, spawn);
+			const planned = planProps({
+				clusterId: cluster.id,
+				centerX: cluster.pos.x,
+				centerY: cluster.pos.y,
+				radiusX,
+				radiusY,
+				exclusions,
+				count: PROPS_PER_CLUSTER,
+				minRadiusFrac: PROP_ANNULUS_INNER_FRAC,
+			}).filter((p) => !this.isOnLayerPath(p.x, p.y, layerPathSegments));
+			this.plannedProps.set(cluster.id, planned);
+		}
+
 		this.clusterGroundStreamer = new ChunkStreamer<
 			string,
 			Phaser.GameObjects.RenderTexture
@@ -1361,7 +1455,11 @@ export class WorldScene extends Phaser.Scene {
 			budgetMs: CLUSTER_GROUND_STREAM_BUDGET_MS,
 			maxPerFrame: CLUSTER_GROUND_STREAM_MAX_PER_FRAME,
 			positionOf: (id) => this.clustersById.get(id)?.pos ?? { x: 0, y: 0 },
-			bake: (id) => this.bakeOneClusterGround(id, spawn),
+			bake: (id) => {
+				const rt = this.bakeOneClusterGround(id, spawn);
+				this.materializeClusterProps(id);
+				return rt;
+			},
 			evict: () => {
 				// Never called: evictRadius above is Infinity.
 			},
@@ -1374,44 +1472,41 @@ export class WorldScene extends Phaser.Scene {
 			)
 			.map((c) => c.id);
 		this.clusterGroundStreamer.loadNowSync(entryClusterIds);
-
-		for (const cluster of this.manifest.clusters) {
-			const { x: radiusX, y: radiusY } = this.drawnGround(cluster);
-			const exclusions = this.clusterExclusions(cluster, spawn);
-
-			this.placedProps.push(
-				...placeProps({
-					scene: this,
-					clusterId: cluster.id,
-					centerX: cluster.pos.x,
-					centerY: cluster.pos.y,
-					radiusX,
-					radiusY,
-					exclusions,
-					count: PROPS_PER_CLUSTER,
-					depth: 2,
-					minRadiusFrac: PROP_ANNULUS_INNER_FRAC,
-				}),
-			);
-		}
-		this.clearPropsOffLayerPaths();
-		const swaps = this.skin.props;
-		const scatterTint = this.skin.scatterTint;
-		for (const prop of this.placedProps) {
-			const swap = swaps?.[prop.name];
-			if (swap) prop.sprite.setTexture(swap.key);
-			else if (scatterTint !== null) prop.sprite.setTint(scatterTint);
-		}
 	}
 
 	/**
-	 * Base props were placed without the layer's paths (so they never move
-	 * across the toggle); the few a layer path now runs over are removed
-	 * while the layer shows.
+	 * Materializes one cluster's already-planned props (plannedProps) into
+	 * real sprites — called from clusterGroundStreamer's bake callback, so it
+	 * runs once per cluster whether that happens synchronously at entry or
+	 * later as the player walks toward it. Skin swap and ambient registration
+	 * (light pool, lantern flicker, chimney smoke) happen here too, right as
+	 * each sprite is created, rather than as a separate pass over
+	 * this.placedProps afterward — there is no "afterward" that's guaranteed
+	 * to see every cluster once materialization itself is spread over frames.
 	 */
-	private clearPropsOffLayerPaths(): void {
+	private materializeClusterProps(clusterId: string): void {
+		const planned = this.plannedProps.get(clusterId) ?? [];
+		if (planned.length === 0) return;
+		const swaps = this.skin.props;
+		const scatterTint = this.skin.scatterTint;
+		const isLayerCluster =
+			this.layerRisersCollected &&
+			(this.layerSeam?.layer.clusterIds.has(clusterId) ?? false);
+		for (const plan of planned) {
+			const prop = materializeProp(this, plan, 2);
+			const swap = swaps?.[prop.name];
+			if (swap) prop.sprite.setTexture(swap.key);
+			else if (scatterTint !== null) prop.sprite.setTint(scatterTint);
+			this.placedProps.push(prop);
+			this.registerPropAmbient(prop);
+			if (isLayerCluster) this.layerSeam?.addRiser(prop.sprite);
+		}
+	}
+
+	/** Every point along a layer path's polyline, as segments — pure query, split out of the old clearPropsOffLayerPaths (props are no longer created before this can run, so there's nothing left to destroy; see planProps's filter in drawGround and isOnLayerPath). */
+	private layerPathKeepoutSegments(): [Position, Position][] {
 		const seam = this.layerSeam;
-		if (!seam) return;
+		if (!seam) return [];
 		const segments: [Position, Position][] = [];
 		for (const path of this.manifest.paths) {
 			if (!seam.isLayerPath(path)) continue;
@@ -1425,20 +1520,24 @@ export class WorldScene extends Phaser.Scene {
 				if (a && b) segments.push([a, b]);
 			}
 		}
-		if (segments.length === 0) return;
-		this.placedProps = this.placedProps.filter((prop) => {
-			const onPath = segments.some(
-				([a, b]) =>
-					keepoutDistance(
-						prop.x,
-						prop.y,
-						[],
-						[{ ax: a.x, ay: a.y, bx: b.x, by: b.y, halfWidth: 0 }],
-					) < LAYER_PATH_PROP_CLEARANCE,
-			);
-			if (onPath) prop.sprite.destroy();
-			return !onPath;
-		});
+		return segments;
+	}
+
+	/** True if (x, y) falls within LAYER_PATH_PROP_CLEARANCE of any of the given layer-path segments — planProps filters candidate positions against this before a prop is ever materialized (base props were placed without the layer's paths, so they never move across the toggle; the few a layer path would have run over just never get planned there in the first place). */
+	private isOnLayerPath(
+		x: number,
+		y: number,
+		segments: readonly [Position, Position][],
+	): boolean {
+		return segments.some(
+			([a, b]) =>
+				keepoutDistance(
+					x,
+					y,
+					[],
+					[{ ax: a.x, ay: a.y, bx: b.x, by: b.y, halfWidth: 0 }],
+				) < LAYER_PATH_PROP_CLEARANCE,
+		);
 	}
 
 	/**
@@ -1651,7 +1750,11 @@ export class WorldScene extends Phaser.Scene {
 			? (kind: string) => swaps[kind as SkinSceneryKind]?.key
 			: undefined;
 		const tint = scatterTint !== null ? scatterTint : undefined;
-		const plan = planEdgeScenery({
+		// planEdgeScenery's whole-bounds filler grid is gone from the hot path:
+		// planLazyEdgeScenery still plans POIs and the shared keepout indexes
+		// whole-world (cheap — see edgeScenery.ts's own doc comment), but
+		// leaves filler unplanned until a specific chunk actually streams in.
+		const plan = planLazyEdgeScenery({
 			scene: this,
 			bounds: this.baseWorldBounds(),
 			seed: this.scenerySeed,
@@ -1660,6 +1763,7 @@ export class WorldScene extends Phaser.Scene {
 			layer,
 		});
 		perfMark("cabn:world:edge-scenery-planned");
+		this.edgeSceneryLoadedItems.clear();
 		this.edgeSceneryStreamer = new ChunkStreamer<
 			string,
 			Phaser.GameObjects.RenderTexture | null
@@ -1671,18 +1775,30 @@ export class WorldScene extends Phaser.Scene {
 			positionOf: worldChunkPositionOf,
 			bake: (key) => {
 				const { col, row } = parseWorldChunkKey(key);
-				return bakeEdgeSceneryChunk(this, plan, key, col, row, {
-					textureFor,
-					tint,
-				});
+				const { rt, items } = bakeLazyEdgeSceneryChunk(
+					this,
+					plan,
+					key,
+					col,
+					row,
+					{
+						textureFor,
+						tint,
+					},
+				);
+				this.edgeSceneryLoadedItems.set(key, items);
+				return rt;
 			},
-			evict: (_key, rt) => rt?.destroy(),
+			evict: (key, rt) => {
+				this.edgeSceneryLoadedItems.delete(key);
+				rt?.destroy();
+			},
 		});
-		this.edgeSceneryStreamer.loadNowSync([
-			...worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx())
-				.map((c) => c.key)
-				.filter((key) => plan.chunkItems.has(key)),
-		]);
+		this.edgeSceneryStreamer.loadNowSync(
+			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
+				(c) => c.key,
+			),
+		);
 		perfMark("cabn:world:edge-scenery-entry-baked");
 		const extras = materializeEdgeSceneryExtras(
 			this,
@@ -1692,14 +1808,22 @@ export class WorldScene extends Phaser.Scene {
 			tint,
 			textureFor?.("windmill-sails"),
 		);
+		const loadedItems = this.edgeSceneryLoadedItems;
 		this.edgeDressing = {
 			lights: extras.lights,
-			itemCount: plan.items.length,
-			items: plan.items,
 			pointsOfInterest: plan.pointsOfInterest,
+			// Every chunk currently loaded's own items, POIs included — the
+			// whole-world item list planEdgeScenery used to return doesn't exist
+			// any more (filler is planned lazily, per chunk); see this task's
+			// own report and the updated shadow-owner e2e for why the "scenery
+			// never moves" check now compares loaded chunks instead.
+			get items(): readonly LayeredSceneryItem[] {
+				return [...loadedItems.values()].flat();
+			},
 			destroy: () => {
 				this.edgeSceneryStreamer?.destroyAll((_key, rt) => rt?.destroy());
 				this.edgeSceneryStreamer = null;
+				this.edgeSceneryLoadedItems.clear();
 				extras.destroy();
 			},
 		};
@@ -3154,6 +3278,11 @@ export class WorldScene extends Phaser.Scene {
 			const { riser, dustAt } = this.baseArchRiser();
 			riser.rise(this, layerRiseMs(prefersReducedMotion()), dustAt);
 		}
+		// Set regardless of whether a layer exists — bakeOneClusterGround/
+		// materializeClusterProps check this to know whether seam.collect()
+		// already ran (entry clusters, picked up by its own scan) or a later
+		// stream-in needs an explicit addRiser() instead.
+		this.layerRisersCollected = true;
 		if (!seam) return;
 		seam.collect(
 			this,
