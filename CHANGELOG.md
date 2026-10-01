@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-01 — Railway deploy: backend and hosted demo as config-as-code
+
+- **Per-service Railway config.** `apps/backend/railway.json` and
+  `apps/demo/railway.json` pick each service's Dockerfile (build context is
+  the repo root for both), a health check path and an on-failure restart
+  policy. Each Railway service points at its own file through its "Config
+  file path" setting.
+- **Hosted demo container.** `apps/demo/Dockerfile` builds the workspace
+  (`pnpm -r build`) and serves `apps/demo/dist` with Caddy 2.11.4 (alpine,
+  pinned by digest) as an unprivileged user. Caddy sends the demo CSP as a
+  real response header, so `frame-ancestors 'none'` now takes effect (a
+  `<meta>` policy can't carry it; the meta tag stays), plus
+  `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Permissions-Policy` and HSTS. Vite's content-hashed chunks in `/assets/`
+  are cached for a year as immutable; everything else (index.html, worlds,
+  the unhashed sprites) revalidates.
+- **One CSP source.** `csp-policy.mjs` gains `DEMO_CSP_HEADER` (the meta
+  policy plus `frame-ancestors 'none'`); `scripts/render-caddyfile.mjs`
+  writes it into the `Caddyfile` template at image build time, and
+  `tests/caddyfile.test.mjs` checks the rendered header matches.
+
 ## 2026-10-01 — M10 performance: non-regex quadratics in the tree-based annotators
 
 Follows the ReDoS pass below with the remaining non-regex quadratic hot

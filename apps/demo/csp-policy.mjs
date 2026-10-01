@@ -56,3 +56,8 @@ export const DEMO_CSP_DIRECTIVES = {
 export const DEMO_CSP = Object.entries(DEMO_CSP_DIRECTIVES)
 	.map(([name, values]) => `${name} ${values.join(" ")}`)
 	.join("; ");
+
+// What the hosted demo's Caddy sends as a response header
+// (scripts/render-caddyfile.mjs). Same policy plus the one directive a meta
+// tag can't carry.
+export const DEMO_CSP_HEADER = `${DEMO_CSP}; frame-ancestors 'none'`;
