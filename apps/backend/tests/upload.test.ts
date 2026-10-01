@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { validateManifest } from "@cabn/world-schema";
@@ -147,8 +148,10 @@ describe("POST /v1/worlds: upload handling", () => {
 	});
 
 	test("media ships within the backend's own caps even if cabn.json asks for more", async () => {
+		// Random fill: a constant one compresses past the backend's 100:1 ratio
+		// cap and the upload would be refused before media is ever considered.
 		const png = (size: number) => {
-			const bytes = new Uint8Array(size).fill(7);
+			const bytes = new Uint8Array(randomBytes(size));
 			bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 			return bytes;
 		};
@@ -292,7 +295,7 @@ describe("POST /v1/worlds: upload handling", () => {
 		expect(() => validateManifest(manifest)).not.toThrow();
 	});
 
-	test("hostile zip-bomb fixture is handled safely (capped, not crashed)", async () => {
+	test("hostile zip-bomb fixture is refused on its declared ratio (2026-10-01)", async () => {
 		const bytes = await readFile(
 			join(CONVERTER_FIXTURES, "hostile-zip-bomb.zip"),
 		);
@@ -300,12 +303,10 @@ describe("POST /v1/worlds: upload handling", () => {
 			{ fieldName: "file", filename: "bomb.zip", content: bytes },
 		]);
 		const res = await post(body, contentType);
-		expect(res.statusCode).toBe(200);
-		const entries = unzipSync(res.rawPayload);
-		const manifest = JSON.parse(
-			Buffer.from(entries["world.json"] as Uint8Array).toString("utf8"),
-		);
-		expect(() => validateManifest(manifest)).not.toThrow();
+		expect(res.statusCode).toBe(422);
+		expect(res.json()).toEqual({
+			error: "archive has an entry compressed beyond the allowed ratio",
+		});
 	});
 });
 

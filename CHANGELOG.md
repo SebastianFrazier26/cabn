@@ -181,13 +181,16 @@ Two long-standing follow-up tickets from the M10 plan.
   and absent from `search-index.json`, for both a `ZipSource` and a generic
   directory-shaped `FileSource`).
 
-## 2026-10-01 — M10 security hardening: ReDoS, atomic owner commits, proxy trust, embed and asset guards, CI hygiene
+## 2026-10-01 — M10 security hardening: ReDoS, atomic owner commits, proxy trust, embed and asset guards, CI hygiene, backend worker isolation, CSP, release workflow split
 
-Fixes the clear-cut findings of the M10 read-only security audit. The
-findings that need a design decision (the token on `GET /`, gitdir
-confinement, history secret patterns, pet proposal proximity, backend worker
-isolation, the release workflow) are not part of this change. (The first three
-were decided and fixed later the same day, in the "M10 security: token-gated serve page" entry above.)
+Fixes the clear-cut findings of the M10 read-only security audit, plus
+three followup security improvements requested on 2026-10-01:
+backend worker isolation with resource limits and timeout, strict CSP
+for the hosted demo, and split release workflow with environment protection.
+The findings that needed a design decision beyond those (the token on `GET /`,
+gitdir confinement, history secret patterns, pet proposal proximity) are not
+part of this change; the first three were decided and fixed later the same
+day, in the "M10 security: token-gated serve page" entry above.
 
 - **Regex denial of service.** The JSX empty-expression pattern in
   `syntaxTree.ts` was exponential (`{` + `/**/`×40 + ` x}` hung); it is now a
@@ -222,6 +225,46 @@ were decided and fixed later the same day, in the "M10 security: token-gated ser
   the `pnpm audit` comment now says it covers dev dependencies too.
   `.gitignore` and `.dockerignore` skip `.env.*` (except `.env.example`), and
   the Docker context skips `.claude/`.
+- **Backend worker isolation** (2026-10-01 followup). Each `POST /v1/worlds`
+  conversion runs in a fresh `node:worker_threads` worker that starts with an
+  empty environment (no API key hashes or other host variables) and no
+  `fetch`, under heap, young-generation and stack limits
+  (`CONVERTER_POOL_HEAP_LIMIT_MB`, default 256). A conversion still running
+  after `CONVERTER_POOL_TIMEOUT_MS` (default 30s) is terminated and answered
+  `504`; its slot frees only once the thread has exited. Past
+  `CONVERTER_POOL_CONCURRENCY` (default 2, max 10) the request gets `503`
+  with `Retry-After` at once. Before inflating anything the zip's central
+  directory is checked: a declared total over `MAX_ZIP_INFLATION_BYTES`
+  (default 4× the upload cap) or an entry of 64 KiB or more declaring more
+  than `MAX_COMPRESSION_RATIO` (default 100:1) is refused with `422`, as is
+  an archive with no readable central directory. The converter's
+  `hostile-zip-bomb.zip` fixture (1024:1) is now refused instead of converted
+  with its bomb entry capped. Other failures are a generic `422`, detail in
+  the log only.
+- **Strict Content-Security-Policy for the hosted demo** (2026-10-01
+  followup). The production build's `index.html` carries the policy in
+  `apps/demo/csp-policy.mjs` as a `<meta>` tag, injected at build time only
+  (`vite dev`'s fast-refresh preamble is an inline script) and checked by a
+  fourth postbuild check. `script-src 'self'`; `style-src 'self'
+  'unsafe-inline'` because the engine injects `<style>` elements; `data:`
+  fonts for the embedded pixel font; `blob:` images, media and connects for
+  object-URL textures and in-browser worlds; `connect-src` limited to the pet
+  providers and local Ollama; `frame-src` limited to the sample world's
+  `allowedEmbedOrigins`; `base-uri`, `object-src` and `form-action` `'none'`.
+  `frame-ancestors` is header-only (ignored in a meta tag), so it is not in
+  the policy; a host that wants it must send it as a header. zod's eval probe
+  is switched off by `public/zod-jitless.js` so it doesn't report a
+  violation. The smoke, pets, embeds, media, git and loading-screen specs
+  now fail on any CSP violation (`e2e/cspGuard.ts`).
+- **Release workflow split** (2026-10-01 followup). `release.yml` is two
+  jobs: `build` (install, build, test, lint, audit; `contents: read` only)
+  and `publish` (`needs: build`, only on `main`, `environment: npm` for
+  required reviewers, the only job with `id-token: write`). Publishing uses
+  `pnpm publish -r --provenance` rather than `changeset publish` with
+  `NPM_CONFIG_PROVENANCE`: pnpm's native publish does the npm OIDC token
+  exchange itself, and changesets can't pass the provenance flag. Every
+  action in `ci.yml`, `deploy-backend.yml` and `release.yml` is pinned to
+  the commit SHA its `v4` tag resolves to, with a `# v4` comment.
 
 ## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
 

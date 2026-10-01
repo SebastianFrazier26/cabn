@@ -22,6 +22,11 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 		requestTimeoutMs: 30_000,
 		rateLimitMax: 20,
 		rateLimitWindowMs: 60_000,
+		converterPoolConcurrency: 2,
+		converterPoolTimeoutMs: 30_000,
+		maxZipInflationBytes: 100 * 1024 * 1024,
+		maxCompressionRatio: 100,
+		converterPoolHeapLimitMb: 256,
 		...overrides,
 	};
 }

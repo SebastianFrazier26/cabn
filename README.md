@@ -173,6 +173,8 @@ pnpm -F @cabn/demo build   # produces the dist/ the tests preview
 pnpm -F @cabn/demo e2e
 ```
 
+The production build carries a strict Content-Security-Policy in a `<meta>` tag (`apps/demo/csp-policy.mjs`, injected by `vite.config.ts` at build time only, checked by `scripts/check-csp-in-bundle.mjs`). The specs that import `test` from `e2e/cspGuard.ts` fail on any CSP violation. A meta policy can't set `frame-ancestors`; a host that wants to stop other sites framing the demo must send `Content-Security-Policy: frame-ancestors 'none'` as a response header.
+
 CI installs its own matching Chromium. Locally, if the Chromium that `@playwright/test` expects isn't cached in `~/Library/Caches/ms-playwright/`, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a cached build instead of installing a new one. Ports and other test switches are listed in `CLAUDE.md`.
 
 CI also runs `pnpm audit --audit-level=high`, which fails only on high or critical findings.
@@ -331,6 +333,8 @@ This prints a new key once (`cabn_...`) and its SHA-256 hash. With `NODE_ENV=pro
 
 **Abuse limits.** Upload size is capped (`MAX_UPLOAD_BYTES`, default 25MB) by `@fastify/multipart`'s streaming limit (413 on overflow). Exactly one file is accepted (400 otherwise) and it must be a zip by its magic bytes (415 otherwise). The converter's own caps always apply, and secret-pattern files are never read. `@fastify/rate-limit` enforces independent per-IP and per-key limits. Requests time out after `REQUEST_TIMEOUT_MS` (default 30s). CORS is closed unless `CORS_ORIGINS` is set. The logger redacts `Authorization` headers.
 
+**Conversion isolation.** Each conversion runs in a fresh `worker_threads` worker that starts with an empty environment (no API key hashes or other host variables) and no `fetch`, under a V8 heap cap (`CONVERTER_POOL_HEAP_LIMIT_MB`, default 256). Before anything is inflated, the zip's central directory is checked: a declared total over `MAX_ZIP_INFLATION_BYTES` (default 4× `MAX_UPLOAD_BYTES`) or any entry of 64 KiB or more declaring a ratio over `MAX_COMPRESSION_RATIO` (default 100:1) is refused with `422`. Declared sizes can lie; the converter's streaming caps, the heap cap and the timeout bound what a lying archive can cost. At most `CONVERTER_POOL_CONCURRENCY` conversions (default 2, max 10) run at once, and a request past that gets `503` with `Retry-After` straight away rather than waiting. A conversion still running after `CONVERTER_POOL_TIMEOUT_MS` (default 30s) is terminated and the request gets `504`. Any other conversion failure is a generic `422`; the detail goes to the log only.
+
 See `.env.example` for every variable and `apps/backend/Dockerfile` for the production container. Behind a proxy, set `CABN_TRUST_PROXY` to the number of proxies in front of the app (Railway: `1`) so rate limits key off the real client IP; the client-written part of `X-Forwarded-For` is never trusted. The old value `true` still means one proxy.
 
 ## Releasing
@@ -341,12 +345,13 @@ The four publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/e
 pnpm changeset
 ```
 
-Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. One-time setup:
+Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. The workflow has two jobs: `build` (install, build, test, lint, audit; `contents: read` only) and `publish`, which runs only after `build` passes, only on `main`, only inside the `npm` environment, and is the only job allowed to mint an OIDC token (`id-token: write`). It publishes with `pnpm publish -r --provenance`, which skips private packages and versions already on npm, exchanges the OIDC token for a short-lived npm token itself, and attaches a provenance attestation. One-time setup:
 
 1. Create the `cabn` org on npmjs.com (a manual web step).
 2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm -r publish --access public`.
-3. Attach the trusted publisher per package, on npmjs.com (GitHub Actions, owner `SebastianFrazier26`, repo `cabn`, workflow `release.yml`) or with npm ≥ 11.15: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --allow-publish`. Trusted publishing needs npm ≥ 11.5.1 and Node ≥ 22.14 in the workflow.
-4. Run the "Release" workflow from the Actions tab. It installs, builds, tests, then runs `changeset publish` with npm provenance.
+3. Create the GitHub environment: repo Settings → Environments → New environment, named exactly `npm`. Under "Deployment protection rules" tick **Required reviewers** and add yourself (and anyone else allowed to approve a release). Under "Deployment branches and tags" choose "Selected branches and tags" and add `main`. Every run of the publish job then waits for an approval in the Actions tab.
+4. Attach the trusted publisher to each of the four packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish`. Naming the environment means a token minted by any other job or workflow is refused.
+5. Run the "Release" workflow from the Actions tab on `main`, then approve the `npm` deployment when it asks.
 
 ## Deploying the backend
 
