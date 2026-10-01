@@ -156,21 +156,80 @@ interface Hit {
 	description: string;
 }
 
-function overlaps(hits: readonly Hit[], start: number, end: number): boolean {
-	return hits.some((h) => start < h.end && end > h.start);
+/**
+ * Every hit/claimed-span array here is kept pairwise disjoint by construction
+ * (a new span is only ever added once it's checked to not overlap any
+ * existing one), so a linear `.some()` scan was really an interval-membership
+ * test with no index behind it: a file whose patterns match densely (an
+ * adversarial run of look-alike keys, one per line) made each check scan
+ * every span already claimed, which is quadratic in the hit count. Sorted by
+ * start, that test is a binary search instead.
+ */
+function overlapsSorted(
+	sorted: readonly Hit[],
+	start: number,
+	end: number,
+): boolean {
+	let lo = 0;
+	let hi = sorted.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if ((sorted[mid]?.start ?? 0) <= start) lo = mid + 1;
+		else hi = mid;
+	}
+	const prev = sorted[lo - 1];
+	if (prev && prev.end > start) return true;
+	const next = sorted[lo];
+	return next !== undefined && next.start < end;
+}
+
+/**
+ * Merges `additions` — sorted by start and pairwise disjoint from each other,
+ * which every call site below gets for free from `matchAll`'s left-to-right,
+ * non-overlapping match order — into `sorted` (same invariants), in one
+ * linear pass rather than one `.some()`-and-insert per addition.
+ */
+function mergeDisjoint(
+	sorted: readonly Hit[],
+	additions: readonly Hit[],
+): Hit[] {
+	if (additions.length === 0) return sorted as Hit[];
+	if (sorted.length === 0) return additions as Hit[];
+	const out: Hit[] = [];
+	let i = 0;
+	let j = 0;
+	while (i < sorted.length && j < additions.length) {
+		const a = sorted[i] as Hit;
+		const b = additions[j] as Hit;
+		if (a.start <= b.start) {
+			out.push(a);
+			i++;
+		} else {
+			out.push(b);
+			j++;
+		}
+	}
+	while (i < sorted.length) out.push(sorted[i++] as Hit);
+	while (j < additions.length) out.push(additions[j++] as Hit);
+	return out;
 }
 
 function scanProviders(content: string, hits: Hit[]): void {
 	// A placeholder rejected by an earlier pattern still claims its span, or
-	// "sk-ant-your-key-here..." would come back as an OpenAI key.
-	const claimed: Hit[] = [...hits];
+	// "sk-ant-your-key-here..." would come back as an OpenAI key. `claimed`
+	// only needs to be re-merged once per pattern (not per match): matches of
+	// one pattern never overlap each other (matchAll's own invariant), so
+	// checking a candidate against spans claimed earlier *in this same
+	// pattern's loop* would never find anything anyway.
+	let claimed: Hit[] = [...hits].sort((a, b) => a.start - b.start);
 	for (const p of PROVIDER_PATTERNS) {
+		const claimedHere: Hit[] = [];
 		for (const m of content.matchAll(p.pattern)) {
 			const value = m[0];
 			const start = m.index;
 			const end = start + value.length;
-			if (overlaps(claimed, start, end)) continue;
-			claimed.push({ start, end, kind: p.kind, description: "" });
+			if (overlapsSorted(claimed, start, end)) continue;
+			claimedHere.push({ start, end, kind: p.kind, description: "" });
 			const body = value.slice(p.shownPrefix);
 			if (isPlaceholderSecret(body) || shannonEntropy(body) < 3) continue;
 			hits.push({
@@ -180,6 +239,7 @@ function scanProviders(content: string, hits: Hit[]): void {
 				description: `${p.label} (${value.slice(0, p.shownPrefix)}…, ${value.length} chars)`,
 			});
 		}
+		claimed = mergeDisjoint(claimed, claimedHere);
 	}
 }
 
@@ -199,11 +259,15 @@ function scanPrivateKeys(content: string, hits: Hit[]): void {
 }
 
 function scanConnectionStrings(content: string, hits: Hit[]): void {
+	// `claimed` is a one-time snapshot, not re-merged per match: matchAll
+	// never yields overlapping matches of the same pattern, so a candidate can
+	// only ever collide with a span claimed before this scan started.
+	const claimed = [...hits].sort((a, b) => a.start - b.start);
 	for (const m of content.matchAll(CONNECTION_STRING_PATTERN)) {
 		const password = m[3] ?? "";
 		const start = m.index;
 		const end = start + m[0].length;
-		if (overlaps(hits, start, end)) continue;
+		if (overlapsSorted(claimed, start, end)) continue;
 		if (
 			PLACEHOLDER_PASSWORDS.has(password.toLowerCase()) ||
 			isPlaceholderSecret(password)
@@ -219,6 +283,11 @@ function scanConnectionStrings(content: string, hits: Hit[]): void {
 }
 
 function scanGenericAssignments(content: string, hits: Hit[]): void {
+	// Same one-time-snapshot reasoning as scanConnectionStrings: matches
+	// within one line can't overlap each other, and `offset` keeps every
+	// line's matches in their own, later character range, so no match found
+	// during this scan can ever collide with another found during it.
+	const claimed = [...hits].sort((a, b) => a.start - b.start);
 	let offset = 0;
 	for (const line of content.split("\n")) {
 		if (line.length <= MAX_GENERIC_LINE_CHARS) {
@@ -228,7 +297,7 @@ function scanGenericAssignments(content: string, hits: Hit[]): void {
 				const start = offset + m.index;
 				const end = start + m[0].length;
 				if (NON_SECRET_NAME_SUFFIX.test(name)) continue;
-				if (overlaps(hits, start, end)) continue;
+				if (overlapsSorted(claimed, start, end)) continue;
 				if (isPlaceholderSecret(value) || !looksGenerated(value)) continue;
 				hits.push({
 					start,

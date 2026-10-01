@@ -35,9 +35,22 @@ export const bracketBalance: Annotator = (ctx) => {
 
 	const { bracketIssues } = scanCode(content, config);
 	const lines = content.split("\n");
+	// Many issues often land on the same line (every unclosed opener on the
+	// stack is reported at EOF; a run of unexpected closers lands wherever
+	// they are) — hash each line once rather than per issue, which re-hashed
+	// the same line (the whole file, on content with no newlines) from
+	// scratch per issue and was quadratic in the issue count.
+	const lineHashes = new Map<number, string>();
+	const hashOf = (line: number): string => {
+		const cached = lineHashes.get(line);
+		if (cached !== undefined) return cached;
+		const hash = shortHash(normalizeLine(lines[line] ?? ""), 8);
+		lineHashes.set(line, hash);
+		return hash;
+	};
 	const results: ErrorAnnotation[] = bracketIssues.map((issue) => ({
 		code: "IoError",
-		rule: `bracket:${issue.type}:${issue.ch}:${shortHash(normalizeLine(lines[issue.loc.line] ?? ""), 8)}`,
+		rule: `bracket:${issue.type}:${issue.ch}:${hashOf(issue.loc.line)}`,
 		message: messageFor(issue),
 		loc: issue.loc,
 		species: "gremlin",

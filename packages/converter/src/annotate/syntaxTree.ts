@@ -282,6 +282,20 @@ export function nodeText(parsed: ParsedFile, node: SyntaxNode): string {
 	return parsed.content.slice(node.from, node.to);
 }
 
+/**
+ * The line-start key `lineTextAt`/`lineAnchor` cache against: same line, same
+ * key, so both caches hit on repeat lookups into the same line regardless of
+ * which exact index inside it was asked for.
+ */
+function lineKeyAt(content: string, index: number): number {
+	const at = Math.max(0, Math.min(index, content.length));
+	// lastIndexOf, which this replaced, put an index of 0 on an empty first
+	// line on the line after it; kept.
+	const start =
+		at === 0 && content[0] === "\n" ? 1 : at - locAt(content, at).col;
+	return start > at ? -1 : start;
+}
+
 /** Whitespace-collapsed, trimmed text of the line containing `index` — the content anchor rule strings hash. */
 export function lineTextAt(content: string, index: number): string {
 	// Every finding on a line asks for the same text; on one long minified
@@ -290,14 +304,11 @@ export function lineTextAt(content: string, index: number): string {
 		lineTextContent = content;
 		lineTextCache = new Map();
 	}
-	const at = Math.max(0, Math.min(index, content.length));
-	// lastIndexOf, which this replaced, put an index of 0 on an empty first
-	// line on the line after it; kept.
-	const start =
-		at === 0 && content[0] === "\n" ? 1 : at - locAt(content, at).col;
-	const key = start > at ? -1 : start;
+	const key = lineKeyAt(content, index);
 	const cached = lineTextCache.get(key);
 	if (cached !== undefined) return cached;
+	const at = Math.max(0, Math.min(index, content.length));
+	const start = key === -1 ? at : key;
 	const endAt = content.indexOf("\n", Math.min(start, at));
 	const end = endAt === -1 ? content.length : endAt;
 	const text = normalizeLine(content.slice(start, end));
@@ -316,10 +327,27 @@ export function normalizeLine(line: string): string {
  * a loc-based rule would count as "fixed" the moment the player adds a line
  * above it. Hashing keeps rule strings short and keeps a flagged line's text
  * (which may be a secret, for LeakedSecret) out of the rule itself.
+ *
+ * The hash itself is cached per line, same as lineTextAt's text: a file with
+ * no newlines (a minified bundle, or an adversarial payload) is one line the
+ * length of the whole file, and deadCode/codeSmell can report one finding per
+ * node on it — re-hashing that line from scratch for every finding was
+ * quadratic in the finding count.
  */
 export function lineAnchor(content: string, index: number): string {
-	return shortHash(lineTextAt(content, index), 8);
+	if (content !== lineAnchorContent) {
+		lineAnchorContent = content;
+		lineAnchorCache = new Map();
+	}
+	const key = lineKeyAt(content, index);
+	const cached = lineAnchorCache.get(key);
+	if (cached !== undefined) return cached;
+	const hash = shortHash(lineTextAt(content, index), 8);
+	lineAnchorCache.set(key, hash);
+	return hash;
 }
+let lineAnchorContent: string | undefined;
+let lineAnchorCache = new Map<number, string>();
 
 /** Appends `#2`, `#3`, ... to repeats so every rule in one file's result is unique (monster ids hash the rule). */
 export function uniquifyRules<T extends { rule: string }>(items: T[]): T[] {
