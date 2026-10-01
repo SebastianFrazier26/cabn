@@ -1,12 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	expect,
-	type Page,
-	type PageScreenshotOptions,
-	test,
-} from "@playwright/test";
+import type { Page, PageScreenshotOptions } from "@playwright/test";
 import { PNG } from "pngjs";
 // Built output, not src: e2e isn't part of the demo's tsc project and runs
 // under plain Node module resolution (see monsters.spec.ts's world-schema
@@ -15,6 +10,7 @@ import { PNG } from "pngjs";
 // regression guard on FileScene's caretGeometry call, not just a loose
 // "not too wide" sanity check both the old and new geometry would pass.
 import { caretGeometry } from "../../../packages/engine/dist/systems/caretMotion.js";
+import { expect, test } from "./cspGuard";
 
 // Pixel-level regression for the file view's inline caret (2026-09-29: it
 // used to sit on top of the glyph beside a clicked boundary instead of in

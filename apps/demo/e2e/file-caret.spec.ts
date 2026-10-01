@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // The file view's inline caret end to end: click places a caret at an exact
 // character, arrows move it, typing edits the store's shared buffer, Enter

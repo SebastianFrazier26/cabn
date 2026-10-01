@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
+import { expect, test } from "./cspGuard";
 
 // Regression coverage for the M10 perf fix that shrank the ground-field
 // bake area from a flat viewport-based margin to exactly half the viewport

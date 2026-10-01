@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
+import { expect, test } from "./cspGuard";
 
 // 2026-09-28 monster redraw: the five legacy species' new sprites orbit
 // without errors, and fixing a file plays the hit flash + three-frame defeat

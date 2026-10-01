@@ -254,8 +254,10 @@ day, in the "M10 security: token-gated serve page" entry above.
   `frame-ancestors` is header-only (ignored in a meta tag), so it is not in
   the policy; a host that wants it must send it as a header. zod's eval probe
   is switched off by `public/zod-jitless.js` so it doesn't report a
-  violation. The smoke, pets, embeds, media, git and loading-screen specs
-  now fail on any CSP violation (`e2e/cspGuard.ts`).
+  violation. Every spec that loads the hosted demo now fails on any CSP
+  violation (`e2e/cspGuard.ts`), as do the `cabn serve` pages `a11y` and
+  `large-world` open; the specs that only drive an owner server (`*-owner`,
+  `owner-key`, `spellbook-serve`) are not guarded yet.
 - **Release workflow split** (2026-10-01 followup). `release.yml` is two
   jobs: `build` (install, build, test, lint, audit; `contents: read` only)
   and `publish` (`needs: build`, only on `main`, `environment: npm` for

@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // Regressions for two file-view bugs (2026-09-28):
 // - clicking an enchanted markdown line placed the caret by the raw-source

@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // A url arch's live mini-page is a DOM layer over the canvas, so monsters on
 // that arch fly a wider orbit that never passes under it; the docked page

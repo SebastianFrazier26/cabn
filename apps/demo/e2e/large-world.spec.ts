@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // Opt-in smoke test for the M10 stream-bake fixes at a scale no fixture in
 // this repo reaches on its own: a synthetic ~2,000-file, ~150-folder project,

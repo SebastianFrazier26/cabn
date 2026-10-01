@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 // Built output, not src: e2e isn't part of the demo's tsc project and runs
 // under plain Node module resolution.
 import { SpeciesSchema } from "../../../packages/world-schema/dist/index.js";
+import { expect, test } from "./cspGuard";
 
 // World monsters swirl around their portal arches (render/monsterOrbit.ts).
 // Pixel-level orbit assertions would be flaky against the arch's own idle

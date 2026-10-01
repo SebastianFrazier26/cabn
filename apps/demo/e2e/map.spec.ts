@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
+import { expect, test } from "./cspGuard";
 
 async function state(page: Page) {
 	return page.evaluate(() => {

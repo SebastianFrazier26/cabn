@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // 2026-09-29: re-entering a file whose saved edit moved code used to put its
 // monsters back on their build-time lines (the live-edit anchors only last a

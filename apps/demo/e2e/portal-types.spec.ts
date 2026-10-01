@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // Portal-type arches: the overlay sheet loads from this build's own origin
 // without errors. With CABN_REVIEW_SHOTS=1 it also walks to one arch per

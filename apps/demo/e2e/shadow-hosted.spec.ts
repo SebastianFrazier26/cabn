@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
+import { expect, test } from "./cspGuard";
 
 // The hosted demo is a normal world: no world layers and no owner toolkit
 // (so O does nothing), and the shadow realm's routes don't exist on its server.

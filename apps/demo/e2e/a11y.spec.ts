@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AxeBuilder } from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import * as git from "isomorphic-git";
+import { expect, test } from "./cspGuard";
 
 // The M10 a11y pass's automated sweep — see docs/testing/2026-09-30-a11y.md
 // for the full write-up, what's fixed and what's a reported (not fixed)

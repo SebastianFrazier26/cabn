@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
+import { expect, test } from "./cspGuard";
 
 // M10 stream-bake: with the ground field/cluster ground now baked around the
 // camera instead of over the whole world up front (see
