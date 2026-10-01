@@ -17,6 +17,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `pnpm -F @cabn/demo e2e` — Playwright against `vite preview` of the production build (build first)
 - `pnpm -F @cabn/backend dev` / `test` / `build` / `start` — the Fastify converter backend; `pnpm -F @cabn/backend keygen` prints a new API key once plus its SHA-256 for `CABN_API_KEY_SHA256`
 - `pnpm -F @cabn/asset-pipeline generate` — regenerate all art (deterministic: a no-op on unchanged inputs); it chains the sub-scripts in `tools/asset-pipeline/package.json` (`palette`, `recover`, `placeholders`, `soften`, `world-art`, `signpost`, `pets`, `shadow`, `preview`, ...), each runnable alone
+- `railway up --service cabn-backend` / `--service cabn-demo` — redeploy to the Railway project `cabn` (README's "Deploying (Railway)"). The demo image (`apps/demo/Dockerfile`) is Caddy with the CSP header rendered from `csp-policy.mjs` into `apps/demo/Caddyfile`; `.railwayignore` keeps the upload small enough to go through
 - `pnpm changeset` — record a version bump for one of the four publishable packages (`world-schema`/`converter`/`engine`/`cli`); publishing is a manual `workflow_dispatch` only (README's "Releasing")
 
 ### The CLI (`node packages/cli/dist/main.js`, bin name `cabn`)

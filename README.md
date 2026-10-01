@@ -173,7 +173,7 @@ pnpm -F @cabn/demo build   # produces the dist/ the tests preview
 pnpm -F @cabn/demo e2e
 ```
 
-The production build carries a strict Content-Security-Policy in a `<meta>` tag (`apps/demo/csp-policy.mjs`, injected by `vite.config.ts` at build time only, checked by `scripts/check-csp-in-bundle.mjs`). The specs that import `test` from `e2e/cspGuard.ts` fail on any CSP violation. A meta policy can't set `frame-ancestors`; a host that wants to stop other sites framing the demo must send `Content-Security-Policy: frame-ancestors 'none'` as a response header.
+The production build carries a strict Content-Security-Policy in a `<meta>` tag (`apps/demo/csp-policy.mjs`, injected by `vite.config.ts` at build time only, checked by `scripts/check-csp-in-bundle.mjs`). The specs that import `test` from `e2e/cspGuard.ts` fail on any CSP violation. A meta policy can't set `frame-ancestors`; a host that wants to stop other sites framing the demo must send `Content-Security-Policy: frame-ancestors 'none'` as a response header, which the hosted demo's Caddy does (see "Deploying (Railway)").
 
 CI installs its own matching Chromium. Locally, if the Chromium that `@playwright/test` expects isn't cached in `~/Library/Caches/ms-playwright/`, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a cached build instead of installing a new one. Ports and other test switches are listed in `CLAUDE.md`.
 
@@ -353,9 +353,31 @@ Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publis
 4. Attach the trusted publisher to each of the four packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish`. Naming the environment means a token minted by any other job or workflow is refused.
 5. Run the "Release" workflow from the Actions tab on `main`, then approve the `npm` deployment when it asks.
 
-## Deploying the backend
+## Deploying (Railway)
 
-`.github/workflows/deploy-backend.yml` deploys `apps/backend` to [Railway](https://railway.app) with the Railway CLI. It runs on pushes to `main` that touch the backend or its dependencies, and on `workflow_dispatch`. The deploy step is a no-op until a `RAILWAY_TOKEN` repository secret exists. To wire it up: create a Railway project and service, add a Railway API token as the `RAILWAY_TOKEN` secret, and set the backend's env vars on the service (`CABN_API_KEY_SHA256`, `NODE_ENV=production` and `CABN_TRUST_PROXY=1` at minimum).
+Both services run in the Railway project `cabn` (environment `production`), each built from its own Dockerfile with the repo root as build context:
+
+| Service | Dockerfile | Public URL | Health check |
+| --- | --- | --- | --- |
+| `cabn-backend` | `apps/backend/Dockerfile` | https://cabn-backend-production.up.railway.app | `/healthz` |
+| `cabn-demo` | `apps/demo/Dockerfile` | https://cabn-demo-production.up.railway.app | `/` |
+
+The Dockerfile path, health check path (60s timeout) and on-failure restart policy (5 retries) are service settings in the dashboard. Railway's per-service `railway.json` config files are deprecated and its API refuses to attach one (checked 2026-10-01), so they aren't in the repo.
+
+**Redeploying** from a checkout linked to the project (`railway link`, pick `cabn`):
+
+```sh
+railway up --service cabn-backend
+railway up --service cabn-demo
+```
+
+`railway up` uploads the working tree minus `.gitignore` and `.railwayignore`. The full tree is over 200MB and fails to upload; `.railwayignore` leaves out what neither image reads (review screenshots, source art, unused sprite sizes), which brings it to about 25MB.
+
+**Backend env vars** (set on `cabn-backend`): `NODE_ENV=production`, `CABN_TRUST_PROXY=1` and `CABN_API_KEY_SHA256` (the hash from `pnpm -F @cabn/backend keygen`, never the key itself). Everything else keeps the defaults in "Backend API" above. `PORT` comes from Railway. The hosted demo never talks to the backend, so `CORS_ORIGINS` stays unset: universes convert in the browser.
+
+**Hosted demo.** `apps/demo/Dockerfile` runs `pnpm -r build` and serves `apps/demo/dist` with Caddy (`caddy:2.11.4-alpine`, pinned by digest) as an unprivileged user. It needs no env vars. Caddy sends the demo's CSP as a response header, rendered into `apps/demo/Caddyfile` from `DEMO_CSP_HEADER` in `csp-policy.mjs` at image build time (`scripts/render-caddyfile.mjs`, checked by `tests/caddyfile.test.mjs`). That header adds `frame-ancestors 'none'`, which only works as a header. Caddy also sends `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` and HSTS. Vite's content-hashed chunks in `/assets/` are cached for a year as `immutable`; everything else is `no-cache`, so it revalidates against its ETag.
+
+**GitHub auto-deploy.** `.github/workflows/deploy-backend.yml` runs `railway up --service cabn-backend` on pushes to `main` that touch the backend or its dependencies, and on `workflow_dispatch`. It skips the deploy until a `RAILWAY_TOKEN` repository secret exists. To turn it on, create a project token for `cabn` (`production` environment) in the Railway dashboard (project Settings → Tokens), then add it as the `RAILWAY_TOKEN` secret under the repo's Settings → Secrets and variables → Actions. No workflow deploys the demo yet; redeploy it with `railway up`.
 
 ## License
 

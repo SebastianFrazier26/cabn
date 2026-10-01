@@ -3,7 +3,7 @@ name: Deploy Backend
 # Push-to-main keeps the deployed backend in sync with what's merged;
 # workflow_dispatch lets it be re-run on demand (e.g. after adding the
 # Railway secret for the first time). Either way, the job below no-ops
-# cleanly until RAILWAY_TOKEN exists — see README's "Deploying the backend".
+# cleanly until RAILWAY_TOKEN exists — see README's "Deploying (Railway)".
 on:
   workflow_dispatch: {}
   push:
@@ -35,7 +35,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying the backend' section to add it."
+            echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying (Railway)' section to add it."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"

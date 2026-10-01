@@ -1,12 +1,17 @@
 # Changelog
 
-## 2026-10-01 — Railway deploy: backend and hosted demo as config-as-code
+## 2026-10-01 — Railway deploy: backend and hosted demo
 
-- **Per-service Railway config.** `apps/backend/railway.json` and
-  `apps/demo/railway.json` pick each service's Dockerfile (build context is
-  the repo root for both), a health check path and an on-failure restart
-  policy. Each Railway service points at its own file through its "Config
-  file path" setting.
+- **Railway project `cabn`.** Two services, `cabn-backend`
+  (https://cabn-backend-production.up.railway.app) and `cabn-demo`
+  (https://cabn-demo-production.up.railway.app), each built from its own
+  Dockerfile with the repo root as context. Dockerfile path, health check
+  and restart policy are service settings: Railway's per-service
+  `railway.json` config-as-code is deprecated and its API refuses to attach
+  one. A new `.railwayignore` keeps `railway up`'s upload to about 25MB (the
+  full tree, review screenshots included, fails to upload). README's
+  "Deploying the backend" section is now "Deploying (Railway)", covering
+  both services, redeploys, env vars and the `RAILWAY_TOKEN` step.
 - **Hosted demo container.** `apps/demo/Dockerfile` builds the workspace
   (`pnpm -r build`) and serves `apps/demo/dist` with Caddy 2.11.4 (alpine,
   pinned by digest) as an unprivileged user. Caddy sends the demo CSP as a
