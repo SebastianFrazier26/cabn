@@ -33,6 +33,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 // and no skeletons. A failure here usually means code started using a
 // construct the Lezer grammar can't parse: add it to syntaxTree.ts's
 // GAP_LINE_PATTERNS/GAP_ANCESTORS rather than accepting the false positive.
+// ~1.5s alone, past vitest's 5s default when `pnpm -r test` loads the machine.
 test("this repo's own source spawns no imps or skeletons", () => {
 	const files = ROOTS.flatMap((root) => sourceFiles(join(REPO, root)));
 	expect(files.length).toBeGreaterThan(200);
@@ -46,4 +47,4 @@ test("this repo's own source spawns no imps or skeletons", () => {
 		}
 	}
 	expect(hits).toEqual([]);
-});
+}, 30_000);

@@ -259,6 +259,7 @@ describe("convert — media shipping", () => {
 		expect(media.get("a.png")).toEqual({ kind: "sealed", reason: "too-large" });
 	});
 
+	// ~1s alone, past vitest's 5s default when `pnpm -r test` loads the machine.
 	test("media above walk()'s 512 KB text cap but under the media cap still ships", async () => {
 		const big = png(700 * 1024);
 		const root = await project({ "big.png": big });
@@ -267,7 +268,7 @@ describe("convert — media shipping", () => {
 		expect(preview?.kind).toBe("image");
 		if (preview?.kind === "image")
 			expect(bytesOf(bundle.get(preview.asset))).toEqual(big);
-	});
+	}, 30_000);
 
 	test("secret-patterned and SVG files are never shipped", async () => {
 		const root = await project({
