@@ -5,6 +5,7 @@ import type { CabnStore } from "../bridge/store.js";
 import { fileCaretHints, isActiveFileDirty } from "../systems/fileBuffer.js";
 import { detectMac } from "../systems/spellbookTools.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface FileStatusLineProps {
 	store: StoreApi<CabnStore>;
@@ -26,6 +27,8 @@ export function FileStatusLine({
 	const dirty = useCabnStore(store, isActiveFileDirty);
 	const prompt = useCabnStore(store, (s) => s.fileLeavePrompt);
 	const saveRef = useRef<HTMLButtonElement>(null);
+	const promptRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(promptRef, prompt);
 	const isMac = useMemo(
 		() => detectMac(typeof navigator === "undefined" ? "" : navigator.platform),
 		[],
@@ -75,9 +78,11 @@ export function FileStatusLine({
 					{" · "}
 					<span data-testid="cabn-file-save-state">
 						{dirty ? (
-							<span style={{ color: "var(--cabn-accent-yellow)" }}>
-								● unsaved
-							</span>
+							// --cabn-warn-ink, not the raw accent-yellow: a compact status
+							// marker, treated as a UI glyph (WCAG 1.4.11, 3:1) rather than
+							// body text — plain accent-yellow cleared only 1.35:1 on day's
+							// near-white panel (uiContrast.test.ts).
+							<span style={{ color: "var(--cabn-warn-ink)" }}>● unsaved</span>
 						) : (
 							"saved"
 						)}
@@ -103,8 +108,10 @@ export function FileStatusLine({
 					}}
 				>
 					<div
+						ref={promptRef}
 						className="cabn-panel"
 						role="alertdialog"
+						aria-modal="true"
 						aria-label="Unsaved changes"
 						style={{
 							display: "flex",

@@ -8,6 +8,7 @@ import {
 	isValidIdentifier,
 	type RenameOccurrence,
 } from "../systems/editorRename.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 /**
  * Escape/Enter are handled here and stopped before they reach
@@ -44,14 +45,18 @@ export function GoToLineDialog({
 	const [value, setValue] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
 	useEffect(() => inputRef.current?.focus(), []);
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
 	const parsed = parseGoToLine(value, totalLines);
 	const submit = () => {
 		if (parsed) onGo(parsed.line, parsed.column);
 	};
 	return (
 		<div
+			ref={dialogRef}
 			className="cabn-spellbook-dialog"
 			role="dialog"
+			aria-modal="true"
 			aria-label="Go to line"
 		>
 			<div className="cabn-spellbook-dialog-title">Go to line</div>
@@ -99,6 +104,8 @@ export function SymbolPicker({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLUListElement>(null);
 	useEffect(() => inputRef.current?.focus(), []);
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
 	const results = useMemo(
 		() => filterSymbols(symbols, query),
 		[symbols, query],
@@ -116,8 +123,10 @@ export function SymbolPicker({
 
 	return (
 		<div
+			ref={dialogRef}
 			className="cabn-spellbook-dialog"
 			role="dialog"
+			aria-modal="true"
 			aria-label="Go to symbol"
 		>
 			<div className="cabn-spellbook-dialog-title">Go to symbol</div>
@@ -217,6 +226,8 @@ export function RenameDialog({
 		inputRef.current?.focus();
 		inputRef.current?.select();
 	}, []);
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
 
 	const trimmed = newName.trim();
 	const selected = occurrences.filter((o) => !skipped.has(o.from));
@@ -241,8 +252,10 @@ export function RenameDialog({
 
 	return (
 		<div
+			ref={dialogRef}
 			className="cabn-spellbook-dialog wide"
 			role="dialog"
+			aria-modal="true"
 			aria-label="Rename symbol"
 		>
 			<div className="cabn-spellbook-dialog-title">

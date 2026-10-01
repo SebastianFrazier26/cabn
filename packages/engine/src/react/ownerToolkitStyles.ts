@@ -44,7 +44,8 @@ const OWNER_TOOLKIT_CSS = `
 .cabn-pixel-root .cabn-owner-toolkit-row kbd {
 	flex: none; font-family: var(--cabn-font-display); font-size: 10px; line-height: 16px;
 	min-width: 16px; text-align: center; border-radius: 4px;
-	background: var(--cabn-border-outer); color: var(--cabn-panel-body);
+	/* --cabn-chip-ink: see pixelTheme.tsx's .cabn-segmented button.selected comment — same background, same fix. */
+	background: var(--cabn-border-outer); color: var(--cabn-chip-ink);
 }
 .cabn-pixel-root .cabn-owner-toolkit-row img {
 	flex: none; width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated;

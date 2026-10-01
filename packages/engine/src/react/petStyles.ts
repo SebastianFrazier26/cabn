@@ -41,7 +41,8 @@ const PET_CSS = `
 	border: 2px dashed var(--cabn-accent-orange); color: var(--cabn-text);
 }
 .cabn-pixel-root .cabn-pet-status { font-size: 12px; min-height: 1.4em; margin: 0; }
-.cabn-pixel-root .cabn-pet-status.error { color: var(--cabn-accent-pink); }
+/* --cabn-error-ink, not the raw accent-pink: too low-contrast as text on panelBody in day/crimson (uiContrast.test.ts). */
+.cabn-pixel-root .cabn-pet-status.error { color: var(--cabn-error-ink); }
 .cabn-pixel-root .cabn-pet-chat {
 	position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 9; pointer-events: auto;
 	width: min(720px, calc(100% - 32px)); height: min(460px, calc(100% - 140px)); box-sizing: border-box;

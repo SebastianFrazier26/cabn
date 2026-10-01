@@ -39,6 +39,7 @@ import { travelLabel } from "../systems/sceneLoading.js";
 import { fetchJsonOnce } from "./gitShared.js";
 import { MarkdownLite } from "./MarkdownLite.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 interface Props {
 	store: StoreApi<CabnStore>;
@@ -71,6 +72,8 @@ export function UniversePickerDialog({
 		ownerFocus && owner?.git ? "owner" : "universes",
 	);
 	const tint = universeTint(git.universe?.slug ?? null);
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef);
 	return (
 		<div
 			style={{
@@ -84,6 +87,7 @@ export function UniversePickerDialog({
 			}}
 		>
 			<div
+				ref={dialogRef}
 				role="dialog"
 				aria-modal="true"
 				aria-label="Universe picker"

@@ -20,6 +20,7 @@ import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import { detectMac } from "../systems/spellbookTools.js";
 import { useGuideDialogStyles } from "./guideDialogStyles.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface GuideDialogProps {
 	store: StoreApi<CabnStore>;
@@ -118,6 +119,8 @@ function GuideDialogBox({ store }: GuideDialogProps): React.ReactElement {
 	handlers.current = { advance, back, close, choose };
 	const viewRef = useRef(view);
 	viewRef.current = view;
+	const boxRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(boxRef);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -168,6 +171,7 @@ function GuideDialogBox({ store }: GuideDialogProps): React.ReactElement {
 	return (
 		<div className="cabn-guide-backdrop">
 			<div
+				ref={boxRef}
 				className="cabn-panel cabn-guide-box"
 				role="dialog"
 				aria-modal="true"

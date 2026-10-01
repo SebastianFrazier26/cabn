@@ -74,8 +74,16 @@ function CodeBlock({
 	}, [code, language]);
 
 	return (
+		// CodeMirror sets contentDOM tabIndex -1 for a read-only, non-editable
+		// view (see the extensions above) — this wrapper is the only focusable
+		// thing left to scroll it by keyboard (axe: scrollable-region-focusable).
+		// biome-ignore lint/a11y/useSemanticElements: role="group" isn't a form grouping — <fieldset> would be the wrong element for a code preview.
 		<div
 			ref={hostRef}
+			// biome-ignore lint/a11y/noNoninteractiveTabindex: see comment above.
+			tabIndex={0}
+			role="group"
+			aria-label="Code preview"
 			style={{ height: "100%", maxHeight, overflow: "auto" }}
 		/>
 	);
@@ -177,7 +185,14 @@ export function PortalPreview({
 				break;
 			case "markdown":
 				body = (
-					<div style={{ overflow: "auto", maxHeight, padding: "0 4px" }}>
+					// biome-ignore lint/a11y/useSemanticElements: role="group" isn't a form grouping — <fieldset> would be the wrong element for a markdown preview.
+					<div
+						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region with no focusable content of its own needs its own tab stop (axe: scrollable-region-focusable).
+						tabIndex={0}
+						role="group"
+						aria-label="Markdown preview"
+						style={{ overflow: "auto", maxHeight, padding: "0 4px" }}
+					>
 						{preview.nodes.map((node, i) => (
 							// Structured preview nodes have no stable id of their own and are
 							// never reordered/filtered after render — same fixed-list-index

@@ -1,5 +1,92 @@
 # Changelog
 
+## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
+
+Completes the contrast item the 2026-09-30 a11y pass reported rather than
+fixed (`docs/testing/2026-09-30-a11y.md`). **User decision (2026-10-01):**
+add dedicated ink tokens rather than recolor any accent fill/border — six
+new fields on `PixelThemeTokens` (`--cabn-accent-violet-ink`,
+`--cabn-accent-pink-ink`, `--cabn-chip-ink`, `--cabn-error-ink`,
+`--cabn-warn-ink`, `--cabn-guide-more-ink`), each a hand-tuned variant of
+the accent it replaces as text — same technique `editorTheme.ts`'s
+`syntax*` colors already use — defined for day, night and crimson
+(`CRIMSON_TOKENS` overrides each explicitly, since it can't inherit night's
+values when its own accent fills are different colors). Two of the ten
+pairs (the unsaved-file dot, the guide's "▼ more" cue) are single status/cue
+glyphs rather than sentences, so WCAG 1.4.11 (Non-text Contrast, 3:1)
+applies instead of 1.4.3 (4.5:1) — a classification the doc now states
+explicitly per pair. Where a pair already cleared its threshold the new
+token is simply set equal to the one it replaces, so only 6 of 18 new
+per-theme values are new hues; nothing else about the look changed. All 10
+`test.fails` pins in `packages/engine/tests/uiContrast.test.ts` are now
+plain passing assertions. Before/after screenshots of each changed spot:
+`assets/generated/review/a11y/`.
+
+## 2026-09-30 — M10 a11y pass: focus traps, dialog semantics, a real focus ring, and a scrollable-region/lang/menu-structure fix
+
+Finishes the M10 wide test pass's own scoped-down a11y section
+(`docs/testing/2026-09-29-wide-pass.md`) — a real axe-core sweep at four
+viewports, keyboard focus-trap/return checks, screen-reader basics, a
+reduced-motion audit, and a UI-chrome contrast pass. Full write-up:
+`docs/testing/2026-09-30-a11y.md`.
+
+- **New shared `useFocusTrap` hook** (`packages/engine/src/react/useFocusTrap.ts`).
+  Every modal panel already ran its own window-capture keydown listener for
+  Escape/Enter, but none intercepted Tab, so a keyboard user could Tab
+  straight out of an open dialog into the hotbar or other controls behind
+  it — confirmed for real via a new e2e Tab-trap assertion, not just read
+  from source. Applied to `GuideDialog`, `OrbSearch`, `PensievePanel`,
+  `UniversePickerDialog`, the sign reader, `SignEditor`, `PetSetupPanel`,
+  `PetChat`, `FileStatusLine`'s unsaved-changes prompt, and all three
+  spellbook tool dialogs (Go to line/Go to symbol/Rename).
+- **Missing/incomplete dialog semantics.** `OrbSearch` had no `role`,
+  `aria-label` or `aria-modal` at all despite behaving exactly like the
+  other full-backdrop modals; `aria-modal="true"` was missing on the sign
+  reader, `SignEditor`, `PetChat`, `FileStatusLine`'s prompt, the three
+  spellbook dialogs, and `EncounterBanner`'s `alertdialog`.
+- **Two axe-critical structural bugs.** The owner's toolkit menu items had
+  no valid ARIA parent chain (`aria-required-parent` — fixed with
+  `role="presentation"` on the `<ul>`/`<li>` wrapping them); the world map's
+  minimap portal markers were nested-interactive inside the SVG's own
+  `role="img"` (fixed by dropping their redundant `role="button"`/
+  `tabIndex`/key handler — the real keyboard/AT path is the HTML button
+  list already below the map, unaffected).
+- **Three unreachable-by-keyboard scrollable regions** (axe:
+  `scrollable-region-focusable`) — the pensieve's diff view, the wand's run
+  log, and the portal preview's read-only code/markdown views all had
+  `overflow: auto` with no focusable content inside. Each gained
+  `tabIndex={0}` plus a `role`/`aria-label`.
+- **`cabn serve`'s host page had no `<html lang>`** (`packages/cli/src/serve/hostPage.ts`)
+  — the hosted demo's own `index.html` already did; found via the owner-mode
+  axe pass.
+- **A real missing focus ring, not a headless-mode artifact.** Re-measured
+  against a real Chrome for Testing binary: Chrome's native `outline: auto`
+  renders at 1px on the 64×64 pixel-art hotbar buttons, which already carry
+  their own 3px painted border — effectively invisible. New low-specificity
+  `:where(...):focus-visible` baseline in `pixelTheme.tsx` gives every
+  interactive element a clear 3px accent-yellow ring without overriding the
+  spellbook toolbar/input's own deliberate focus treatment.
+- **Two missing accessible-name/live-region spots.** The bag's closed
+  toggle only had a decorative icon and a bare slot-count digit for content
+  (announced as just a number) — gained a real `aria-label`. The victory
+  toast had no live region at all — gained `role="status" aria-live="polite"`.
+- **Contrast:** new `packages/engine/tests/uiContrast.test.ts` (sibling to
+  `editorThemeContrast.test.ts`) covers the non-editor UI chrome (button/
+  badge ink, segmented/kbd chips, pet error text, the unsaved marker, the
+  guide's more-cue) across day/night/crimson. Found 10 pre-existing
+  below-AA pairs, worst 1.35:1 (the day theme's yellow "unsaved" dot) —
+  pinned with `test.fails` and reported with fix options in the doc rather
+  than recolored, since every option changes the visible design.
+- **Reduced motion:** audited every animation source end to end (not just
+  the wide pass's one screenshot diff) — already comprehensively
+  `prefers-reduced-motion`-gated throughout. No gaps found, no changes made.
+- **Tests:** new `apps/demo/e2e/a11y.spec.ts` (`@axe-core/playwright@4.13.0`,
+  exact-pinned) — 6 tests: 4 viewport sweeps (1024×768, 1280×800, 1920×1200,
+  ~800 wide) of the base HUD plus spyglass/orb/map/guide, one deep
+  1280×800 pass covering every remaining hosted-demo panel, and one against
+  a real `cabn serve --owner` for the owner's toolkit, sign editor, shadow
+  realm and the rift's Owner tab.
+
 ## 2026-09-30 — Fix: e2e port clash, `cabn --version`
 
 - **`CABN_SPELLBOOK_E2E_PORT` defaults to 5044.** It shared 5043 with `shadow-owner.spec.ts`, so the two specs could collide in parallel workers. The serve-spawning specs now default to 5042 (signs owner), 5043 (shadow), 5044 (spellbook) and 5045 (owner key).

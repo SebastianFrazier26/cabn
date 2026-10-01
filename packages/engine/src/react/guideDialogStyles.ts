@@ -33,7 +33,8 @@ const GUIDE_DIALOG_CSS = `
 	white-space: pre-line; color: var(--cabn-text); cursor: pointer;
 }
 .cabn-pixel-root .cabn-guide-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.cabn-pixel-root .cabn-guide-more { display: inline-block; margin-left: 6px; color: var(--cabn-accent-orange); font-size: 11px; }
+/* --cabn-guide-more-ink: a single decorative cue glyph, WCAG 1.4.11 (3:1) — plain accent-orange cleared only 2.09:1 on day's near-white panel (uiContrast.test.ts). */
+.cabn-pixel-root .cabn-guide-more { display: inline-block; margin-left: 6px; color: var(--cabn-guide-more-ink); font-size: 11px; }
 @keyframes cabn-guide-more-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
 .cabn-pixel-root .cabn-guide-topics {
 	list-style: none; margin: 0 0 10px; padding: 0;

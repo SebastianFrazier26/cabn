@@ -3,7 +3,7 @@ import {
 	type SeynLinkTarget,
 	type SignEntry,
 } from "@cabn/world-schema";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, SignDraft } from "../bridge/store.js";
@@ -12,6 +12,7 @@ import { signWriterFor } from "../systems/worldLayer.js";
 import { SignEditor } from "./SignEditor.js";
 import { SignView, useSignStyles } from "./SignView.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface SignsProps {
 	store: StoreApi<CabnStore>;
@@ -148,6 +149,8 @@ function SignReader({
 	}, [path]);
 	const close = useCallback(() => store.getState().setOpenSign(null), [store]);
 	useModalKeys(Boolean(sign), close);
+	const dialogRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(dialogRef, Boolean(sign && doc));
 
 	if (!sign || !doc) return null;
 
@@ -189,8 +192,10 @@ function SignReader({
 			}}
 		>
 			<div
+				ref={dialogRef}
 				className="cabn-panel cabn-sign-reader"
 				role="dialog"
+				aria-modal="true"
 				aria-label={doc.title ?? signFileName(sign.path)}
 				data-testid="sign-reader"
 				data-sign-path={sign.path}

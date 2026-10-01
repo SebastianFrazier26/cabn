@@ -13,6 +13,7 @@ import {
 import { isStaleSignHit, syncSignSearchDocs } from "../systems/signSearch.js";
 import { isHiddenPath } from "../systems/worldLayer.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 import {
 	useLayerSearchIndex,
 	useWorldSearchIndex,
@@ -117,6 +118,9 @@ export function OrbSearch({
 	useEffect(() => {
 		if (open) setPlayToken((token) => token + 1);
 	}, [open]);
+
+	const ballRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(ballRef, open);
 
 	// Biome's a11y/noAutofocus rule wants intentional focus management, not an
 	// `autoFocus` prop — this is that. Keyed on playToken too: the input lives
@@ -264,6 +268,10 @@ export function OrbSearch({
 			    plaque, so nothing ever clips at the sphere's round edge. */}
 			<div
 				key={playToken}
+				ref={ballRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="Search"
 				className="cabn-crystal-ball"
 				style={{ position: "relative", zIndex: 3 }}
 			>

@@ -35,4 +35,17 @@ export const CRIMSON_TOKENS: PixelThemeTokens = {
 	editorGutterText: 0xd79a8c,
 	diffDelBg: 0x4a1414,
 	diffDelText: 0xffb3b3,
+	// Own overrides, not inherited from the NIGHT_TOKENS spread above: these
+	// accent fills (accentViolet/accentPink) are crimson's own colors, not
+	// night's, so an ink computed against night's fills would be wrong here
+	// (packages/engine/tests/uiContrast.test.ts checks each against the real
+	// accent it actually sits on). warnInk/guideMoreInk already cleared
+	// their threshold against the realm's own accentYellow/accentOrange and
+	// so are left equal to them, same convention as the day/night tokens.
+	accentVioletInk: 0xfcede8,
+	accentPinkInk: 0xfef9f8,
+	chipInk: 0xdfb0ac,
+	errorInk: 0xdd4e44,
+	warnInk: 0xffb347,
+	guideMoreInk: 0xff6a2a,
 };

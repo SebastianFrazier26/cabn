@@ -6,6 +6,7 @@ import type { CabnStore, PetChatMessage } from "../bridge/store.js";
 import type { PetProgress } from "../pets/agentLoop.js";
 import { PET_PROVIDERS, type PetProviderId } from "../pets/providers.js";
 import { useCabnStore } from "./useCabnStore.js";
+import { useFocusTrap } from "./useFocusTrap.js";
 
 export interface PetChatProps {
 	store: StoreApi<CabnStore>;
@@ -63,10 +64,12 @@ export function PetChat({
 	const [draft, setDraft] = useState("");
 	const logRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const panelRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		inputRef.current?.focus();
 	}, []);
+	useFocusTrap(panelRef);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-runs on purpose whenever a message or progress line lands, to keep the log scrolled to the bottom.
 	useEffect(() => {
@@ -107,8 +110,10 @@ export function PetChat({
 
 	return (
 		<div
+			ref={panelRef}
 			className="cabn-panel cabn-pet-chat"
 			role="dialog"
+			aria-modal="true"
 			tabIndex={-1}
 			data-cabn-keyboard-owner=""
 			aria-label={`${config.petName} chat`}

@@ -153,6 +153,7 @@ export function BagTray({
 					type="button"
 					className="cabn-satchel-closed"
 					title="open the bag"
+					aria-label={`Open bag (${slots.length} grabbed slot${slots.length === 1 ? "" : "s"})`}
 					onClick={() => store.getState().setBagOpen(true)}
 				>
 					<img
@@ -160,7 +161,9 @@ export function BagTray({
 						onError={iconFallback(uiIconPath("bag"))}
 						alt=""
 					/>
-					<span className="cabn-badge">{slots.length}</span>
+					<span className="cabn-badge" aria-hidden="true">
+						{slots.length}
+					</span>
 				</button>
 			)}
 		</div>

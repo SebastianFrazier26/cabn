@@ -40,6 +40,30 @@ export interface PixelThemeTokens {
 	diffAddText: number;
 	diffDelBg: number;
 	diffDelText: number;
+	/**
+	 * Dedicated "ink" variants for the handful of spots outside the editor
+	 * where an accent-* tone sits directly under or as small text — the 2026-
+	 * 09-30 a11y pass's uiContrast.test.ts found 10 such pairs below WCAG AA
+	 * across the three themes. Same technique as the syntax-* colors above
+	 * (a hand-tuned, same-hue-family variant of the accent, not the accent
+	 * itself), but each scoped to its one real use site rather than shared,
+	 * since the fix a violet badge needs and the fix a pink error message
+	 * needs are unrelated. Where a pair already cleared its threshold, the
+	 * ink below is simply set equal to the plain accent/panel/text token it
+	 * replaces, so nothing visually changes there.
+	 */
+	/** `.cabn-spellbook-kind`'s single-letter badge (ƒ/m/C/T/...) on `accentViolet`. WCAG 1.4.3, 4.5:1 (real text). */
+	accentVioletInk: number;
+	/** `.cabn-btn.cancel`/`.cabn-badge`'s label/count on `accentPink`. WCAG 1.4.3, 4.5:1 (real text). */
+	accentPinkInk: number;
+	/** The segmented control's selected label and the owner toolkit's `kbd` digit, both on `borderOuter`. WCAG 1.4.3, 4.5:1 (real text). */
+	chipInk: number;
+	/** The pet chat's error-message text, replacing a raw `accentPink` on `panelBody`. WCAG 1.4.3, 4.5:1 (real text). */
+	errorInk: number;
+	/** `FileStatusLine`'s "● unsaved" marker on `panelBody` — a compact status indicator, not a sentence, so treated as a UI glyph (WCAG 1.4.11, 3:1) rather than body text, per the 2026-09-30 user decision. */
+	warnInk: number;
+	/** `GuideDialog`'s "▼" more-content cue on `panelBody` — a single decorative indicator glyph, same WCAG 1.4.11 (3:1) reasoning as `warnInk`. */
+	guideMoreInk: number;
 }
 
 export const DAY_TOKENS: PixelThemeTokens = {
@@ -66,6 +90,16 @@ export const DAY_TOKENS: PixelThemeTokens = {
 	diffAddText: 0x1d5e27,
 	diffDelBg: 0xfbe0e3,
 	diffDelText: 0x8f1d2c,
+	// All computed against the day values above (uiContrast.test.ts) —
+	// accentPinkInk/chipInk/warnInk/guideMoreInk already cleared their
+	// threshold here and are left equal to the token they replace;
+	// accentVioletInk and errorInk didn't and are genuinely new hues.
+	accentVioletInk: 0x18142f,
+	accentPinkInk: 0x201a3d,
+	chipInk: 0xf2f8ff,
+	errorInk: 0xda166e,
+	warnInk: 0xb28800,
+	guideMoreInk: 0xef6400,
 };
 
 // 2026-09-28: was previously a near-white lavender panel (0xeeeaff) with dark
@@ -106,4 +140,13 @@ export const NIGHT_TOKENS: PixelThemeTokens = {
 	diffAddText: 0x9ff0b4,
 	diffDelBg: 0x44182a,
 	diffDelText: 0xffb3c4,
+	// Computed against the night values above — accentPinkInk/warnInk/
+	// guideMoreInk already cleared their threshold here and are left equal
+	// to the token they replace; accentVioletInk and chipInk didn't.
+	accentVioletInk: 0x010102,
+	accentPinkInk: 0x201a3d,
+	chipInk: 0xccc8e6,
+	errorInk: 0xff4fa0,
+	warnInk: 0xffcf4d,
+	guideMoreInk: 0xff7a45,
 };
