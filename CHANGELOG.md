@@ -49,6 +49,37 @@ Flask converted through the CLI all came back byte-identical. New timed
 adversarial tests at the file caps live in
 `packages/converter/test/annotate/quadratics.test.ts`.
 
+## 2026-10-01 — Demo world fingerprint: lockfile-pinned deps, nested dist, stale-toolchain guard
+
+Fixes the demo's world-build fingerprint silently missing two recent converter
+merges (`gitPack.ts`, then the annotate/zip code): `pnpm -F @cabn/demo build`
+never rebuilds its workspace deps the way `pnpm -r build`'s topological order
+does, so a converter change landed without a matching `dist/` rebuild hashed
+the same stale-but-unchanged bytes as before and reported "up to date".
+
+- **`build-world.mjs` now fails fast instead of trusting a stale `dist/`.**
+  `assertToolchainBuilt` compares each toolchain package's newest `src/` mtime
+  against its newest `dist/` mtime before computing any fingerprint; a stale
+  or missing `dist/` throws naming the package and the command to run
+  (`pnpm -r build` or `pnpm --filter <pkg> build`). Mtime, not content — the
+  question is "did a build run after this edit", which a content hash can't
+  answer by itself. Chose fail-fast over having the script build its own deps,
+  matching the existing convention that `pnpm -r build` is the one build
+  entry point, not something build-world.mjs re-implements.
+- **The toolchain fingerprint now covers lockfile-pinned runtime deps.** A
+  bump to `isomorphic-git` or `fflate` (or any other non-workspace dependency
+  of `@cabn/world-schema`/`@cabn/converter`/`@cabn/cli`) changes converter
+  behavior without touching a single byte of its own `dist/` or `version`,
+  since that code lives in `node_modules`, not the package's own build
+  output. `lockfileDependencyVersions` reads the resolved version straight
+  out of `pnpm-lock.yaml`'s `importers:` entry for each package (workspace
+  links excluded — those are already covered by the dist hash).
+- Confirmed `hashTree`'s existing recursive walk already covers nested
+  `dist/` files (e.g. `dist/history/gitPack.js`) correctly; added a
+  regression test locking that in since it was one of the suspects.
+
+Tests: `apps/demo/tests/build-world.test.mjs`.
+
 ## 2026-10-01 — M10 security: token-gated serve page, history only from `<root>/.git`, secret blobs withheld
 
 The design-decision findings of the M10 security audit, as approved on

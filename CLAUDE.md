@@ -45,7 +45,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 
 ### The demo's world fingerprint
 
-`apps/demo/scripts/build-world.mjs` hashes each world's source tree (paths and bytes, `cabn.json` included), findings file and build options, plus the `version` and built `dist/` of `@cabn/world-schema`, `@cabn/converter` and `@cabn/cli` (without the cli's bundled sprites), `CABN_VERSION` and `gen-git-fixture.mjs`. The hash is stored in `apps/demo/node_modules/.cache/cabn-worlds/<name>.txt`. It follows `dist/`, not `src/`: run `pnpm -r build` after converter changes, or the demo keeps the old world. Tests: `apps/demo/tests/build-world.test.mjs`.
+`apps/demo/scripts/build-world.mjs` hashes each world's source tree (paths and bytes, `cabn.json` included), findings file and build options, plus the `version`, built `dist/` (nested files included) and lockfile-resolved runtime dependency versions of `@cabn/world-schema`, `@cabn/converter` and `@cabn/cli` (without the cli's bundled sprites), `CABN_VERSION` and `gen-git-fixture.mjs`. The hash is stored in `apps/demo/node_modules/.cache/cabn-worlds/<name>.txt`. It follows `dist/`, not `src/`: `assertToolchainBuilt` compares each toolchain package's `src/` and `dist/` mtimes before every build and throws if `dist/` is stale or missing, because `pnpm -F @cabn/demo build` alone (unlike `pnpm -r build`'s topological order) never rebuilds its deps — run `pnpm -r build` first. Tests: `apps/demo/tests/build-world.test.mjs`.
 
 ## Layout
 
