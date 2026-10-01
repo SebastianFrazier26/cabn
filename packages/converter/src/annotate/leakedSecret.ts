@@ -74,8 +74,10 @@ const PRIVATE_KEY_PATTERN = /-----BEGIN ((?:[A-Z0-9]+ )*)PRIVATE KEY-----/g;
 // mentions the header (a detector, a doc) usually isn't.
 const PRIVATE_KEY_BODY = /^(?:\\n|\\r|\s)*(?:Proc-Type:|[A-Za-z0-9+/=]{40,})/;
 
+// User and password are length-capped: unbounded, each scheme on a line like
+// `mysql://a:mysql://a:...` (no `@`) rescans the rest of the line for one.
 const CONNECTION_STRING_PATTERN =
-	/\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?|mssql|sqlserver):\/\/([^\s:/@'"`]+):([^\s@'"`]+)@[^\s'"`]+/gi;
+	/\b(postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?|mssql|sqlserver):\/\/([^\s:/@'"`]{1,256}):([^\s@'"`]{1,256})@[^\s'"`]+/gi;
 
 const GENERIC_ASSIGNMENT_PATTERN =
 	/([A-Za-z_][\w.-]*?(?:secret|passwd|password|pwd|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|auth[_-]?key|credentials?))["']?\s*(?::=|=>|[:=])\s*(["'`])([^"'`\s]{8,200})\2/gi;

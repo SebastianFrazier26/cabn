@@ -71,7 +71,9 @@ export function formatText(text: string, options: FormatOptions): string {
 	let lines = text.split("\n");
 	if (options.trimTrailingWhitespace) {
 		lines = lines.map((line, i) =>
-			options.protectedLines?.has(i) ? line : line.replace(/[ \t]+$/, ""),
+			options.protectedLines?.has(i)
+				? line
+				: line.slice(0, line.length - trailingBlankLength(line)),
 		);
 	}
 	let out = lines.join("\n");
@@ -136,6 +138,17 @@ export function lineChanges(before: string, after: string): LineChange[] {
 	return changes;
 }
 
+/**
+ * Length of the trailing run of spaces and tabs. A loop, not `/[ \t]+$/`:
+ * that regex retries from every blank in a long run that isn't at the end of
+ * the line, quadratic on one long line of a file opened in the editor.
+ */
+function trailingBlankLength(line: string): number {
+	let i = line.length;
+	while (i > 0 && (line[i - 1] === " " || line[i - 1] === "\t")) i--;
+	return line.length - i;
+}
+
 function splitWhitespace(line: string): {
 	indent: string;
 	body: string;
@@ -143,7 +156,7 @@ function splitWhitespace(line: string): {
 } {
 	const indent = /^[ \t]*/.exec(line)?.[0] ?? "";
 	const rest = line.slice(indent.length);
-	const trailing = /[ \t]*$/.exec(rest)?.[0] ?? "";
+	const trailing = rest.slice(rest.length - trailingBlankLength(rest));
 	return {
 		indent,
 		body: rest.slice(0, rest.length - trailing.length),

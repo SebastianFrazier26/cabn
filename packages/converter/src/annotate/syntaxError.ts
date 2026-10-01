@@ -33,7 +33,7 @@ function describeAt(content: string, from: number, to: number): string {
 /** Where a zero-width error at end of file points: the last line with text on it, not the empty line after the final newline. */
 function anchorIndex(content: string, from: number): number {
 	if (from < content.length) return from;
-	const trimmed = content.replace(/\s+$/, "");
+	const trimmed = content.trimEnd();
 	return Math.max(0, trimmed.length - 1);
 }
 

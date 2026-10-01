@@ -117,19 +117,53 @@ function indentWidth(line: string): number {
 	return width;
 }
 
+const WHITESPACE = /\s/;
+const LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+
+/**
+ * What `/^(#{1,6})\s+(.+?)\s*#*\s*$/` captures, without running it: its
+ * overlapping `\s*#*\s*` tail made it cubic on a heading with a long run of
+ * spaces in it (seconds for a few thousand). The lazy name ends where the
+ * longest trailing `\s*#*\s*` begins, but always keeps at least one char.
+ */
+export function atxHeading(
+	line: string,
+): { level: number; name: string } | null {
+	let level = 0;
+	while (line[level] === "#") level++;
+	if (level < 1 || level > 6) return null;
+	let start = level;
+	while (start < line.length && WHITESPACE.test(line[start] ?? "")) start++;
+	if (start === level) return null;
+	if (start === line.length) {
+		// All blank after the hashes: `\s+` gives a char back to the name.
+		for (let i = line.length - 1; i > level; i--) {
+			const ch = line[i] ?? "";
+			if (!LINE_TERMINATOR.test(ch)) return { level, name: ch };
+		}
+		return null;
+	}
+	let tail = line.length;
+	while (tail > start && WHITESPACE.test(line[tail - 1] ?? "")) tail--;
+	while (tail > start && line[tail - 1] === "#") tail--;
+	while (tail > start && WHITESPACE.test(line[tail - 1] ?? "")) tail--;
+	const name = line.slice(start, Math.max(tail, start + 1));
+	return LINE_TERMINATOR.test(name) ? null : { level, name };
+}
+
 function markdownOutline(lines: readonly string[]): OutlineSymbol[] {
 	const symbols: OutlineSymbol[] = [];
 	let inFence = false;
 	lines.forEach((line, i) => {
 		if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
 		if (inFence) return;
-		const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-		if (match?.[1] && match[2]) {
+		const heading = atxHeading(line);
+		if (heading) {
 			symbols.push({
-				name: match[2],
+				name: heading.name,
 				kind: "heading",
 				line: i,
-				depth: match[1].length - 1,
+				depth: heading.level - 1,
 			});
 		}
 	});
