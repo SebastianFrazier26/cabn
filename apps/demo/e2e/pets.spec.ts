@@ -483,7 +483,7 @@ test("pets: a magpie-guarded file reaches the pet redacted, never with its plant
 
 	await page.evaluate(
 		([k]) => sessionStorage.setItem("cabn:pet-key:anthropic", k),
-		[FAKE_KEY],
+		[FAKE_KEY] as const,
 	);
 	await storeCall(page, "setPetProvider", "anthropic");
 	await expect
@@ -653,7 +653,7 @@ test("pets: every provider's out-of-credits message, all six pets, remember + fo
 		if (provider !== "ollama") {
 			await page.evaluate(
 				([p, k]) => sessionStorage.setItem(`cabn:pet-key:${p}`, k),
-				[provider, FAKE_KEY],
+				[provider, FAKE_KEY] as const,
 			);
 		}
 		await storeCall(page, "setPetProvider", provider);

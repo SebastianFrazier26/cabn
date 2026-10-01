@@ -1,7 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import {
+	expect,
+	type Page,
+	type PageScreenshotOptions,
+	test,
+} from "@playwright/test";
 import { PNG } from "pngjs";
 // Built output, not src: e2e isn't part of the demo's tsc project and runs
 // under plain Node module resolution (see monsters.spec.ts's world-schema
@@ -208,7 +213,11 @@ function docOf(page: Page): Promise<string> {
 	);
 }
 
-async function shoot(page: Page, name: string, clip: PNG.PNGOptions["clip"]) {
+async function shoot(
+	page: Page,
+	name: string,
+	clip: PageScreenshotOptions["clip"],
+) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
 	await page.screenshot({ path: join(SHOTS_DIR, `${name}.png`), clip });
@@ -273,9 +282,9 @@ for (const dpr of [1, 2]) {
 			for (let y = 0; y < shot.height; y++) {
 				for (let x = 0; x < shot.width; x++) {
 					const i = (shot.width * y + x) << 2;
-					const r = shot.data[i];
-					const g = shot.data[i + 1];
-					const b = shot.data[i + 2];
+					const r = shot.data[i] ?? 0;
+					const g = shot.data[i + 1] ?? 0;
+					const b = shot.data[i + 2] ?? 0;
 					const isGold =
 						Math.abs(r - 0xe9) < 30 &&
 						Math.abs(g - 0x9b) < 30 &&

@@ -12,7 +12,8 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - Full check before a commit: `pnpm -r build && pnpm -r test && pnpm lint` (CI runs the same, plus `pnpm audit --audit-level=high` and the Playwright suite)
 - `pnpm -F @cabn/demo dev` — run the walkable demo. `predev` runs `scripts/build-world.mjs`, which rebuilds each demo world (`sample`, `notes`) only when its fingerprint changed
 - `pnpm -F @cabn/demo build:world` — the same world check on its own; `-- --force` rebuilds every world regardless
-- `pnpm -F @cabn/demo build` — production build; `postbuild` runs the three bundle checks (below)
+- `pnpm -F @cabn/demo build` — production build; type-checks `src/` and then `e2e/` first, and `postbuild` runs the three bundle checks (below)
+- `pnpm -F @cabn/demo typecheck:e2e` — `tsc --noEmit` over the Playwright specs (`e2e/tsconfig.json`). The specs import `packages/*/dist`, so the engine and world-schema must be built first; that's why it runs inside `build` (topological order) rather than `pnpm lint`
 - `pnpm -F @cabn/demo e2e` — Playwright against `vite preview` of the production build (build first)
 - `pnpm -F @cabn/backend dev` / `test` / `build` / `start` — the Fastify converter backend; `pnpm -F @cabn/backend keygen` prints a new API key once plus its SHA-256 for `CABN_API_KEY_SHA256`
 - `pnpm -F @cabn/asset-pipeline generate` — regenerate all art (deterministic: a no-op on unchanged inputs); it chains the sub-scripts in `tools/asset-pipeline/package.json` (`palette`, `recover`, `placeholders`, `soften`, `world-art`, `signpost`, `pets`, `shadow`, `preview`, ...), each runnable alone

@@ -416,7 +416,7 @@ test("pets stay readable at night", async ({ page }) => {
 		if (provider !== "ollama") {
 			await page.evaluate(
 				([p, k]) => sessionStorage.setItem(`cabn:pet-key:${p}`, k),
-				[provider, FAKE_KEY],
+				[provider, FAKE_KEY] as const,
 			);
 		}
 		await storeCall(page, "setPetProvider", provider);
