@@ -1,13 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	convert,
-	DEFAULT_MAX_FILE_BYTES,
-	DEFAULT_MAX_FILES,
-	DEFAULT_ZIP_MAX_TOTAL_BYTES,
-	ZipSource,
-} from "@cabn/converter";
+// Converter imports moved to converter-pool since conversion now runs in workers
 import fastifyCors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyRateLimit from "@fastify/rate-limit";
@@ -19,6 +13,7 @@ import { zipSync } from "fflate";
 import { extractBearerToken, verifyApiKey } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { sha256Hex } from "./config.js";
+import { ConverterPool } from "./converter-pool.js";
 
 const pkg = JSON.parse(
 	readFileSync(
@@ -85,6 +80,14 @@ export function buildApp(
 				"and set the printed hash as CABN_API_KEY_SHA256.",
 		);
 	}
+
+	const converterPool = new ConverterPool({
+		concurrency: config.converterPoolConcurrency,
+		timeoutMs: config.converterPoolTimeoutMs,
+		maxZipInflationBytes: config.maxZipInflationBytes,
+		maxCompressionRatio: config.maxCompressionRatio,
+		heapLimitMb: config.converterPoolHeapLimitMb,
+	});
 
 	const app = Fastify({
 		trustProxy: trustedHops(config.trustProxy),
@@ -210,36 +213,30 @@ export function buildApp(
 				}
 
 				try {
-					const zipSource = new ZipSource(fileBuffer, {
-						maxFiles: DEFAULT_MAX_FILES,
-						maxFileBytes: DEFAULT_MAX_FILE_BYTES,
-						maxTotalBytes: DEFAULT_ZIP_MAX_TOTAL_BYTES,
-					});
-					// includeSecrets is never passed — secret-pattern files (.env,
-					// *.pem, id_rsa*, ...) stay metadata-only, same default as
-					// everywhere else in cabn.
-					const bundle = await convert(zipSource, {
-						name: "uploaded world",
-						source: "upload.zip",
-						maxFiles: DEFAULT_MAX_FILES,
-						maxFileBytes: DEFAULT_MAX_FILE_BYTES,
-						// Host ceilings an uploaded cabn.json can lower but never raise:
-						// no media file bigger than the zip extraction cap above (it
-						// couldn't be read in full anyway), and no more media in the
-						// response than the upload itself was allowed to carry.
-						mediaMaxFileBytes: DEFAULT_MAX_FILE_BYTES,
-						mediaMaxTotalBytes: config.maxUploadBytes,
-						// Always offline: the embed check fetches whatever urls the
-						// upload's cabn.json names, which would let any API caller
-						// aim this server's network position at internal hosts
-						// (SSRF) or use it as a request proxy. Url previews in
-						// uploaded worlds are recorded as assumed framable and the
-						// engine falls back to its load timeout for them.
-						embedNetwork: undefined,
-					});
+					const result = await converterPool.convert(fileBuffer);
+
+					if ("error" in result) {
+						// Worker reported a conversion error. Map it to appropriate status:
+						// - "queue is full" → 503 Service Unavailable
+						// - timeout → 504 Gateway Timeout (but report as generic error)
+						// - other errors → 422 Unprocessable Entity
+						if (result.error.includes("queue is full")) {
+							return reply.code(503).send({ error: result.error });
+						}
+						if (result.error.includes("timeout")) {
+							return reply.code(504).send({ error: "conversion took too long" });
+						}
+						request.log.warn(
+							{ err: result.error },
+							"conversion failed in worker",
+						);
+						return reply
+							.code(422)
+							.send({ error: "could not convert the uploaded archive" });
+					}
 
 					const files: Record<string, Uint8Array> = {};
-					for (const [path, value] of bundle) {
+					for (const [path, value] of result.bundle) {
 						files[path] =
 							typeof value === "string"
 								? new TextEncoder().encode(value)
@@ -253,15 +250,18 @@ export function buildApp(
 						.header("content-disposition", 'attachment; filename="world.zip"')
 						.send(Buffer.from(zipped));
 				} catch (err) {
-					// Never surface convert()'s internal error (stack traces, zod
-					// issue paths that could echo file contents) to the client.
-					request.log.warn({ err }, "conversion failed");
+					// Unexpected error (shouldn't happen if pool is working correctly).
+					request.log.warn({ err }, "unexpected error during conversion");
 					return reply
-						.code(422)
-						.send({ error: "could not convert the uploaded archive" });
+						.code(500)
+						.send({ error: "internal server error" });
 				}
 			});
 		});
+	});
+
+	app.addHook("onClose", async () => {
+		await converterPool.shutdown();
 	});
 
 	return app;

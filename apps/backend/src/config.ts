@@ -19,6 +19,16 @@ export interface AppConfig {
 	requestTimeoutMs: number;
 	rateLimitMax: number;
 	rateLimitWindowMs: number;
+	/** 2026-10-01: Worker pool concurrency (1-10, default 2). */
+	converterPoolConcurrency: number;
+	/** 2026-10-01: Timeout per conversion in ms (default 30000). */
+	converterPoolTimeoutMs: number;
+	/** 2026-10-01: Max decompressed size for zips (default 4× maxUploadBytes). */
+	maxZipInflationBytes: number;
+	/** 2026-10-01: Max compression ratio allowed (default 100:1). */
+	maxCompressionRatio: number;
+	/** 2026-10-01: Heap limit per worker in MB (default 256). */
+	converterPoolHeapLimitMb: number;
 }
 
 export class ConfigError extends Error {}
@@ -80,17 +90,29 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+	const maxUploadBytes = parsePositiveInt(env.MAX_UPLOAD_BYTES, 25 * 1024 * 1024);
 	return {
 		nodeEnv: env.NODE_ENV ?? "development",
 		port: parsePositiveInt(env.PORT, 8080),
 		host: env.HOST ?? "0.0.0.0",
-		maxUploadBytes: parsePositiveInt(env.MAX_UPLOAD_BYTES, 25 * 1024 * 1024),
+		maxUploadBytes,
 		corsOrigins: parseOrigins(env.CORS_ORIGINS),
 		apiKeyHashes: parseApiKeyHashes(env.CABN_API_KEY_SHA256),
 		trustProxy: parseTrustProxy(env.CABN_TRUST_PROXY),
 		requestTimeoutMs: parsePositiveInt(env.REQUEST_TIMEOUT_MS, 30_000),
 		rateLimitMax: parsePositiveInt(env.RATE_LIMIT_MAX, 20),
 		rateLimitWindowMs: parsePositiveInt(env.RATE_LIMIT_WINDOW_MS, 60_000),
+		converterPoolConcurrency: parsePositiveInt(env.CONVERTER_POOL_CONCURRENCY, 2),
+		converterPoolTimeoutMs: parsePositiveInt(env.CONVERTER_POOL_TIMEOUT_MS, 30_000),
+		maxZipInflationBytes: parsePositiveInt(
+			env.MAX_ZIP_INFLATION_BYTES,
+			maxUploadBytes * 4,
+		),
+		maxCompressionRatio: parsePositiveInt(env.MAX_COMPRESSION_RATIO, 100),
+		converterPoolHeapLimitMb: parsePositiveInt(
+			env.CONVERTER_POOL_HEAP_LIMIT_MB,
+			256,
+		),
 	};
 }
 
