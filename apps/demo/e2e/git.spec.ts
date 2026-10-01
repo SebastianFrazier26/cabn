@@ -316,7 +316,8 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 	await page.keyboard.press("Escape");
 	await expect(pensieve).toHaveCount(0);
 
-	// History ships as-is: a file with a planted key shows its real diff (its magpie is the warning).
+	// 2026-10-01: a file with a planted key is left out of the history pack
+	// (the main world still shows it, with its magpie as the warning).
 	await page.evaluate(() =>
 		(
 			window as unknown as {
@@ -326,7 +327,9 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 			.getState()
 			.setPensievePortalId("src/plantNamer.ts"),
 	);
-	await expect(page.getByTestId("pensieve-diff")).toBeVisible();
+	await expect(page.getByTestId("pensieve-not-shipped")).toContainText(
+		"a key in their text",
+	);
 	await page.keyboard.press("Escape");
 
 	// Inside a file the pensieve is Alt/Option+H, and Esc closes it without leaving the file.

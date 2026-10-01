@@ -65,7 +65,7 @@ export function cssColor(rgb: number): string {
 export const NOT_SHIPPED_LABEL: Record<OmittedBlobReason | "unknown", string> =
 	{
 		"secret-name":
-			"Not shipped: files with secret-looking names (.env, keys) are left out of the world's history.",
+			"Not shipped: files with secret-looking names (.env, keys) or a key in their text are left out of the world's history.",
 		"too-large":
 			"Not shipped: this version is larger than the world's per-file history cap.",
 		ignored: "Not shipped: this folder is one the world ignores.",

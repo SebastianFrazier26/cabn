@@ -28,13 +28,19 @@ import {
 	readTag,
 	resolveRef,
 } from "isomorphic-git";
+import { findLeakedSecretSpans } from "../annotate/leakedSecret.js";
 import { isIgnoredPath, isSecretPath } from "../walk.js";
 import {
 	fetchGithubReleases,
 	type GithubNetwork,
 	parseGithubRemote,
 } from "./githubReleases.js";
-import { type OpenedRepo, readTreeEntries } from "./gitRepo.js";
+import {
+	decodeText,
+	looksBinary,
+	type OpenedRepo,
+	readTreeEntries,
+} from "./gitRepo.js";
 import {
 	type GitObjectType,
 	type PackEntry,
@@ -79,6 +85,7 @@ const encoder = new TextEncoder();
 class Reader {
 	private readonly packed = new Map<string, PackEntry>();
 	private readonly blobSizes = new Map<string, number>();
+	private readonly secretVerdicts = new Map<string, boolean>();
 
 	constructor(
 		readonly repo: OpenedRepo,
@@ -117,6 +124,30 @@ class Reader {
 			this.blobSizes.set(oid, size);
 		}
 		return size;
+	}
+
+	/**
+	 * Whether the leaked-secret detector finds a key in this text blob under
+	 * any of the names it was reached by (the names matter: test and example
+	 * files skip the generic-assignment tier). Cached per oid from the first,
+	 * deepest selection, so a later halving can only keep a verdict of
+	 * "withhold", never lose it.
+	 */
+	async leaksSecret(oid: string, names: ReadonlySet<string>): Promise<boolean> {
+		let verdict = this.secretVerdicts.get(oid);
+		if (verdict === undefined) {
+			const raw = await readObject({ ...this.base, oid, format: "content" });
+			const bytes = raw.object as Uint8Array;
+			if (looksBinary(bytes)) verdict = false;
+			else {
+				const text = decodeText(bytes);
+				verdict = [...names].some(
+					(name) => findLeakedSecretSpans(text, name).length > 0,
+				);
+			}
+			this.secretVerdicts.set(oid, verdict);
+		}
+		return verdict;
 	}
 
 	async branches(): Promise<{
@@ -301,8 +332,9 @@ interface Selection {
 
 /**
  * Commits within `depth` of each branch head (plus tag targets), and every
- * tree and blob they reach — except blobs of secret-named files, blobs over
- * maxBlobBytes, and whole folders the world ignores. Those stay referenced
+ * tree and blob they reach — except blobs of secret-named files, text blobs
+ * the leaked-secret detector flags, blobs over maxBlobBytes, and whole
+ * folders the world ignores. Those stay referenced
  * by their trees but absent from the pack.
  */
 async function select(
@@ -346,38 +378,53 @@ async function select(
 		.sort();
 
 	const treeSet = new Set<string>();
-	const allowedBlobs = new Set<string>();
+	const visited = new Set<string>();
+	// Blob oid -> the "<folder>/<name>" it was reached under (more than one when a file was copied or renamed).
+	const allowedBlobs = new Map<string, Set<string>>();
 	const secretOnly = new Set<string>();
 	const ignoredOnly = new Set<string>();
-	const walkTree = async (oid: string): Promise<void> => {
-		if (treeSet.has(oid)) return;
+	// Every rule below looks at an entry's name plus the one folder it sits in
+	// (the secret patterns are never deeper, see walk.ts), so a tree is walked
+	// once per name it's mounted under, not once per commit.
+	const walkTree = async (oid: string, folder: string): Promise<void> => {
+		const key = `${oid}/${folder}`;
+		if (visited.has(key)) return;
+		visited.add(key);
 		treeSet.add(oid);
 		for (const entry of await readTreeEntries(reader.repo, oid)) {
-			// Every rule below looks at the entry name alone, so a tree's verdict never depends on where it's mounted and the walk can stop at trees it has seen.
 			const ignored = isIgnoredPath(entry.path, reader.opts.ignore);
+			const named = folder ? `${folder}/${entry.path}` : entry.path;
 			if (entry.type === "tree") {
-				if (!ignored) await walkTree(entry.oid);
+				if (!ignored) await walkTree(entry.oid, entry.path);
 			} else if (entry.type === "blob") {
 				if (ignored) ignoredOnly.add(entry.oid);
-				else if (isSecretPath(entry.path)) secretOnly.add(entry.oid);
-				else allowedBlobs.add(entry.oid);
+				else if (isSecretPath(named)) secretOnly.add(entry.oid);
+				else {
+					const names = allowedBlobs.get(entry.oid) ?? new Set<string>();
+					names.add(named);
+					allowedBlobs.set(entry.oid, names);
+				}
 			}
 		}
 	};
-	for (const oid of commits) await walkTree(trees.get(oid) as string);
+	for (const oid of commits) await walkTree(trees.get(oid) as string, "");
 
 	const blobs = new Set<string>();
 	const omitted = new Map<
 		string,
 		{ reason: OmittedBlobReason; size: number }
 	>();
-	for (const oid of allowedBlobs) {
+	for (const [oid, names] of allowedBlobs) {
 		const size = await reader.blobSize(oid);
 		if (size > reader.opts.caps.maxBlobBytes)
 			omitted.set(oid, { reason: "too-large", size });
+		// Same "not shipped" record as a secret-named file: older engines parse
+		// the reason enum strictly, and either way the blob's hash stays in its tree.
+		else if (await reader.leaksSecret(oid, names))
+			omitted.set(oid, { reason: "secret-name", size });
 		else blobs.add(oid);
 	}
-	// A blob also reachable under an ordinary name is already shipped there; only one never reachable any other way is withheld.
+	// A blob also reachable under an ordinary name is already shipped there (unless its content withheld it above); only one never reachable any other way is withheld.
 	for (const oid of secretOnly)
 		if (!allowedBlobs.has(oid))
 			omitted.set(oid, {

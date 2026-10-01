@@ -22,6 +22,7 @@ import {
 	createFixtureRepo,
 	createStandardFixture,
 	ENV_SECRET_VALUE,
+	FAKE_ANTHROPIC_KEY,
 	FAKE_AWS_KEY,
 	type FixtureRepo,
 } from "./fixtureRepo.js";
@@ -137,17 +138,32 @@ describe("the shipped git directory", () => {
 		).toBe("Second harvest\n");
 	});
 
-	test("history ships as-is, secrets in ordinary files included", async () => {
-		const watered = (await git.log({ fs, gitdir: shipped, ref: "main" })).find(
-			(c) => c.commit.message.startsWith("Water"),
-		);
+	test("a tracked file with a key in its text is not shipped; its clean later version is", async () => {
+		const log = await git.log({ fs, gitdir: shipped, ref: "main" });
+		const configOid = async (subject: string) => {
+			const c = log.find((e) => e.commit.message.startsWith(subject));
+			const tree = await git.readTree({
+				fs,
+				gitdir: shipped,
+				oid: c?.commit.tree as string,
+				filepath: "src",
+			});
+			return tree.tree.find((e) => e.path === "config.js")?.oid as string;
+		};
+		const leaky = await configOid("Water");
+		await expect(
+			git.readBlob({ fs, gitdir: shipped, oid: leaky }),
+		).rejects.toThrow();
+		expect(meta.omitted[leaky]).toMatchObject({ reason: "secret-name" });
 		const { blob } = await git.readBlob({
 			fs,
 			gitdir: shipped,
-			oid: watered?.oid as string,
-			filepath: "src/config.js",
+			oid: await configOid("Rotate"),
 		});
-		expect(decoder.decode(blob)).toContain(FAKE_AWS_KEY);
+		expect(decoder.decode(blob)).toContain("process.env.AWS_KEY");
+		for (const [key, value] of bundle)
+			if (key.startsWith("git/") && value instanceof Uint8Array)
+				expect(Buffer.from(value).includes(FAKE_AWS_KEY), key).toBe(false);
 	});
 
 	test("secret-named files are not shipped from any commit; their trees still point at them", async () => {
@@ -265,9 +281,12 @@ describe("the shipped git directory", () => {
 		for await (const entry of source.entries())
 			if (entry.path === "deploy.pem")
 				expect(await entry.read()).toBeUndefined();
-		// Same rules as the main world: an ordinary file with a key in it is readable (and gets a magpie).
+		// Its blob was withheld from the pack for the key in its text, so here it is sealed too.
 		expect(
-			manifest.portals.find((p) => p.id === "src/secret.js")?.richPreview?.kind,
+			manifest.portals.find((p) => p.id === "src/secret.js")?.richPreview,
+		).toEqual({ kind: "sealed" });
+		expect(
+			manifest.portals.find((p) => p.id === "lanterns.md")?.richPreview?.kind,
 		).not.toBe("sealed");
 	});
 });
@@ -303,6 +322,113 @@ describe("caps and options", () => {
 				commits: 2,
 				truncated: true,
 			});
+		} finally {
+			await rm(shipped, { recursive: true, force: true });
+		}
+	});
+
+	test("each widened secret name is left out of every commit; ordinary files beside them ship", async () => {
+		const repo = await createFixtureRepo();
+		repos.push(repo);
+		const secrets = {
+			".pypirc": "[pypi]\npassword = pypi-hunter2\n",
+			".yarnrc.yml": "npmAuthToken: yarn-hunter2\n",
+			".envrc": "export TOKEN=direnv-hunter2\n",
+			".terraformrc":
+				'credentials "app.terraform.io" { token = "tf-hunter2" }\n',
+			".docker/config.json": '{"auths":{"x":{"auth":"docker-hunter2"}}}\n',
+			".kube/config": "users:\n- user:\n    token: kube-hunter2\n",
+			"ops/.kube/config": "users:\n- user:\n    token: kube2-hunter2\n",
+		};
+		await repo.commit(
+			{
+				...secrets,
+				"docker/config.json": '{"plain": true}\n',
+				"README.md": "# Plain\n",
+			},
+			"Configs",
+			0,
+		);
+		const bundle = await convertRepo(repo);
+		const meta = metaOf(bundle);
+		const shipped = await materialize(bundle);
+		try {
+			const [head] = await git.log({ fs, gitdir: shipped, ref: "main" });
+			const oidAt = async (filepath: string) =>
+				(
+					await git.readBlob({
+						fs,
+						dir: repo.dir,
+						oid: head?.oid as string,
+						filepath,
+					})
+				).oid;
+			for (const path of Object.keys(secrets)) {
+				const oid = await oidAt(path);
+				expect(meta.omitted[oid], path).toMatchObject({
+					reason: "secret-name",
+				});
+				await expect(
+					git.readBlob({ fs, gitdir: shipped, oid }),
+					path,
+				).rejects.toThrow();
+			}
+			for (const path of ["docker/config.json", "README.md"]) {
+				const { blob } = await git.readBlob({
+					fs,
+					gitdir: shipped,
+					oid: head?.oid as string,
+					filepath: path,
+				});
+				expect(blob.length, path).toBeGreaterThan(0);
+			}
+			const pack = [...bundle.entries()].find(([k]) => k.endsWith(".pack"));
+			expect(decoder.decode(pack?.[1] as Uint8Array)).not.toContain("hunter2");
+		} finally {
+			await rm(shipped, { recursive: true, force: true });
+		}
+	});
+
+	test("a tracked config.ts with a planted key is left out of the pack; clean code ships", async () => {
+		const repo = await createFixtureRepo();
+		repos.push(repo);
+		await repo.commit(
+			{
+				"src/config.ts": `export const anthropic = "${FAKE_ANTHROPIC_KEY}";\n`,
+				"src/app.ts": "export const answer = 42;\n",
+			},
+			"Configure",
+			0,
+		);
+		const bundle = await convertRepo(repo);
+		const meta = metaOf(bundle);
+		const shipped = await materialize(bundle);
+		try {
+			const [head] = await git.log({ fs, gitdir: shipped, ref: "main" });
+			const leaky = (
+				await git.readBlob({
+					fs,
+					dir: repo.dir,
+					oid: head?.oid as string,
+					filepath: "src/config.ts",
+				})
+			).oid;
+			expect(meta.omitted[leaky]).toMatchObject({ reason: "secret-name" });
+			await expect(
+				git.readBlob({ fs, gitdir: shipped, oid: leaky }),
+			).rejects.toThrow();
+			const { blob } = await git.readBlob({
+				fs,
+				gitdir: shipped,
+				oid: head?.oid as string,
+				filepath: "src/app.ts",
+			});
+			expect(decoder.decode(blob)).toBe("export const answer = 42;\n");
+			for (const [key, value] of bundle)
+				if (typeof value !== "string" || key.startsWith("git/"))
+					expect(Buffer.from(value).includes(FAKE_ANTHROPIC_KEY), key).toBe(
+						false,
+					);
 		} finally {
 			await rm(shipped, { recursive: true, force: true });
 		}

@@ -13,12 +13,17 @@ export const DEFAULT_IGNORES = [
 	"coverage",
 ];
 
-// Matched against the filename only (not directory segments) — these files
-// still get a portal (name visible) but never have their content read, same
-// treatment as oversized/binary files. `includeSecrets: true` opts back in.
+// Matched against the filename, or for a pattern with a "/" against that many
+// trailing path segments (`.kube/config` is any `config` directly inside a
+// `.kube` folder) — these files still get a portal (name visible) but never
+// have their content read, same treatment as oversized/binary files.
+// `includeSecrets: true` opts back in. One list for worlds, the shadow realm
+// and git history alike; gitPack.ts relies on no pattern being more than one
+// folder deep.
 export const DEFAULT_SECRET_PATTERNS = [
 	".env",
 	".env.*",
+	".envrc",
 	"*.pem",
 	"*.key",
 	"id_rsa*",
@@ -26,6 +31,11 @@ export const DEFAULT_SECRET_PATTERNS = [
 	"*credentials*",
 	".npmrc",
 	".netrc",
+	".pypirc",
+	".yarnrc.yml",
+	".terraformrc",
+	".docker/config.json",
+	".kube/config",
 ];
 
 export const DEFAULT_MAX_FILES = 2000;
@@ -103,14 +113,33 @@ export function isHiddenPath(path: string): boolean {
 	return path.split("/").some((segment) => segment.startsWith("."));
 }
 
-function isSecretFile(path: string, patterns: readonly string[]): boolean {
-	const name = path.split("/").pop() ?? path;
-	return matchesAnySegment(name, patterns);
+type SegmentMatcher = (segment: string) => boolean;
+
+function segmentMatcher(pattern: string): SegmentMatcher {
+	if (!pattern.includes("*") && !pattern.includes("?"))
+		return (segment) => segment === pattern;
+	const re = globToRegExp(pattern);
+	return (segment) => re.test(segment);
+}
+
+const DEFAULT_SECRET_MATCHERS: SegmentMatcher[][] = DEFAULT_SECRET_PATTERNS.map(
+	(pattern) => pattern.split("/").map(segmentMatcher),
+);
+
+function isSecretFile(path: string): boolean {
+	const segments = path.split("/");
+	return DEFAULT_SECRET_MATCHERS.some((parts) => {
+		const offset = segments.length - parts.length;
+		return (
+			offset >= 0 &&
+			parts.every((matches, i) => matches(segments[offset + i] as string))
+		);
+	});
 }
 
 /** Whether walk() withheld this file's content as secret-patterned — anything that later reads source bytes directly (media shipping) must honor the same rule. */
 export function isSecretPath(path: string, includeSecrets = false): boolean {
-	return !includeSecrets && isSecretFile(path, DEFAULT_SECRET_PATTERNS);
+	return !includeSecrets && isSecretFile(path);
 }
 
 export async function walk(
@@ -141,8 +170,7 @@ export async function walk(
 		totalBytes += entry.bytes;
 		const withinCap = entry.bytes <= maxFileBytes;
 		const isSecret =
-			(!opts.includeSecrets &&
-				isSecretFile(entry.path, DEFAULT_SECRET_PATTERNS)) ||
+			(!opts.includeSecrets && isSecretFile(entry.path)) ||
 			(opts.sealedPaths?.has(entry.path) ?? false);
 		const content = withinCap && !isSecret ? await entry.read() : undefined;
 		files.push({ path: entry.path, bytes: entry.bytes, content });
