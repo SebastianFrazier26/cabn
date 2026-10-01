@@ -1,10 +1,14 @@
 import * as fs from "node:fs";
 import {
+	chmod,
+	link,
 	mkdir,
 	mkdtemp,
 	readFile,
 	rm,
+	stat,
 	symlink,
+	unlink,
 	writeFile,
 } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
@@ -325,6 +329,29 @@ describe("owner commits", () => {
 		expect(await readFile(join(outsideDir, "target.md"), "utf8")).toBe(
 			"outside\n",
 		);
+	});
+
+	it("replaces the file atomically: a hard link isn't written through, the mode is kept", async () => {
+		const shared = join(outsideDir, "shared.js");
+		await writeFile(shared, "export const a = 1;\n");
+		await unlink(join(repoDir, "src/app.js"));
+		await link(shared, join(repoDir, "src/app.js"));
+		await chmod(join(repoDir, "src/app.js"), 0o755);
+		const before = await stat(join(repoDir, "src/app.js"));
+		const h = await serveOwner();
+		const res = await post(h, "/owner/git/commit", {
+			message: "Edit",
+			author: { name: "A", email: "a@example.test" },
+			files: [{ path: "src/app.js", content: "export const a = 2;\n" }],
+		});
+		expect(res.status).toBe(200);
+		const after = await stat(join(repoDir, "src/app.js"));
+		expect(after.ino).not.toBe(before.ino);
+		expect(after.mode & 0o777).toBe(0o755);
+		expect(await readFile(join(repoDir, "src/app.js"), "utf8")).toBe(
+			"export const a = 2;\n",
+		);
+		expect(await readFile(shared, "utf8")).toBe("export const a = 1;\n");
 	});
 
 	it("refuses to overwrite a file that changed on disk after conversion", async () => {

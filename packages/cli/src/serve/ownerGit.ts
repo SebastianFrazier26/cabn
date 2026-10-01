@@ -1,5 +1,5 @@
 import * as nodeFs from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { DEFAULT_MAX_FILE_BYTES, openGitRepo } from "@cabn/converter";
 import {
@@ -16,6 +16,7 @@ import { z } from "zod";
 import {
 	checkOwnerRequest,
 	OwnerPathError,
+	overwriteFileAtomic,
 	readOwnerJson,
 	resolveExistingOwnerFile,
 	sendOwnerJson,
@@ -238,7 +239,7 @@ async function commitEdits(
 			);
 		targets.push({ real, path: file.path, content: file.content });
 	}
-	for (const t of targets) await writeFile(t.real, t.content, "utf8");
+	for (const t of targets) await overwriteFileAtomic(t.real, t.content);
 	for (const t of targets) await add({ ...repo, filepath: t.path });
 	const oid = await commit({ ...repo, message: body.message, author });
 	return { oid, files: targets.map((t) => t.path) };
