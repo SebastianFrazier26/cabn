@@ -1,4 +1,4 @@
-import type { FileSource } from "./sources/types.js";
+import type { FileSource, SourceEntry } from "./sources/types.js";
 
 export const DEFAULT_IGNORES = [
 	"node_modules",
@@ -122,11 +122,7 @@ export async function walk(
 	const maxFileBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
 	const onlyHidden = opts.hidden === "only";
 
-	const accepted: {
-		path: string;
-		bytes: number;
-		read(): Promise<Uint8Array>;
-	}[] = [];
+	const accepted: SourceEntry[] = [];
 	for await (const entry of source.entries()) {
 		if (isIgnored(entry.path, ignore)) continue;
 		if (isHiddenPath(entry.path) !== onlyHidden) continue;
