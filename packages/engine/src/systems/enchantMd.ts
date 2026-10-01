@@ -40,11 +40,12 @@ const LIST_ITEM_RE = /^(\s*)(?:[-*+]|\d+\.)\s+(.*)$/;
 // Order matters: code spans first (their contents must not be re-parsed for
 // bold/italic/links), then bold+italic together (***x***/___x___), then bold,
 // then italic, then links. Each alternative is its own capture group so a
-// single exec loop can tell which one fired. The link's text and target are
-// length-capped: unbounded, every `[` on a line like `[[[[...` (or every
-// `[a](` with no `)`) rescans the rest of the line.
+// single exec loop can tell which one fired. The link's text excludes `[` and
+// its target excludes `(`, and both are length-capped: otherwise every `[` on a
+// line like `[[[[...` (or every `[a](` with no `)`) rescans up to the cap, which
+// is linear but too slow for a 512 KB line under load (2026-10-01).
 const INLINE_RE =
-	/`([^`]+)`|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g;
+	/`([^`]+)`|\*\*\*([^*]+)\*\*\*|___([^_]+)___|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|\[([^[\]]{1,500})\]\(([^()]{1,2048})\)/g;
 
 function parseInline(text: string, base: number): MdSegment[] {
 	const segments: MdSegment[] = [];
