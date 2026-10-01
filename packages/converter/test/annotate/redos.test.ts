@@ -14,9 +14,16 @@ import { runOn } from "./helpers.js";
 
 // walk.ts's per-file content cap: the most an attacker-supplied file can hold.
 const FILE_CAP = 512 * 1024;
-// Every payload here took seconds to minutes before its fix; linear code
-// finishes in a few milliseconds, so this leaves room for a loaded CI box.
-const BUDGET_MS = 750;
+// Every payload here took seconds to minutes before its fix.
+const BUDGET_MS = 3000;
+// A fixed budget alone flakes when `pnpm -r test` loads the machine, so each
+// payload must also scale like linear code: every 4x step up in size in under
+// 8x the time (quadratic takes ~16x). Climbing from size / 64 makes a
+// quadratic regression fail on a small rung in about a second instead of
+// hanging on the full size, and the floor keeps sub-millisecond timer noise
+// from failing a ratio.
+const MAX_RATIO = 8;
+const FLOOR_MS = 10;
 
 function fill(unit: string, bytes = FILE_CAP): string {
 	return unit.repeat(Math.floor(bytes / unit.length));
@@ -28,10 +35,28 @@ function timed<T>(fn: () => T): { value: T; ms: number } {
 	return { value, ms: performance.now() - start };
 }
 
-function expectFast<T>(fn: () => T): T {
-	const { value, ms } = timed(fn);
-	expect(ms).toBeLessThan(BUDGET_MS);
-	return value;
+/** `run(build(size))`, after checking it scales linearly up to `size`; a rung that misses gets two more tries. */
+function expectLinear<I, T>(
+	build: (size: number) => I,
+	run: (input: I) => T,
+	size = FILE_CAP,
+): T {
+	let prevMs = 0;
+	let value: T | undefined;
+	for (const n of [size / 64, size / 16, size / 4, size].map(Math.floor)) {
+		const input = build(n);
+		const limit = MAX_RATIO * Math.max(prevMs, FLOOR_MS);
+		let ms = Number.POSITIVE_INFINITY;
+		for (let attempt = 0; attempt < 3 && ms >= limit; attempt++) {
+			const result = timed(() => run(input));
+			value = result.value;
+			ms = Math.min(ms, result.ms);
+		}
+		expect(ms, `size ${n}`).toBeLessThan(limit);
+		prevMs = ms;
+	}
+	expect(prevMs).toBeLessThan(BUDGET_MS);
+	return value as T;
 }
 
 const OLD_JSX_EMPTY = /\{\s*(?:\/\*[\s\S]*?\*\/\s*)*\}/g;
@@ -66,23 +91,27 @@ function randomString(rand: () => number, alphabet: string[], max: number) {
 
 describe("JSX empty expressions (syntaxTree.ts)", () => {
 	test.each([40, 1000, 10_000])("`{` + `/**/`×%i + ` x}` stays fast", (n) => {
-		const payload = `{${"/**/".repeat(n)} x}`;
-		expect(expectFast(() => jsxEmptyExpressionSpans(payload))).toEqual([]);
+		const payload = (k: number) => `{${"/**/".repeat(k)} x}`;
+		expect(expectLinear(payload, jsxEmptyExpressionSpans, n)).toEqual([]);
 		expect(
-			expectFast(() =>
-				runOn(syntaxError, "src/a.jsx", `const a = ${payload};\n`),
+			expectLinear(
+				(k) => `const a = ${payload(k)};\n`,
+				(content) => runOn(syntaxError, "src/a.jsx", content),
+				n,
 			),
 		).toBeDefined();
 	});
 
 	test("comment chains shared by `{`s nested in an earlier comment stay linear", () => {
-		const n = 20_000;
-		const payload = `/*${"{/*".repeat(n)}*/${" /**/".repeat(n)} x`;
-		expect(expectFast(() => jsxEmptyExpressionSpans(payload))).toEqual([]);
+		const payload = (n: number) =>
+			`/*${"{/*".repeat(n)}*/${" /**/".repeat(n)} x`;
+		expect(expectLinear(payload, jsxEmptyExpressionSpans, 20_000)).toEqual([]);
 	});
 
 	test("an unclosed comment after every `{` stays linear", () => {
-		expect(expectFast(() => jsxEmptyExpressionSpans(fill("{/*")))).toEqual([]);
+		expect(
+			expectLinear((n) => fill("{/*", n), jsxEmptyExpressionSpans),
+		).toEqual([]);
 	});
 
 	test.each([
@@ -116,7 +145,10 @@ describe("JSX empty expressions (syntaxTree.ts)", () => {
 describe("connection strings (leakedSecret.ts)", () => {
 	test("`mysql://a:` repeated with no `@` stays fast", () => {
 		expect(
-			expectFast(() => runOn(leakedSecret, "src/a.ts", fill("mysql://a:"))),
+			expectLinear(
+				(n) => fill("mysql://a:", n),
+				(content) => runOn(leakedSecret, "src/a.ts", content),
+			),
 		).toEqual([]);
 	});
 
@@ -138,7 +170,10 @@ describe("markdown links (importGraph.ts)", () => {
 		["`[[a|`", "[[a|"],
 	])("%s repeated with no closer stays fast", (_label, unit) => {
 		expect(
-			expectFast(() => extractRelativeRefs("notes/a.md", fill(unit))),
+			expectLinear(
+				(n) => fill(unit, n),
+				(content) => extractRelativeRefs("notes/a.md", content),
+			),
 		).toBeDefined();
 	});
 
@@ -187,14 +222,18 @@ function normalizeLikeImportGraph(raw: string): string | null {
 describe("import scanning (importGraph.ts)", () => {
 	test("a file of blank lines stays fast", () => {
 		expect(
-			expectFast(() => extractRelativeRefs("src/a.js", fill("\n"))),
+			expectLinear(
+				(n) => fill("\n", n),
+				(content) => extractRelativeRefs("src/a.js", content),
+			),
 		).toEqual([]);
 	});
 
 	test("`from` and a long run of dots stays fast", () => {
 		expect(
-			expectFast(() =>
-				extractRelativeRefs("pkg/a.py", `from ${".".repeat(FILE_CAP - 5)}`),
+			expectLinear(
+				(n) => `from ${".".repeat(n - 5)}`,
+				(content) => extractRelativeRefs("pkg/a.py", content),
 			),
 		).toEqual([]);
 	});
@@ -221,13 +260,17 @@ describe("import scanning (importGraph.ts)", () => {
 describe("HTML comments (todoMarker.ts)", () => {
 	test("`<!--` repeated with no `-->` stays fast", () => {
 		expect(
-			expectFast(() => runOn(todoMarker, "notes/a.md", fill("<!--"))),
+			expectLinear(
+				(n) => fill("<!--", n),
+				(content) => runOn(todoMarker, "notes/a.md", content),
+			),
 		).toEqual([]);
 	});
 
 	test("many closed comments, each with a marker, stay fast", () => {
-		const results = expectFast(() =>
-			runOn(todoMarker, "notes/a.md", fill("<!-- TODO x -->\n")),
+		const results = expectLinear(
+			(n) => fill("<!-- TODO x -->\n", n),
+			(content) => runOn(todoMarker, "notes/a.md", content),
 		);
 		expect(results.length).toBeGreaterThan(30_000);
 	});
@@ -245,24 +288,31 @@ describe("HTML comments (todoMarker.ts)", () => {
 describe("tree annotators on adversarial lines", () => {
 	test("a long whitespace run before an error at end of file stays fast", () => {
 		expect(
-			expectFast(() =>
-				runOn(syntaxError, "src/a.js", `${" ".repeat(150_000)}let`),
+			expectLinear(
+				(n) => `${" ".repeat(n)}let`,
+				(content) => runOn(syntaxError, "src/a.js", content),
+				150_000,
 			),
 		).toHaveLength(1);
 	});
 
 	test("a Python line of `lambda`s stays fast", () => {
 		expect(
-			expectFast(() =>
-				runOn(syntaxError, "src/a.py", fill("lambda ", 150_000)),
+			expectLinear(
+				(n) => fill("lambda ", n),
+				(content) => runOn(syntaxError, "src/a.py", content),
+				150_000,
 			),
 		).toBeDefined();
 	});
 
 	test("blank lines inside a Python function stay fast", () => {
-		const content = `def f():\n${"\n".repeat(150_000)}    unused = 1\n    return 2\n`;
 		expect(
-			expectFast(() => runOn(deadCode, "src/a.py", content)),
+			expectLinear(
+				(n) => `def f():\n${"\n".repeat(n)}    unused = 1\n    return 2\n`,
+				(content) => runOn(deadCode, "src/a.py", content),
+				150_000,
+			),
 		).toBeDefined();
 	});
 });
