@@ -19,15 +19,15 @@ export interface AppConfig {
 	requestTimeoutMs: number;
 	rateLimitMax: number;
 	rateLimitWindowMs: number;
-	/** 2026-10-01: Worker pool concurrency (1-10, default 2). */
+	/** Conversions running at once (1-10); past it POST /v1/worlds answers 503. */
 	converterPoolConcurrency: number;
-	/** 2026-10-01: Timeout per conversion in ms (default 30000). */
+	/** Wall-clock budget per conversion; the worker is terminated and the request gets 504. */
 	converterPoolTimeoutMs: number;
-	/** 2026-10-01: Max decompressed size for zips (default 4× maxUploadBytes). */
+	/** Cap on the archive's declared total uncompressed size; above it, 422. */
 	maxZipInflationBytes: number;
-	/** 2026-10-01: Max compression ratio allowed (default 100:1). */
+	/** Cap on any one entry's declared uncompressed:compressed ratio; above it, 422. */
 	maxCompressionRatio: number;
-	/** 2026-10-01: Heap limit per worker in MB (default 256). */
+	/** V8 old-generation heap cap per conversion worker. */
 	converterPoolHeapLimitMb: number;
 }
 
@@ -90,7 +90,10 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-	const maxUploadBytes = parsePositiveInt(env.MAX_UPLOAD_BYTES, 25 * 1024 * 1024);
+	const maxUploadBytes = parsePositiveInt(
+		env.MAX_UPLOAD_BYTES,
+		25 * 1024 * 1024,
+	);
 	return {
 		nodeEnv: env.NODE_ENV ?? "development",
 		port: parsePositiveInt(env.PORT, 8080),
@@ -102,8 +105,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 		requestTimeoutMs: parsePositiveInt(env.REQUEST_TIMEOUT_MS, 30_000),
 		rateLimitMax: parsePositiveInt(env.RATE_LIMIT_MAX, 20),
 		rateLimitWindowMs: parsePositiveInt(env.RATE_LIMIT_WINDOW_MS, 60_000),
-		converterPoolConcurrency: parsePositiveInt(env.CONVERTER_POOL_CONCURRENCY, 2),
-		converterPoolTimeoutMs: parsePositiveInt(env.CONVERTER_POOL_TIMEOUT_MS, 30_000),
+		converterPoolConcurrency: Math.min(
+			10,
+			parsePositiveInt(env.CONVERTER_POOL_CONCURRENCY, 2),
+		),
+		converterPoolTimeoutMs: parsePositiveInt(
+			env.CONVERTER_POOL_TIMEOUT_MS,
+			30_000,
+		),
 		maxZipInflationBytes: parsePositiveInt(
 			env.MAX_ZIP_INFLATION_BYTES,
 			maxUploadBytes * 4,

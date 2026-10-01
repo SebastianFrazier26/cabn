@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-// Converter imports moved to converter-pool since conversion now runs in workers
 import fastifyCors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyRateLimit from "@fastify/rate-limit";
@@ -9,7 +8,6 @@ import Fastify, {
 	type FastifyInstance,
 	type FastifyServerOptions,
 } from "fastify";
-import { zipSync } from "fflate";
 import { extractBearerToken, verifyApiKey } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { sha256Hex } from "./config.js";
@@ -48,7 +46,14 @@ export interface BuildAppOptions {
 	 */
 	fastify?: Omit<FastifyServerOptions, "logger">;
 	loggerStream?: NodeJS.WritableStream;
+	/** Test seam: replaces the converter worker script (see converter-pool.ts). */
+	converterWorkerFile?: string | URL;
 }
+
+const REJECTION_MESSAGES = {
+	inflation: "archive would inflate past the size limit",
+	ratio: "archive has an entry compressed beyond the allowed ratio",
+} as const;
 
 /**
  * A trust function rather than the hop count itself: Fastify 5.12 answers a
@@ -86,7 +91,11 @@ export function buildApp(
 		timeoutMs: config.converterPoolTimeoutMs,
 		maxZipInflationBytes: config.maxZipInflationBytes,
 		maxCompressionRatio: config.maxCompressionRatio,
+		mediaMaxTotalBytes: config.maxUploadBytes,
 		heapLimitMb: config.converterPoolHeapLimitMb,
+		...(opts.converterWorkerFile
+			? { workerFile: opts.converterWorkerFile }
+			: {}),
 	});
 
 	const app = Fastify({
@@ -212,49 +221,33 @@ export function buildApp(
 					return reply.code(415).send({ error: "file is not a zip archive" });
 				}
 
-				try {
-					const result = await converterPool.convert(fileBuffer);
-
-					if ("error" in result) {
-						// Worker reported a conversion error. Map it to appropriate status:
-						// - "queue is full" → 503 Service Unavailable
-						// - timeout → 504 Gateway Timeout (but report as generic error)
-						// - other errors → 422 Unprocessable Entity
-						if (result.error.includes("queue is full")) {
-							return reply.code(503).send({ error: result.error });
-						}
-						if (result.error.includes("timeout")) {
-							return reply.code(504).send({ error: "conversion took too long" });
-						}
-						request.log.warn(
-							{ err: result.error },
-							"conversion failed in worker",
-						);
+				const outcome = await converterPool.convert(fileBuffer);
+				switch (outcome.kind) {
+					case "ok":
+						return reply
+							.code(200)
+							.header("content-type", "application/zip")
+							.header("content-disposition", 'attachment; filename="world.zip"')
+							.send(Buffer.from(outcome.zip));
+					case "busy":
+						return reply
+							.code(503)
+							.header("retry-after", "5")
+							.send({ error: "converter busy, try again shortly" });
+					case "timeout":
+						request.log.warn("conversion timed out; worker terminated");
+						return reply.code(504).send({ error: "conversion timed out" });
+					case "rejected":
+						return reply
+							.code(422)
+							.send({ error: REJECTION_MESSAGES[outcome.reason] });
+					case "failed":
+						// Never surface the worker's error text (stack traces, zod issue
+						// paths that could echo file contents) to the client.
+						request.log.warn({ detail: outcome.detail }, "conversion failed");
 						return reply
 							.code(422)
 							.send({ error: "could not convert the uploaded archive" });
-					}
-
-					const files: Record<string, Uint8Array> = {};
-					for (const [path, value] of result.bundle) {
-						files[path] =
-							typeof value === "string"
-								? new TextEncoder().encode(value)
-								: value;
-					}
-					const zipped = zipSync(files);
-
-					return reply
-						.code(200)
-						.header("content-type", "application/zip")
-						.header("content-disposition", 'attachment; filename="world.zip"')
-						.send(Buffer.from(zipped));
-				} catch (err) {
-					// Unexpected error (shouldn't happen if pool is working correctly).
-					request.log.warn({ err }, "unexpected error during conversion");
-					return reply
-						.code(500)
-						.send({ error: "internal server error" });
 				}
 			});
 		});
