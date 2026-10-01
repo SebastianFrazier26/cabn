@@ -54,7 +54,18 @@ function tokenDeclarations(tokens: PixelThemeTokens): string {
 	--cabn-diff-add-bg: ${toCssColor(tokens.diffAddBg)};
 	--cabn-diff-add-text: ${toCssColor(tokens.diffAddText)};
 	--cabn-diff-del-bg: ${toCssColor(tokens.diffDelBg)};
-	--cabn-diff-del-text: ${toCssColor(tokens.diffDelText)};`;
+	--cabn-diff-del-text: ${toCssColor(tokens.diffDelText)};
+	/*
+	 * Dedicated ink variants for the handful of non-editor spots an accent
+	 * sits directly under/as small text — see pixelThemeTokens.ts's own
+	 * doc comment on each field and packages/engine/tests/uiContrast.test.ts.
+	 */
+	--cabn-accent-violet-ink: ${toCssColor(tokens.accentVioletInk)};
+	--cabn-accent-pink-ink: ${toCssColor(tokens.accentPinkInk)};
+	--cabn-chip-ink: ${toCssColor(tokens.chipInk)};
+	--cabn-error-ink: ${toCssColor(tokens.errorInk)};
+	--cabn-warn-ink: ${toCssColor(tokens.warnInk)};
+	--cabn-guide-more-ink: ${toCssColor(tokens.guideMoreInk)};`;
 }
 
 // M10a v3 tokens (assets/generated/ui/STYLE.md) verbatim — Meadow=day,
@@ -155,7 +166,10 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-btn:active { box-shadow: 1px 1px 0 rgba(0,0,0,0.2); transform: translate(2px, 2px); }
 .cabn-btn.confirm { background: var(--cabn-accent-green); }
-.cabn-btn.cancel { background: var(--cabn-accent-pink); }
+/* --cabn-accent-pink-ink overrides the plain dark ink above: on day/night it's
+   the same #201a3d (unchanged look), but crimson's own accentPink is too
+   close in luminance to #201a3d for 4.5:1 (uiContrast.test.ts). */
+.cabn-btn.cancel { background: var(--cabn-accent-pink); color: var(--cabn-accent-pink-ink); }
 .cabn-btn.neutral { background: var(--cabn-accent-yellow); }
 
 .cabn-hud-pill {
@@ -171,7 +185,10 @@ const PIXEL_THEME_CSS = `
 	padding: 5px 10px; border-radius: 14px;
 }
 .cabn-segmented button.selected {
-	background: var(--cabn-border-outer); color: var(--cabn-panel-body);
+	/* --cabn-chip-ink, not --cabn-panel-body: night/crimson's own borderOuter
+	   is too close in luminance to their own panelBody for 4.5:1 text
+	   (uiContrast.test.ts) — day's chip-ink is panelBody unchanged. */
+	background: var(--cabn-border-outer); color: var(--cabn-chip-ink);
 }
 .cabn-help-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; gap: 12px; }
 .cabn-help-row kbd {
@@ -370,7 +387,8 @@ const PIXEL_THEME_CSS = `
 /* Reused by both the hotbar's per-tool count badge and this satchel's slot count. */
 .cabn-badge {
 	position: absolute; top: -6px; right: -6px; z-index: 2;
-	background: var(--cabn-accent-pink); color: #201a3d; border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+	/* --cabn-accent-pink-ink: see .cabn-btn.cancel's comment above — same fill, same fix. */
+	background: var(--cabn-accent-pink); color: var(--cabn-accent-pink-ink); border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
 	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
 	font-family: var(--cabn-font-display);
 }
@@ -571,7 +589,9 @@ const PIXEL_THEME_CSS = `
 .cabn-spellbook-list-line { flex: none; min-width: 26px; text-align: right; font-family: var(--cabn-font-mono); color: var(--cabn-text-secondary); }
 .cabn-spellbook-kind {
 	flex: none; min-width: 20px; text-align: center; font-family: var(--cabn-font-mono); font-size: 11px;
-	background: var(--cabn-accent-violet); color: #201a3d; border-radius: 4px; padding: 0 3px;
+	/* --cabn-accent-violet-ink: plain dark ink fell short of 4.5:1 against
+	   accentViolet in all three themes (uiContrast.test.ts). */
+	background: var(--cabn-accent-violet); color: var(--cabn-accent-violet-ink); border-radius: 4px; padding: 0 3px;
 }
 .cabn-spellbook-list.preview .cabn-spellbook-list-row { cursor: default; }
 .cabn-spellbook-list.preview input { accent-color: var(--cabn-accent-violet); }

@@ -78,9 +78,11 @@ export function FileStatusLine({
 					{" · "}
 					<span data-testid="cabn-file-save-state">
 						{dirty ? (
-							<span style={{ color: "var(--cabn-accent-yellow)" }}>
-								● unsaved
-							</span>
+							// --cabn-warn-ink, not the raw accent-yellow: a compact status
+							// marker, treated as a UI glyph (WCAG 1.4.11, 3:1) rather than
+							// body text — plain accent-yellow cleared only 1.35:1 on day's
+							// near-white panel (uiContrast.test.ts).
+							<span style={{ color: "var(--cabn-warn-ink)" }}>● unsaved</span>
 						) : (
 							"saved"
 						)}

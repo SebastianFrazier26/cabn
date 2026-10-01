@@ -29,19 +29,29 @@ function contrastRatio(a: number, b: number): number {
 	return (lighter + 0.05) / (darker + 0.05);
 }
 
-// pixelTheme.tsx deliberately fixes this ink (never var(--cabn-text)) on
-// every bright accent-color fill — .cabn-btn.confirm/cancel/neutral, the
-// rename preview's ins/mark, the owner toolkit's "on" badge, the guide's
-// confirm pill, the speed toggle's active state — see pixelTheme.tsx's own
-// "Fixed dark ink on the bright accents" comments. It's a literal, not a
-// token, because the near-white night `text` token would be unreadable on a
-// yellow/green/pink/violet fill in either theme.
+// pixelTheme.tsx fixes this ink on three of the four accent-color button
+// fills (.cabn-btn.confirm/neutral, the rename preview's ins/mark, the
+// owner toolkit's "on" badge, the guide's confirm pill, the speed toggle's
+// active state) — see its own "Fixed dark ink on the bright accents"
+// comments. The fourth and fifth (pink, violet) needed their own dedicated
+// ink tokens instead; see pixelThemeTokens.ts.
 const FIXED_BUTTON_INK = 0x201a3d;
+
+/** WCAG 1.4.3 (Contrast (Minimum)): real text, any size here, needs 4.5:1. */
+const TEXT_MIN = 4.5;
+/**
+ * WCAG 1.4.11 (Non-text Contrast): a graphical object required to understand
+ * content — applied here only to the two single-glyph status/cue markers
+ * (the unsaved dot, the guide's "more" cue) per the 2026-09-30 user decision
+ * to treat them as compact UI indicators rather than body text.
+ */
+const GLYPH_MIN = 3;
 
 interface Pair {
 	role: string;
 	fg: number;
 	bg: number;
+	min: number;
 }
 
 function uiPairs(tokens: PixelThemeTokens): Pair[] {
@@ -50,95 +60,72 @@ function uiPairs(tokens: PixelThemeTokens): Pair[] {
 			role: "button/badge ink on green (confirm)",
 			fg: FIXED_BUTTON_INK,
 			bg: tokens.accentGreen,
+			min: TEXT_MIN,
 		},
 		{
-			role: "button/badge ink on pink (cancel)",
-			fg: FIXED_BUTTON_INK,
+			role: "button/badge ink on pink (cancel, bag/hotbar count)",
+			fg: tokens.accentPinkInk,
 			bg: tokens.accentPink,
+			min: TEXT_MIN,
 		},
 		{
 			role: "button/badge ink on yellow (neutral)",
 			fg: FIXED_BUTTON_INK,
 			bg: tokens.accentYellow,
+			min: TEXT_MIN,
 		},
 		{
-			role: "button/badge ink on violet (rename mark)",
-			fg: FIXED_BUTTON_INK,
+			role: "button/badge ink on violet (spellbook kind glyph)",
+			fg: tokens.accentVioletInk,
 			bg: tokens.accentViolet,
+			min: TEXT_MIN,
 		},
 		// .cabn-segmented button.selected and the owner toolkit's kbd chip.
 		{
-			role: "panel body text on border-outer chip",
-			fg: tokens.panelBody,
+			role: "chip ink on border-outer chip",
+			fg: tokens.chipInk,
 			bg: tokens.borderOuter,
+			min: TEXT_MIN,
 		},
-		// .cabn-help-row kbd: hardcoded white, not the panelBody token above.
+		// .cabn-help-row kbd: hardcoded white, not a token — already clears AA everywhere.
 		{
 			role: "white text on border-outer chip",
 			fg: 0xffffff,
 			bg: tokens.borderOuter,
+			min: TEXT_MIN,
 		},
 		// .cabn-pet-status.error
 		{
 			role: "pet error text on panel body",
-			fg: tokens.accentPink,
+			fg: tokens.errorInk,
 			bg: tokens.panelBody,
+			min: TEXT_MIN,
 		},
-		// FileStatusLine's "● unsaved" marker
+		// FileStatusLine's "● unsaved" marker — a compact status glyph, not a sentence.
 		{
-			role: "unsaved marker on panel body",
-			fg: tokens.accentYellow,
+			role: "unsaved marker (glyph) on panel body",
+			fg: tokens.warnInk,
 			bg: tokens.panelBody,
+			min: GLYPH_MIN,
 		},
-		// GuideDialog's "▼ more" cue
+		// GuideDialog's "▼ more" cue — a single decorative indicator glyph.
 		{
-			role: "guide more-cue on panel body",
-			fg: tokens.accentOrange,
+			role: "guide more-cue (glyph) on panel body",
+			fg: tokens.guideMoreInk,
 			bg: tokens.panelBody,
+			min: GLYPH_MIN,
 		},
 	];
 }
 
-/**
- * Pairs this pass found already below WCAG AA (4.5:1) — see
- * docs/testing/2026-09-30-a11y.md for the numbers and fix options. Recoloring
- * any of these changes the visible design (CLAUDE.md: report contrast
- * failures with options rather than picking one), so they're pinned with
- * `test.fails` instead of silently dropped or left to fail the suite: this
- * still runs the real assertion every time, still shows up if a change makes
- * a pair worse, and forces this test file to be touched (not just quietly
- * start passing) the day someone picks a fix.
- */
-const KNOWN_BELOW_AA = new Set([
-	"day:button/badge ink on violet (rename mark)",
-	"day:pet error text on panel body",
-	"day:unsaved marker on panel body",
-	"day:guide more-cue on panel body",
-	"night:button/badge ink on violet (rename mark)",
-	"night:panel body text on border-outer chip",
-	"crimson:button/badge ink on pink (cancel)",
-	"crimson:button/badge ink on violet (rename mark)",
-	"crimson:panel body text on border-outer chip",
-	"crimson:pet error text on panel body",
-]);
-
-function run(
-	theme: "day" | "night" | "crimson",
-	tokens: PixelThemeTokens,
-): void {
+function run(theme: string, tokens: PixelThemeTokens): void {
 	describe(theme, () => {
-		for (const { role, fg, bg } of uiPairs(tokens)) {
-			const known = KNOWN_BELOW_AA.has(`${theme}:${role}`);
-			const runner = known ? test.fails : test;
-			runner(
-				known
-					? `${role} is a known below-AA pair pending a design decision`
-					: `${role} clears WCAG AA (4.5:1) for text`,
-				() => {
-					expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
-				},
-			);
-		}
+		test.each(uiPairs(tokens))(
+			"$role clears its WCAG threshold ($min:1)",
+			({ fg, bg, min }) => {
+				expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(min);
+			},
+		);
 	});
 }
 

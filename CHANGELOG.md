@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
+
+Completes the contrast item the 2026-09-30 a11y pass reported rather than
+fixed (`docs/testing/2026-09-30-a11y.md`). **User decision (2026-10-01):**
+add dedicated ink tokens rather than recolor any accent fill/border — six
+new fields on `PixelThemeTokens` (`--cabn-accent-violet-ink`,
+`--cabn-accent-pink-ink`, `--cabn-chip-ink`, `--cabn-error-ink`,
+`--cabn-warn-ink`, `--cabn-guide-more-ink`), each a hand-tuned variant of
+the accent it replaces as text — same technique `editorTheme.ts`'s
+`syntax*` colors already use — defined for day, night and crimson
+(`CRIMSON_TOKENS` overrides each explicitly, since it can't inherit night's
+values when its own accent fills are different colors). Two of the ten
+pairs (the unsaved-file dot, the guide's "▼ more" cue) are single status/cue
+glyphs rather than sentences, so WCAG 1.4.11 (Non-text Contrast, 3:1)
+applies instead of 1.4.3 (4.5:1) — a classification the doc now states
+explicitly per pair. Where a pair already cleared its threshold the new
+token is simply set equal to the one it replaces, so only 6 of 18 new
+per-theme values are new hues; nothing else about the look changed. All 10
+`test.fails` pins in `packages/engine/tests/uiContrast.test.ts` are now
+plain passing assertions. Before/after screenshots of each changed spot:
+`assets/generated/review/a11y/`.
+
 ## 2026-09-30 — M10 a11y pass: focus traps, dialog semantics, a real focus ring, and a scrollable-region/lang/menu-structure fix
 
 Finishes the M10 wide test pass's own scoped-down a11y section
