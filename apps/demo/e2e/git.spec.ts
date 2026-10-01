@@ -1,7 +1,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // The git multiverse end to end, against the sample world's generated
 // history (scripts/gen-git-fixture.mjs): the rift by the bonfire opens the

@@ -41,37 +41,45 @@ for the hosted demo, and split release workflow with environment protection.
   `.gitignore` and `.dockerignore` skip `.env.*` (except `.env.example`), and
   the Docker context skips `.claude/`.
 - **Backend worker isolation** (2026-10-01 followup). Each `POST /v1/worlds`
-  conversion now runs in an isolated `node:worker_threads` Worker with:
-  resource limits (heap cap, default 256 MB), a hard wall-clock timeout
-  (default 30 seconds; kills unresponsive workers), and a concurrency limit
-  (default 2 workers; returns 503 when full). Zip inflation is capped at
-  4× the upload size by default (100 MB for 25 MB uploads), and entries
-  with declared compression ratios above 100:1 are rejected. The worker
-  never receives the API key or env secrets. Configuration via environment
-  variables: `CONVERTER_POOL_CONCURRENCY`, `CONVERTER_POOL_TIMEOUT_MS`,
-  `MAX_ZIP_INFLATION_BYTES`, `MAX_COMPRESSION_RATIO`,
-  `CONVERTER_POOL_HEAP_LIMIT_MB`.
-- **Strict Content-Security-Policy for the hosted demo** (2026-10-01 followup).
-  `apps/demo/index.html` now declares a CSP via `<meta
-  http-equiv="Content-Security-Policy">` that disallows inline scripts,
-  limits connects to the pet provider APIs and Ollama, sandboxes iframes
-  for embeds, and disallows `frame-ancestors` (so the demo can't be embedded
-  elsewhere). All directives follow the narrowest safe policy: `default-src
-  'self'`, `script-src 'self'` (no inline), `style-src 'self' 'unsafe-inline'`
-  for Vite's injected styles, `connect-src` lists pet providers and Ollama
-  endpoints, `worker-src 'self' blob:` for pdf.js, `frame-ancestors 'none'`,
-  and others default to `'self'` or `'none'`. A host that sets headers
-  instead of relying on the meta tag can tighten further by listing only
-  the embed origins its own world uses.
-- **Release workflow split and OIDC environment protection** (2026-10-01 followup).
-  `.github/workflows/release.yml` is now two jobs: `build` (tests, lints,
-  audits with `contents: read` only) and `publish` (changes nothing, but
-  requires the `build` job, runs only on `main`, uses `environment: npm`
-  for required-reviewer gates in GitHub settings, and is the only job with
-  `id-token: write`). All three workflows (`ci.yml`, `deploy-backend.yml`,
-  `release.yml`) now pin actions to full commit SHAs with version comments
-  (e.g., `actions/checkout@c85c95...# v4.2.0`) instead of floating tags, so
-  a compromised action release can't inject supply-chain attacks.
+  conversion runs in a fresh `node:worker_threads` worker that starts with an
+  empty environment (no API key hashes or other host variables) and no
+  `fetch`, under heap, young-generation and stack limits
+  (`CONVERTER_POOL_HEAP_LIMIT_MB`, default 256). A conversion still running
+  after `CONVERTER_POOL_TIMEOUT_MS` (default 30s) is terminated and answered
+  `504`; its slot frees only once the thread has exited. Past
+  `CONVERTER_POOL_CONCURRENCY` (default 2, max 10) the request gets `503`
+  with `Retry-After` at once. Before inflating anything the zip's central
+  directory is checked: a declared total over `MAX_ZIP_INFLATION_BYTES`
+  (default 4× the upload cap) or an entry of 64 KiB or more declaring more
+  than `MAX_COMPRESSION_RATIO` (default 100:1) is refused with `422`, as is
+  an archive with no readable central directory. The converter's
+  `hostile-zip-bomb.zip` fixture (1024:1) is now refused instead of converted
+  with its bomb entry capped. Other failures are a generic `422`, detail in
+  the log only.
+- **Strict Content-Security-Policy for the hosted demo** (2026-10-01
+  followup). The production build's `index.html` carries the policy in
+  `apps/demo/csp-policy.mjs` as a `<meta>` tag, injected at build time only
+  (`vite dev`'s fast-refresh preamble is an inline script) and checked by a
+  fourth postbuild check. `script-src 'self'`; `style-src 'self'
+  'unsafe-inline'` because the engine injects `<style>` elements; `data:`
+  fonts for the embedded pixel font; `blob:` images, media and connects for
+  object-URL textures and in-browser worlds; `connect-src` limited to the pet
+  providers and local Ollama; `frame-src` limited to the sample world's
+  `allowedEmbedOrigins`; `base-uri`, `object-src` and `form-action` `'none'`.
+  `frame-ancestors` is header-only (ignored in a meta tag), so it is not in
+  the policy; a host that wants it must send it as a header. zod's eval probe
+  is switched off by `public/zod-jitless.js` so it doesn't report a
+  violation. The smoke, pets, embeds, media, git and loading-screen specs
+  now fail on any CSP violation (`e2e/cspGuard.ts`).
+- **Release workflow split** (2026-10-01 followup). `release.yml` is two
+  jobs: `build` (install, build, test, lint, audit; `contents: read` only)
+  and `publish` (`needs: build`, only on `main`, `environment: npm` for
+  required reviewers, the only job with `id-token: write`). Publishing uses
+  `pnpm publish -r --provenance` rather than `changeset publish` with
+  `NPM_CONFIG_PROVENANCE`: pnpm's native publish does the npm OIDC token
+  exchange itself, and changesets can't pass the provenance flag. Every
+  action in `ci.yml`, `deploy-backend.yml` and `release.yml` is pinned to
+  the commit SHA its `v4` tag resolves to, with a `# v4` comment.
 
 ## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
 

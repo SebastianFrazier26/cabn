@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
+import { expect, test } from "./cspGuard";
 
 // The two bugs mentioned in this milestone's brief (blank world, glow
 // pipeline lookup) both only showed up in a real browser — jsdom-based

@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, type Request, test } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
+import { expect, test } from "./cspGuard";
 
 // AI pets end to end, against a MOCKED provider (page.route): no real key
 // and no real provider request ever leaves the test browser. Covers setup
