@@ -1,7 +1,11 @@
 import * as nodeFs from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { DEFAULT_MAX_FILE_BYTES, openGitRepo } from "@cabn/converter";
+import {
+	DEFAULT_MAX_FILE_BYTES,
+	openGitRepo,
+	redactRepoPaths,
+} from "@cabn/converter";
 import {
 	add,
 	branch,
@@ -273,7 +277,10 @@ async function switchBranch(
 	try {
 		await checkout({ ...repo, ref: body.branch });
 	} catch (err) {
-		throw new OwnerGitError(409, `checkout refused: ${(err as Error).message}`);
+		throw new OwnerGitError(
+			409,
+			`checkout refused: ${redactRepoPaths((err as Error).message, { root: repo.dir, gitdir: repo.gitdir })}`,
+		);
 	}
 	return { branch: body.branch };
 }

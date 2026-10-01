@@ -261,6 +261,10 @@ describe("the shipped git directory", () => {
 		).toEqual({
 			kind: "sealed",
 		});
+		// Withheld, not an empty file: SourceEntry.read's undefined.
+		for await (const entry of source.entries())
+			if (entry.path === "deploy.pem")
+				expect(await entry.read()).toBeUndefined();
 		// Same rules as the main world: an ordinary file with a key in it is readable (and gets a magpie).
 		expect(
 			manifest.portals.find((p) => p.id === "src/secret.js")?.richPreview?.kind,
@@ -402,5 +406,86 @@ describe("caps and options", () => {
 		});
 		expect(bundle.has("git/files.json")).toBe(false);
 		expect(warnings.join("\n")).toMatch(/git history skipped/);
+	});
+});
+
+describe("history comes only from a real <root>/.git directory", () => {
+	const cleanups: (() => Promise<void>)[] = [];
+	afterEach(async () => {
+		for (const c of cleanups.splice(0)) await c();
+	});
+
+	async function elsewhereRepo(): Promise<FixtureRepo> {
+		const repo = await createFixtureRepo();
+		cleanups.push(repo.cleanup);
+		await repo.commit({ "far.md": "# Far away\n" }, "Far commit", 0);
+		return repo;
+	}
+
+	async function plainFolder(): Promise<string> {
+		const dir = await mkdtemp(join(tmpdir(), "cabn-git-root-"));
+		cleanups.push(() => rm(dir, { recursive: true, force: true }));
+		await writeFile(join(dir, "near.md"), "# Near\n");
+		return dir;
+	}
+
+	async function convertWithWarnings(
+		dir: string,
+		gitdir?: string,
+	): Promise<{ bundle: WorldBundle; warnings: string[] }> {
+		const warnings: string[] = [];
+		const bundle = await convert(new DirSource(dir), {
+			name: "near",
+			source: dir,
+			git: { fs, dir, ...(gitdir ? { gitdir } : {}) },
+			onWarning: (m) => warnings.push(m),
+		});
+		return { bundle, warnings };
+	}
+
+	test("a gitdir: pointer file to a real repository elsewhere ships no history and names no path", async () => {
+		const far = await elsewhereRepo();
+		const dir = await plainFolder();
+		await writeFile(join(dir, ".git"), `gitdir: ${join(far.dir, ".git")}\n`);
+		const { bundle, warnings } = await convertWithWarnings(dir);
+		expect(bundle.has("git/files.json")).toBe(false);
+		const text = warnings.join("\n");
+		expect(text).toMatch(/git history skipped: .*pointer file.*--git-dir/);
+		expect(text).not.toContain(far.dir);
+		expect(text).not.toContain(dir);
+		expect(text).not.toContain(tmpdir());
+	});
+
+	test("a .git symlink to a repository elsewhere ships no history and names no path", async () => {
+		const far = await elsewhereRepo();
+		const dir = await plainFolder();
+		await fs.promises.symlink(join(far.dir, ".git"), join(dir, ".git"));
+		const { bundle, warnings } = await convertWithWarnings(dir);
+		expect(bundle.has("git/files.json")).toBe(false);
+		const text = warnings.join("\n");
+		expect(text).toMatch(/git history skipped: .*symlink.*--git-dir/);
+		expect(text).not.toContain(far.dir);
+		expect(text).not.toContain(tmpdir());
+	});
+
+	test("a real .git directory ships history", async () => {
+		const repo = await elsewhereRepo();
+		const { bundle, warnings } = await convertWithWarnings(repo.dir);
+		expect(bundle.has("git/files.json")).toBe(true);
+		expect(metaOf(bundle).branches.map((b) => b.subject)).toEqual([
+			"Far commit",
+		]);
+		expect(warnings).toEqual([]);
+	});
+
+	test("an explicit --git-dir still reads a repository outside the folder", async () => {
+		const far = await elsewhereRepo();
+		const dir = await plainFolder();
+		await writeFile(join(dir, ".git"), `gitdir: ${join(far.dir, ".git")}\n`);
+		const { bundle } = await convertWithWarnings(dir, join(far.dir, ".git"));
+		expect(bundle.has("git/files.json")).toBe(true);
+		expect(metaOf(bundle).branches.map((b) => b.subject)).toEqual([
+			"Far commit",
+		]);
 	});
 });
