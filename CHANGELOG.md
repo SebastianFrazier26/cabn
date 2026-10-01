@@ -1,11 +1,64 @@
 # Changelog
 
+## 2026-10-01 — M10 security: token-gated serve page, history only from `<root>/.git`, secret blobs withheld
+
+The design-decision findings of the M10 security audit, as approved on
+2026-10-01.
+
+- **The `cabn serve` page needs the printed token.** `GET /` answers a plain
+  404 unless `?token=` matches the session token (constant-time compare).
+  Before, any local process could fetch the page and read
+  `__CABN_TOKEN__` and, with `--owner`, `__CABN_OWNER_TOKEN__` out of it.
+  The printed URL already carries the token, so nothing changes for a
+  person; `/app.js`, `/world/*`, `/assets/*` and the pdf worker carry no
+  token (a test checks each) and keep only the Host/Origin gate.
+- **History only from a real `<root>/.git`.** Without `--git-dir`, history
+  ships only when `<root>/.git` is a real directory (`lstat`): a `.git`
+  symlink or a `gitdir:` pointer file could name any repository on the
+  machine. The world ships no history and the note says which case it was
+  and points at `--git-dir`, the explicit opt-in for worktrees and
+  submodules. Owner git goes through the same `openGitRepo`. The skip note
+  and owner git errors (`no usable git repository`, `checkout refused`) no
+  longer echo absolute paths.
+- **Wider secret names, and secret blobs withheld from history.**
+  `DEFAULT_SECRET_PATTERNS` gains `.pypirc`, `.yarnrc.yml`, `.envrc`,
+  `.terraformrc`, `.docker/config.json` and `.kube/config`. It stays one list
+  for normal worlds, the shadow realm and the git pack; since hidden files
+  never enter a normal world, the new names matter mostly for history and
+  the shadow realm. A pattern with a folder matches that many trailing path
+  segments, and the pack walk now tracks each entry's folder. A packed text
+  blob in which `findLeakedSecretSpans` finds a key is left out the same way
+  as a secret-named one (reason `secret-name`, so older engines still parse
+  `meta.json`; the hash stays in its tree; the pensieve says "Not shipped",
+  and its label now mentions keys in the text). Each blob is scanned once,
+  after the size cap. The demo's `src/plantNamer.ts` (the magpie demo key)
+  is now "not shipped" in history; `git.spec.ts` checks that.
+- **Smaller fixes.** `GitTreeSource` reads an omitted or sealed blob as
+  `undefined` rather than an empty file (`SourceEntry.read` widened by
+  cherry-picking 2524018 from `fix/m10-converter-tickets`).
+  `resolveOwnerTarget` refuses a drive letter (`/^[A-Za-z]:/`) in any path
+  segment, not just at the start.
+- **Docs.** README, ARCHITECTURE, USER_GUIDE, CLAUDE.md and `cabn --help`
+  describe the token-gated page, the `.git` rule with `--git-dir`, and that
+  the git pack keeps hidden files that aren't secret-named.
+- **Tests.** `server.test.ts`: no token, wrong, empty, longer and upper-cased
+  tokens get 404; the printed URL gets the page; no untokened route carries
+  the token. `ownerSigns.test.ts`: the owner token appears only in the gated
+  page. `gitPack.test.ts`: pointer file, `.git` symlink, real directory and
+  explicit `--git-dir`; each new secret name withheld from the pack beside a
+  shipped `docker/config.json`; a tracked `config.ts` with a planted key
+  withheld while clean code ships. `owner.test.ts`: owner git refuses a
+  pointer file and a symlink with a path-free reason and honours
+  `--git-dir`. `walk.test.ts`: the new names and near-misses.
+  `ownerAuth.test.ts`: drive letters in later segments.
+
 ## 2026-10-01 — M10 security hardening: ReDoS, atomic owner commits, proxy trust, embed and asset guards, CI hygiene
 
 Fixes the clear-cut findings of the M10 read-only security audit. The
 findings that need a design decision (the token on `GET /`, gitdir
 confinement, history secret patterns, pet proposal proximity, backend worker
-isolation, the release workflow) are not part of this change.
+isolation, the release workflow) are not part of this change. (The first three
+were decided and fixed later the same day, in the entry above.)
 
 - **Regex denial of service.** The JSX empty-expression pattern in
   `syntaxTree.ts` was exponential (`{` + `/**/`×40 + ` x}` hung); it is now a
@@ -437,7 +490,7 @@ reduced-motion audit, and a UI-chrome contrast pass. Full write-up:
 Supersedes the same-day "Git multiverse" entry's representation, universe prebuilding, caps and history withholding (user decisions: real git in the browser; history ships as-is).
 
 - **A real, read-only git repository per world.** A repository root's world now ships `git/` (`HEAD`, `config`, `packed-refs`, `shallow`, one pack + index), `git/files.json` (the exact files there), `git/meta.json` (branch/tag summaries, boundary halvings, not-shipped blobs) and `releases.json`. `history.json`, `history/commits/*.json` and `universes/` are gone. `world.json` is unchanged and `CABN_VERSION` stays 1. The pack is written by cabn (whole objects, no deltas, v2 index; `git verify-pack` accepts it) so `cabn serve` builds the same one in memory, including after owner actions.
-- **History ships as-is.** Real commit ids, author and committer names and **emails**, signatures, and every old version of ordinary files. The diff/message withholding, the strict leaked-secret mode and branch-world sealing are removed; branch worlds follow the main world's rules (magpies). The one exception: blobs of secret-named files (the converter's secret patterns: `.env`, `*.pem`, `*credentials*`, ...) are left out of the pack at every commit, as are blobs over the per-blob cap and ignored folders; their trees still point at them and the UI says "not shipped". The README now says plainly that publishing a world publishes its git history, author emails included.
+- **History ships as-is.** Real commit ids, author and committer names and **emails**, signatures, and every old version of ordinary files. The diff/message withholding, the strict leaked-secret mode and branch-world sealing are removed; branch worlds follow the main world's rules (magpies). The one exception: blobs of secret-named files (the converter's secret patterns: `.env`, `*.pem`, `*credentials*`, ...) are left out of the pack at every commit, as are blobs over the per-blob cap and ignored folders; their trees still point at them and the UI says "not shipped". (Superseded in part on 2026-10-01 by "M10 security: token-gated serve page, history only from `<root>/.git`, secret blobs withheld": a text blob in which the leaked-secret detector finds a key is now left out too, and the secret-name list is wider.) The README now says plainly that publishing a world publishes its git history, author emails included.
 - **isomorphic-git in the browser.** The engine reads `git/` through a read-only fetch-backed file system that only ever fetches the files listed in `files.json` (writes fail with EROFS). isomorphic-git, a `Buffer` polyfill (`buffer` 6.0.3) and the converter load in lazy chunks the first time the rift, pensieve or map timeline opens; the pack starts loading then. The converter gained a `./core` export (annotators, media sniffing, search-index shape) so the engine's first chunk never reaches `convert()` or isomorphic-git.
 - **Universes on demand.** Every branch converts into a world in the browser when you travel to it (the arches' particle swirl shows meanwhile), cached per branch for the visit, with the main world's timestamp so its save slot survives reloads. In-memory worlds boot through `cabn-mem:` bases resolved to blob URLs. On-demand worlds assume web previews are framable and use no external findings.
 - **Pensieve and timeline read real objects.** The pensieve walks the branch's log, reads each version with `readBlob` and diffs in the browser (Myers, same as before); "Show the file at this commit" shows the real blob. The map timeline loads on request and diffs real trees for the selected commit.
