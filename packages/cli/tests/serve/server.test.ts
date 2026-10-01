@@ -118,10 +118,12 @@ describe("startServe — no --allow-exec", () => {
 		expect(manifest.cabnVersion).toBe(1);
 	});
 
-	it("sends a frame-src CSP on the host page ('none' for a world without embeds)", async () => {
+	it("sends a frame-src CSP on the host page ('none' for a world without embeds), and forbids framing it", async () => {
 		const res = await fetch(`http://127.0.0.1:${handle?.port}/`);
 		expect(res.status).toBe(200);
-		expect(res.headers.get("content-security-policy")).toBe("frame-src 'none'");
+		expect(res.headers.get("content-security-policy")).toBe(
+			"frame-src 'none'; frame-ancestors 'none'",
+		);
 		const embeds = await fetch(
 			`http://127.0.0.1:${handle?.port}/world/embeds.json`,
 		);
@@ -147,6 +149,23 @@ describe("startServe — no --allow-exec", () => {
 		expect(worker.status).toBe(200);
 		expect(worker.headers.get("content-type")).toContain("javascript");
 		expect((await worker.text()).length).toBeGreaterThan(100_000);
+	});
+
+	it("serves only image, audio and font assets", async () => {
+		const base = `http://127.0.0.1:${handle?.port}/assets`;
+		const sprite = await fetch(`${base}/originals/cabin_256.webp`);
+		expect(sprite.status).toBe(200);
+		expect(sprite.headers.get("content-type")).toBe("image/webp");
+		for (const path of [
+			"ui/mockup.html",
+			"UI/MOCKUP.HTML",
+			"palette.json",
+			"ui/STYLE.md",
+			"originals",
+		]) {
+			const res = await fetch(`${base}/${path}`);
+			expect(res.status, path).toBe(404);
+		}
 	});
 
 	it("serves the host page with the token embedded", async () => {
