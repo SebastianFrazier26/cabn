@@ -54,16 +54,28 @@ const WORLDS = [
 // Everything a built world is a function of besides its own inputs: the
 // packages that convert it (runBuild lives in the cli) and the git fixture
 // generator. dist/assets is the cli's copy of the sprites for `cabn serve`,
-// never read by a build.
+// never read by a build. importerPath is the package's key in the lockfile's
+// `importers:` block (see lockfileDependencyVersions) — spelled out here
+// rather than derived from dir, matching how dir itself is spelled out.
 const TOOLCHAIN = [
 	{
 		name: "@cabn/world-schema",
 		dir: join(repoRoot, "packages", "world-schema"),
+		importerPath: "packages/world-schema",
 	},
-	{ name: "@cabn/converter", dir: join(repoRoot, "packages", "converter") },
-	{ name: "@cabn/cli", dir: join(repoRoot, "packages", "cli") },
+	{
+		name: "@cabn/converter",
+		dir: join(repoRoot, "packages", "converter"),
+		importerPath: "packages/converter",
+	},
+	{
+		name: "@cabn/cli",
+		dir: join(repoRoot, "packages", "cli"),
+		importerPath: "packages/cli",
+	},
 ];
 const TOOLCHAIN_SKIP = new Set(["assets"]);
+const lockfilePath = join(repoRoot, "pnpm-lock.yaml");
 
 export async function pathExists(path) {
 	try {
@@ -117,8 +129,102 @@ export async function hashTree(dir, skip = new Set()) {
 	return hash.digest("hex");
 }
 
+/**
+ * A package's runtime dependency versions as pnpm actually resolved them,
+ * read straight out of the lockfile's `importers:` entry for `importerPath`
+ * (e.g. "packages/converter") rather than from node_modules — because a
+ * package's own dist/ never embeds a node_modules dependency's code, a
+ * lockfile-only bump (isomorphic-git, fflate, a transitive security patch)
+ * changes a toolchain package's behavior without changing a single byte the
+ * dist hash or the package.json version would see. Workspace links
+ * (`version: link:../x`) are excluded: those packages are already covered by
+ * their own dist hash. No YAML parser: pnpm-lock.yaml's importers block has
+ * fixed two-space indentation steps, so a line-oriented scan is simpler than
+ * pulling in a dependency to parse the whole document.
+ */
+export function lockfileDependencyVersions(lockfileText, importerPath) {
+	const lines = lockfileText.split("\n");
+	const headerIndex = lines.indexOf(`  ${importerPath}:`);
+	if (headerIndex === -1) return {};
+
+	const versions = {};
+	let inDependencies = false;
+	for (let i = headerIndex + 1; i < lines.length; i++) {
+		const line = lines[i];
+		if (/^ {0,2}\S/.test(line)) break; // next importer, or end of the block
+		if (/^ {4}\S/.test(line)) {
+			inDependencies = line === "    dependencies:";
+			continue;
+		}
+		if (!inDependencies) continue;
+		const nameMatch = line.match(/^ {6}'?([^':]+)'?:$/);
+		if (!nameMatch) continue;
+		const versionMatch = lines[i + 2]?.match(/^ {8}version: (.+)$/);
+		if (!versionMatch || versionMatch[1].startsWith("link:")) continue;
+		versions[nameMatch[1]] = versionMatch[1];
+	}
+	return versions;
+}
+
+/**
+ * Walks `dir` recursively and returns the newest file mtime in it, or
+ * undefined if `dir` doesn't exist or has no files. Used only for the
+ * build-freshness check below — content hashing already does the real
+ * fingerprint work and must stay mtime-independent.
+ */
+async function latestMtimeMs(dir) {
+	let latest;
+	async function walk(current) {
+		let entries;
+		try {
+			entries = await readdir(current, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const full = join(current, entry.name);
+			if (entry.isDirectory()) await walk(full);
+			else if (entry.isFile()) {
+				const { mtimeMs } = await stat(full);
+				if (latest === undefined || mtimeMs > latest) latest = mtimeMs;
+			}
+		}
+	}
+	await walk(dir);
+	return latest;
+}
+
+/**
+ * `pnpm -r build` rebuilds every workspace package in topological order, but
+ * a filtered `pnpm -F @cabn/demo build` never rebuilds its deps — it just
+ * assumes their dist/ is current. On a merge that changes converter/
+ * world-schema/cli src without a matching rebuild, that assumption breaks
+ * silently: dist/ stays byte-identical to before, so the content hash below
+ * can't tell "unchanged" from "never rebuilt" apart. Mtime is the right
+ * signal for that question specifically (dist hashing stays mtime-blind on
+ * purpose, see hashTree) — fail fast here rather than let a stale dist pass
+ * as up to date.
+ */
+export async function assertToolchainBuilt(toolchain = TOOLCHAIN) {
+	for (const pkg of toolchain) {
+		const srcLatest = await latestMtimeMs(join(pkg.dir, "src"));
+		if (srcLatest === undefined) continue;
+		const distLatest = await latestMtimeMs(join(pkg.dir, "dist"));
+		if (distLatest === undefined || distLatest < srcLatest) {
+			throw new Error(
+				`cabn demo: ${pkg.name}'s dist/ is missing or older than its src/. ` +
+					`Run "pnpm -r build" (or "pnpm --filter ${pkg.name} build") before building the demo.`,
+			);
+		}
+	}
+}
+
 /** Hashes that don't depend on which world is being built — computed once per run. */
-export async function toolchainFingerprint(toolchain = TOOLCHAIN) {
+export async function toolchainFingerprint(
+	toolchain = TOOLCHAIN,
+	lockfileText,
+) {
+	lockfileText ??= await readFile(lockfilePath, "utf8");
 	const parts = {};
 	for (const pkg of toolchain) {
 		const manifest = JSON.parse(
@@ -127,6 +233,9 @@ export async function toolchainFingerprint(toolchain = TOOLCHAIN) {
 		parts[pkg.name] = {
 			version: manifest.version,
 			dist: await hashTree(join(pkg.dir, "dist"), TOOLCHAIN_SKIP),
+			runtimeDeps: pkg.importerPath
+				? lockfileDependencyVersions(lockfileText, pkg.importerPath)
+				: {},
 		};
 	}
 	const schema = await import(
@@ -177,6 +286,7 @@ async function readStoredFingerprint(name) {
 
 async function main() {
 	const force = process.argv.includes("--force");
+	await assertToolchainBuilt();
 	const toolchain = await toolchainFingerprint();
 
 	const bundleDirs = [];
