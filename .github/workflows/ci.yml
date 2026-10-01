@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -18,9 +21,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r build
       - run: pnpm lint
-      # Fails the build on high/critical findings in prod deps only — see
-      # README's audit note for the current low-severity dev-tooling finding
-      # this deliberately doesn't gate on.
+      # Audits every dependency, dev tooling included, and fails only on
+      # high/critical findings; lower severities are reported, not gated.
       - run: pnpm audit --audit-level=high
       - run: pnpm -r test
 

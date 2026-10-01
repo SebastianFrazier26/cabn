@@ -8,7 +8,7 @@ describe("loadConfig", () => {
 		expect(config.maxUploadBytes).toBe(25 * 1024 * 1024);
 		expect(config.corsOrigins).toEqual([]);
 		expect(config.apiKeyHashes).toEqual([]);
-		expect(config.trustProxy).toBe(false);
+		expect(config.trustProxy).toBe(0);
 		expect(config.rateLimitMax).toBe(20);
 	});
 
@@ -37,9 +37,21 @@ describe("loadConfig", () => {
 		);
 	});
 
-	test("CABN_TRUST_PROXY only enables on the literal string 'true'", () => {
-		expect(loadConfig({ CABN_TRUST_PROXY: "true" }).trustProxy).toBe(true);
-		expect(loadConfig({ CABN_TRUST_PROXY: "1" }).trustProxy).toBe(false);
-		expect(loadConfig({}).trustProxy).toBe(false);
+	test("CABN_TRUST_PROXY is a hop count; the old 'true' means one hop", () => {
+		expect(loadConfig({}).trustProxy).toBe(0);
+		expect(loadConfig({ CABN_TRUST_PROXY: "1" }).trustProxy).toBe(1);
+		expect(loadConfig({ CABN_TRUST_PROXY: "2" }).trustProxy).toBe(2);
+		expect(loadConfig({ CABN_TRUST_PROXY: "0" }).trustProxy).toBe(0);
+		expect(loadConfig({ CABN_TRUST_PROXY: "true" }).trustProxy).toBe(1);
+		expect(loadConfig({ CABN_TRUST_PROXY: "false" }).trustProxy).toBe(0);
 	});
+
+	test.each(["yes", "-1", "11", "1.5", "TRUE", "1,2"])(
+		"rejects CABN_TRUST_PROXY=%s",
+		(value) => {
+			expect(() => loadConfig({ CABN_TRUST_PROXY: value })).toThrow(
+				ConfigError,
+			);
+		},
+	);
 });

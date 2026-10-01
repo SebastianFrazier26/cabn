@@ -6,15 +6,18 @@ import { normalizeLine, uniquifyRules } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 const MARKER_PATTERN = /\b(TODO|FIXME|XXX|HACK)\b/g;
-const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
-
+// indexOf rather than `/<!--[\s\S]*?-->/g`, which rescans to the end of the
+// file from every `<!--` when none is ever closed.
 function htmlCommentSpans(content: string): CommentSpan[] {
 	const spans: CommentSpan[] = [];
-	HTML_COMMENT_PATTERN.lastIndex = 0;
-	let match: RegExpExecArray | null = HTML_COMMENT_PATTERN.exec(content);
-	while (match !== null) {
-		spans.push({ start: match.index, end: match.index + match[0].length });
-		match = HTML_COMMENT_PATTERN.exec(content);
+	let from = 0;
+	for (;;) {
+		const start = content.indexOf("<!--", from);
+		if (start === -1) break;
+		const close = content.indexOf("-->", start + 4);
+		if (close === -1) break;
+		spans.push({ start, end: close + 3 });
+		from = close + 3;
 	}
 	return spans;
 }
@@ -37,12 +40,21 @@ export const todoMarker: Annotator = (ctx) => {
 	if (spans.length === 0) return [];
 
 	const results: ErrorAnnotation[] = [];
+	// Markers and spans both run left to right, so one cursor replaces a
+	// per-marker search of every span.
+	let cursor = 0;
 	MARKER_PATTERN.lastIndex = 0;
 	let match: RegExpExecArray | null = MARKER_PATTERN.exec(content);
 	while (match !== null) {
 		const index = match.index;
 		const marker = match[1] ?? "";
-		const span = spans.find((s) => index >= s.start && index < s.end);
+		while (cursor < spans.length && (spans[cursor]?.end ?? 0) <= index)
+			cursor++;
+		const candidate = spans[cursor];
+		const span =
+			candidate !== undefined && index >= candidate.start
+				? candidate
+				: undefined;
 		if (span) {
 			const loc = locAt(content, index);
 			const lineEnd = content.indexOf("\n", index);

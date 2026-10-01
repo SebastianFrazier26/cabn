@@ -6,6 +6,7 @@ import { parser as jsParser } from "@lezer/javascript";
 import type { LRParser } from "@lezer/lr";
 import { parser as pythonParser } from "@lezer/python";
 import { shortHash } from "../hash.js";
+import { locAt } from "./loc.js";
 
 export type TreeLanguage = "js" | "ts" | "python" | "css" | "html";
 
@@ -96,7 +97,22 @@ export function parseFile(
 // annotations, type predicates in function types, `type` export specifiers,
 // optional tuple members, `x! +=`, ...) were too many to enumerate, so TS is
 // out of the imp's scope entirely (see syntaxError.ts).
-const GAP_LINE_PATTERNS: Readonly<Record<TreeLanguage, readonly RegExp[]>> = {
+type LineTest = Pick<RegExp, "test">;
+
+// A line can hold one `lambda` per few characters, and `/\blambda\b[^:]*\//`
+// rescans to the end of the line from each one. A `:` can never sit between
+// the lambda and its `/`, so per `:`-separated segment the first lambda
+// decides it.
+const POSITIONAL_ONLY_LAMBDA: LineTest = {
+	test(line: string): boolean {
+		return line.split(":").some((segment) => {
+			const lambda = /\blambda\b/.exec(segment);
+			return lambda !== null && segment.includes("/", lambda.index + 6);
+		});
+	},
+};
+
+const GAP_LINE_PATTERNS: Readonly<Record<TreeLanguage, readonly LineTest[]>> = {
 	js: [
 		/^\s*(import|export)\b.*\b(with|assert)\s*\{/, // import attributes
 		// @lezer/javascript 1.5.5 (2026-09-20) rejects a default on a shorthand
@@ -107,15 +123,107 @@ const GAP_LINE_PATTERNS: Readonly<Record<TreeLanguage, readonly RegExp[]>> = {
 	ts: [],
 	python: [
 		/^\s*@/, // PEP 614 arbitrary decorator expressions
-		/\blambda\b[^:]*\//, // positional-only lambda parameters
+		POSITIONAL_ONLY_LAMBDA, // positional-only lambda parameters
 		/\[\s*\*/, // PEP 646 star expression in a subscript
 	],
 	css: [/^\s*@import\b/], // layer()/supports() import conditions
 	html: [],
 };
 const GAP_ANCESTORS = new Set(["PatternProperty", "ObjectPattern"]);
-// JSX comment children (`{/* note */}`) and empty expressions (`{}`).
-const JSX_EMPTY_EXPRESSION = /\{\s*(?:\/\*[\s\S]*?\*\/\s*)*\}/g;
+const WHITESPACE = /\s/;
+
+/**
+ * Spans of JSX comment children (`{/* note *\/}`) and empty expressions
+ * (`{}`): what `/\{\s*(?:\/\*[\s\S]*?\*\/\s*)*\}/g` matches, non-overlapping,
+ * left to right. A scanner rather than that regex: `[\s\S]*?` can stretch
+ * one comment across several, which is exponential on `{/**\/.../**\/ x}`, and
+ * even a terminator-safe comment pattern rescans the same comment chain from
+ * every `{` nested inside an earlier comment. Here each chain position's
+ * outcome is computed once.
+ */
+export function jsxEmptyExpressionSpans(
+	content: string,
+): { start: number; end: number }[] {
+	let commentEnds: number[] | undefined;
+	const commentEndFrom = (from: number): number => {
+		if (commentEnds === undefined) {
+			commentEnds = [];
+			for (
+				let i = content.indexOf("*/");
+				i !== -1;
+				i = content.indexOf("*/", i + 1)
+			)
+				commentEnds.push(i);
+		}
+		let lo = 0;
+		let hi = commentEnds.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if ((commentEnds[mid] ?? 0) < from) lo = mid + 1;
+			else hi = mid;
+		}
+		return commentEnds[lo] ?? -1;
+	};
+	// Position just after a `{` or a comment -> end of the match through the
+	// closing `}`, or -1 when no `}` can close it from there.
+	const chainEnd = new Map<number, number>();
+	const resolveChain = (start: number): number => {
+		const visited: number[] = [];
+		let p = start;
+		let result = -1;
+		for (;;) {
+			const known = chainEnd.get(p);
+			if (known !== undefined) {
+				result = known;
+				break;
+			}
+			visited.push(p);
+			let q = p;
+			while (q < content.length && WHITESPACE.test(content[q] ?? "")) q++;
+			if (content[q] === "}") {
+				result = q + 1;
+				break;
+			}
+			if (content[q] !== "/" || content[q + 1] !== "*") break;
+			const close = commentEndFrom(q + 2);
+			if (close === -1) break;
+			p = close + 2;
+		}
+		for (const v of visited) chainEnd.set(v, result);
+		return result;
+	};
+
+	const spans: { start: number; end: number }[] = [];
+	let from = 0;
+	for (;;) {
+		const open = content.indexOf("{", from);
+		if (open === -1) break;
+		const end = resolveChain(open + 1);
+		if (end === -1) {
+			from = open + 1;
+		} else {
+			spans.push({ start: open, end });
+			from = end;
+		}
+	}
+	return spans;
+}
+
+/** Whether `index` falls in one of `spans` (sorted, non-overlapping), ends inclusive. */
+function inSpans(
+	spans: readonly { start: number; end: number }[],
+	index: number,
+): boolean {
+	let lo = 0;
+	let hi = spans.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if ((spans[mid]?.start ?? 0) <= index) lo = mid + 1;
+		else hi = mid;
+	}
+	const span = spans[lo - 1];
+	return span !== undefined && index <= span.end;
+}
 
 function inGapAncestor(node: SyntaxNode): boolean {
 	for (let p = node.parent; p; p = p.parent) {
@@ -133,26 +241,37 @@ export function syntaxErrorNodes(
 	parsed: ParsedFile,
 ): { from: number; to: number }[] {
 	const { content, language } = parsed;
-	const jsxSpans: { start: number; end: number }[] = [];
-	if (language === "js" || language === "ts") {
-		for (const m of content.matchAll(JSX_EMPTY_EXPRESSION)) {
-			jsxSpans.push({ start: m.index, end: m.index + m[0].length });
-		}
-	}
+	const jsxSpans =
+		language === "js" || language === "ts"
+			? jsxEmptyExpressionSpans(content)
+			: [];
 	const patterns = GAP_LINE_PATTERNS[language];
+	// A minified line can carry thousands of error nodes; test it once.
+	const gapLine = new Map<number, boolean>();
 	const out: { from: number; to: number }[] = [];
 	const cursor = parsed.tree.cursor();
 	do {
 		if (!cursor.type.isError) continue;
 		const { from, to } = cursor;
-		if (jsxSpans.some((s) => from >= s.start && from <= s.end)) continue;
-		const lineStart = content.lastIndexOf("\n", Math.max(0, from - 1)) + 1;
-		const lineEndAt = content.indexOf("\n", from);
-		const line = content.slice(
-			lineStart,
-			lineEndAt === -1 ? content.length : lineEndAt,
-		);
-		if (patterns.some((p) => p.test(line))) continue;
+		if (inSpans(jsxSpans, from)) continue;
+		// From the shared line table, not lastIndexOf: on one long line that
+		// walked back to its start for every error. The one case where
+		// lastIndexOf answered past `from` is an error at 0 on an empty first
+		// line; it keeps that answer.
+		const lineStart =
+			from === 0 && content[0] === "\n" ? 1 : from - locAt(content, from).col;
+		const lineKey = lineStart > from ? -1 : lineStart;
+		let isGap = gapLine.get(lineKey);
+		if (isGap === undefined) {
+			const lineEndAt = content.indexOf("\n", Math.min(lineStart, from));
+			const line = content.slice(
+				lineStart,
+				lineEndAt === -1 ? content.length : lineEndAt,
+			);
+			isGap = patterns.some((p) => p.test(line));
+			gapLine.set(lineKey, isGap);
+		}
+		if (isGap) continue;
 		if (inGapAncestor(cursor.node)) continue;
 		out.push({ from, to });
 	} while (cursor.next());
@@ -165,11 +284,28 @@ export function nodeText(parsed: ParsedFile, node: SyntaxNode): string {
 
 /** Whitespace-collapsed, trimmed text of the line containing `index` — the content anchor rule strings hash. */
 export function lineTextAt(content: string, index: number): string {
-	const start = content.lastIndexOf("\n", Math.max(0, index - 1)) + 1;
-	const endAt = content.indexOf("\n", index);
+	// Every finding on a line asks for the same text; on one long minified
+	// line, rebuilding it per finding was quadratic.
+	if (content !== lineTextContent) {
+		lineTextContent = content;
+		lineTextCache = new Map();
+	}
+	const at = Math.max(0, Math.min(index, content.length));
+	// lastIndexOf, which this replaced, put an index of 0 on an empty first
+	// line on the line after it; kept.
+	const start =
+		at === 0 && content[0] === "\n" ? 1 : at - locAt(content, at).col;
+	const key = start > at ? -1 : start;
+	const cached = lineTextCache.get(key);
+	if (cached !== undefined) return cached;
+	const endAt = content.indexOf("\n", Math.min(start, at));
 	const end = endAt === -1 ? content.length : endAt;
-	return normalizeLine(content.slice(start, end));
+	const text = normalizeLine(content.slice(start, end));
+	lineTextCache.set(key, text);
+	return text;
 }
+let lineTextContent: string | undefined;
+let lineTextCache = new Map<number, string>();
 
 export function normalizeLine(line: string): string {
 	return line.trim().replace(/\s+/g, " ");

@@ -28,21 +28,116 @@ const JS_IMPORT_PATTERNS: readonly RegExp[] = [
 	/\bfrom\s+['"](\.[^'"]+)['"]/g,
 	/\bimport\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g,
 	/\brequire\(\s*['"](\.[^'"]+)['"]\s*\)/g,
-	/^\s*import\s+['"](\.[^'"]+)['"]/gm, // side-effect import, no "from"
+	// Leading whitespace stops at the line end: `^\s*` under /m re-scans every
+	// following blank line from each line start, quadratic on a run of them.
+	/^[^\S\n\r\u2028\u2029]*import\s+['"](\.[^'"]+)['"]/gm, // side-effect import, no "from"
 ];
 
 // One dot = the file's own package (its directory); each additional leading
 // dot goes up one more directory — standard Python relative-import semantics.
 // Group 3 (the import list) also matches a parenthesized, possibly
 // multi-line list — [^)] already matches newlines, no /s flag needed.
+// Group 2 can't start with a dot: `(\.+)([\w.]*)` could split a dot run any
+// way, which is quadratic on `from ....` with no `import`. Greedy `\.+` took
+// every dot first anyway, so the captures are unchanged.
 const PY_IMPORT_PATTERN =
-	/^[ \t]*from\s+(\.+)([\w.]*)\s+import\s+(\([^)]*\)|[^\n]*)/gm;
+	/^[ \t]*from\s+(\.+)(\w[\w.]*)?\s+import\s+(\([^)]*\)|[^\n]*)/gm;
 
-const MD_LINK_PATTERN = /\[[^\]]*\]\(([^)]+)\)/g;
-// Obsidian/wiki-style `[[target]]` or `[[target|display text]]` — no URL
-// scheme concept exists for these, so (unlike MD_LINK_PATTERN) every match is
-// unconditionally treated as a relative reference.
-const WIKILINK_PATTERN = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+/**
+ * Next index at or after `from` of any char in `chars`, -1 if none. Callers
+ * scan left to right with non-decreasing `from`, so the last answer is reused
+ * while `from` hasn't passed it: every `[` in a run like `[[[[...` would
+ * otherwise rescan to the same `]`, quadratic in the file.
+ */
+function forwardFinder(
+	content: string,
+	chars: string,
+): (from: number) => number {
+	let lastFrom = Number.POSITIVE_INFINITY;
+	let lastHit = -1;
+	return (from) => {
+		if (from >= lastFrom && (lastHit === -1 || from <= lastHit)) return lastHit;
+		let i = from;
+		while (i < content.length && !chars.includes(content[i] ?? "")) i++;
+		lastFrom = from;
+		lastHit = i < content.length ? i : -1;
+		return lastHit;
+	};
+}
+
+interface LinkMatch {
+	index: number;
+	target: string;
+	targetIndex: number;
+}
+
+/**
+ * `[text](target)` — exactly what `/\[[^\]]*\]\(([^)]+)\)/g` matches, as a
+ * scanner: both classes run to the first `]`/`)`, so the regex never
+ * backtracks into a different answer, but it does rescan from each `[`.
+ */
+function markdownLinks(content: string): LinkMatch[] {
+	const nextClose = forwardFinder(content, "]");
+	const nextParen = forwardFinder(content, ")");
+	const out: LinkMatch[] = [];
+	let from = 0;
+	for (;;) {
+		const open = content.indexOf("[", from);
+		if (open === -1) break;
+		const close = nextClose(open + 1);
+		if (close === -1) break;
+		if (content[close + 1] !== "(") {
+			from = open + 1;
+			continue;
+		}
+		const paren = nextParen(close + 2);
+		if (paren === -1) break;
+		if (paren === close + 2) {
+			from = open + 1;
+			continue;
+		}
+		out.push({
+			index: open,
+			target: content.slice(close + 2, paren),
+			targetIndex: close + 2,
+		});
+		from = paren + 1;
+	}
+	return out;
+}
+
+/**
+ * Obsidian/wiki-style `[[target]]` or `[[target|display text]]`, matching
+ * `/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g`. No URL scheme concept exists for
+ * these, so (unlike markdownLinks) every match is unconditionally treated as
+ * a relative reference.
+ */
+function wikilinks(content: string): LinkMatch[] {
+	const nextStop = forwardFinder(content, "]|");
+	const nextClose = forwardFinder(content, "]");
+	const out: LinkMatch[] = [];
+	let from = 0;
+	for (;;) {
+		const open = content.indexOf("[[", from);
+		if (open === -1) break;
+		const stop = nextStop(open + 2);
+		if (stop === -1) break;
+		let close = stop;
+		if (stop > open + 2 && content[stop] === "|") close = nextClose(stop + 1);
+		if (close === -1) break;
+		if (stop === open + 2 || content[close + 1] !== "]") {
+			from = open + 1;
+			continue;
+		}
+		out.push({
+			index: open,
+			target: content.slice(open + 2, stop),
+			targetIndex: open + 2,
+		});
+		from = close + 2;
+	}
+	return out;
+}
 
 function extractJsRefs(content: string): RelativeRef[] {
 	const seen = new Set<number>();
@@ -132,32 +227,19 @@ function normalizeMdTarget(raw: string): string | null {
 
 function extractMdRefs(content: string): RelativeRef[] {
 	const refs: RelativeRef[] = [];
-	MD_LINK_PATTERN.lastIndex = 0;
-	let match: RegExpExecArray | null = MD_LINK_PATTERN.exec(content);
-	while (match !== null) {
-		const raw = match[1];
-		const target = raw !== undefined ? normalizeMdTarget(raw) : null;
-		if (target !== null && raw !== undefined) {
-			const rawIndex = content.indexOf(raw, match.index);
-			const { line, col } = locAt(
-				content,
-				rawIndex === -1 ? match.index : rawIndex,
-			);
+	for (const link of markdownLinks(content)) {
+		const target = normalizeMdTarget(link.target);
+		if (target !== null) {
+			const { line, col } = locAt(content, link.targetIndex);
 			refs.push({ spec: target, line, col, isMarkdownLink: true });
 		}
-		match = MD_LINK_PATTERN.exec(content);
 	}
 
-	WIKILINK_PATTERN.lastIndex = 0;
-	match = WIKILINK_PATTERN.exec(content);
-	while (match !== null) {
-		const target = match[1]?.trim();
+	for (const link of wikilinks(content)) {
+		const target = link.target.trim();
 		if (target) {
-			const targetIndex = content.indexOf(target, match.index);
-			const { line, col } = locAt(
-				content,
-				targetIndex === -1 ? match.index : targetIndex,
-			);
+			const lead = link.target.length - link.target.trimStart().length;
+			const { line, col } = locAt(content, link.targetIndex + lead);
 			refs.push({
 				spec: target,
 				line,
@@ -166,7 +248,6 @@ function extractMdRefs(content: string): RelativeRef[] {
 				isWikilink: true,
 			});
 		}
-		match = WIKILINK_PATTERN.exec(content);
 	}
 	return refs;
 }

@@ -15,6 +15,9 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy-backend.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -24,10 +27,14 @@ jobs:
       # An env-check step, not a bare `if: secrets.RAILWAY_TOKEN != ''` on
       # every later step — this exits neutral with a clear message instead of
       # every subsequent step just silently vanishing from the run log.
+      # Through env, not interpolated: an expression is pasted into the
+      # script text before the shell parses it.
       - name: Check for RAILWAY_TOKEN
         id: check
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
+          if [ -z "$RAILWAY_TOKEN" ]; then
             echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying the backend' section to add it."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
@@ -51,7 +58,7 @@ jobs:
         if: steps.check.outputs.configured == 'true'
       - name: Install Railway CLI
         if: steps.check.outputs.configured == 'true'
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@5.63.1
       - name: Deploy to Railway
         if: steps.check.outputs.configured == 'true'
         env:

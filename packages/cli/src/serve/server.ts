@@ -186,17 +186,49 @@ export function isShadowAssetPath(relPath: string): boolean {
 	return first?.toLowerCase() === "shadow";
 }
 
+// What the engine loads from /assets/: images, plus room for audio and fonts.
+// Anything else in those trees (the UI mockup's .html, manifests, notes) would
+// otherwise be served from this origin, html as a live page beside the token.
+const REPO_ASSET_TYPES: Record<string, string> = {
+	".png": "image/png",
+	".webp": "image/webp",
+	".gif": "image/gif",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".mp3": "audio/mpeg",
+	".ogg": "audio/ogg",
+	".wav": "audio/wav",
+	".woff": "font/woff",
+	".woff2": "font/woff2",
+};
+
+// The host page carries the session token and drives owner writes, so no
+// other page may frame it (clickjacking). Only cabn serve's own page; the
+// demo and hosted builds set their own headers.
+function hostPagePolicy(frameSrc: string): string {
+	return `${frameSrc}; frame-ancestors 'none'`;
+}
+
 async function serveRepoAsset(
 	res: ServerResponse,
 	relPath: string,
 ): Promise<void> {
+	const contentType = REPO_ASSET_TYPES[extname(relPath).toLowerCase()];
+	if (!contentType) {
+		res.writeHead(404);
+		res.end("not found");
+		return;
+	}
 	// Bundled dist/assets checked first so a published install wins even if
 	// this happens to also be running inside the monorepo checkout.
 	for (const base of [BUNDLED_ASSETS_DIR, REPO_ASSETS_DIR]) {
 		try {
 			const real = await resolveConfinedPath(base, relPath);
+			// A symlinked name mustn't relabel some other file type.
+			if (REPO_ASSET_TYPES[extname(real).toLowerCase()] !== contentType)
+				continue;
 			const data = await readFile(real);
-			res.writeHead(200, { "content-type": contentTypeFor(real) });
+			res.writeHead(200, { "content-type": contentType });
 			res.end(data);
 			return;
 		} catch {
@@ -351,7 +383,7 @@ async function handleRequest(
 		res.writeHead(200, {
 			"content-type": "text/html; charset=utf-8",
 			"cache-control": "no-store",
-			"content-security-policy": ctx.csp,
+			"content-security-policy": hostPagePolicy(ctx.csp),
 		});
 		res.end(ctx.html);
 		return;

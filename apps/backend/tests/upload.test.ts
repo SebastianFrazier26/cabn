@@ -337,4 +337,53 @@ describe("POST /v1/worlds: rate limiting", () => {
 			await app.close();
 		}
 	});
+
+	describe("per-IP bucket behind one trusted proxy", () => {
+		function anonymous(app: FastifyInstance, forwardedFor: string) {
+			return app.inject({
+				method: "POST",
+				url: "/v1/worlds",
+				headers: { "x-forwarded-for": forwardedFor },
+			});
+		}
+
+		test("a spoofed leftmost X-Forwarded-For entry doesn't get a fresh bucket", async () => {
+			const { sha256Hex: hash } = makeApiKey();
+			const app = buildApp(
+				testConfig({
+					apiKeyHashes: [Buffer.from(hash, "hex")],
+					trustProxy: 1,
+					rateLimitMax: 2,
+				}),
+			);
+			try {
+				const codes = [];
+				for (const spoof of ["198.51.100.1", "198.51.100.2", "198.51.100.3"])
+					codes.push(
+						(await anonymous(app, `${spoof}, 203.0.113.7`)).statusCode,
+					);
+				expect(codes).toEqual([401, 401, 429]);
+			} finally {
+				await app.close();
+			}
+		});
+
+		test("the address the proxy appended is the key", async () => {
+			const { sha256Hex: hash } = makeApiKey();
+			const app = buildApp(
+				testConfig({
+					apiKeyHashes: [Buffer.from(hash, "hex")],
+					trustProxy: 1,
+					rateLimitMax: 1,
+				}),
+			);
+			try {
+				expect((await anonymous(app, "203.0.113.7")).statusCode).toBe(401);
+				expect((await anonymous(app, "203.0.113.8")).statusCode).toBe(401);
+				expect((await anonymous(app, "203.0.113.7")).statusCode).toBe(429);
+			} finally {
+				await app.close();
+			}
+		});
+	});
 });

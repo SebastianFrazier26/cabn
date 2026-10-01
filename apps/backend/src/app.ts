@@ -56,6 +56,19 @@ export interface BuildAppOptions {
 }
 
 /**
+ * A trust function rather than the hop count itself: Fastify 5.12 answers a
+ * numeric `trustProxy` by trusting no hop at all (it can't vet the immediate
+ * peer), which would put every client behind Railway's edge into one
+ * rate-limit bucket. Railway reaches the container only through its edge, so
+ * trusting the nearest `hops` peers is exactly what the count means there.
+ */
+export function trustedHops(
+	hops: number,
+): false | ((address: string, hop: number) => boolean) {
+	return hops > 0 ? (_address, hop) => hop < hops : false;
+}
+
+/**
  * Throws synchronously in production with no configured keys, refusing to
  * start at all rather than booting an upload route nobody can authenticate
  * against but that would still 401 every request "safely" — a cheap trap
@@ -74,7 +87,7 @@ export function buildApp(
 	}
 
 	const app = Fastify({
-		trustProxy: config.trustProxy,
+		trustProxy: trustedHops(config.trustProxy),
 		// Multipart framing (boundaries, headers) adds a little on top of the
 		// file itself; @fastify/multipart's own fileSize limit below is what
 		// actually enforces the intended cap on file content.

@@ -368,7 +368,9 @@ function pythonUnusedLocals(parsed: ParsedFile, fn: SyntaxNode): Finding[] {
 	const fnText = content.slice(fn.from, fn.to);
 	if (/\b(locals|vars|eval|exec)\s*\(/.test(fnText)) return [];
 	const scoped = new Set<string>();
-	for (const m of fnText.matchAll(/^\s*(?:global|nonlocal)\s+([^\n#]+)/gm)) {
+	for (const m of fnText.matchAll(
+		/^[^\S\n\r\u2028\u2029]*(?:global|nonlocal)\s+([^\n#]+)/gm,
+	)) {
 		for (const name of (m[1] ?? "").split(",")) scoped.add(name.trim());
 	}
 	const body = fn.getChild("Body");

@@ -49,6 +49,47 @@ Two long-standing follow-up tickets from the M10 plan.
   and absent from `search-index.json`, for both a `ZipSource` and a generic
   directory-shaped `FileSource`).
 
+## 2026-10-01 — M10 security hardening: ReDoS, atomic owner commits, proxy trust, embed and asset guards, CI hygiene
+
+Fixes the clear-cut findings of the M10 read-only security audit. The
+findings that need a design decision (the token on `GET /`, gitdir
+confinement, history secret patterns, pet proposal proximity, backend worker
+isolation, the release workflow) are not part of this change.
+
+- **Regex denial of service.** The JSX empty-expression pattern in
+  `syntaxTree.ts` was exponential (`{` + `/**/`×40 + ` x}` hung); it is now a
+  memoized scanner. Markdown links, wikilinks and HTML comments use
+  `indexOf` scanners; connection strings cap user and password at 256 chars;
+  side-effect imports, Python `global` lines and relative imports no longer
+  backtrack over overlapping quantifiers; a Python line of `lambda`s and
+  trailing-whitespace trimming are linear. `locAt` and `lineTextAt` keep a
+  line table per file, and `syntaxErrorNodes` tests each line once, so
+  thousands of findings on one minified line stay linear. In the engine, the
+  outline's heading parser (cubic on a heading with a long run of spaces),
+  the inline link pattern (text capped at 500 chars, target at 2048) and the
+  formatter's trailing-whitespace trim are fixed the same way. Each payload
+  has a timed test (`packages/converter/test/annotate/redos.test.ts`,
+  `packages/engine/tests/redos.test.ts`).
+- **Owner commits write atomically.** `ownerGit.ts` now uses
+  `overwriteFileAtomic` like sign and shadow saves: temp file plus rename,
+  file mode kept, no writing through a hard link.
+- **Backend proxy trust.** `CABN_TRUST_PROXY` is a zod-validated hop count
+  (0-10; Railway: `1`), applied as a trust function, so a client-written
+  leftmost `X-Forwarded-For` entry no longer picks its own rate-limit
+  bucket. The old value `true` means one hop; `false` means none.
+- **Embeds.** `shouldMountEmbed` refuses the page's own origin, where
+  `allow-scripts allow-same-origin` would not sandbox anything. The embed's
+  fallback card shows its link only when `canOpenPortalLink` allows the url.
+- **`cabn serve`.** `/assets/` serves only image, audio and font files (the
+  UI mockup's `.html` used to load as a page on the token's origin), and the
+  host page's CSP adds `frame-ancestors 'none'`.
+- **CI and ignore files.** `ci.yml` and `deploy-backend.yml` run with a
+  read-only token (`release.yml` already declared its permissions); the
+  deploy job reads `RAILWAY_TOKEN` from `env` and pins `@railway/cli@5.63.1`;
+  the `pnpm audit` comment now says it covers dev dependencies too.
+  `.gitignore` and `.dockerignore` skip `.env.*` (except `.env.example`), and
+  the Docker context skips `.claude/`.
+
 ## 2026-10-01 — M10 a11y pass: dedicated AA-safe ink tokens for the 10 reported contrast pairs
 
 Completes the contrast item the 2026-09-30 a11y pass reported rather than
