@@ -141,7 +141,9 @@ describe("owner mode is opt-in", () => {
 	// Plain `cabn serve` (no owner routes, no client) is covered for both route groups in ownerSigns.test.ts.
 	it("with --owner the page carries a separate token and the host app wires the owner client", async () => {
 		const h = await serveOwner();
-		const page = await raw(h.port, "GET", "/", { host: `127.0.0.1:${h.port}` });
+		const page = await raw(h.port, "GET", `/?token=${h.token}`, {
+			host: `127.0.0.1:${h.port}`,
+		});
 		expect(page.body).toContain(
 			`window.__CABN_OWNER_TOKEN__ = "${h.ownerToken}"`,
 		);

@@ -281,6 +281,11 @@ function isExecTokenValid(
 	);
 }
 
+function isPageTokenValid(url: URL, ctx: Pick<ServeContext, "token">): boolean {
+	const presented = url.searchParams.get("token");
+	return presented !== null && constantTimeEqual(presented, ctx.token);
+}
+
 async function handleExec(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -377,6 +382,14 @@ async function handleRequest(
 	const url = new URL(req.url ?? "/", `http://${ctx.host}:${ctx.port}`);
 
 	if (req.method === "GET" && url.pathname === "/") {
+		// Host/Origin alone don't stop another local process from reading the
+		// page and lifting both tokens out of it; only whoever saw the printed
+		// URL gets it. 404 rather than 403, as for the absent routes below.
+		if (!isPageTokenValid(url, ctx)) {
+			res.writeHead(404);
+			res.end("not found");
+			return;
+		}
 		// The page embeds the session token in a <script> — never cacheable,
 		// including by an intermediary that might otherwise serve it back to a
 		// different origin's request.

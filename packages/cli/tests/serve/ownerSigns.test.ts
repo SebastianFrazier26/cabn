@@ -281,10 +281,19 @@ describe("owner sign routes", () => {
 		expect(res.status).toBe(405);
 	});
 
-	it("the owner token is in the page but never in the printed url or app.js", async () => {
+	it("the owner token is only in the token-gated page, never in the printed url or app.js", async () => {
 		const h = handle as ServeHandle;
-		const page = await raw(h.port, "GET", "/", { host: `127.0.0.1:${h.port}` });
+		const host = { host: `127.0.0.1:${h.port}` };
+		const page = await raw(h.port, "GET", `/?token=${h.token}`, host);
+		expect(page.status).toBe(200);
 		expect(page.body).toContain(h.ownerToken);
+		for (const path of ["/", "/?token=", `/?token=${h.ownerToken}`]) {
+			const denied = await raw(h.port, "GET", path, host);
+			expect(denied.status, path).toBe(404);
+			expect(denied.body, path).not.toContain(h.ownerToken);
+		}
+		const manifest = await raw(h.port, "GET", "/world/world.json", host);
+		expect(manifest.body).not.toContain(h.ownerToken);
 		expect(h.url).not.toContain(h.ownerToken);
 		const app = await raw(h.port, "GET", "/app.js", {
 			host: `127.0.0.1:${h.port}`,
@@ -328,9 +337,10 @@ describe("owner mode off (plain cabn serve, the default)", () => {
 		expect(app.body).not.toContain("/owner/signs/save");
 		expect(app.body).not.toContain("/owner/git/");
 		expect(app.body).not.toContain(OWNER_TOKEN_HEADER);
-		const page = await raw(handle.port, "GET", "/", {
+		const page = await raw(handle.port, "GET", `/?token=${handle.token}`, {
 			host: `127.0.0.1:${handle.port}`,
 		});
+		expect(page.status).toBe(200);
 		expect(page.body).not.toContain("__CABN_OWNER_TOKEN__");
 	}, 20_000);
 });
