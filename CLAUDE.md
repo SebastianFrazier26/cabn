@@ -36,6 +36,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 - `CABN_REVIEW_SHOTS=1` — specs that support it write review screenshots under `assets/generated/review/<topic>/`; `CABN_REVIEW_PREFIX` (default `after`) and `CABN_SHOT_SUFFIX` name them in the specs that read them
 - `CABN_E2E_LIVE_WEB=1` — `embeds.spec.ts` loads the real sites instead of stubs
 - `CABN_PERF=1` — `monsters.spec.ts` logs frame-time stats
+- `CABN_LARGE_WORLD=1` — opts into `large-world.spec.ts`, skipped otherwise: generates a synthetic ~150-folder, ~2,000-file project on disk, runs it through a real `cabn build` then `cabn serve --offline`, and asserts enter-to-walkable time, long-task-free walking and a bounded live RenderTexture count. Too slow for every `pnpm -F @cabn/demo e2e` run. `CABN_LARGE_WORLD_PORT` picks its `cabn serve` port (default 5539); `CABN_LARGE_WORLD_MAX_MS` overrides its enter-to-walkable threshold (default 6000) for a slower machine
 - `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` — point at a cached Chrome for Testing build; never run `playwright install` locally
 - e2e worker cap: `apps/demo/playwright.config.ts` defaults `workers` to a quarter of the CPU cores (minimum 1), because each worker's Chrome spends real CPU in world bakes. `--workers=N` overrides it
 - `?perf=1` — the engine's `performance.mark`/`measure` phase marks (`systems/perfMarks.ts`: boot, preload, shelf, world entry with a per-bake breakdown, file view, spellbook). Off, each call site is one boolean check
