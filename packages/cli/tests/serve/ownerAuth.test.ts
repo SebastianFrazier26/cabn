@@ -235,6 +235,15 @@ describe("resolveOwnerTarget", () => {
 		);
 	});
 
+	it.each(["src/C:x.seyn", "src/c:/x.seyn", "src/Z:.seyn"])(
+		"rejects a drive letter in any segment %j",
+		async (p) => {
+			await expect(resolveOwnerTarget(root, p, ext)).rejects.toBeInstanceOf(
+				OwnerPathError,
+			);
+		},
+	);
+
 	it("rejects other extensions", async () => {
 		await expect(resolveOwnerTarget(root, "src/a.ts", ext)).rejects.toThrow(
 			/only \.seyn/,
