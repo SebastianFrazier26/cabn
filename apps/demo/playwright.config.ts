@@ -24,7 +24,9 @@ const DEFAULT_WORKERS = Math.max(1, Math.floor(os.cpus().length / 4));
 
 export default defineConfig({
 	testDir: "./e2e",
-	timeout: 30_000,
+	// Must exceed walkToward's own 60s budget plus boot and world load, or the
+	// test-level timeout fires first with a less useful error.
+	timeout: 120_000,
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 1 : 0,
