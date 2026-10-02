@@ -16,13 +16,14 @@ import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as git from "isomorphic-git";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isAllowedShadowSignPath } from "../../src/serve/ownerSigns.js";
 import {
 	isShadowAssetPath,
 	type ServeHandle,
 	startServe,
 } from "../../src/serve/server.js";
+import { SHADOW_ART_HINT } from "../../src/serve/shadowArt.js";
 
 interface RawResponse {
 	status: number;
@@ -260,6 +261,70 @@ describe("shadow routes exist only with --owner", () => {
 			host: `127.0.0.1:${owner.port}`,
 		});
 		expect(art.status).toBe(200);
+	});
+
+	it("reads the art from @cabn/shadow-art when it's installed, without the hint", async () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			const owner = await serve();
+			const art = await raw(owner.port, "GET", "/assets/shadow/fx_ember.png", {
+				host: `127.0.0.1:${owner.port}`,
+			});
+			expect(art.status).toBe(200);
+			expect(art.headers["content-type"]).toBe("image/png");
+			expect(log.mock.calls.flat().join("\n")).not.toContain(
+				"@cabn/shadow-art",
+			);
+		} finally {
+			log.mockRestore();
+		}
+	});
+
+	it("with no art anywhere, owner mode still works, serves no shadow art and prints one hint", async () => {
+		const log = vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			handle = await startServe(dir, {
+				port: 0,
+				offline: true,
+				owner: true,
+				shadowArtDir: null,
+			});
+			const hints = log.mock.calls
+				.flat()
+				.filter((line) => String(line).includes("@cabn/shadow-art"));
+			expect(hints).toEqual([SHADOW_ART_HINT]);
+			expect((await manifestOf(handle)).portals.length).toBeGreaterThan(0);
+			const art = await raw(
+				handle.port,
+				"GET",
+				"/assets/shadow/sky_ember.png",
+				{ host: `127.0.0.1:${handle.port}` },
+			);
+			expect(art.status).toBe(404);
+		} finally {
+			log.mockRestore();
+		}
+	});
+
+	it("serves shadow art only from the resolved directory, confined to it", async () => {
+		const art = join(outside, "art");
+		await mkdir(art);
+		await writeFile(join(art, "probe.png"), "png");
+		await writeFile(join(outside, "secret.png"), "nope");
+		handle = await startServe(dir, {
+			port: 0,
+			offline: true,
+			owner: true,
+			shadowArtDir: art,
+		});
+		const at = (path: string) =>
+			raw(handle?.port ?? 0, "GET", path, {
+				host: `127.0.0.1:${handle?.port}`,
+			});
+		expect((await at("/assets/shadow/probe.png")).status).toBe(200);
+		expect((await at("/assets/SHADOW//probe.png")).status).toBe(200);
+		expect((await at("/assets/shadow/sky_ember.png")).status).toBe(404);
+		expect((await at("/assets/shadow/..%2fsecret.png")).status).toBe(404);
 	});
 });
 
