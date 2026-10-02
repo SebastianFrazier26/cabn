@@ -29,7 +29,7 @@ export interface MovementKeys {
 }
 
 const CHARACTER_SCALE = 0.125; // asset is @16x a 24x32 logical sprite -> display at 2x logical
-const DEFAULT_PLAYER_SPEED = 220;
+export const DEFAULT_PLAYER_SPEED = 220;
 const PLAYER_DEPTH = 5;
 
 export function createPlayer(
@@ -68,25 +68,37 @@ export interface MovementResult {
 	moving: boolean;
 }
 
-export function updatePlayerMovement(
+export interface MoveIntent {
+	x: number;
+	y: number;
+}
+
+/** Raw -1/0/1 per axis from arrows/WASD — kept separate from applyPlayerMotion so click-walking (render/clickWalker.ts) can feed the same motion path, and so scenes can tell "the player touched the keyboard" apart from "the player is moving". */
+export function readKeyboardIntent(keys: MovementKeys): MoveIntent {
+	let x = 0;
+	let y = 0;
+	if (keys.cursors.left?.isDown || keys.a.isDown) x -= 1;
+	if (keys.cursors.right?.isDown || keys.d.isDown) x += 1;
+	if (keys.cursors.up?.isDown || keys.w.isDown) y -= 1;
+	if (keys.cursors.down?.isDown || keys.s.isDown) y += 1;
+	return { x, y };
+}
+
+/** `intent`'s direction sets the heading; its length, capped at 1, scales the speed (a click-walk's last step is shorter than a full one). */
+export function applyPlayerMotion(
 	handle: PlayerHandle,
-	keys: MovementKeys,
+	intent: MoveIntent,
 	delta: number,
 	textures: PlayerTextures,
 	speed = DEFAULT_PLAYER_SPEED,
 ): MovementResult {
 	const body = handle.body.body as Phaser.Physics.Arcade.Body;
-	let vx = 0;
-	let vy = 0;
-	if (keys.cursors.left?.isDown || keys.a.isDown) vx -= 1;
-	if (keys.cursors.right?.isDown || keys.d.isDown) vx += 1;
-	if (keys.cursors.up?.isDown || keys.w.isDown) vy -= 1;
-	if (keys.cursors.down?.isDown || keys.s.isDown) vy += 1;
-
-	const moving = vx !== 0 || vy !== 0;
+	const { x: vx, y: vy } = intent;
+	const len = Math.hypot(vx, vy);
+	const moving = len > 0;
 	if (moving) {
-		const len = Math.hypot(vx, vy);
-		body.setVelocity((vx / len) * speed, (vy / len) * speed);
+		const scale = Math.min(1, len) * speed;
+		body.setVelocity((vx / len) * scale, (vy / len) * scale);
 		handle.walkTime += delta;
 
 		const facing = facingFromVelocity(vx, vy);
@@ -106,4 +118,20 @@ export function updatePlayerMovement(
 	handle.sprite.angle = moving ? Math.sin(handle.walkTime * 0.012) * 4 : 0;
 
 	return { pos: { x: handle.body.x, y: handle.body.y }, moving };
+}
+
+export function updatePlayerMovement(
+	handle: PlayerHandle,
+	keys: MovementKeys,
+	delta: number,
+	textures: PlayerTextures,
+	speed = DEFAULT_PLAYER_SPEED,
+): MovementResult {
+	return applyPlayerMotion(
+		handle,
+		readKeyboardIntent(keys),
+		delta,
+		textures,
+		speed,
+	);
 }

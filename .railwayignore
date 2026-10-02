@@ -1,0 +1,20 @@
+# `railway up` uploads the working tree minus .gitignore and this file, and
+# the full tree (review screenshots alone are over 140MB) fails to upload.
+# The images build from apps/*/Dockerfile and read only
+# assets/generated/{originals,placeholders}, and of originals/ the engine
+# loads only the 256px webps (packages/engine/src/assetPaths.ts). The cli's
+# owner-only shadow sprites are skipped with a warning; no hosted service
+# serves them.
+assets/source/
+assets/generated/review/
+assets/generated/soften-calibration/
+assets/generated/recovered/
+assets/generated/shadow/
+assets/generated/ui/
+assets/generated/*.png
+assets/generated/originals/*
+!assets/generated/originals/*_256.webp
+docs/handoffs/
+**/test-results/
+**/playwright-report/
+**/blob-report/

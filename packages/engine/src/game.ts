@@ -1,17 +1,20 @@
 import Phaser from "phaser";
 import { createCabnBus } from "./bridge/events.js";
 import { createCabnStore } from "./bridge/store.js";
+import { attachKeyboardFocusGate } from "./render/keyboardFocusGate.js";
 import type { BootSceneData } from "./scenes/BootScene.js";
 import { BootScene } from "./scenes/BootScene.js";
 import { FileScene } from "./scenes/FileScene.js";
 import { PreloadScene } from "./scenes/PreloadScene.js";
 import { ShelfScene } from "./scenes/ShelfScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
+import { prefersReducedMotion } from "./systems/reducedMotion.js";
 import {
-	defaultGlowEnabled,
-	loadGlowEnabled,
-	prefersReducedMotion,
-} from "./systems/glowSettings.js";
+	SCENE_LOADING_REGISTRY_KEY,
+	SceneLoadCoordinator,
+	STARTUP_SHELF_LABEL,
+	STARTUP_WORLD_LABEL,
+} from "./systems/sceneLoading.js";
 import { loadTimeOfDayOverride } from "./systems/timeOfDaySettings.js";
 
 /** How often "auto" re-checks the clock — frequent enough that a session left open actually crosses the day/night boundary live, cheap enough (one Date + a couple of comparisons) that it's not worth gating behind anything fancier. */
@@ -38,14 +41,6 @@ export function createCabnGame(
 ): CabnGameHandle {
 	const store = createCabnStore();
 	const bus = createCabnBus();
-	// A persisted choice always wins; otherwise fall back to the platform's own
-	// reduced-motion preference (see glowSettings.ts) rather than always
-	// defaulting on.
-	store
-		.getState()
-		.setGlowEnabled(
-			loadGlowEnabled() ?? defaultGlowEnabled(prefersReducedMotion()),
-		);
 	store.getState().setTimeOfDayOverride(loadTimeOfDayOverride() ?? "auto");
 	const timeOfDayInterval = setInterval(
 		() => store.getState().refreshTimeOfDay(),
@@ -86,9 +81,35 @@ export function createCabnGame(
 		scene: [BootScene, PreloadScene, WorldScene, ShelfScene, FileScene],
 	});
 
+	const sceneLoading = new SceneLoadCoordinator(
+		store,
+		bus,
+		prefersReducedMotion,
+	);
+	const detachSceneLoading = sceneLoading.attach();
+	sceneLoading.expect(
+		"shelfUrl" in target ? STARTUP_SHELF_LABEL : STARTUP_WORLD_LABEL,
+	);
+	// After the SceneManager's own READY handler, which is what instantiates
+	// the scenes; their event emitters then live as long as the game.
+	game.events.once(Phaser.Core.Events.READY, () => {
+		for (const key of ["world", "shelf"]) {
+			game.scene
+				.getScene(key)
+				?.events.on(Phaser.Scenes.Events.CREATE, () => sceneLoading.settled());
+		}
+	});
+
 	game.registry.set("store", store);
 	game.registry.set("bus", bus);
+	game.registry.set(SCENE_LOADING_REGISTRY_KEY, sceneLoading);
+	const detachKeyboardFocusGate = attachKeyboardFocusGate(
+		game,
+		() => store.getState().loading.active || store.getState().loading.visible,
+	);
 	game.events.once(Phaser.Core.Events.DESTROY, () => {
+		detachKeyboardFocusGate();
+		detachSceneLoading();
 		clearInterval(timeOfDayInterval);
 		document.removeEventListener("visibilitychange", onVisibilityChange);
 	});

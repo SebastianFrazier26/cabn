@@ -1,8 +1,10 @@
 import { iso, z } from "zod";
+import { RichPortalPreviewSchema } from "./preview.js";
 import {
 	BiomeSchema,
 	ErrorCodeSchema,
 	FileKindSchema,
+	HttpsOriginSchema,
 	PathKindSchema,
 	PositionSchema,
 	SpeciesSchema,
@@ -20,7 +22,8 @@ export const WorldMetaSchema = z.strictObject({
 	/** Files dropped entirely because of truncated (not counted for content-omitted files, which still get a portal). */
 	skippedFiles: z.number().int().nonnegative(),
 	/**
-	 * fnv1a(meta.source) — the converter fills this in, not hand-authored.
+	 * fnv1a over meta.name plus the sorted cluster and file paths (the same key
+	 * as the engine's scenery seed) — the converter fills this in, not hand-authored.
 	 * Optional so a hand-built or pre-shelf-hierarchy manifest still validates;
 	 * consumers that tint by theme (engine's systems/theme.ts) fall back to a
 	 * fixed seed when it's absent.
@@ -71,6 +74,18 @@ export const PortalSchema = z.strictObject({
 	clusterId: z.string(),
 	file: PortalFileSchema,
 	preview: PortalPreviewSchema,
+	/**
+	 * M10's richer literal-preview payload (code w/ language, structured
+	 * markdown, an image asset, a text blurb, a live-embed url, or "sealed"
+	 * for binaries) — carries a cabn.json override's resolved result when one
+	 * applies. Optional, additive: absent on a manifest built before M10 (or
+	 * any hand-built one) rather than forcing a cabnVersion bump — the engine
+	 * (systems/archPreview.ts's effectiveRichPreview) falls back to
+	 * `preview.lines` as a code preview, or the sealed chest for a binary,
+	 * when it's missing. `preview` above stays for exactly that fallback and
+	 * for the spyglass/orb one-line summaries.
+	 */
+	richPreview: RichPortalPreviewSchema.optional(),
 	spawns: z.array(z.string()),
 });
 export type Portal = z.infer<typeof PortalSchema>;
@@ -108,6 +123,21 @@ const WorldManifestShapeSchema = z.strictObject({
 	// Empty until M6's annotators run, but the shape ships now so downstream
 	// consumers (engine, cli inspect) never need a schema migration for it.
 	monsters: z.array(MonsterSchema),
+	/**
+	 * cabn.json's allowedEmbedOrigins, carried through to the bundle so the
+	 * engine's PortalEmbed can re-check a url preview's origin at runtime
+	 * against the manifest it actually loaded, not just trust that the
+	 * converter validated cabn.json correctly at build time. Defaults to
+	 * empty — additive, like richPreview above, not a version bump.
+	 */
+	allowedEmbedOrigins: z.array(HttpsOriginSchema).default([]),
+	/**
+	 * cabn.json's `guide`, carried through only when the author set it —
+	 * absent on every bundle whose cabn.json doesn't mention it, so those
+	 * bundles still validate against engines from before this field. The
+	 * engine reads `false` as "never show the guide NPC here".
+	 */
+	guide: z.boolean().optional(),
 });
 
 // Cross-reference checks catch a corrupted/hand-edited world (dangling

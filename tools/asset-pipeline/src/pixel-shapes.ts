@@ -147,6 +147,88 @@ export function shadeEllipseVolume(
 	}
 }
 
+/**
+ * Adds a 1-cell ink outline around the grid's silhouette (every empty cell
+ * 4-adjacent to a filled one) — the same single-cell dark edge the
+ * hand-authored wizard tower and v3 item icons carry, so procedural
+ * landmarks drawn with the primitives above end up with matching outline
+ * weight instead of the outline-less look of the small scatter props.
+ */
+export function outlineGrid(grid: Grid, ink: number): void {
+	const h = gridHeight(grid);
+	const w = gridWidth(grid);
+	const filled = (x: number, y: number) =>
+		x >= 0 && y >= 0 && x < w && y < h && grid[y]?.[x] != null;
+	const edge: [number, number][] = [];
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			if (filled(x, y)) continue;
+			if (
+				filled(x - 1, y) ||
+				filled(x + 1, y) ||
+				filled(x, y - 1) ||
+				filled(x, y + 1)
+			) {
+				edge.push([x, y]);
+			}
+		}
+	}
+	for (const [x, y] of edge) setPixel(grid, x, y, ink);
+}
+
+/**
+ * Paints a boolean foliage mask (ivy, moss) with three tones lit from the
+ * up-left — the shared LIGHT_DIR every v3 icon and world-art landmark uses:
+ * a leaf cell whose up-left neighbor is outside the mask catches the light,
+ * one whose down-right neighbor is outside falls into shadow. Deriving the
+ * tone from the mask's own edges (rather than per-cell noise) keeps clumps
+ * reading as solid, lit volumes instead of green speckle.
+ */
+export function paintFoliage(
+	grid: Grid,
+	mask: boolean[][],
+	tones: GroundTonesLike,
+): void {
+	const inMask = (x: number, y: number) => mask[y]?.[x] === true;
+	for (let y = 0; y < mask.length; y++) {
+		const row = mask[y] ?? [];
+		for (let x = 0; x < row.length; x++) {
+			if (!row[x]) continue;
+			const lit = !inMask(x - 1, y - 1) || !inMask(x, y - 1);
+			const shaded = !inMask(x + 1, y + 1) || !inMask(x, y + 1);
+			setPixel(
+				grid,
+				x,
+				y,
+				lit ? tones.highlight : shaded ? tones.shadow : tones.base,
+			);
+		}
+	}
+}
+
+export function createMask(width: number, height: number): boolean[][] {
+	return Array.from({ length: height }, () => new Array(width).fill(false));
+}
+
+export function maskEllipse(
+	mask: boolean[][],
+	cx: number,
+	cy: number,
+	rx: number,
+	ry: number,
+	keep: (x: number, y: number) => boolean = () => true,
+): void {
+	for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+		for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+			const nx = (x + 0.5 - cx) / rx;
+			const ny = (y + 0.5 - cy) / ry;
+			const row = mask[y];
+			if (!row || x < 0 || x >= row.length) continue;
+			if (nx * nx + ny * ny <= 1 && keep(x, y)) row[x] = true;
+		}
+	}
+}
+
 const LEGEND_ALPHABET =
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*+=";
 

@@ -16,6 +16,7 @@ import { useCabnStore } from "./useCabnStore.js";
 // inside a host page, not a full page it owns, so it must never reach past
 // its own container into the host's global `:root`/`body` styles.
 const STYLE_ELEMENT_ID = "cabn-pixel-theme-style";
+const LAYER_STYLE_ELEMENT_ID = "cabn-pixel-layer-style";
 
 /** The `--cabn-*` custom-property declarations shared by both theme blocks — generated from pixelThemeTokens.ts (the tested source of truth) rather than typed twice, so the CSS this actually ships and the contrast test can never drift apart. */
 function tokenDeclarations(tokens: PixelThemeTokens): string {
@@ -49,7 +50,22 @@ function tokenDeclarations(tokens: PixelThemeTokens): string {
 	--cabn-syntax-function: ${toCssColor(tokens.syntaxFunction)};
 	--cabn-syntax-type: ${toCssColor(tokens.syntaxType)};
 	--cabn-syntax-attribute: ${toCssColor(tokens.syntaxAttribute)};
-	--cabn-editor-gutter-text: ${toCssColor(tokens.editorGutterText)};`;
+	--cabn-editor-gutter-text: ${toCssColor(tokens.editorGutterText)};
+	--cabn-diff-add-bg: ${toCssColor(tokens.diffAddBg)};
+	--cabn-diff-add-text: ${toCssColor(tokens.diffAddText)};
+	--cabn-diff-del-bg: ${toCssColor(tokens.diffDelBg)};
+	--cabn-diff-del-text: ${toCssColor(tokens.diffDelText)};
+	/*
+	 * Dedicated ink variants for the handful of non-editor spots an accent
+	 * sits directly under/as small text — see pixelThemeTokens.ts's own
+	 * doc comment on each field and packages/engine/tests/uiContrast.test.ts.
+	 */
+	--cabn-accent-violet-ink: ${toCssColor(tokens.accentVioletInk)};
+	--cabn-accent-pink-ink: ${toCssColor(tokens.accentPinkInk)};
+	--cabn-chip-ink: ${toCssColor(tokens.chipInk)};
+	--cabn-error-ink: ${toCssColor(tokens.errorInk)};
+	--cabn-warn-ink: ${toCssColor(tokens.warnInk)};
+	--cabn-guide-more-ink: ${toCssColor(tokens.guideMoreInk)};`;
 }
 
 // M10a v3 tokens (assets/generated/ui/STYLE.md) verbatim — Meadow=day,
@@ -79,6 +95,14 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 210, 63, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 210, 63, 0.25);
 	--cabn-editor-gutter-border: rgba(59, 47, 107, 0.35);
+	--cabn-search-match-bg: rgba(255, 153, 51, 0.32);
+	--cabn-search-match-selected-bg: rgba(178, 124, 214, 0.55);
+	--cabn-selection-match-bg: rgba(79, 208, 216, 0.2);
+	/* A subtle "recessed panel" tint (run log, satchel lining) — a text-colored
+	   wash at low opacity. Day = dark ink on the near-white panel; night needs
+	   the opposite direction (white wash on the near-black panel) or it reads
+	   as invisible/muddy against the new dark panelBody. */
+	--cabn-inset-tint: rgba(59, 47, 107, 0.08);
 	font-family: var(--cabn-font-display);
 	color: var(--cabn-text);
 }
@@ -87,6 +111,10 @@ const PIXEL_THEME_CSS = `
 	--cabn-editor-active-line-bg: rgba(255, 207, 77, 0.18);
 	--cabn-editor-active-gutter-bg: rgba(255, 207, 77, 0.25);
 	--cabn-editor-gutter-border: rgba(34, 26, 77, 0.35);
+	--cabn-search-match-bg: rgba(255, 170, 70, 0.3);
+	--cabn-search-match-selected-bg: rgba(190, 140, 230, 0.5);
+	--cabn-selection-match-bg: rgba(70, 201, 224, 0.2);
+	--cabn-inset-tint: rgba(255, 255, 255, 0.06);
 }
 
 /* ================= flat pixel panel (Pokemon B/W textbox-ish), STYLE.md "Frame" ================= */
@@ -104,19 +132,44 @@ const PIXEL_THEME_CSS = `
 	content: ""; position: absolute; top: -3px; width: 8px; height: 8px;
 	background: var(--cabn-accent-yellow); border: 2px solid var(--cabn-border-outer); border-radius: 2px; transform: rotate(45deg);
 }
+[data-cabn-keyboard-owner]:focus { outline: none; }
+/* A real, visible keyboard focus ring for every interactive element that
+   doesn't already draw its own (the spellbook toolbar and its text inputs
+   do, further down, and win the cascade despite coming first in this file —
+   :where() keeps this rule's specificity at just .cabn-pixel-root, below
+   any of theirs). Needed because the browser's own default outline here
+   measured 1px (Chrome, "auto" style) against a 64px pixel-art button with
+   its own 3px painted border already around it — effectively invisible, not
+   just a headless-mode measurement artifact (2026-09-30 a11y pass). */
+.cabn-pixel-root :where(button, a, input, textarea, select, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [tabindex]):focus-visible {
+	outline: 3px solid var(--cabn-accent-yellow);
+	outline-offset: 2px;
+}
 .cabn-panel::before { left: 10px; }
 .cabn-panel::after { right: 10px; }
 .cabn-panel-title { font-size: 13px; text-align: center; margin: 0 0 8px; color: var(--cabn-border-outer); }
+/* Panels sized to fill a fixed-size container (the portal preview dock) need
+   border-box, or width:100% plus the 14px padding and 4px border overflows it. */
+.cabn-preview-dock .cabn-panel { box-sizing: border-box; }
 .cabn-panel-divider { height: 3px; background: var(--cabn-border-outer); opacity: 0.15; margin: 6px 0; border-radius: 2px; }
 
 .cabn-btn {
 	font-family: var(--cabn-font-display); font-size: 12px; padding: 7px 16px; border-radius: 10px;
-	border: 3px solid var(--cabn-border-outer); cursor: pointer; color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); cursor: pointer;
+	/* Fixed dark ink, not var(--cabn-text) — every variant below fills with a
+	   bright candy accent that barely changes between day/night (see
+	   pixelThemeTokens.ts's comment on why accent-* stayed put), so the label
+	   needs to stay dark in both themes too; the near-white night text token
+	   would be unreadable on top of a bright yellow/green/pink button. */
+	color: #201a3d;
 	box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
 }
 .cabn-btn:active { box-shadow: 1px 1px 0 rgba(0,0,0,0.2); transform: translate(2px, 2px); }
 .cabn-btn.confirm { background: var(--cabn-accent-green); }
-.cabn-btn.cancel { background: var(--cabn-accent-pink); }
+/* --cabn-accent-pink-ink overrides the plain dark ink above: on day/night it's
+   the same #201a3d (unchanged look), but crimson's own accentPink is too
+   close in luminance to #201a3d for 4.5:1 (uiContrast.test.ts). */
+.cabn-btn.cancel { background: var(--cabn-accent-pink); color: var(--cabn-accent-pink-ink); }
 .cabn-btn.neutral { background: var(--cabn-accent-yellow); }
 
 .cabn-hud-pill {
@@ -126,6 +179,16 @@ const PIXEL_THEME_CSS = `
 	font-family: var(--cabn-font-display); font-size: 11px; padding: 8px 14px; cursor: pointer;
 	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 20px;
 	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight); color: var(--cabn-text);
+}
+.cabn-segmented button {
+	font: inherit; color: inherit; background: none; border: none; cursor: pointer;
+	padding: 5px 10px; border-radius: 14px;
+}
+.cabn-segmented button.selected {
+	/* --cabn-chip-ink, not --cabn-panel-body: night/crimson's own borderOuter
+	   is too close in luminance to their own panelBody for 4.5:1 text
+	   (uiContrast.test.ts) — day's chip-ink is panelBody unchanged. */
+	background: var(--cabn-border-outer); color: var(--cabn-chip-ink);
 }
 .cabn-help-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; gap: 12px; }
 .cabn-help-row kbd {
@@ -143,6 +206,11 @@ const PIXEL_THEME_CSS = `
 	100% { opacity: 0; transform: translate(var(--cabn-tx), var(--cabn-ty)) scale(0.3); }
 }
 @keyframes cabn-burst-fade { 0% { opacity: 1; } 100% { opacity: 0; } }
+/* Shared reduced-motion fallback for every literal-tool-screen open animation
+   below (crystal ball/spyglass/satchel/spellbook/wand-cast) — plain fade in,
+   no scale/rotate/clip-path, per the M10 plan's "reduced motion falls back to
+   a fade" requirement for each of them. */
+@keyframes cabn-fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
 /* Reduced-motion default: fade in place, no radiating translate/scale — same "reduced by default, enhanced under :no-preference" shape mockup.html established. */
 .cabn-effect-burst.play .cabn-spark { animation: cabn-burst-fade 500ms ease-out forwards; }
 
@@ -156,13 +224,19 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-hotbar-slot img { width: 40px; height: 40px; object-fit: contain; position: relative; z-index: 1; image-rendering: pixelated; }
 .cabn-hotbar-slot .cabn-key { position: relative; z-index: 1; font-size: 10px; color: var(--cabn-text-secondary); margin-top: 1px; font-family: var(--cabn-font-display); }
-.cabn-hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 0 0 0 3px var(--cabn-accent-yellow); transform: translateY(-3px); }
-.cabn-hotbar-slot .cabn-badge {
-	position: absolute; top: -6px; right: -6px; z-index: 2;
-	background: var(--cabn-accent-pink); color: var(--cabn-text); border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
-	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
-	font-family: var(--cabn-font-display);
+/* Inside a file the slots grow a verb label ("Run", "Copy"...); the hotkey
+   moves to the top-left corner to make room. */
+.cabn-hotbar-slot.labeled { width: 76px; height: 78px; justify-content: flex-start; padding-top: 6px; }
+.cabn-hotbar-slot.labeled img { width: 38px; height: 38px; }
+.cabn-hotbar-slot.labeled .cabn-key { position: absolute; top: 3px; left: 6px; margin: 0; }
+.cabn-slot-label {
+	position: relative; z-index: 1; margin-top: 3px; font-size: 12px; line-height: 1.1;
+	font-family: var(--cabn-font-display); color: var(--cabn-text); white-space: nowrap;
 }
+.cabn-hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 0 0 0 3px var(--cabn-accent-yellow); transform: translateY(-3px); }
+/* .cabn-badge itself (shared with the satchel's closed-count badge) is defined
+   in the bag section below — kept next to its other consumer rather than
+   duplicated here. */
 .cabn-hotbar-slot::after {
 	content: ""; position: absolute; inset: -60%; z-index: 1; pointer-events: none;
 	background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.65) 50%, transparent 58%);
@@ -172,18 +246,54 @@ const PIXEL_THEME_CSS = `
 	.cabn-hotbar-slot:hover { filter: brightness(1.15); }
 }
 
-/* ================= spyglass — lens vignette ================= */
-.cabn-spyglass-frame { width: 260px; position: relative; overflow: hidden; }
-.cabn-spyglass-frame::before {
-	content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 2;
-	background: radial-gradient(circle at center, transparent 45%, rgba(10,8,30,0.65) 100%);
+/* ================= spyglass — round lens, brass rim ================= */
+/* Shared by the three literal tool screens: their pixel-art frame
+   (ui_screen_*.png, 3 CSS px per art cell) laid over the live content, never
+   intercepting its clicks. */
+.cabn-tool-frame {
+	position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4;
+	pointer-events: none; image-rendering: pixelated;
+}
+/* One-line text that ellipsizes instead of running past a round frame. */
+.cabn-clip-line { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The frame box is the 136x136-cell ui_screen_spyglass art; percentages
+   below are its cell coordinates (lens circle centre 58,58, radius 49;
+   content rect 19,29 78x58 — the lens's inscribed rectangle, see
+   tools/asset-pipeline's ui-screen-spyglass.ts). */
+.cabn-spyglass-frame {
+	position: relative; width: min(408px, 80vw); aspect-ratio: 1;
+	filter: drop-shadow(5px 5px 0 rgba(0,0,0,0.25));
 }
 .cabn-spyglass-frame::after {
-	content: ""; position: absolute; inset: -40%; pointer-events: none; z-index: 2;
-	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.5) 50%, transparent 65%);
+	content: ""; position: absolute; left: 6.62%; top: 6.62%; width: 72.06%; height: 72.06%;
+	border-radius: 50%; pointer-events: none; z-index: 3;
+	background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.3) 50%, transparent 65%);
 }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-spyglass-frame::after { animation: cabn-sheen 2.6s linear infinite; }
+}
+/* The lens itself: circular, clip-path iris-opens on mount — overrides
+   .cabn-panel's rectangular border-radius/padding/box-shadow, keeps its
+   background/color/font tokens. */
+.cabn-spyglass-lens {
+	position: absolute; left: 6.62%; top: 6.62%; width: 72.06%; height: 72.06%;
+	border-radius: 50%; border: none; padding: 0;
+	box-shadow: inset 0 0 28px rgba(0,0,0,0.3);
+	overflow: hidden; clip-path: circle(50% at 50% 50%);
+}
+.cabn-spyglass-content {
+	position: absolute; left: 10.2%; top: 20.41%; width: 79.59%; height: 59.18%;
+	z-index: 1; display: flex; flex-direction: column;
+}
+@keyframes cabn-iris-open {
+	0% { clip-path: circle(0% at 50% 50%); }
+	100% { clip-path: circle(50% at 50% 50%); }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-spyglass-lens { animation: cabn-iris-open 380ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-spyglass-lens { animation: cabn-fade-in 180ms ease-out; }
 }
 
 /* ================= crystal orb search — violet/cyan/pink mist ================= */
@@ -217,49 +327,287 @@ const PIXEL_THEME_CSS = `
 	.cabn-orb-mist.two { animation: cabn-swirl 14s linear infinite reverse; }
 }
 
-/* ================= bag tray — open satchel interior ================= */
-.cabn-bag-frame { position: relative; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-.cabn-bag-frame::before {
-	content: ""; position: absolute; inset: 6px; border-radius: 8px; pointer-events: none;
-	background: radial-gradient(ellipse at 50% 0%, rgba(120,70,30,0.32), transparent 70%);
-	border: 2px dashed rgba(120,70,30,0.45);
+/* The literal ball itself: the 144x184-cell ui_screen_orb art (glass rim,
+   bronze stand, plum plaque) over a dark swirling glass disc that shows
+   through the art's transparent interior. Percentages are art cell
+   coordinates (glass centre 72,71, radius 63; results in the inscribed rect
+   22,33 100x76; input on the plaque 30,155 84x15 — see tools/asset-
+   pipeline's ui-screen-orb.ts). Fixed light text regardless of day/night —
+   the glass interior is always dark, same reasoning as the ribbon banners'
+   always-white text. */
+.cabn-crystal-ball {
+	position: relative; width: min(432px, 88vw, calc((88vh - 60px) * 0.7826)); aspect-ratio: 144 / 184;
+	color: #f3edff;
 }
-.cabn-bag-slot {
-	position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between;
-	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 8px;
-	padding: 5px 10px; font-size: 11px; color: var(--cabn-text); max-width: 220px;
+.cabn-crystal-glass {
+	position: absolute; left: 6.25%; top: 4.35%; width: 87.5%; height: 68.48%; border-radius: 50%;
+	background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.05) 26%, rgba(58,35,95,0.72) 62%, rgba(18,10,36,0.94) 100%);
+	box-shadow: 0 0 46px 12px rgba(138,111,214,0.5), inset 0 0 46px rgba(0,0,0,0.45);
+	overflow: hidden;
 }
-.cabn-bag-slot.filled { box-shadow: 0 0 0 2px var(--cabn-accent-yellow); }
-.cabn-bag-slot .cabn-x { opacity: 0.55; cursor: pointer; }
-
-/*
- * ================= editor (quill) — ink blot + drifting glyphs =================
- * 2026-09-28 polish pass: neither of these actually rendered before this pass
- * (EditorOverlay.tsx had no markup for them at all, despite the mockup
- * always including them) — "barely visible" was really "entirely absent".
- * Opacities here are deliberately a notch above the mockup's own (0.4/0.6
- * peak) per explicit user feedback that the quill screen read as flat —
- * still low enough not to fight code readability (STYLE.md's "subtle, by
- * design" reasoning still holds), just no longer imperceptible.
- */
-.cabn-editor-ink-blot {
-	position: absolute; top: -10px; right: 18px; width: 30px; height: 30px; border-radius: 50%;
-	background: radial-gradient(circle, var(--cabn-border-outer) 45%, transparent 72%);
-	opacity: 0.55; pointer-events: none; z-index: 2;
+.cabn-crystal-ball-mist {
+	position: absolute; inset: 10%; border-radius: 50%;
+	background: conic-gradient(from 0deg, var(--cabn-accent-violet), var(--cabn-accent-cyan), var(--cabn-accent-pink), var(--cabn-accent-violet));
+	opacity: 0.28; filter: blur(30px);
 }
-.cabn-editor-glyph {
-	position: absolute; pointer-events: none; z-index: 2;
-	font-family: var(--cabn-font-mono); color: var(--cabn-accent-violet);
-	font-size: 20px; opacity: 0;
+.cabn-crystal-ball-mist.two { inset: 22%; opacity: 0.18; filter: blur(20px); }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-crystal-ball-mist { animation: cabn-swirl 9s linear infinite; }
+	.cabn-crystal-ball-mist.two { animation: cabn-swirl 12s linear infinite reverse; }
 }
-@keyframes cabn-glyph-drift {
-	0% { opacity: 0; transform: translateY(0); }
-	15% { opacity: 0.7; }
-	100% { opacity: 0; transform: translateY(-32px); }
+.cabn-crystal-ball-content {
+	position: absolute; left: 15.28%; top: 17.93%; width: 69.44%; height: 41.3%; z-index: 5;
+	display: flex; flex-direction: column; overflow: auto; font-size: 13px;
+	text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+}
+.cabn-crystal-plinth {
+	position: absolute; left: 20.83%; top: 84.24%; width: 58.33%; height: 8.15%; z-index: 5;
+	display: flex; align-items: center; color: #f3edff;
+}
+@keyframes cabn-ball-rise {
+	0% { transform: translateY(36px) scale(0.82); opacity: 0; }
+	70% { opacity: 1; }
+	100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 @media (prefers-reduced-motion: no-preference) {
-	.cabn-editor-glyph { animation: cabn-glyph-drift 3.4s ease-in infinite; }
+	.cabn-crystal-ball { animation: cabn-ball-rise 420ms cubic-bezier(0.22, 0.8, 0.3, 1); }
 }
+@media (prefers-reduced-motion: reduce) {
+	.cabn-crystal-ball { animation: cabn-fade-in 180ms ease-out; }
+}
+
+/* ================= bag — closed badge + literal open satchel ================= */
+.cabn-satchel-closed {
+	position: relative; width: 56px; height: 56px; padding: 8px; cursor: pointer;
+	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 3px 3px 0 rgba(0,0,0,0.2);
+	display: flex; align-items: center; justify-content: center;
+}
+.cabn-satchel-closed img { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; }
+/* Reused by both the hotbar's per-tool count badge and this satchel's slot count. */
+.cabn-badge {
+	position: absolute; top: -6px; right: -6px; z-index: 2;
+	/* --cabn-accent-pink-ink: see .cabn-btn.cancel's comment above — same fill, same fix. */
+	background: var(--cabn-accent-pink); color: var(--cabn-accent-pink-ink); border-radius: 50%; width: 18px; height: 18px; font-size: 10px;
+	display: flex; align-items: center; justify-content: center; border: 2px solid var(--cabn-border-outer);
+	font-family: var(--cabn-font-display);
+}
+/* The 128x116-cell ui_screen_satchel art is the whole open bag (body, side
+   pouches, the flap already folded back); the animated .cabn-satchel-flap is
+   the flap's outer face swinging up off the mouth, hidden once it passes
+   edge-on. Percentages are art cell coordinates (flap hinge 16,30 96x30;
+   content inside the stitched front panel 22,38 84x66 — see tools/asset-
+   pipeline's ui-screen-satchel.ts). */
+.cabn-satchel-open {
+	position: relative; perspective: 420px; width: min(384px, 86vw); aspect-ratio: 128 / 116;
+	background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated;
+	filter: drop-shadow(5px 5px 0 rgba(0,0,0,0.22));
+	transform-origin: bottom left;
+}
+.cabn-satchel-flap {
+	position: absolute; left: 12.5%; top: 25.86%; width: 75%; height: 25.86%; z-index: 2;
+	background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated;
+	transform-origin: top center; backface-visibility: hidden; transform: rotateX(-180deg);
+}
+.cabn-satchel-content {
+	position: absolute; left: 17.19%; top: 32.76%; width: 65.63%; height: 56.9%; z-index: 1;
+	overflow: auto; padding: 2px;
+}
+.cabn-satchel-title {
+	display: flex; align-items: center; justify-content: space-between; gap: 8px;
+	margin: 0 0 6px; font-family: var(--cabn-font-display); font-size: 13px;
+	color: #fff4dc; text-shadow: 0 2px 0 rgba(50,34,20,0.8);
+}
+@keyframes cabn-satchel-pop { 0% { transform: scale(0.85) translateY(10px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes cabn-flap-open { 0% { transform: rotateX(0deg); } 100% { transform: rotateX(-180deg); } }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-satchel-open { animation: cabn-satchel-pop 260ms ease-out; }
+	.cabn-satchel-flap { animation: cabn-flap-open 380ms ease-in 120ms both; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-satchel-open { animation: cabn-fade-in 180ms ease-out; }
+}
+/* Each grabbed slot as a physical drawstring pouch, not a plain row. */
+.cabn-bag-pouch {
+	position: relative; display: flex; align-items: center; gap: 6px;
+	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 6px 6px 14px 14px;
+	padding: 9px 10px 6px; font-size: 11px; color: var(--cabn-text); max-width: 100%; min-width: 0;
+}
+.cabn-bag-pouch::before {
+	content: ""; position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+	width: 18px; height: 7px; border-radius: 4px; background: var(--cabn-border-outer);
+}
+.cabn-bag-pouch-label { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; border: none; color: inherit; font: inherit; cursor: pointer; }
+
+/*
+ * ================= spellbook — open-book frame =================
+ * The editor+run screen as a literal open tome (playtest feedback: "editing/
+ * code running feels a little clunky... we want the editors to feel part of
+ * the world but still be fully functional") — a page spread with a spine
+ * down the middle and a ribbon bookmark, flat pixel-RPG style throughout, no
+ * wood/parchment texture (explicitly rejected in review). Opens with a fast
+ * scaleX+rotateY "cover falling open" pop, comfortably under 500ms; reduced
+ * motion falls back to a plain fade via the shared cabn-fade-in keyframe.
+ */
+.cabn-spellbook-spread {
+	position: relative; flex: 1; min-height: 0; display: flex; perspective: 1600px;
+	background: var(--cabn-panel-body); border: 4px solid var(--cabn-border-outer); border-radius: 14px;
+	box-shadow: inset 0 0 0 3px var(--cabn-border-highlight), 8px 8px 0 rgba(0,0,0,0.25);
+	overflow: hidden; transform-origin: left center;
+}
+.cabn-spellbook-page { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.cabn-spellbook-page.left { padding: 0; }
+.cabn-spellbook-page.right { padding: 12px 16px; background: var(--cabn-panel-body-alt); }
+.cabn-spellbook-page-header {
+	position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: center;
+	padding: 8px 16px; font-size: 13px;
+}
+.cabn-spellbook-page.left .cabn-spellbook-page-header { background: var(--cabn-border-outer); color: #fff; }
+.cabn-spellbook-page.right .cabn-spellbook-page-header { padding: 0 0 6px; font-weight: bold; }
+.cabn-spellbook-spine {
+	position: relative; flex: none; width: 12px;
+	background: linear-gradient(90deg, rgba(0,0,0,0.28), rgba(0,0,0,0.04) 45%, rgba(0,0,0,0.04) 55%, rgba(0,0,0,0.28));
+	z-index: 2; pointer-events: none;
+}
+.cabn-spellbook-ribbon {
+	position: absolute; top: -6px; left: 26%; width: 20px; height: 44px; z-index: 3; pointer-events: none;
+	background: var(--cabn-accent-pink); clip-path: polygon(0 0, 100% 0, 100% 82%, 50% 100%, 0 82%);
+	box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+}
+.cabn-spellbook-controls {
+	display: flex; align-items: center; justify-content: space-between; gap: 12px;
+	padding: 8px 4px 0; flex-wrap: wrap;
+}
+/* A readable chip, not bare text on the world behind it — floating text over
+   grass/night-sky backgrounds tested poorly for contrast either theme. */
+.cabn-spellbook-status {
+	font-size: 11px; background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 2px solid var(--cabn-border-outer); border-radius: 10px; padding: 5px 10px;
+}
+.cabn-spellbook-errors { font-size: 12px; }
+.cabn-spellbook-error-row {
+	width: 100%; display: flex; gap: 8px; text-align: left; background: none; border: none;
+	border-bottom: 2px dotted var(--cabn-border-outer); font: inherit; padding: 5px 2px; cursor: pointer; color: inherit;
+}
+.cabn-spellbook-error-row:disabled { cursor: default; opacity: 0.6; }
+.cabn-spellbook-error-line {
+	flex: none; min-width: 22px; text-align: right; font-family: var(--cabn-font-mono);
+	color: var(--cabn-text-secondary);
+}
+@keyframes cabn-book-open {
+	0% { transform: scaleX(0.1) rotateY(40deg); opacity: 0; }
+	100% { transform: scaleX(1) rotateY(0deg); opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-spellbook-spread { animation: cabn-book-open 420ms cubic-bezier(0.22, 0.8, 0.3, 1); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cabn-spellbook-spread { animation: cabn-fade-in 180ms ease-out; }
+}
+
+/*
+ * ================= editor (quill) — border motes =================
+ * Round-2 playtest (2026-09-28): violet glyphs/sparkles pinned to the book's
+ * frame — corners, edges, spine — instead of drifting over the top of the
+ * code (and the old ink blot, which sat on the code's top-right corner, is
+ * gone for the same reason). Each mote is centered on its anchor with
+ * negative margins, not translate(-50%), so the twinkle keyframe owns
+ * transform. The pale halo keeps them legible over both the dark frame
+ * border and whatever world shows behind the book. Reduced motion: no
+ * twinkle, just a faint static mote.
+ */
+.cabn-spellbook-frame { position: relative; flex: 1; min-height: 0; display: flex; }
+.cabn-spellbook-motes { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.cabn-spellbook-mote {
+	position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px;
+	display: flex; align-items: center; justify-content: center; opacity: 0.45; pointer-events: none;
+}
+.cabn-spellbook-mote img { width: 20px; height: 20px; image-rendering: pixelated; filter: drop-shadow(0 0 2px var(--cabn-panel-body)); }
+.cabn-spellbook-mote.glyph {
+	font-family: var(--cabn-font-mono); font-size: 17px; font-weight: bold; color: var(--cabn-accent-violet);
+	text-shadow: 0 0 3px var(--cabn-panel-body), 1px 1px 0 var(--cabn-border-outer); white-space: nowrap;
+}
+@keyframes cabn-mote-twinkle {
+	0%, 100% { opacity: 0; transform: scale(0.6); }
+	20% { opacity: 1; transform: scale(1.15); }
+	55% { opacity: 0.7; transform: scale(0.9); }
+}
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-spellbook-mote { opacity: 0; animation: cabn-mote-twinkle 3.2s ease-in-out infinite; }
+}
+
+/* ================= spellbook toolbar + tool dialogs ================= */
+.cabn-spellbook-toolbar {
+	display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 6px;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 4px 4px 0 rgba(0,0,0,0.2);
+}
+.cabn-spellbook-tool-wrap { display: inline-flex; align-items: center; }
+.cabn-spellbook-tool {
+	display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 4px;
+	font-family: var(--cabn-font-display); font-size: 12px; color: var(--cabn-text);
+	background: none; border: 2px solid transparent; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.cabn-spellbook-tool img { width: 24px; height: 24px; object-fit: contain; image-rendering: pixelated; }
+.cabn-spellbook-tool:hover, .cabn-spellbook-tool:focus-visible {
+	background: var(--cabn-panel-body-alt); border-color: var(--cabn-border-outer); outline: none;
+}
+.cabn-spellbook-tool:active { transform: translate(1px, 1px); }
+.cabn-spellbook-tool-divider {
+	width: 3px; height: 22px; margin: 0 4px; border-radius: 2px; background: var(--cabn-border-outer); opacity: 0.25;
+}
+.cabn-spellbook-dialog {
+	position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 10;
+	width: min(380px, 92%); max-height: calc(100% - 16px); box-sizing: border-box;
+	display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 3px solid var(--cabn-border-outer); border-radius: 12px;
+	box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 5px 5px 0 rgba(0,0,0,0.25);
+	font-family: var(--cabn-font-display);
+}
+.cabn-spellbook-dialog.wide { width: min(560px, 94%); }
+.cabn-spellbook-dialog-title { font-size: 13px; }
+.cabn-spellbook-dialog-title code { font-family: var(--cabn-font-mono); color: var(--cabn-syntax-function); }
+.cabn-spellbook-dialog-hint { font-size: 11px; color: var(--cabn-text-secondary); }
+.cabn-spellbook-dialog-actions { display: flex; align-items: center; gap: 8px; }
+.cabn-spellbook-dialog-actions .cabn-spellbook-dialog-hint { flex: 1; }
+.cabn-spellbook-dialog .cabn-btn:disabled { opacity: 0.5; cursor: default; }
+.cabn-spellbook-input {
+	font-family: var(--cabn-font-mono); font-size: 14px; color: var(--cabn-text);
+	background: var(--cabn-panel-body-alt); border: 2px solid var(--cabn-border-outer); border-radius: 8px; padding: 6px 8px;
+}
+.cabn-spellbook-input:focus { outline: 2px solid var(--cabn-accent-yellow); outline-offset: 1px; }
+.cabn-spellbook-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 260px; min-height: 0; }
+.cabn-spellbook-list-row {
+	display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; padding: 4px 8px;
+	background: none; border: none; border-radius: 6px; color: inherit; font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.cabn-spellbook-list-row:hover { background: var(--cabn-inset-tint); }
+.cabn-spellbook-list-row.active { background: var(--cabn-editor-active-line-bg); box-shadow: inset 0 0 0 2px var(--cabn-accent-yellow); }
+.cabn-spellbook-list-name { flex: 1; font-family: var(--cabn-font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cabn-spellbook-list-line { flex: none; min-width: 26px; text-align: right; font-family: var(--cabn-font-mono); color: var(--cabn-text-secondary); }
+.cabn-spellbook-kind {
+	flex: none; min-width: 20px; text-align: center; font-family: var(--cabn-font-mono); font-size: 11px;
+	/* --cabn-accent-violet-ink: plain dark ink fell short of 4.5:1 against
+	   accentViolet in all three themes (uiContrast.test.ts). */
+	background: var(--cabn-accent-violet); color: var(--cabn-accent-violet-ink); border-radius: 4px; padding: 0 3px;
+}
+.cabn-spellbook-list.preview .cabn-spellbook-list-row { cursor: default; }
+.cabn-spellbook-list.preview input { accent-color: var(--cabn-accent-violet); }
+.cabn-rename-preview { flex: 1; font-family: var(--cabn-font-mono); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+/* Fixed dark ink on the bright accents, same reasoning as .cabn-btn. */
+.cabn-rename-preview del { opacity: 0.6; }
+.cabn-rename-preview ins { text-decoration: none; background: var(--cabn-accent-green); color: #201a3d; border-radius: 3px; padding: 0 1px; }
+.cabn-rename-preview mark { background: var(--cabn-accent-yellow); color: #201a3d; border-radius: 3px; padding: 0 1px; }
+.cabn-spellbook-tool-hint {
+	position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 10;
+	font-size: 12px; padding: 5px 12px; white-space: nowrap;
+	background: var(--cabn-panel-body); color: var(--cabn-text);
+	border: 2px solid var(--cabn-border-outer); border-radius: 10px; box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+}
+.cabn-fold-marker { display: inline-block; padding: 0 3px; cursor: pointer; color: var(--cabn-editor-gutter-text); }
+.cabn-fold-marker.folded { color: var(--cabn-syntax-keyword); }
 
 /* ================= ribbon banners (encounter + victory) ================= */
 .cabn-ribbon { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 260px; padding: 10px 36px; }
@@ -285,21 +633,40 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-victory-toast.play .cabn-confetti { animation: cabn-burst-fade 500ms ease-out forwards; }
 
-/* ================= wand / run — rune scroll ================= */
+/* ================= wand / run — literal spell-circle cast ================= */
 .cabn-rune-ring { position: absolute; inset: -26%; border-radius: 50%; border: 3px dashed var(--cabn-accent-violet); opacity: 0.55; }
 .cabn-rune-ring.two { inset: -14%; border-color: var(--cabn-accent-cyan); border-width: 2px; }
 .cabn-rune-ring.three { inset: -36%; border-color: var(--cabn-accent-yellow); border-width: 2px; opacity: 0.4; }
 .cabn-rune-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--cabn-accent-yellow); box-shadow: 0 0 8px 2px var(--cabn-accent-yellow); }
+/* The wand icon itself, floating faintly behind the console — the literal
+   object this screen is "opening", same idea as the crystal ball/spyglass/
+   satchel screens centering their own tool icon. Low opacity + no pointer
+   events: purely atmospheric, never competes with the run log for attention. */
+.cabn-wand-cast-icon {
+	position: absolute; top: 50%; left: 50%; width: 96px; height: 96px;
+	transform: translate(-50%, -50%); opacity: 0.16; pointer-events: none;
+	image-rendering: pixelated; z-index: 0;
+}
+@keyframes cabn-wand-cast {
+	0% { transform: scale(0.2) rotate(-25deg); opacity: 0; }
+	60% { transform: scale(1.06) rotate(4deg); opacity: 1; }
+	100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.cabn-wand-cast { animation: cabn-wand-cast 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2); transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+	.cabn-wand-cast { animation: cabn-fade-in 180ms ease-out; }
+}
 .cabn-run-line-current {
 	background: rgba(255,210,63,0.35); border-left: 4px solid var(--cabn-accent-yellow);
 	padding: 2px 8px; font-family: var(--cabn-font-mono); font-size: 12px; border-radius: 4px;
 }
-.cabn-run-log { background: rgba(59,47,107,0.08); padding: 6px 8px; font-family: var(--cabn-font-mono); font-size: 11px; border-radius: 6px; }
+.cabn-run-log { background: var(--cabn-inset-tint); padding: 6px 8px; font-family: var(--cabn-font-mono); font-size: 11px; border-radius: 6px; }
 .cabn-speed-btn {
 	font-family: var(--cabn-font-display); font-size: 11px; border: 2px solid var(--cabn-border-outer);
-	padding: 3px 9px; background: #fff; cursor: pointer; color: var(--cabn-text); border-radius: 6px;
+	padding: 3px 9px; background: var(--cabn-panel-body-alt); cursor: pointer; color: var(--cabn-text); border-radius: 6px;
 }
-.cabn-speed-btn.active { background: var(--cabn-accent-yellow); }
+/* Same fixed-dark-ink reasoning as .cabn-btn above — "active" swaps the fill for the bright accent. */
+.cabn-speed-btn.active { background: var(--cabn-accent-yellow); color: #201a3d; }
 @media (prefers-reduced-motion: no-preference) {
 	.cabn-rune-ring { animation: cabn-spin-slow 7s linear infinite; }
 	.cabn-rune-ring.two { animation-direction: reverse; animation-duration: 9s; }
@@ -325,6 +692,26 @@ const PIXEL_THEME_CSS = `
 	100% { opacity: 0; }
 }
 .cabn-transition-fade.play { animation: cabn-fade-in-out linear forwards; }
+/* An active world layer's entries (search results, spyglass rows). */
+.cabn-layer-badge {
+	display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 4px;
+	font-size: 10px; line-height: 15px; vertical-align: middle;
+	background: var(--cabn-layer-badge-bg, #b3202c); color: var(--cabn-layer-badge-text, #fff3ef);
+}
+/* A world layer switch: a radial pulse in the layer's colour, peaking (40%)
+   while WorldScene restarts under it. Never fully opaque, so the layer's
+   objects rising out of the ground read through its tail. */
+.cabn-transition-layer {
+	position: absolute; inset: 0; pointer-events: none; background: #000;
+	-webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.55) 0%, #000 75%);
+	mask-image: radial-gradient(circle at 50% 50%, rgba(0,0,0,0.55) 0%, #000 75%);
+}
+@keyframes cabn-layer-pulse {
+	0% { opacity: 0; }
+	40% { opacity: 0.85; }
+	100% { opacity: 0; }
+}
+.cabn-transition-layer.play { animation: cabn-layer-pulse ease-out forwards; }
 
 .cabn-transition-bars { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .cabn-transition-bars .bar { position: absolute; left: 0; right: 0; height: 52%; background: var(--cabn-border-outer, #221a4d); }
@@ -347,6 +734,57 @@ const PIXEL_THEME_CSS = `
 @keyframes cabn-wipe-across { 0% { transform: translateX(-120%); } 50% { transform: translateX(0); } 100% { transform: translateX(120%); } }
 .cabn-transition-wipe.play { animation: cabn-wipe-across var(--cabn-wipe-total-ms, 340ms) ease-in-out forwards; }
 
+/* A cover/reveal pair (cabin, layer) held at its peak while a load is open —
+   SceneTransitionOverlay switches cover -> held -> reveal. */
+@keyframes cabn-cover-in { 0% { opacity: 0; } 100% { opacity: var(--cabn-cover-peak, 1); } }
+@keyframes cabn-cover-out { 0% { opacity: var(--cabn-cover-peak, 1); } 100% { opacity: 0; } }
+.cabn-transition-fade.cover, .cabn-transition-layer.cover { animation: cabn-cover-in var(--cabn-cover-ms, 220ms) linear forwards; }
+.cabn-transition-fade.held, .cabn-transition-layer.held { opacity: var(--cabn-cover-peak, 1); }
+.cabn-transition-fade.reveal, .cabn-transition-layer.reveal { animation: cabn-cover-out var(--cabn-cover-ms, 220ms) linear forwards; }
+.cabn-transition-layer { --cabn-cover-peak: 0.85; }
+
+/* ================= loading overlay (react/LoadingOverlay.tsx) ================= */
+.cabn-sr-only {
+	position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+	overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.cabn-loading-shield { position: absolute; inset: 0; z-index: 30; pointer-events: auto; }
+.cabn-loading-overlay {
+	position: absolute; inset: 0; z-index: 30; pointer-events: auto;
+	display: grid; place-items: center; padding: 16px;
+	background: rgba(8, 6, 20, 0.72);
+	animation: cabn-fade-in 160ms ease-out;
+}
+.cabn-loading-panel {
+	width: min(360px, calc(100% - 32px)); box-sizing: border-box;
+	display: grid; justify-items: center; gap: 8px; text-align: center; padding: 16px 18px;
+}
+.cabn-loading-swirl {
+	width: 96px; height: 96px; border-radius: 50%;
+	background: radial-gradient(circle, var(--cabn-panel-body-alt) 0%, transparent 70%);
+}
+.cabn-loading-label { margin: 0; font-size: 14px; color: var(--cabn-text); }
+.cabn-loading-detail { margin: 0; font-size: 11px; color: var(--cabn-text-secondary); }
+.cabn-loading-bar {
+	width: 100%; height: 10px; box-sizing: border-box;
+	border: 2px solid var(--cabn-border-outer); border-radius: 2px;
+	background: var(--cabn-panel-body-alt); overflow: hidden;
+}
+.cabn-loading-bar-fill { height: 100%; background: var(--cabn-accent-green); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.18); }
+.cabn-loading-tip {
+	margin: 4px 0 0; padding-top: 8px; border-top: 3px solid var(--cabn-inset-tint);
+	font-size: 11px; line-height: 1.5; color: var(--cabn-text-secondary); min-height: 3em;
+}
+.cabn-loading-tip-name { display: block; font-size: 10px; color: var(--cabn-accent-violet); margin-bottom: 2px; }
+.cabn-loading-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+	.cabn-loading-overlay:not([data-reduced-motion]) .cabn-loading-swirl { animation: cabn-loading-breathe 2.4s ease-in-out infinite; }
+}
+@keyframes cabn-loading-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) {
+	.cabn-loading-overlay { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.cabn-transition-bars.play .bar,
 	.cabn-transition-wipe.play {
@@ -357,6 +795,32 @@ const PIXEL_THEME_CSS = `
 `;
 
 let styleInjected = false;
+
+/**
+ * The active world layer's palette (store.layerUiTokens) as its own style
+ * element, rewritten when the layer changes. `[data-layer][data-theme]`
+ * outranks the day and night blocks, so it wins in both.
+ */
+function applyLayerStyle(tokens: PixelThemeTokens | null): void {
+	if (typeof document === "undefined") return;
+	let style = document.getElementById(LAYER_STYLE_ELEMENT_ID);
+	if (!tokens) {
+		style?.remove();
+		return;
+	}
+	if (!style) {
+		style = document.createElement("style");
+		style.id = LAYER_STYLE_ELEMENT_ID;
+		document.head.appendChild(style);
+	}
+	style.textContent = `.cabn-pixel-root[data-layer][data-theme] {${tokenDeclarations(tokens)}
+	--cabn-inset-tint: rgba(255, 255, 255, 0.06);
+	--cabn-editor-gutter-border: rgba(0, 0, 0, 0.35);
+	--cabn-layer-badge-bg: ${toCssColor(tokens.accentPink)};
+	--cabn-layer-badge-text: ${toCssColor(tokens.text)};
+	--cabn-bg-panel: ${toCssColor(tokens.panelBodyAlt)};
+}`;
+}
 
 /** Idempotent — safe to call from multiple mounted <PixelTheme> instances (e.g. two CabnGame widgets, or a test remounting one) since the stylesheet's content never varies per-instance. */
 function ensurePixelThemeStyleInjected(): void {
@@ -383,7 +847,7 @@ export interface PixelThemeProps {
  * reads the resulting CSS custom properties via plain `var(--cabn-...)`
  * values in its own inline styles or `cabn-*` class names, per
  * IMPLEMENTATION-PLAN.md section 2's "subscribe once, let CSS cascade" shape
- * (same pattern GlowPipeline.ts already uses for glowEnabled, just for CSS
+ * (the same subscribe-and-sync shape scenes use for timeOfDay, just for CSS
  * custom properties instead of a Phaser pipeline).
  */
 export function PixelTheme({
@@ -391,10 +855,17 @@ export function PixelTheme({
 	children,
 }: PixelThemeProps): React.ReactElement {
 	const timeOfDay = useCabnStore(store, (s) => s.timeOfDay);
+	const layerId = useCabnStore(store, (s) => s.activeLayerId);
+	const layerTokens = useCabnStore(store, (s) => s.layerUiTokens);
 
 	useEffect(() => {
 		ensurePixelThemeStyleInjected();
 	}, []);
+
+	useEffect(() => {
+		applyLayerStyle(layerTokens);
+		return () => applyLayerStyle(null);
+	}, [layerTokens]);
 
 	return (
 		// pointerEvents: "none" so this always-present, full-bleed wrapper never
@@ -407,6 +878,7 @@ export function PixelTheme({
 		<div
 			className="cabn-pixel-root"
 			data-theme={timeOfDay}
+			data-layer={layerId !== null && layerTokens ? layerId : undefined}
 			style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
 		>
 			{children}

@@ -1,0 +1,410 @@
+import { type ChildProcess, spawn } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./cspGuard";
+
+// Opt-in smoke test for the M10 stream-bake fixes at a scale no fixture in
+// this repo reaches on its own: a synthetic ~2,000-file, ~150-folder project,
+// built and served for real (`cabn build` then `cabn serve --offline`, not
+// the demo's own sample/notes worlds), checking the three numbers the
+// streaming work exists to keep bounded regardless of project size — entry
+// time, main-thread stalls while walking, and live RenderTexture count.
+// Skipped unless CABN_LARGE_WORLD=1 (see CLAUDE.md's env var table) — this
+// generates ~2,000 files on disk and runs a real conversion + browser pass,
+// too slow for every `pnpm -F @cabn/demo e2e` run.
+test.skip(
+	() => process.env.CABN_LARGE_WORLD !== "1",
+	"opt-in: set CABN_LARGE_WORLD=1 to run (generates a synthetic ~2k-file project, builds and serves it for real)",
+);
+
+const here = dirname(fileURLToPath(import.meta.url));
+const REPO = join(here, "..", "..", "..");
+const CLI = join(REPO, "packages", "cli", "dist", "main.js");
+
+const PORT = Number(process.env.CABN_LARGE_WORLD_PORT ?? 5539);
+/** Default generous enough for a cold `cabn serve` conversion plus a real browser boot; CABN_LARGE_WORLD_MAX_MS overrides it for a slower machine. */
+const MAX_ENTER_MS = Number(process.env.CABN_LARGE_WORLD_MAX_MS ?? 6000);
+/** Chrome's own Long Tasks API threshold is 50ms; this test's bar is looser (200ms) — it's watching for the chunk-at-a-time streaming budget actually being respected while walking, not chasing every sub-frame hitch. */
+const LONG_TASK_THRESHOLD_MS = 200;
+const WALK_MS = 10_000;
+/** "About 200" per this task's own brief — generous over the ~150-cluster synthetic project's real chunk count (ground field + per-cluster ground + edge scenery + paths, each streamed independently) so this only fails on genuine unbounded growth, not normal streaming overhead. */
+const RENDER_TEXTURE_LIMIT = 200;
+
+// --- synthetic project generation ------------------------------------------
+
+interface LanguageSpec {
+	ext: string;
+	source: (n: number) => string;
+}
+
+// Small, syntactically clean snippets in a spread of languages — "clean"
+// matters here: an unbalanced-bracket file becomes a monster finding (by
+// design, see converter/src's syntax-error annotator), which is realistic
+// but would make this test's file count and timing depend on annotator
+// behavior instead of just raw project size.
+const LANGUAGES: LanguageSpec[] = [
+	{
+		ext: "py",
+		source: (n) => `# module ${n}\ndef fn_${n}():\n    return ${n}\n`,
+	},
+	{
+		ext: "js",
+		source: (n) =>
+			`// module ${n}\nfunction fn${n}() {\n  return ${n};\n}\nmodule.exports = fn${n};\n`,
+	},
+	{
+		ext: "ts",
+		source: (n) =>
+			`// module ${n}\nexport function fn${n}(): number {\n  return ${n};\n}\n`,
+	},
+	{
+		ext: "go",
+		source: (n) =>
+			`// module ${n}\npackage mod${n}\n\nfunc Fn${n}() int {\n\treturn ${n}\n}\n`,
+	},
+	{
+		ext: "rs",
+		source: (n) => `// module ${n}\npub fn fn_${n}() -> i32 {\n    ${n}\n}\n`,
+	},
+	{
+		ext: "java",
+		source: (n) =>
+			`// module ${n}\npublic class Mod${n} {\n  public static int fn() { return ${n}; }\n}\n`,
+	},
+	{ ext: "rb", source: (n) => `# module ${n}\ndef fn_${n}\n  ${n}\nend\n` },
+	{
+		ext: "c",
+		source: (n) => `// module ${n}\nint fn_${n}(void) {\n  return ${n};\n}\n`,
+	},
+];
+
+/**
+ * ~150 folders nested 4-6 levels deep: four top-level areas, each a binary
+ * tree of subfolders down to its own max depth (4, 5, 5 and 6) — every node
+ * of the tree is itself a folder that gets files, not just its leaves, which
+ * is what this task's "about 150 folders" is counting (a flat 150 leaf
+ * directories would need a much bigger, shallower tree, not "nested 4-6
+ * levels deep").
+ */
+function planFolders(): string[] {
+	const roots: { name: string; maxDepth: number }[] = [
+		{ name: "alpha", maxDepth: 4 },
+		{ name: "beta", maxDepth: 5 },
+		{ name: "gamma", maxDepth: 5 },
+		{ name: "delta", maxDepth: 6 },
+	];
+	const branch = 2;
+	const folders: string[] = [];
+	const walk = (parts: string[], level: number, maxDepth: number): void => {
+		folders.push(parts.join("/"));
+		if (level >= maxDepth) return;
+		for (let i = 0; i < branch; i++)
+			walk([...parts, `m${level}${i}`], level + 1, maxDepth);
+	};
+	for (const root of roots) walk([root.name], 1, root.maxDepth);
+	return folders;
+}
+
+/** Writes the synthetic project to `root` and returns how many folders/files it ended up with (for the test's own report). */
+async function buildSyntheticProject(
+	root: string,
+): Promise<{ folders: number; files: number }> {
+	const folders = planFolders();
+	await writeFile(
+		join(root, "README.md"),
+		"# Synthetic large-world fixture\n\nGenerated by large-world.spec.ts; not meant to be read.\n",
+	);
+	let fileCount = 1; // the root README above
+	let fileCounter = 0;
+	const targetFiles = 1960; // close to "about 2,000" while comfortably under @cabn/converter's DEFAULT_MAX_FILES (2000), so nothing gets truncated
+	const perFolder = Math.max(1, Math.floor(targetFiles / folders.length));
+
+	for (const folder of folders) {
+		const dir = join(root, folder);
+		await mkdir(dir, { recursive: true });
+		for (let i = 0; i < perFolder; i++) {
+			const lang = LANGUAGES[fileCounter % LANGUAGES.length] as LanguageSpec;
+			fileCounter++;
+			await writeFile(
+				join(dir, `file_${i}.${lang.ext}`),
+				lang.source(fileCounter),
+			);
+			fileCount++;
+		}
+		// A few markdown files scattered in, not a code file in every folder.
+		if (folder.split("/").length === 1) {
+			await writeFile(
+				join(dir, "notes.md"),
+				`# ${folder}\n\nA few notes about ${folder}.\n`,
+			);
+			fileCount++;
+		}
+	}
+	return { folders: folders.length, files: fileCount };
+}
+
+// --- cabn build / serve -----------------------------------------------------
+
+function runBuild(projectDir: string, outDir: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let output = "";
+		const build = spawn(
+			process.execPath,
+			[CLI, "build", projectDir, "-o", outDir, "--offline"],
+			{ stdio: ["ignore", "pipe", "pipe"] },
+		);
+		build.stdout?.on("data", (chunk: Buffer) => {
+			output += chunk.toString();
+		});
+		build.stderr?.on("data", (chunk: Buffer) => {
+			output += chunk.toString();
+		});
+		build.once("exit", (code) => {
+			if (code === 0) resolve(output);
+			else reject(new Error(`cabn build exited ${code}: ${output}`));
+		});
+		build.once("error", reject);
+	});
+}
+
+let root: string;
+let serve: ChildProcess | undefined;
+let url: string;
+let serveOutput = "";
+let serveExit:
+	| { code: number | null; signal: NodeJS.Signals | null }
+	| undefined;
+
+test.beforeAll(async () => {
+	test.setTimeout(180_000);
+	root = await mkdtemp(join(tmpdir(), "cabn-large-world-"));
+	const projectDir = join(root, "project");
+	await mkdir(projectDir, { recursive: true });
+	const { folders, files } = await buildSyntheticProject(projectDir);
+	console.log(
+		`[large-world] synthetic project: ${folders} folders, ${files} files`,
+	);
+
+	const buildOutput = await runBuild(projectDir, join(root, "built-world"));
+	console.log(
+		`[large-world] cabn build: ${buildOutput.trim().split("\n").join(" | ")}`,
+	);
+
+	serve = spawn(
+		process.execPath,
+		[CLI, "serve", projectDir, "--port", String(PORT), "--offline"],
+		{ stdio: ["ignore", "pipe", "pipe"] },
+	);
+	serve.stdout?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.stderr?.on("data", (chunk: Buffer) => {
+		serveOutput += chunk.toString();
+	});
+	serve.once("exit", (code, signal) => {
+		serveExit = { code, signal };
+	});
+	url = await new Promise<string>((resolveUrl, rejectUrl) => {
+		const timer = setTimeout(
+			() =>
+				rejectUrl(
+					new Error(`cabn serve never printed its url: ${serveOutput}`),
+				),
+			60_000,
+		);
+		serve?.stdout?.on("data", () => {
+			const m =
+				/cabn serve: (http:\/\/127\.0\.0\.1:\d+\/\?token=[0-9a-f]+)/.exec(
+					serveOutput,
+				);
+			if (m?.[1]) {
+				clearTimeout(timer);
+				resolveUrl(m[1]);
+			}
+		});
+		serve?.once("exit", (code) =>
+			rejectUrl(new Error(`cabn serve exited (${code}): ${serveOutput}`)),
+		);
+	});
+});
+
+// biome-ignore lint/correctness/noEmptyPattern: Playwright parses this signature itself and requires a literal object pattern, even unused, to know this hook takes no fixtures.
+test.afterEach(async ({}, testInfo) => {
+	if (testInfo.status !== testInfo.expectedStatus) {
+		console.log(
+			`[large-world] cabn serve output so far:\n${serveOutput}\n` +
+				`[large-world] cabn serve exit: ${serveExit ? `code=${serveExit.code} signal=${serveExit.signal}` : "still running"}`,
+		);
+	}
+});
+
+test.afterAll(async () => {
+	// This hook still runs even when the file-level test.skip() above skipped
+	// beforeAll along with the test itself — both `serve` and `root` are then
+	// still their unset initial values, so there's nothing to tear down.
+	serve?.kill("SIGINT");
+	await new Promise((r) => setTimeout(r, 300));
+	if (serve && serve.exitCode === null) serve.kill("SIGKILL");
+	if (root) await rm(root, { recursive: true, force: true });
+});
+
+// --- page helpers ------------------------------------------------------
+
+/** Same shape as perf-measure.mjs's installObservers — must run via addInitScript, before `page.goto`, since the marks/long-tasks this test cares about fire during the very first navigation. */
+async function installLongTaskObserver(page: Page): Promise<void> {
+	await page.addInitScript(() => {
+		(
+			window as unknown as { __cabnLongTasks: PerformanceEntry[] }
+		).__cabnLongTasks = [];
+		try {
+			new PerformanceObserver((list) => {
+				(
+					window as unknown as { __cabnLongTasks: PerformanceEntry[] }
+				).__cabnLongTasks.push(...list.getEntries());
+			}).observe({ entryTypes: ["longtask"] });
+		} catch {
+			// Long Tasks API unsupported in this browser — this run just won't have that signal.
+		}
+	});
+}
+
+function clearLongTasks(page: Page): Promise<void> {
+	return page.evaluate(() => {
+		(
+			window as unknown as { __cabnLongTasks: PerformanceEntry[] }
+		).__cabnLongTasks = [];
+	});
+}
+
+function readLongTasks(
+	page: Page,
+): Promise<{ name: string; duration: number }[]> {
+	return page.evaluate(
+		() =>
+			(
+				window as unknown as {
+					__cabnLongTasks?: { name: string; duration: number }[];
+				}
+			).__cabnLongTasks ?? [],
+	);
+}
+
+async function waitForMark(
+	page: Page,
+	name: string,
+	timeoutMs: number,
+): Promise<number> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const found = await page.evaluate(
+			(n) =>
+				performance.getEntriesByType("mark").find((m) => m.name === n)
+					?.startTime,
+			name,
+		);
+		if (found !== undefined) return found;
+		await page.waitForTimeout(50);
+	}
+	throw new Error(`mark "${name}" never fired within ${timeoutMs}ms`);
+}
+
+/** Every live RenderTexture GameObject across every active scene — Phaser tags each GameObject's own `.type`, "RenderTexture" for this one (see render/rendertexture/RenderTexture.js), so this needs no engine import to recognize one. */
+function renderTextureCount(page: Page): Promise<number> {
+	return page.evaluate(() => {
+		const game = (
+			window as unknown as {
+				__cabnGame: {
+					scene: {
+						getScenes(
+							isActive: boolean,
+						): { children: { list: { type: string }[] } }[];
+					};
+				};
+			}
+		).__cabnGame;
+		let count = 0;
+		for (const scene of game.scene.getScenes(true)) {
+			for (const obj of scene.children.list) {
+				if (obj.type === "RenderTexture") count++;
+			}
+		}
+		return count;
+	});
+}
+
+/** A handful of click-walks around the canvas center over `durationMs`, alternating direction so the camera actually covers ground (not just nudging back and forth on top of the spawn chunk) rather than one single steering choice held the whole time. */
+async function clickWalkFor(page: Page, durationMs: number): Promise<void> {
+	const canvas = page.locator("canvas").first();
+	const box = await canvas.boundingBox();
+	if (!box) throw new Error("canvas has no bounding box");
+	const cx = box.x + box.width / 2;
+	const cy = box.y + box.height / 2;
+	const offsets: [number, number][] = [
+		[220, 0],
+		[-220, -140],
+		[0, 220],
+		[180, 160],
+		[-200, 120],
+		[0, -220],
+	];
+	const deadline = Date.now() + durationMs;
+	let i = 0;
+	while (Date.now() < deadline) {
+		const [dx, dy] = offsets[i % offsets.length] as [number, number];
+		await page.mouse.click(cx + dx, cy + dy);
+		i++;
+		await page.waitForTimeout(1400);
+	}
+}
+
+test("large synthetic project: enters within threshold, walking stays long-task-free, RenderTexture count stays bounded", async ({
+	page,
+}) => {
+	test.setTimeout(120_000);
+	await page.setViewportSize({ width: 1280, height: 720 });
+	await installLongTaskObserver(page);
+
+	const navigateStart = Date.now();
+	await page.goto(`${url}&e2e=1&perf=1`);
+	await page
+		.locator("canvas")
+		.first()
+		.waitFor({ state: "visible", timeout: 30_000 });
+
+	const enterMs = await waitForMark(page, "cabn:world:create-end", 30_000);
+	console.log(
+		`[large-world] enter-to-walkable: ${enterMs.toFixed(0)}ms (wall clock since goto: ${Date.now() - navigateStart}ms)`,
+	);
+	expect(enterMs).toBeLessThan(MAX_ENTER_MS);
+
+	const entryRenderTextures = await renderTextureCount(page);
+	console.log(`[large-world] RenderTextures at entry: ${entryRenderTextures}`);
+	expect(entryRenderTextures).toBeLessThan(RENDER_TEXTURE_LIMIT);
+
+	// Only the walk's own long tasks count — boot/conversion long tasks are a
+	// different concern (and the enter-to-walkable threshold above already
+	// bounds boot's total wall-clock time).
+	await clearLongTasks(page);
+	await clickWalkFor(page, WALK_MS);
+
+	const longTasks = await readLongTasks(page);
+	const maxDuration = longTasks.reduce((m, t) => Math.max(m, t.duration), 0);
+	console.log(
+		`[large-world] long tasks during ${WALK_MS}ms walk: ${longTasks.length} total, longest ${maxDuration.toFixed(1)}ms`,
+	);
+	for (const t of longTasks) {
+		expect(
+			t.duration,
+			`long task "${t.name}" (${t.duration.toFixed(1)}ms)`,
+		).toBeLessThan(LONG_TASK_THRESHOLD_MS);
+	}
+
+	const afterWalkRenderTextures = await renderTextureCount(page);
+	console.log(
+		`[large-world] RenderTextures after walk: ${afterWalkRenderTextures}`,
+	);
+	expect(afterWalkRenderTextures).toBeLessThan(RENDER_TEXTURE_LIMIT);
+});

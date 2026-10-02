@@ -8,6 +8,17 @@ export interface RelativeRef {
 	isMarkdownLink: boolean;
 	/** `[[wikilink]]`-style only — these resolve relative to the *world root*, not the linking file's own directory (Obsidian's own default behavior, and how real vaults like this repo's notes-vault fixture actually write them: a file under daily/ links `[[projects/x]]` meaning the vault-root `projects/x.md`, not `daily/projects/x.md`). */
 	isWikilink?: boolean;
+	/**
+	 * Python "from X import name" only, set when a specific imported name was
+	 * parsed out (absent for star imports and imports whose name list didn't
+	 * parse cleanly, which fall back to plain module-level resolution via
+	 * `spec` alone, matching this file's pre-existing behavior for those
+	 * cases). `pyModuleSpec` is `spec` with the trailing `.name` stripped
+	 * back off — see resolvePyTarget's doc comment for why both readings are
+	 * tried.
+	 */
+	pyModuleSpec?: string;
+	pyImportedName?: string;
 }
 
 // Only "from"/dynamic-import/require specifiers starting with "." are relative
@@ -17,18 +28,116 @@ const JS_IMPORT_PATTERNS: readonly RegExp[] = [
 	/\bfrom\s+['"](\.[^'"]+)['"]/g,
 	/\bimport\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g,
 	/\brequire\(\s*['"](\.[^'"]+)['"]\s*\)/g,
-	/^\s*import\s+['"](\.[^'"]+)['"]/gm, // side-effect import, no "from"
+	// Leading whitespace stops at the line end: `^\s*` under /m re-scans every
+	// following blank line from each line start, quadratic on a run of them.
+	/^[^\S\n\r\u2028\u2029]*import\s+['"](\.[^'"]+)['"]/gm, // side-effect import, no "from"
 ];
 
 // One dot = the file's own package (its directory); each additional leading
 // dot goes up one more directory — standard Python relative-import semantics.
-const PY_IMPORT_PATTERN = /^[ \t]*from\s+(\.+)([\w.]*)\s+import\b/gm;
+// Group 3 (the import list) also matches a parenthesized, possibly
+// multi-line list — [^)] already matches newlines, no /s flag needed.
+// Group 2 can't start with a dot: `(\.+)([\w.]*)` could split a dot run any
+// way, which is quadratic on `from ....` with no `import`. Greedy `\.+` took
+// every dot first anyway, so the captures are unchanged.
+const PY_IMPORT_PATTERN =
+	/^[ \t]*from\s+(\.+)(\w[\w.]*)?\s+import\s+(\([^)]*\)|[^\n]*)/gm;
 
-const MD_LINK_PATTERN = /\[[^\]]*\]\(([^)]+)\)/g;
-// Obsidian/wiki-style `[[target]]` or `[[target|display text]]` — no URL
-// scheme concept exists for these, so (unlike MD_LINK_PATTERN) every match is
-// unconditionally treated as a relative reference.
-const WIKILINK_PATTERN = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+/**
+ * Next index at or after `from` of any char in `chars`, -1 if none. Callers
+ * scan left to right with non-decreasing `from`, so the last answer is reused
+ * while `from` hasn't passed it: every `[` in a run like `[[[[...` would
+ * otherwise rescan to the same `]`, quadratic in the file.
+ */
+function forwardFinder(
+	content: string,
+	chars: string,
+): (from: number) => number {
+	let lastFrom = Number.POSITIVE_INFINITY;
+	let lastHit = -1;
+	return (from) => {
+		if (from >= lastFrom && (lastHit === -1 || from <= lastHit)) return lastHit;
+		let i = from;
+		while (i < content.length && !chars.includes(content[i] ?? "")) i++;
+		lastFrom = from;
+		lastHit = i < content.length ? i : -1;
+		return lastHit;
+	};
+}
+
+interface LinkMatch {
+	index: number;
+	target: string;
+	targetIndex: number;
+}
+
+/**
+ * `[text](target)` — exactly what `/\[[^\]]*\]\(([^)]+)\)/g` matches, as a
+ * scanner: both classes run to the first `]`/`)`, so the regex never
+ * backtracks into a different answer, but it does rescan from each `[`.
+ */
+function markdownLinks(content: string): LinkMatch[] {
+	const nextClose = forwardFinder(content, "]");
+	const nextParen = forwardFinder(content, ")");
+	const out: LinkMatch[] = [];
+	let from = 0;
+	for (;;) {
+		const open = content.indexOf("[", from);
+		if (open === -1) break;
+		const close = nextClose(open + 1);
+		if (close === -1) break;
+		if (content[close + 1] !== "(") {
+			from = open + 1;
+			continue;
+		}
+		const paren = nextParen(close + 2);
+		if (paren === -1) break;
+		if (paren === close + 2) {
+			from = open + 1;
+			continue;
+		}
+		out.push({
+			index: open,
+			target: content.slice(close + 2, paren),
+			targetIndex: close + 2,
+		});
+		from = paren + 1;
+	}
+	return out;
+}
+
+/**
+ * Obsidian/wiki-style `[[target]]` or `[[target|display text]]`, matching
+ * `/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g`. No URL scheme concept exists for
+ * these, so (unlike markdownLinks) every match is unconditionally treated as
+ * a relative reference.
+ */
+function wikilinks(content: string): LinkMatch[] {
+	const nextStop = forwardFinder(content, "]|");
+	const nextClose = forwardFinder(content, "]");
+	const out: LinkMatch[] = [];
+	let from = 0;
+	for (;;) {
+		const open = content.indexOf("[[", from);
+		if (open === -1) break;
+		const stop = nextStop(open + 2);
+		if (stop === -1) break;
+		let close = stop;
+		if (stop > open + 2 && content[stop] === "|") close = nextClose(stop + 1);
+		if (close === -1) break;
+		if (stop === open + 2 || content[close + 1] !== "]") {
+			from = open + 1;
+			continue;
+		}
+		out.push({
+			index: open,
+			target: content.slice(open + 2, stop),
+			targetIndex: open + 2,
+		});
+		from = close + 2;
+	}
+	return out;
+}
 
 function extractJsRefs(content: string): RelativeRef[] {
 	const seen = new Set<number>();
@@ -52,6 +161,24 @@ function extractJsRefs(content: string): RelativeRef[] {
 	return refs;
 }
 
+// "as ALIAS" doesn't change which file is imported, so it's dropped; "*" and
+// anything that isn't a plain identifier (a comment tacked onto the line, an
+// unparsable list) is dropped too — those names fall back to plain
+// module-level resolution (see extractPyRefs) rather than being guessed at.
+function parseImportedNames(importList: string): string[] {
+	const inner = importList.trim().replace(/^\(|\)$/g, "");
+	return inner
+		.split(",")
+		.map(
+			(entry) =>
+				entry
+					.trim()
+					.split(/\s+as\s+/)[0]
+					?.trim() ?? "",
+		)
+		.filter((name) => /^\w+$/.test(name));
+}
+
 function extractPyRefs(content: string): RelativeRef[] {
 	const refs: RelativeRef[] = [];
 	PY_IMPORT_PATTERN.lastIndex = 0;
@@ -59,13 +186,27 @@ function extractPyRefs(content: string): RelativeRef[] {
 	while (match !== null) {
 		const dots = match[1] ?? "";
 		const modulePath = match[2] ?? "";
-		const spec = dots + modulePath;
+		const moduleSpec = dots + modulePath;
 		const dotsIndex = content.indexOf(dots, match.index);
 		const { line, col } = locAt(
 			content,
 			dotsIndex === -1 ? match.index : dotsIndex,
 		);
-		refs.push({ spec, line, col, isMarkdownLink: false });
+		const names = parseImportedNames(match[3] ?? "");
+		if (names.length === 0) {
+			refs.push({ spec: moduleSpec, line, col, isMarkdownLink: false });
+		} else {
+			for (const name of names) {
+				refs.push({
+					spec: `${moduleSpec}${modulePath === "" ? "" : "."}${name}`,
+					line,
+					col,
+					isMarkdownLink: false,
+					pyModuleSpec: moduleSpec,
+					pyImportedName: name,
+				});
+			}
+		}
 		match = PY_IMPORT_PATTERN.exec(content);
 	}
 	return refs;
@@ -86,32 +227,19 @@ function normalizeMdTarget(raw: string): string | null {
 
 function extractMdRefs(content: string): RelativeRef[] {
 	const refs: RelativeRef[] = [];
-	MD_LINK_PATTERN.lastIndex = 0;
-	let match: RegExpExecArray | null = MD_LINK_PATTERN.exec(content);
-	while (match !== null) {
-		const raw = match[1];
-		const target = raw !== undefined ? normalizeMdTarget(raw) : null;
-		if (target !== null && raw !== undefined) {
-			const rawIndex = content.indexOf(raw, match.index);
-			const { line, col } = locAt(
-				content,
-				rawIndex === -1 ? match.index : rawIndex,
-			);
+	for (const link of markdownLinks(content)) {
+		const target = normalizeMdTarget(link.target);
+		if (target !== null) {
+			const { line, col } = locAt(content, link.targetIndex);
 			refs.push({ spec: target, line, col, isMarkdownLink: true });
 		}
-		match = MD_LINK_PATTERN.exec(content);
 	}
 
-	WIKILINK_PATTERN.lastIndex = 0;
-	match = WIKILINK_PATTERN.exec(content);
-	while (match !== null) {
-		const target = match[1]?.trim();
+	for (const link of wikilinks(content)) {
+		const target = link.target.trim();
 		if (target) {
-			const targetIndex = content.indexOf(target, match.index);
-			const { line, col } = locAt(
-				content,
-				targetIndex === -1 ? match.index : targetIndex,
-			);
+			const lead = link.target.length - link.target.trimStart().length;
+			const { line, col } = locAt(content, link.targetIndex + lead);
 			refs.push({
 				spec: target,
 				line,
@@ -120,7 +248,6 @@ function extractMdRefs(content: string): RelativeRef[] {
 				isWikilink: true,
 			});
 		}
-		match = WIKILINK_PATTERN.exec(content);
 	}
 	return refs;
 }
@@ -202,9 +329,11 @@ function resolveJsTarget(fromPath: string, spec: string): string[] {
 
 /**
  * `spec` is dots + dotted-module-path (e.g. "..pkg.mod" from `from ..pkg.mod
- * import x`) — see extractPyRefs. A bare `from . import x` (spec === ".")
- * only ever resolves to a package directory (`__init__.py`), never a same-
- * named file.
+ * import x`, or "..pkg.mod.x" when the caller wants to try `x` itself as a
+ * submodule — see extractPyRefs/resolveRelativeRefTarget) — resolves purely
+ * mechanically, dots-to-directories-up plus dots-to-slashes, with no opinion
+ * on whether the last segment is a module name or an imported symbol; the
+ * caller tries both readings.
  */
 function resolvePyTarget(fromPath: string, spec: string): string[] {
 	const dotMatch = /^(\.+)(.*)$/.exec(spec);
@@ -240,6 +369,26 @@ export function resolveRelativeRefTarget(
 	if (ref.isWikilink) return resolveMdLikeTarget("", ref.spec);
 	if (ref.isMarkdownLink) return resolveMdLikeTarget(dirOf(fromPath), ref.spec);
 	const info = classify(fromPath);
-	if (info.language === "python") return resolvePyTarget(fromPath, ref.spec);
-	return resolveJsTarget(fromPath, ref.spec);
+	if (info.language !== "python") return resolveJsTarget(fromPath, ref.spec);
+	if (ref.pyModuleSpec === undefined)
+		return resolvePyTarget(fromPath, ref.spec);
+
+	// Try `name` as a submodule of the imported-from package first (the
+	// common idiom this exists for: `from . import views` where views.py is
+	// a sibling file); only fall back to "name is an attribute defined
+	// inside the imported-from module/package's own file" if no submodule
+	// exists. For a *bare* `from . import x`/`from .. import x` (no module
+	// path of its own), that fallback's target is the current package's own
+	// __init__.py — and when this file *is* that __init__.py, resolving
+	// there isn't really an edge to another file, just a reference to a name
+	// presumably already defined earlier in this same file, so it's dropped
+	// rather than reported as a same-file import cycle (the false positive
+	// this two-reading split exists to fix; see circularImport.test.ts).
+	const nameCandidates = resolvePyTarget(fromPath, ref.spec);
+	const moduleCandidates = resolvePyTarget(fromPath, ref.pyModuleSpec);
+	const isBareImport = /^\.+$/.test(ref.pyModuleSpec);
+	const fallbackCandidates = isBareImport
+		? moduleCandidates.filter((c) => c !== fromPath)
+		: moduleCandidates;
+	return [...nameCandidates, ...fallbackCandidates];
 }

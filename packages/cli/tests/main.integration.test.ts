@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { access, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,7 +41,11 @@ test("cabn build <fixture> -o <outDir> via the built binary", async () => {
 	expect(entries.sort()).toEqual([
 		"assets.json",
 		"chunks",
+		"embeds.json",
+		"media.json",
+		"monsters.json",
 		"search-index.json",
+		"signs.json",
 		"world.json",
 	]);
 });
@@ -66,5 +71,8 @@ test("cabn --version via the built binary", async () => {
 		CLI_ENTRY,
 		"--version",
 	]);
-	expect(stdout.trim()).toBe("0.0.0");
+	const pkg = JSON.parse(
+		readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+	) as { version: string };
+	expect(stdout.trim()).toBe(pkg.version);
 });

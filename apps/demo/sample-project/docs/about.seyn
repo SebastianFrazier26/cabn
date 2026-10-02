@@ -1,0 +1,8 @@
+@near ./
+# The docs grove
+
+Three of these arches are *web portals*: stand close and the page comes alive
+inside the stone. The models note is the preview for [[../lib/models.py|models.py]].
+
+- [[https://example.com/|example.com]] frames fine
+- [[https://github.com/|GitHub]] refuses, so it opens in your browser instead

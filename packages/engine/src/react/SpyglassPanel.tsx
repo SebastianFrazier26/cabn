@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiSparklePath } from "../assetPaths.js";
+import { uiScreenPath, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -29,7 +29,13 @@ function formatBytes(bytes: number): string {
 	return `${(bytes / 1024).toFixed(1)}KB`;
 }
 
-/** "ls" for the cluster you're standing in — click a row to auto-walk there. */
+/**
+ * "ls" for the cluster you're standing in, viewed through a literal spyglass —
+ * a round brass-rimmed lens (the ui_screen_spyglass pixel frame over
+ * `cabn-spyglass-lens`, pixelTheme.tsx) the file list sits inside of, rather than a plain rectangular panel. Opens with an
+ * iris-open clip-path animation (`cabn-iris-open`), falling back to a plain
+ * fade under reduced motion. Click a row to auto-walk there.
+ */
 export function SpyglassPanel({
 	store,
 	bus,
@@ -43,153 +49,245 @@ export function SpyglassPanel({
 		[portals, activeClusterId],
 	);
 
-	// Remounting the burst element (key={playToken}) on every open is what
+	// Remounting the whole lens (key={playToken}) on every open is what
 	// retriggers its CSS animation — the same "remount == retrigger" pattern
-	// RunOverlay's own unfurl animation already relies on.
+	// every other tool screen's open animation relies on.
 	const [playToken, setPlayToken] = useState(0);
+	const [confirmingReset, setConfirmingReset] = useState(false);
 	useEffect(() => {
 		if (open) setPlayToken((token) => token + 1);
+		else setConfirmingReset(false);
 	}, [open]);
+
+	// Previously only closable via the "x" button or clicking a row — every
+	// other panel already closes on Esc (OrbSearch, EditorOverlay), so this
+	// was a real gap, not an intentional difference.
+	useEffect(() => {
+		if (!open) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			// Capture phase + preventDefault: Phaser's own window listener (bubble
+			// phase) skips events already marked handled, so this Esc closes the
+			// panel only — it used to also leave the world at the bonfire, or
+			// the file, underneath.
+			event.preventDefault();
+			store.getState().setSpyglassOpen(false);
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [open, store]);
 
 	if (!open) return null;
 
 	return (
 		<div
-			className="cabn-panel cabn-spyglass-frame"
+			key={playToken}
+			className="cabn-spyglass-frame"
 			style={{
 				position: "absolute",
 				top: 16,
 				right: 16,
-				maxHeight: "60vh",
-				overflow: "auto",
-				fontSize: 12,
 				zIndex: 6,
 				pointerEvents: "auto",
 			}}
 		>
-			<div
-				className="cabn-panel-title"
-				style={{
-					display: "flex",
-					justifyContent: "space-between",
-					margin: 0,
-				}}
-			>
-				<span>ls</span>
-				<button
-					type="button"
-					onClick={() => store.getState().setSpyglassOpen(false)}
-					style={{
-						background: "none",
-						border: "none",
-						cursor: "pointer",
-						color: "inherit",
-						font: "inherit",
-					}}
-				>
-					x
-				</button>
-			</div>
-			<div className="cabn-panel-divider" />
-			{rows.length === 0 ? (
-				<div style={{ padding: 10, opacity: 0.7 }}>no portals nearby</div>
-			) : (
-				<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-					{rows.map((portal) => (
-						<li
-							key={portal.id}
+			<div className="cabn-panel cabn-spyglass-lens" style={{ fontSize: 12 }}>
+				{/* Inset to the lens's inscribed rectangle (see pixelTheme.tsx's
+				    .cabn-spyglass-content) so no row clips at the round rim. */}
+				<div className="cabn-spyglass-content">
+					<div
+						className="cabn-panel-title"
+						style={{
+							display: "flex",
+							justifyContent: "space-between",
+							margin: 0,
+						}}
+					>
+						<span>ls</span>
+						<button
+							type="button"
+							onClick={() => store.getState().setSpyglassOpen(false)}
 							style={{
-								position: "relative",
-								zIndex: 1,
-								display: "flex",
-								alignItems: "center",
-								borderBottom: "2px dotted var(--cabn-border-outer)",
+								background: "none",
+								border: "none",
+								cursor: "pointer",
+								color: "inherit",
+								font: "inherit",
 							}}
 						>
-							<button
-								type="button"
-								onClick={() => {
-									bus.emit("tool:walk-to-portal", { portalId: portal.id });
-									store.getState().setSpyglassOpen(false);
-								}}
-								style={{
-									flex: 1,
-									textAlign: "left",
-									background: "none",
-									border: "none",
-									font: "inherit",
-									padding: "6px 4px",
-									cursor: "pointer",
-									color: "inherit",
-									display: "flex",
-									justifyContent: "space-between",
-									gap: 8,
-								}}
-							>
-								<span>
-									{portal.edited && (
-										<span
-											title="edited"
+							x
+						</button>
+					</div>
+					<div className="cabn-panel-divider" />
+					<div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+						{rows.length === 0 ? (
+							<div style={{ padding: 10, opacity: 0.7 }}>no portals nearby</div>
+						) : (
+							<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+								{rows.map((portal) => (
+									<li
+										key={portal.id}
+										style={{
+											position: "relative",
+											zIndex: 1,
+											display: "flex",
+											alignItems: "center",
+											borderBottom: "2px dotted var(--cabn-border-outer)",
+										}}
+									>
+										<button
+											type="button"
+											onClick={() => {
+												bus.emit("tool:walk-to-portal", {
+													portalId: portal.id,
+												});
+												store.getState().setSpyglassOpen(false);
+											}}
 											style={{
-												color: "var(--cabn-accent-yellow)",
-												marginRight: 4,
+												flex: 1,
+												minWidth: 0,
+												textAlign: "left",
+												background: "none",
+												border: "none",
+												font: "inherit",
+												padding: "6px 4px",
+												cursor: "pointer",
+												color: "inherit",
+												display: "flex",
+												justifyContent: "space-between",
+												gap: 8,
 											}}
 										>
-											✎
-										</span>
-									)}
-									{portal.name}
-								</span>
-								<span
-									style={{ opacity: 0.7, color: "var(--cabn-text-secondary)" }}
-								>
-									{portal.kind} · {formatBytes(portal.bytes)}
-								</span>
-							</button>
-							{portal.edited && (
-								<button
-									type="button"
-									title="discard this file's saved edits"
-									onClick={() =>
-										bus.emit("tool:reset-file-edits", { portalId: portal.id })
-									}
-									style={{
-										background: "none",
-										border: "none",
-										cursor: "pointer",
-										color: "inherit",
-										font: "inherit",
-										opacity: 0.6,
-										padding: "6px 8px",
-									}}
-								>
-									reset
-								</button>
-							)}
-						</li>
+											<span className="cabn-clip-line" title={portal.name}>
+												{portal.edited && (
+													<span
+														title="edited"
+														style={{
+															color: "var(--cabn-accent-yellow)",
+															marginRight: 4,
+														}}
+													>
+														✎
+													</span>
+												)}
+												{portal.name}
+											</span>
+											<span
+												style={{
+													flexShrink: 0,
+													whiteSpace: "nowrap",
+													opacity: 0.7,
+													color: "var(--cabn-text-secondary)",
+												}}
+											>
+												{portal.kind} · {formatBytes(portal.bytes)}
+											</span>
+										</button>
+										{portal.edited && (
+											<button
+												type="button"
+												title="discard this file's saved edits"
+												onClick={() =>
+													bus.emit("tool:reset-file-edits", {
+														portalId: portal.id,
+													})
+												}
+												style={{
+													background: "none",
+													border: "none",
+													cursor: "pointer",
+													color: "inherit",
+													font: "inherit",
+													opacity: 0.6,
+													padding: "6px 8px",
+												}}
+											>
+												reset
+											</button>
+										)}
+									</li>
+								))}
+							</ul>
+						)}
+					</div>
+				</div>
+				<div className="cabn-panel-divider" />
+				{/* Moved here from SettingsCorner's old gear button (2026-09-28) —
+				    it sits beside the per-file resets it generalises, and keeps
+				    the settings corner down to the day/night control. */}
+				{confirmingReset ? (
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							gap: 8,
+							padding: "4px 0",
+						}}
+					>
+						<span>Reset all saved edits?</span>
+						<button
+							type="button"
+							className="cabn-btn neutral"
+							style={{ padding: "3px 10px" }}
+							onClick={() => {
+								bus.emit("tool:reset-world", {});
+								setConfirmingReset(false);
+							}}
+						>
+							Reset
+						</button>
+						<button
+							type="button"
+							className="cabn-btn cancel"
+							style={{ padding: "3px 10px" }}
+							onClick={() => setConfirmingReset(false)}
+						>
+							Cancel
+						</button>
+					</div>
+				) : (
+					<button
+						type="button"
+						title="discard every saved edit, bag slot and defeated monster in this world"
+						onClick={() => setConfirmingReset(true)}
+						style={{
+							display: "block",
+							margin: "2px auto 0",
+							background: "none",
+							border: "none",
+							cursor: "pointer",
+							color: "inherit",
+							font: "inherit",
+							opacity: 0.6,
+							padding: "4px 8px",
+						}}
+					>
+						reset world…
+					</button>
+				)}
+				<div className="cabn-effect-burst play">
+					{OPEN_BURST_SPARKS.map((s, i) => (
+						// Fixed, static per-render burst layout, never reordered — index is
+						// a stable enough key, same reasoning as RunOverlay's log.
+						<img
+							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
+							key={i}
+							className="cabn-spark"
+							src={uiSparklePath(s.color)}
+							alt=""
+							style={
+								{
+									"--cabn-tx": `${s.tx}px`,
+									"--cabn-ty": `${s.ty}px`,
+									animationDelay: `${s.delayMs}ms`,
+								} as React.CSSProperties
+							}
+						/>
 					))}
-				</ul>
-			)}
-			<div key={playToken} className="cabn-effect-burst play">
-				{OPEN_BURST_SPARKS.map((s, i) => (
-					// Fixed, static per-render burst layout, never reordered — index is
-					// a stable enough key, same reasoning as RunOverlay's log.
-					<img
-						// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
-						key={i}
-						className="cabn-spark"
-						src={uiSparklePath(s.color)}
-						alt=""
-						style={
-							{
-								"--cabn-tx": `${s.tx}px`,
-								"--cabn-ty": `${s.ty}px`,
-								animationDelay: `${s.delayMs}ms`,
-							} as React.CSSProperties
-						}
-					/>
-				))}
+				</div>
 			</div>
+			<img className="cabn-tool-frame" src={uiScreenPath("spyglass")} alt="" />
 		</div>
 	);
 }

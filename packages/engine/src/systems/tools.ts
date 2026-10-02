@@ -13,8 +13,10 @@ export interface Tool {
 	name: string;
 	/** Asset path (React <img src>) for the hotbar slot icon. */
 	icon: string;
-	/** Display + lookup key, e.g. "E", "L", "Cmd/Ctrl+F". */
+	/** Display + lookup key, e.g. "Enter", "L", "Cmd/Ctrl+F". */
 	hotkey: string;
+	/** Short verb shown under the slot inside a file ("Run", "Copy"...), where what a tool *does* matters more than what it is. */
+	label?: string;
 	onUse(ctx: ToolContext): void;
 }
 
@@ -70,26 +72,24 @@ export class ToolRegistry {
 	}
 }
 
-// M10a: spyglass/orb/bag/quill/wand now have real hand-drawn icons (the
-// approved UI mockup, assets/generated/ui/) instead of borrowed placeholders
-// — see assetPaths.ts's uiIconPath. Opener keeps the original key icon; it
-// was never a placeholder (a literal key reads correctly as "open").
-const ICON_BASE = "/assets/originals";
-
 export function createDefaultTools(): Tool[] {
 	return [
 		{
 			id: "opener",
+			label: "Use",
 			name: "Opener",
-			icon: `${ICON_BASE}/key_256.webp`,
-			hotkey: "E",
-			// WorldScene polls its own E key directly for frame-accurate movement
-			// feel and subscribes to this event too, so a hotbar click behaves
-			// identically to pressing E without duplicating the enter-portal logic.
+			icon: uiIconPath("key"),
+			hotkey: "Enter",
+			// Each scene polls its own Enter key directly for frame-accurate feel
+			// and subscribes to this event too, so a hotbar click behaves
+			// identically to pressing Enter without duplicating the interact logic.
+			// (Was E until 2026-09-28's playtest: "the keybinds are strange and
+			// should switch to enter".)
 			onUse: (ctx) => ctx.bus.emit("tool:opener-use", {}),
 		},
 		{
 			id: "spyglass",
+			label: "Look",
 			name: "Spyglass",
 			icon: uiIconPath("spyglass"),
 			hotkey: "L",
@@ -97,6 +97,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "orb",
+			label: "Search",
 			name: "Crystal orb",
 			icon: uiIconPath("orb"),
 			// Registry hotkey is the display/lookup key; the hotbar's own keydown
@@ -107,6 +108,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "bag",
+			label: "Copy",
 			name: "Bag",
 			icon: uiIconPath("bag"),
 			hotkey: "B",
@@ -114,6 +116,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "quill",
+			label: "Edit",
 			name: "Quill",
 			icon: uiIconPath("quill"),
 			hotkey: "Q",
@@ -124,6 +127,7 @@ export function createDefaultTools(): Tool[] {
 		},
 		{
 			id: "wand",
+			label: "Run",
 			name: "Wand",
 			icon: uiIconPath("wand"),
 			hotkey: "R",

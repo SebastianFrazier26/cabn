@@ -1,8 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { validateManifest } from "@cabn/world-schema";
 import type { FastifyInstance } from "fastify";
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { buildApp } from "../src/app.js";
 import { buildMultipartBody } from "./helpers/multipart.js";
@@ -111,6 +112,119 @@ describe("POST /v1/worlds: upload handling", () => {
 		expect(() => validateManifest(manifest)).not.toThrow();
 	});
 
+	test("hidden files in an upload never reach the result (2026-09-28)", async () => {
+		const utf8 = (s: string) => new TextEncoder().encode(s);
+		const zip = zipSync({
+			"README.md": utf8("# hello\n"),
+			"src/index.ts": utf8("export const a = 1;\n"),
+			".env": utf8("SHADOW_CANARY_UPLOAD_ENV=1\n"),
+			".github/ci.yml": utf8("on: push # SHADOW_CANARY_UPLOAD_CI\n"),
+			"src/.eslintrc.json": utf8('{"c":"SHADOW_CANARY_UPLOAD_ESLINT"}\n'),
+		});
+		const { body, contentType } = buildMultipartBody([
+			{ fieldName: "file", filename: "upload.zip", content: zip },
+		]);
+		const res = await post(body, contentType);
+		expect(res.statusCode).toBe(200);
+
+		const entries = unzipSync(res.rawPayload);
+		const manifest = JSON.parse(
+			Buffer.from(entries["world.json"] as Uint8Array).toString("utf8"),
+		);
+		expect(manifest.portals.map((p: { id: string }) => p.id).sort()).toEqual([
+			"README.md",
+			"src/index.ts",
+		]);
+		for (const [key, value] of Object.entries(entries)) {
+			expect(
+				key.split("/").some((s) => s.startsWith(".")),
+				key,
+			).toBe(false);
+			const text = Buffer.from(value).toString("utf8");
+			expect(text, key).not.toContain("SHADOW_CANARY");
+			for (const name of [".env", ".github", ".eslintrc"])
+				expect(text, `${key} names ${name}`).not.toContain(name);
+		}
+	});
+
+	test("media ships within the backend's own caps even if cabn.json asks for more", async () => {
+		// Random fill: a constant one compresses past the backend's 100:1 ratio
+		// cap and the upload would be refused before media is ever considered.
+		const png = (size: number) => {
+			const bytes = new Uint8Array(randomBytes(size));
+			bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+			return bytes;
+		};
+		const zip = zipSync({
+			"cabn.json": new TextEncoder().encode(
+				JSON.stringify({
+					cabnConfigVersion: 1,
+					media: { maxFileBytes: 20 * 1024 * 1024 },
+				}),
+			),
+			"small.png": png(1024),
+			"big.png": png(600 * 1024),
+		});
+		const { body, contentType } = buildMultipartBody([
+			{ fieldName: "file", filename: "upload.zip", content: zip },
+		]);
+		const res = await post(body, contentType);
+		expect(res.statusCode).toBe(200);
+
+		const entries = unzipSync(res.rawPayload);
+		const media = JSON.parse(
+			Buffer.from(entries["media.json"] as Uint8Array).toString("utf8"),
+		);
+		expect(media.previews["big.png"]).toEqual({
+			kind: "sealed",
+			reason: "too-large",
+		});
+		const shipped = Object.keys(entries).filter((k) => k.startsWith("media/"));
+		expect(shipped).toHaveLength(1);
+		expect(entries[shipped[0] as string]?.length).toBe(1024);
+	});
+
+	test("never makes an outbound request for an upload's url previews (embed check stays offline)", async () => {
+		const realFetch = globalThis.fetch;
+		let calls = 0;
+		globalThis.fetch = (async () => {
+			calls++;
+			throw new Error("backend must not fetch");
+		}) as typeof fetch;
+		try {
+			const zip = zipSync({
+				"cabn.json": new TextEncoder().encode(
+					JSON.stringify({
+						cabnConfigVersion: 1,
+						previews: {
+							"a.md": { kind: "url", url: "https://internal.example/" },
+						},
+						allowedEmbedOrigins: ["https://internal.example"],
+					}),
+				),
+				"a.md": new TextEncoder().encode("# a\n"),
+			});
+			const { body, contentType } = buildMultipartBody([
+				{ fieldName: "file", filename: "upload.zip", content: zip },
+			]);
+			const res = await post(body, contentType);
+			expect(res.statusCode).toBe(200);
+			expect(calls).toBe(0);
+			const embeds = JSON.parse(
+				Buffer.from(
+					unzipSync(res.rawPayload)["embeds.json"] as Uint8Array,
+				).toString("utf8"),
+			);
+			expect(embeds.mode).toBe("offline");
+			expect(embeds.entries["a.md"]).toMatchObject({
+				framable: true,
+				basis: "offline",
+			});
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	});
+
 	test("400: no file field at all", async () => {
 		const { body, contentType } = buildMultipartBody([]);
 		const res = await post(body, contentType);
@@ -181,7 +295,7 @@ describe("POST /v1/worlds: upload handling", () => {
 		expect(() => validateManifest(manifest)).not.toThrow();
 	});
 
-	test("hostile zip-bomb fixture is handled safely (capped, not crashed)", async () => {
+	test("hostile zip-bomb fixture is refused on its declared ratio (2026-10-01)", async () => {
 		const bytes = await readFile(
 			join(CONVERTER_FIXTURES, "hostile-zip-bomb.zip"),
 		);
@@ -189,12 +303,10 @@ describe("POST /v1/worlds: upload handling", () => {
 			{ fieldName: "file", filename: "bomb.zip", content: bytes },
 		]);
 		const res = await post(body, contentType);
-		expect(res.statusCode).toBe(200);
-		const entries = unzipSync(res.rawPayload);
-		const manifest = JSON.parse(
-			Buffer.from(entries["world.json"] as Uint8Array).toString("utf8"),
-		);
-		expect(() => validateManifest(manifest)).not.toThrow();
+		expect(res.statusCode).toBe(422);
+		expect(res.json()).toEqual({
+			error: "archive has an entry compressed beyond the allowed ratio",
+		});
 	});
 });
 
@@ -225,5 +337,54 @@ describe("POST /v1/worlds: rate limiting", () => {
 		} finally {
 			await app.close();
 		}
+	});
+
+	describe("per-IP bucket behind one trusted proxy", () => {
+		function anonymous(app: FastifyInstance, forwardedFor: string) {
+			return app.inject({
+				method: "POST",
+				url: "/v1/worlds",
+				headers: { "x-forwarded-for": forwardedFor },
+			});
+		}
+
+		test("a spoofed leftmost X-Forwarded-For entry doesn't get a fresh bucket", async () => {
+			const { sha256Hex: hash } = makeApiKey();
+			const app = buildApp(
+				testConfig({
+					apiKeyHashes: [Buffer.from(hash, "hex")],
+					trustProxy: 1,
+					rateLimitMax: 2,
+				}),
+			);
+			try {
+				const codes = [];
+				for (const spoof of ["198.51.100.1", "198.51.100.2", "198.51.100.3"])
+					codes.push(
+						(await anonymous(app, `${spoof}, 203.0.113.7`)).statusCode,
+					);
+				expect(codes).toEqual([401, 401, 429]);
+			} finally {
+				await app.close();
+			}
+		});
+
+		test("the address the proxy appended is the key", async () => {
+			const { sha256Hex: hash } = makeApiKey();
+			const app = buildApp(
+				testConfig({
+					apiKeyHashes: [Buffer.from(hash, "hex")],
+					trustProxy: 1,
+					rateLimitMax: 1,
+				}),
+			);
+			try {
+				expect((await anonymous(app, "203.0.113.7")).statusCode).toBe(401);
+				expect((await anonymous(app, "203.0.113.8")).statusCode).toBe(401);
+				expect((await anonymous(app, "203.0.113.7")).statusCode).toBe(429);
+			} finally {
+				await app.close();
+			}
+		});
 	});
 });

@@ -1,4 +1,4 @@
-import type { FileSource } from "./sources/types.js";
+import type { FileSource, SourceEntry } from "./sources/types.js";
 
 export const DEFAULT_IGNORES = [
 	"node_modules",
@@ -13,12 +13,17 @@ export const DEFAULT_IGNORES = [
 	"coverage",
 ];
 
-// Matched against the filename only (not directory segments) — these files
-// still get a portal (name visible) but never have their content read, same
-// treatment as oversized/binary files. `includeSecrets: true` opts back in.
+// Matched against the filename, or for a pattern with a "/" against that many
+// trailing path segments (`.kube/config` is any `config` directly inside a
+// `.kube` folder) — these files still get a portal (name visible) but never
+// have their content read, same treatment as oversized/binary files.
+// `includeSecrets: true` opts back in. One list for worlds, the shadow realm
+// and git history alike; gitPack.ts relies on no pattern being more than one
+// folder deep.
 export const DEFAULT_SECRET_PATTERNS = [
 	".env",
 	".env.*",
+	".envrc",
 	"*.pem",
 	"*.key",
 	"id_rsa*",
@@ -26,6 +31,11 @@ export const DEFAULT_SECRET_PATTERNS = [
 	"*credentials*",
 	".npmrc",
 	".netrc",
+	".pypirc",
+	".yarnrc.yml",
+	".terraformrc",
+	".docker/config.json",
+	".kube/config",
 ];
 
 export const DEFAULT_MAX_FILES = 2000;
@@ -38,6 +48,15 @@ export interface WalkOptions {
 	maxFileBytes?: number;
 	/** Read secret-pattern files' content normally instead of treating them as metadata-only. Default false. */
 	includeSecrets?: boolean;
+	/** Exact paths to treat as metadata-only regardless of name (git universes: blobs the leaked-secret detector flagged). Not affected by includeSecrets. */
+	sealedPaths?: ReadonlySet<string>;
+	/**
+	 * `"exclude"` (default): hidden paths (see isHiddenPath) never reach a
+	 * normal world, like `ls` without `-a`. `"only"`: just the hidden paths,
+	 * for `cabn serve --owner`'s shadow realm. Ignored paths are dropped
+	 * either way, so `.git`/`.venv`/`.next` never appear in either.
+	 */
+	hidden?: "exclude" | "only";
 }
 
 export interface WalkedFile {
@@ -81,9 +100,46 @@ function isIgnored(path: string, patterns: readonly string[]): boolean {
 	return matchesAnySegment(path, patterns);
 }
 
-function isSecretFile(path: string, patterns: readonly string[]): boolean {
-	const name = path.split("/").pop() ?? path;
-	return matchesAnySegment(name, patterns);
+/** walk()'s own ignore rule (DEFAULT_IGNORES plus `extra`), for readers of other sources — git history must skip exactly what the world skips. */
+export function isIgnoredPath(
+	path: string,
+	extra: readonly string[] = [],
+): boolean {
+	return matchesAnySegment(path, [...DEFAULT_IGNORES, ...extra]);
+}
+
+/** Any path segment starting with "." — a dotfile or anything inside a dot-folder. */
+export function isHiddenPath(path: string): boolean {
+	return path.split("/").some((segment) => segment.startsWith("."));
+}
+
+type SegmentMatcher = (segment: string) => boolean;
+
+function segmentMatcher(pattern: string): SegmentMatcher {
+	if (!pattern.includes("*") && !pattern.includes("?"))
+		return (segment) => segment === pattern;
+	const re = globToRegExp(pattern);
+	return (segment) => re.test(segment);
+}
+
+const DEFAULT_SECRET_MATCHERS: SegmentMatcher[][] = DEFAULT_SECRET_PATTERNS.map(
+	(pattern) => pattern.split("/").map(segmentMatcher),
+);
+
+function isSecretFile(path: string): boolean {
+	const segments = path.split("/");
+	return DEFAULT_SECRET_MATCHERS.some((parts) => {
+		const offset = segments.length - parts.length;
+		return (
+			offset >= 0 &&
+			parts.every((matches, i) => matches(segments[offset + i] as string))
+		);
+	});
+}
+
+/** Whether walk() withheld this file's content as secret-patterned — anything that later reads source bytes directly (media shipping) must honor the same rule. */
+export function isSecretPath(path: string, includeSecrets = false): boolean {
+	return !includeSecrets && isSecretFile(path);
 }
 
 export async function walk(
@@ -93,14 +149,12 @@ export async function walk(
 	const ignore = [...DEFAULT_IGNORES, ...(opts.ignore ?? [])];
 	const maxFiles = opts.maxFiles ?? DEFAULT_MAX_FILES;
 	const maxFileBytes = opts.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
+	const onlyHidden = opts.hidden === "only";
 
-	const accepted: {
-		path: string;
-		bytes: number;
-		read(): Promise<Uint8Array>;
-	}[] = [];
+	const accepted: SourceEntry[] = [];
 	for await (const entry of source.entries()) {
 		if (isIgnored(entry.path, ignore)) continue;
+		if (isHiddenPath(entry.path) !== onlyHidden) continue;
 		accepted.push(entry);
 	}
 	// Sort so output is stable regardless of filesystem/zip enumeration order.
@@ -116,7 +170,8 @@ export async function walk(
 		totalBytes += entry.bytes;
 		const withinCap = entry.bytes <= maxFileBytes;
 		const isSecret =
-			!opts.includeSecrets && isSecretFile(entry.path, DEFAULT_SECRET_PATTERNS);
+			(!opts.includeSecrets && isSecretFile(entry.path)) ||
+			(opts.sealedPaths?.has(entry.path) ?? false);
 		const content = withinCap && !isSecret ? await entry.read() : undefined;
 		files.push({ path: entry.path, bytes: entry.bytes, content });
 	}

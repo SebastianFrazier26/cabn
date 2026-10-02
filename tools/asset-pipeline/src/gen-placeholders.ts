@@ -1,16 +1,23 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { RGB } from "./color.js";
 import { upscaleNearest, writeRawRgbaPng } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
+import { defeatFrames, hitFrame } from "./monster-fx.js";
 import { manifestJsonPath, paletteJsonPath, placeholdersDir } from "./paths.js";
 import { type PixelMap, renderPixelMap } from "./pixelmap.js";
+import { brambleIdle0, brambleIdle1 } from "./pixelmaps/bramble.js";
 import { characterIdle } from "./pixelmaps/character-idle.js";
 import { characterIdleBack } from "./pixelmaps/character-idle-back.js";
 import { ghost } from "./pixelmaps/ghost.js";
 import { gremlinIdle0, gremlinIdle1 } from "./pixelmaps/gremlin.js";
+import { impIdle0, impIdle1 } from "./pixelmaps/imp.js";
+import { magpieIdle0, magpieIdle1 } from "./pixelmaps/magpie.js";
 import { ouroborosIdle0, ouroborosIdle1 } from "./pixelmaps/ouroboros.js";
 import { portalArch } from "./pixelmaps/portal-arch.js";
 import { rotSpriteIdle0, rotSpriteIdle1 } from "./pixelmaps/rot-sprite.js";
+import { shadeIdle0, shadeIdle1 } from "./pixelmaps/shade.js";
+import { skeletonIdle0, skeletonIdle1 } from "./pixelmaps/skeleton.js";
 import {
 	wardedMimicIdle0,
 	wardedMimicIdle1,
@@ -35,7 +42,41 @@ const ALL_PIXEL_MAPS: PixelMap[] = [
 	ouroborosIdle1,
 	willOWispIdle0,
 	willOWispIdle1,
+	// 2026-09-28 annotator species (converter lint/secret/dead-code findings).
+	impIdle0,
+	impIdle1,
+	magpieIdle0,
+	magpieIdle1,
+	skeletonIdle0,
+	skeletonIdle1,
+	brambleIdle0,
+	brambleIdle1,
+	shadeIdle0,
+	shadeIdle1,
 ];
+// Every species' battle frames are derived from its idle0 (see monster-fx.ts),
+// keyed by the same file slug as the idle frames.
+export const MONSTER_FX_SOURCES: [string, PixelMap][] = [
+	["ghost", ghost],
+	["rot_sprite", rotSpriteIdle0],
+	["warded_mimic", wardedMimicIdle0],
+	["gremlin", gremlinIdle0],
+	["ouroboros", ouroborosIdle0],
+	["will_o_wisp", willOWispIdle0],
+	["imp", impIdle0],
+	["magpie", magpieIdle0],
+	["skeleton", skeletonIdle0],
+	["bramble", brambleIdle0],
+	["shade", shadeIdle0],
+];
+
+function monsterFxMaps(palette: readonly RGB[]): PixelMap[] {
+	return MONSTER_FX_SOURCES.flatMap(([slug, idle]) => [
+		hitFrame(idle, palette, `${slug}_hit`),
+		...defeatFrames(idle, palette, `${slug}_defeat`),
+	]);
+}
+
 const UPSCALE_FACTOR = 8;
 
 interface ManifestEntry {
@@ -59,7 +100,7 @@ async function main() {
 	const manifest = await loadManifest();
 	await mkdir(placeholdersDir, { recursive: true });
 
-	for (const map of ALL_PIXEL_MAPS) {
+	for (const map of [...ALL_PIXEL_MAPS, ...monsterFxMaps(palette)]) {
 		const entry = manifest[map.name];
 		if (entry?.locked) {
 			console.log(`${map.name}: skipped (locked)`);
@@ -76,10 +117,7 @@ async function main() {
 		console.log(`${map.name}: rendered ${map.width}x${map.height}`);
 	}
 
-	await writeFile(
-		manifestJsonPath,
-		`${JSON.stringify(manifest, null, "\t")}\n`,
-	);
+	await writeJsonFile(manifestJsonPath, manifest);
 }
 
 main().catch((err) => {

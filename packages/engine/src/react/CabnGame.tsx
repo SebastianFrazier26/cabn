@@ -4,19 +4,34 @@ import {
 	type CabnGameTarget,
 	createCabnGame,
 } from "../game.js";
+import { configureMedia } from "../render/mediaSources.js";
+import type { OwnerCapability } from "../systems/ownerApi.js";
+import type { OwnerSignsApi } from "../systems/ownerSigns.js";
 import { BagTray } from "./BagTray.js";
 import { EditorOverlay } from "./EditorOverlay.js";
 import { EncounterBanner } from "./EncounterBanner.js";
 import { FileOverlay } from "./FileOverlay.js";
+import { FileStatusLine } from "./FileStatusLine.js";
+import { GuideDialog } from "./GuideDialog.js";
+import { LayerSaveNotice } from "./LayerSaveNotice.js";
+import { LoadingOverlay } from "./LoadingOverlay.js";
 import { MonsterCounter } from "./MonsterCounter.js";
 import { OrbSearch } from "./OrbSearch.js";
+import { Pensieve } from "./Pensieve.js";
+import { PetLayer } from "./PetLayer.js";
+import { PortalLivePage } from "./PortalLivePage.js";
+import { PortalPreviewDock } from "./PortalPreviewDock.js";
 import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
 import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
+import { Signs } from "./SignPanels.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
+import { UniverseBadge } from "./UniverseBadge.js";
+import { UniversePicker } from "./UniversePicker.js";
 import { VictoryToast } from "./VictoryToast.js";
+import { WorldMap } from "./WorldMap.js";
 
 // Exactly one of the two: a plain worldUrl boots straight into that world (no
 // shelf to return to); shelfUrl boots into the shelf hub, which then boots
@@ -29,6 +44,24 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	 * CabnGame itself never calls this for anything internal.
 	 */
 	onGameReady?: (handle: CabnGameHandle | null) => void;
+	/**
+	 * Where the host serves pdf.js's worker (pdfjs-dist/build/pdf.worker.min.mjs,
+	 * same exact version as the engine's). Required for PDF previews — cabn
+	 * never fetches it from a CDN; without it PDFs show a "viewer unavailable"
+	 * notice. A Vite host can pass `import url from "pdfjs-dist/build/pdf.worker.min.mjs?url"`.
+	 */
+	pdfWorkerUrl?: string;
+	/**
+	 * Owner capability — only `cabn serve --owner`'s host page passes one
+	 * (built by `@cabn/engine/owner` against its loopback owner API). `git`
+	 * gives the rift's picker an Owner tab (commit edits, create/switch
+	 * branches in the real repository); `signs` gives sign placing and edit
+	 * controls; `layers` their toggles. The owner reaches all of them through
+	 * one key, O, the owner's toolkit. A hosted build or the demo never passes it.
+	 */
+	owner?: OwnerCapability;
+	/** Older spelling of `owner.signs`, still accepted; `owner.signs` wins when both are given. */
+	ownerSigns?: OwnerSignsApi;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -41,7 +74,34 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady } = props;
+	const { onGameReady, pdfWorkerUrl, owner, ownerSigns } = props;
+	const signsApi = owner?.signs ?? ownerSigns;
+
+	useEffect(() => {
+		if (!handle) return;
+		handle.store.getState().setOwnerSigns(signsApi ?? null);
+	}, [handle, signsApi]);
+
+	const layers = owner?.layers;
+	useEffect(() => {
+		if (!handle) return;
+		handle.store.getState().setWorldLayers(layers ?? []);
+	}, [handle, layers]);
+
+	useEffect(() => {
+		if (pdfWorkerUrl !== undefined) configureMedia({ pdfWorkerUrl });
+	}, [pdfWorkerUrl]);
+
+	const [busy, setBusy] = useState(false);
+	useEffect(() => {
+		if (!handle) return;
+		const sync = () => {
+			const { loading } = handle.store.getState();
+			setBusy(loading.active || loading.visible);
+		};
+		sync();
+		return handle.store.subscribe(sync);
+	}, [handle]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: onGameReady is deliberately excluded — an inline arrow-function prop (the common case) is a fresh reference every render and would re-create the whole game each time.
 	useEffect(() => {
@@ -65,22 +125,39 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	}, [worldUrl, shelfUrl]);
 
 	return (
-		<div style={{ position: "relative", width: "100%", height: "100%" }}>
+		<div
+			style={{ position: "relative", width: "100%", height: "100%" }}
+			aria-busy={busy}
+			data-testid="cabn-game-root"
+		>
 			<div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 			{handle && (
 				<PixelTheme store={handle.store}>
+					{/* First, so every HUD panel after it stacks above this in-world layer. */}
+					<PortalLivePage store={handle.store} bus={handle.bus} />
 					<FileOverlay store={handle.store} />
-					<ToolHotbar store={handle.store} bus={handle.bus} />
+					<FileStatusLine store={handle.store} bus={handle.bus} />
+					<PortalPreviewDock store={handle.store} bus={handle.bus} />
+					<ToolHotbar store={handle.store} bus={handle.bus} owner={owner} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />
 					<BagTray store={handle.store} bus={handle.bus} />
-					<SettingsCorner store={handle.store} bus={handle.bus} />
+					<SettingsCorner store={handle.store} />
+					<WorldMap store={handle.store} bus={handle.bus} />
 					<MonsterCounter store={handle.store} />
-					<EncounterBanner store={handle.store} />
+					<EncounterBanner store={handle.store} bus={handle.bus} />
 					<VictoryToast store={handle.store} />
+					<GuideDialog store={handle.store} />
+					<UniverseBadge store={handle.store} />
+					<UniversePicker store={handle.store} bus={handle.bus} owner={owner} />
+					<Pensieve store={handle.store} />
+					<Signs store={handle.store} bus={handle.bus} />
+					<PetLayer store={handle.store} bus={handle.bus} />
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
+					<LayerSaveNotice store={handle.store} bus={handle.bus} />
 					<SceneTransitionOverlay store={handle.store} bus={handle.bus} />
+					<LoadingOverlay store={handle.store} />
 				</PixelTheme>
 			)}
 		</div>

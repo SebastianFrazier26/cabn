@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiSparklePath } from "../assetPaths.js";
+import { uiScreenPath, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import {
@@ -10,8 +10,15 @@ import {
 	searchFileLines,
 	toWorldSearchHits,
 } from "../systems/search.js";
+import { isStaleSignHit, syncSignSearchDocs } from "../systems/signSearch.js";
+import { isHiddenPath } from "../systems/worldLayer.js";
 import { useCabnStore } from "./useCabnStore.js";
-import { useWorldSearchIndex } from "./useWorldSearchIndex.js";
+import { useFocusTrap } from "./useFocusTrap.js";
+import {
+	useLayerSearchIndex,
+	useWorldSearchIndex,
+	type WorldSearchIndex,
+} from "./useWorldSearchIndex.js";
 
 export interface OrbSearchProps {
 	store: StoreApi<CabnStore>;
@@ -68,7 +75,8 @@ export function OrbSearch({
 	const open = useCabnStore(store, (s) => s.searchOpen);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const activeWorldBase = useCabnStore(store, (s) => s.activeWorldBase);
-	const activePortalContent = useCabnStore(store, (s) => s.activePortalContent);
+	const activeFileState = useCabnStore(store, (s) => s.activeFileState);
+	const activeFileDoc = activeFileState?.doc ?? null;
 	const portals = useCabnStore(store, (s) => s.portals);
 	const [query, setQuery] = useState("");
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -78,25 +86,29 @@ export function OrbSearch({
 		activeWorldBase,
 		open && scope === "world",
 	);
+	const activeLayerId = useCabnStore(store, (s) => s.activeLayerId);
+	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
+	const layer = useMemo(
+		() => worldLayers.find((l) => l.id === activeLayerId) ?? null,
+		[worldLayers, activeLayerId],
+	);
+	const layerSearch = useLayerSearchIndex(layer, open && scope === "world");
+	const layerIndex = layerSearch.index;
 
 	useEffect(() => {
-		if (!open) {
-			setQuery("");
-			return;
-		}
-		// Biome's a11y/noAutofocus rule wants intentional focus management, not
-		// an `autoFocus` prop — this is that: focus only when the modal actually
-		// opens, not on every mount.
-		inputRef.current?.focus();
+		if (!open) setQuery("");
 	}, [open]);
 
 	useEffect(() => {
 		if (!open) return;
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") store.getState().setSearchOpen(false);
+			if (event.key !== "Escape") return;
+			// Same capture + preventDefault as SpyglassPanel's Esc.
+			event.preventDefault();
+			store.getState().setSearchOpen(false);
 		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [open, store]);
 
 	// Remounting the burst element (key={playToken}) on every open is what
@@ -107,6 +119,51 @@ export function OrbSearch({
 		if (open) setPlayToken((token) => token + 1);
 	}, [open]);
 
+	const ballRef = useRef<HTMLDivElement>(null);
+	useFocusTrap(ballRef, open);
+
+	// Biome's a11y/noAutofocus rule wants intentional focus management, not an
+	// `autoFocus` prop — this is that. Keyed on playToken too: the input lives
+	// inside the remounted (key={playToken}) ball, so focusing on `open` alone
+	// would land on the instance that remount immediately replaces.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: playToken is the remount signal, not read inside
+	useEffect(() => {
+		if (open) inputRef.current?.focus();
+	}, [open, playToken]);
+
+	// Only owner mode writes signs at runtime; a read-only world's index and
+	// signs.json come from the same build, so they're left untouched there.
+	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const signs = useCabnStore(store, (s) => s.signs);
+	const syncedSigns = useRef<SignSync>({ index: null, sources: new Map() });
+	const syncedLayerSigns = useRef<SignSync>({
+		index: null,
+		sources: new Map(),
+	});
+	// Hidden-folder signs belong to the layer's own index, never the world's.
+	const [baseSigns, layerSigns] = useMemo(
+		() =>
+			[
+				signs.filter((s) => !isHiddenPath(s.path)),
+				signs.filter((s) => isHiddenPath(s.path)),
+			] as const,
+		[signs],
+	);
+	const liveSignPaths = useMemo(
+		() =>
+			ownerSigns && index
+				? syncSigns(syncedSigns.current, index, baseSigns)
+				: null,
+		[ownerSigns, index, baseSigns],
+	);
+	const liveLayerSignPaths = useMemo(
+		() =>
+			layerIndex
+				? syncSigns(syncedLayerSigns.current, layerIndex, layerSigns)
+				: null,
+		[layerIndex, layerSigns],
+	);
+
 	const previewLineByPortalId = useMemo(
 		() => new Map(portals.map((p) => [p.id, p.previewLine] as const)),
 		[portals],
@@ -115,20 +172,49 @@ export function OrbSearch({
 	const hits: SearchHit[] = useMemo(() => {
 		if (!query.trim()) return [];
 		if (scope === "file") {
-			return searchFileLines((activePortalContent ?? "").split("\n"), query);
+			return searchFileLines(activeFileDoc?.toJSON() ?? [], query);
 		}
 		if (!index) return [];
 		// minisearch's SearchResult only statically types id/terms/score/match —
 		// path/name are stored fields spread on at runtime (SEARCH_STORE_FIELDS),
 		// so they're pulled out explicitly rather than trying to widen the
 		// library's own result type.
-		const rawResults = index.search(query, WORLD_SEARCH_OPTIONS).map((r) => ({
-			id: r.id,
-			path: r.path as string,
-			name: r.name as string,
-		}));
-		return toWorldSearchHits(rawResults, previewLineByPortalId);
-	}, [query, scope, index, activePortalContent, previewLineByPortalId]);
+		const run = (
+			from: WorldSearchIndex,
+			live: ReadonlySet<string> | null,
+			isLayer: boolean,
+		) =>
+			from
+				.search(query, WORLD_SEARCH_OPTIONS)
+				.filter((r) => !live || !isStaleSignHit(String(r.id), live))
+				.map((r) => ({
+					id: r.id,
+					path: r.path as string,
+					name: r.name as string,
+					score: r.score,
+					isLayer,
+				}));
+		// A layer that hides the base world hides its files from search too.
+		const baseHidden = layer?.exclusive === true;
+		const rawResults = [
+			...(baseHidden ? [] : run(index, liveSignPaths, false)),
+			...(layerIndex ? run(layerIndex, liveLayerSignPaths, true) : []),
+		].sort((a, b) => b.score - a.score);
+		const hits = toWorldSearchHits(rawResults, previewLineByPortalId);
+		return hits.map((hit, i) =>
+			rawResults[i]?.isLayer ? { ...hit, layer: true as const } : hit,
+		);
+	}, [
+		query,
+		scope,
+		index,
+		layer,
+		layerIndex,
+		activeFileDoc,
+		previewLineByPortalId,
+		liveSignPaths,
+		liveLayerSignPaths,
+	]);
 
 	if (!open) return null;
 
@@ -174,35 +260,27 @@ export function OrbSearch({
 					}}
 				/>
 			))}
+			{/* The literal crystal ball (ui_screen_orb, tools/asset-pipeline's
+			    ui-screen-orb.ts): a pixel-art glass rim on a bronze stand, with
+			    the dark swirling glass (cabn-crystal-glass) showing through its
+			    transparent interior. Results sit in the art's inscribed
+			    rectangle (cabn-crystal-ball-content) and the input on the stand's
+			    plaque, so nothing ever clips at the sphere's round edge. */}
 			<div
-				className="cabn-panel"
-				style={{
-					position: "relative",
-					zIndex: 3,
-					width: "min(520px, 100%)",
-					overflow: "hidden",
-				}}
+				key={playToken}
+				ref={ballRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label="Search"
+				className="cabn-crystal-ball"
+				style={{ position: "relative", zIndex: 3 }}
 			>
-				<input
-					ref={inputRef}
-					value={query}
-					onChange={(e) => setQuery(e.target.value)}
-					placeholder={
-						scope === "file" ? "search this file..." : "search the world..."
-					}
-					style={{
-						width: "100%",
-						font: "inherit",
-						fontSize: 14,
-						background: "transparent",
-						border: "none",
-						borderBottom: "3px dashed var(--cabn-border-outer)",
-						outline: "none",
-						color: "inherit",
-						padding: "4px 2px 8px",
-					}}
-				/>
-				<div style={{ maxHeight: "50vh", overflow: "auto" }}>
+				<div className="cabn-crystal-glass">
+					<div className="cabn-crystal-ball-mist" />
+					<div className="cabn-crystal-ball-mist two" />
+				</div>
+				<img className="cabn-tool-frame" src={uiScreenPath("orb")} alt="" />
+				<div className="cabn-crystal-ball-content">
 					{scope === "world" && loading && (
 						<Status text="loading the world's search index..." />
 					)}
@@ -212,17 +290,52 @@ export function OrbSearch({
 					{hits.length === 0 && query.trim() && !loading && (
 						<Status text="no matches" />
 					)}
+					{hits.length === 0 && !query.trim() && (
+						<Status text="speak a query to the ball..." />
+					)}
 					<ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
 						{hits.map((hit) => (
 							<SearchHitRow
 								key={hit.kind === "world" ? hit.portalId : `line-${hit.line}`}
 								hit={hit}
+								layerLabel={layer?.label ?? null}
 								onSelect={() => select(hit)}
 							/>
 						))}
 					</ul>
 				</div>
-				<div key={playToken} className="cabn-effect-burst play">
+				<div className="cabn-crystal-plinth">
+					<input
+						ref={inputRef}
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						onKeyDown={(e) => {
+							// Enter picks the top result. The game can't also act on this
+							// Enter: render/keyboardFocusGate.ts turns Phaser's keyboard
+							// off while a text field has focus.
+							const top = hits[0];
+							if (e.key === "Enter" && top && !e.nativeEvent.isComposing) {
+								e.preventDefault();
+								select(top);
+							}
+						}}
+						placeholder={
+							scope === "file" ? "search this file..." : "search the world..."
+						}
+						style={{
+							width: "100%",
+							font: "inherit",
+							fontSize: 14,
+							background: "transparent",
+							border: "none",
+							borderBottom: "2px dashed rgba(255,255,255,0.4)",
+							outline: "none",
+							color: "inherit",
+							padding: "2px 2px 4px",
+						}}
+					/>
+				</div>
+				<div className="cabn-effect-burst play">
 					{OPEN_BURST_SPARKS.map((s, i) => (
 						// Fixed, static per-render burst layout, never reordered — index
 						// is a stable enough key.
@@ -255,11 +368,31 @@ function Status({ text }: { text: string }): React.ReactElement {
 	);
 }
 
+interface SignSync {
+	index: WorldSearchIndex | null;
+	sources: Map<string, string>;
+}
+
+function syncSigns(
+	synced: SignSync,
+	index: WorldSearchIndex,
+	signs: Parameters<typeof syncSignSearchDocs>[1],
+): Set<string> {
+	if (synced.index !== index) {
+		synced.index = index;
+		synced.sources = new Map();
+	}
+	synced.sources = syncSignSearchDocs(index, signs, synced.sources);
+	return new Set(signs.map((s) => s.path));
+}
+
 function SearchHitRow({
 	hit,
+	layerLabel,
 	onSelect,
 }: {
 	hit: SearchHit;
+	layerLabel: string | null;
 	onSelect: () => void;
 }): React.ReactElement {
 	const title = hit.kind === "world" ? hit.path : `line ${hit.line + 1}`;
@@ -269,12 +402,15 @@ function SearchHitRow({
 			<button
 				type="button"
 				onClick={onSelect}
+				title={snippet ? `${title} — ${snippet}` : title}
 				style={{
 					width: "100%",
 					textAlign: "left",
 					background: "none",
 					border: "none",
-					borderBottom: "2px dotted rgba(59,47,107,0.25)",
+					// A light-on-dark dotted rule, not the usual dark-on-light one — this
+					// row sits inside the crystal ball's dark glass, not a panelBody.
+					borderBottom: "2px dotted rgba(255,255,255,0.25)",
 					font: "inherit",
 					padding: "8px 4px",
 					cursor: "pointer",
@@ -284,9 +420,21 @@ function SearchHitRow({
 					gap: 2,
 				}}
 			>
-				<strong style={{ fontSize: 13 }}>{title}</strong>
+				<strong className="cabn-clip-line" style={{ fontSize: 13 }}>
+					{title}
+					{hit.kind === "world" && hit.layer && (
+						<span className="cabn-layer-badge" data-testid="layer-badge">
+							{layerLabel ?? "layer"}
+						</span>
+					)}
+				</strong>
 				{snippet && (
-					<span style={{ fontSize: 11, opacity: 0.75 }}>{snippet}</span>
+					<span
+						className="cabn-clip-line"
+						style={{ fontSize: 11, opacity: 0.75 }}
+					>
+						{snippet}
+					</span>
 				)}
 			</button>
 		</li>

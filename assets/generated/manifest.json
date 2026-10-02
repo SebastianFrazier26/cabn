@@ -46,5 +46,167 @@
 	},
 	"will_o_wisp_idle1": {
 		"locked": false
+	},
+	"imp_idle0": {
+		"locked": false
+	},
+	"imp_idle1": {
+		"locked": false
+	},
+	"magpie_idle0": {
+		"locked": false
+	},
+	"magpie_idle1": {
+		"locked": false
+	},
+	"skeleton_idle0": {
+		"locked": false
+	},
+	"skeleton_idle1": {
+		"locked": false
+	},
+	"bramble_idle0": {
+		"locked": false
+	},
+	"bramble_idle1": {
+		"locked": false
+	},
+	"shade_idle0": {
+		"locked": false
+	},
+	"shade_idle1": {
+		"locked": false
+	},
+	"ghost_hit": {
+		"locked": false
+	},
+	"ghost_defeat0": {
+		"locked": false
+	},
+	"ghost_defeat1": {
+		"locked": false
+	},
+	"ghost_defeat2": {
+		"locked": false
+	},
+	"rot_sprite_hit": {
+		"locked": false
+	},
+	"rot_sprite_defeat0": {
+		"locked": false
+	},
+	"rot_sprite_defeat1": {
+		"locked": false
+	},
+	"rot_sprite_defeat2": {
+		"locked": false
+	},
+	"warded_mimic_hit": {
+		"locked": false
+	},
+	"warded_mimic_defeat0": {
+		"locked": false
+	},
+	"warded_mimic_defeat1": {
+		"locked": false
+	},
+	"warded_mimic_defeat2": {
+		"locked": false
+	},
+	"gremlin_hit": {
+		"locked": false
+	},
+	"gremlin_defeat0": {
+		"locked": false
+	},
+	"gremlin_defeat1": {
+		"locked": false
+	},
+	"gremlin_defeat2": {
+		"locked": false
+	},
+	"ouroboros_hit": {
+		"locked": false
+	},
+	"ouroboros_defeat0": {
+		"locked": false
+	},
+	"ouroboros_defeat1": {
+		"locked": false
+	},
+	"ouroboros_defeat2": {
+		"locked": false
+	},
+	"will_o_wisp_hit": {
+		"locked": false
+	},
+	"will_o_wisp_defeat0": {
+		"locked": false
+	},
+	"will_o_wisp_defeat1": {
+		"locked": false
+	},
+	"will_o_wisp_defeat2": {
+		"locked": false
+	},
+	"imp_hit": {
+		"locked": false
+	},
+	"imp_defeat0": {
+		"locked": false
+	},
+	"imp_defeat1": {
+		"locked": false
+	},
+	"imp_defeat2": {
+		"locked": false
+	},
+	"magpie_hit": {
+		"locked": false
+	},
+	"magpie_defeat0": {
+		"locked": false
+	},
+	"magpie_defeat1": {
+		"locked": false
+	},
+	"magpie_defeat2": {
+		"locked": false
+	},
+	"skeleton_hit": {
+		"locked": false
+	},
+	"skeleton_defeat0": {
+		"locked": false
+	},
+	"skeleton_defeat1": {
+		"locked": false
+	},
+	"skeleton_defeat2": {
+		"locked": false
+	},
+	"bramble_hit": {
+		"locked": false
+	},
+	"bramble_defeat0": {
+		"locked": false
+	},
+	"bramble_defeat1": {
+		"locked": false
+	},
+	"bramble_defeat2": {
+		"locked": false
+	},
+	"shade_hit": {
+		"locked": false
+	},
+	"shade_defeat0": {
+		"locked": false
+	},
+	"shade_defeat1": {
+		"locked": false
+	},
+	"shade_defeat2": {
+		"locked": false
 	}
 }

@@ -31,7 +31,7 @@ export const encodingIssue: Annotator = (ctx) => {
 	const loc = locAt(content, firstIndex);
 	const result: ErrorAnnotation = {
 		code: "InvalidMode",
-		rule: `encoding:replacement-char@${loc.line}:${loc.col}`,
+		rule: "encoding:replacement-char",
 		message: `Found ${count} invalid/undecodable character${count === 1 ? "" : "s"} (U+FFFD) — likely not valid UTF-8.`,
 		loc,
 		species: "warded-mimic",

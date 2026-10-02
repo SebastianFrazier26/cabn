@@ -35,6 +35,35 @@ export interface PixelThemeTokens {
 	syntaxAttribute: number;
 	/** Same reasoning as the syntax-* colors, but against `panelBodyAlt` (the editor gutter's own background) rather than `panelBody`. */
 	editorGutterText: number;
+	/** The pensieve's diff lines: text on its own tinted row, each pair >= 4.5:1 (editorThemeContrast.test.ts). Rows also carry +/- so colour is never the only signal. */
+	diffAddBg: number;
+	diffAddText: number;
+	diffDelBg: number;
+	diffDelText: number;
+	/**
+	 * Dedicated "ink" variants for the handful of spots outside the editor
+	 * where an accent-* tone sits directly under or as small text — the 2026-
+	 * 09-30 a11y pass's uiContrast.test.ts found 10 such pairs below WCAG AA
+	 * across the three themes. Same technique as the syntax-* colors above
+	 * (a hand-tuned, same-hue-family variant of the accent, not the accent
+	 * itself), but each scoped to its one real use site rather than shared,
+	 * since the fix a violet badge needs and the fix a pink error message
+	 * needs are unrelated. Where a pair already cleared its threshold, the
+	 * ink below is simply set equal to the plain accent/panel/text token it
+	 * replaces, so nothing visually changes there.
+	 */
+	/** `.cabn-spellbook-kind`'s single-letter badge (ƒ/m/C/T/...) on `accentViolet`. WCAG 1.4.3, 4.5:1 (real text). */
+	accentVioletInk: number;
+	/** `.cabn-btn.cancel`/`.cabn-badge`'s label/count on `accentPink`. WCAG 1.4.3, 4.5:1 (real text). */
+	accentPinkInk: number;
+	/** The segmented control's selected label and the owner toolkit's `kbd` digit, both on `borderOuter`. WCAG 1.4.3, 4.5:1 (real text). */
+	chipInk: number;
+	/** The pet chat's error-message text, replacing a raw `accentPink` on `panelBody`. WCAG 1.4.3, 4.5:1 (real text). */
+	errorInk: number;
+	/** `FileStatusLine`'s "● unsaved" marker on `panelBody` — a compact status indicator, not a sentence, so treated as a UI glyph (WCAG 1.4.11, 3:1) rather than body text, per the 2026-09-30 user decision. */
+	warnInk: number;
+	/** `GuideDialog`'s "▼" more-content cue on `panelBody` — a single decorative indicator glyph, same WCAG 1.4.11 (3:1) reasoning as `warnInk`. */
+	guideMoreInk: number;
 }
 
 export const DAY_TOKENS: PixelThemeTokens = {
@@ -57,29 +86,67 @@ export const DAY_TOKENS: PixelThemeTokens = {
 	syntaxType: 0xd8106a,
 	syntaxAttribute: 0x8b6b00,
 	editorGutterText: 0x55507f,
+	diffAddBg: 0xdcf5df,
+	diffAddText: 0x1d5e27,
+	diffDelBg: 0xfbe0e3,
+	diffDelText: 0x8f1d2c,
+	// All computed against the day values above (uiContrast.test.ts) —
+	// accentPinkInk/chipInk/warnInk/guideMoreInk already cleared their
+	// threshold here and are left equal to the token they replace;
+	// accentVioletInk and errorInk didn't and are genuinely new hues.
+	accentVioletInk: 0x18142f,
+	accentPinkInk: 0x201a3d,
+	chipInk: 0xf2f8ff,
+	errorInk: 0xda166e,
+	warnInk: 0xb28800,
+	guideMoreInk: 0xef6400,
 };
 
+// 2026-09-28: was previously a near-white lavender panel (0xeeeaff) with dark
+// text — a re-tinted *light* theme wearing night colors, not an actual dark
+// mode (playtest feedback: "the UI night theme must read as a true dark
+// mode"). Now the panel itself goes dark and the text/syntax set flips to
+// light-on-dark, computed fresh (not just eyeballed) against the new
+// panelBody/panelBodyAlt via the same contrastRatio() editorThemeContrast.test.ts
+// uses, so every pair here is proven >=4.5:1 before it shipped. Accent-* stay
+// the same vivid tones the old night theme already used (they were never the
+// problem — only the panel/text pairing was) except where noted.
 export const NIGHT_TOKENS: PixelThemeTokens = {
-	panelBody: 0xeeeaff,
-	panelBodyAlt: 0xded6ff,
-	borderOuter: 0x221a4d,
+	panelBody: 0x1c1836,
+	panelBodyAlt: 0x140f28,
+	// Brightened from a near-black 0x221a4d so the panel's own border is still
+	// visible against the new dark panelBody (a border needs to read as an
+	// edge, not vanish into the fill it's outlining).
+	borderOuter: 0x554aa0,
 	borderHighlight: 0xffd23f,
-	text: 0x1c1640,
-	textSecondary: 0x635ca8,
+	text: 0xf1ecff,
+	textSecondary: 0xb7aee0,
 	accentYellow: 0xffcf4d,
 	accentGreen: 0x46d19a,
 	accentPink: 0xff4fa0,
 	accentOrange: 0xff7a45,
 	accentCyan: 0x46c9e0,
 	accentViolet: 0x7a5fe0,
-	syntaxKeyword: 0xc23700,
-	syntaxString: 0x1b7753,
-	syntaxNumber: 0x6d4fe1,
-	syntaxFunction: 0x137384,
-	syntaxType: 0xd10060,
-	syntaxAttribute: 0x886300,
-	// Distinct from plain textSecondary (unlike the day theme, where
-	// textSecondary itself already clears 4.5:1 against panelBodyAlt) —
-	// textSecondary alone only measures 4.18:1 here, just under AA.
-	editorGutterText: 0x5c55a0,
+	// Lightened variants of the accents, not darkened (opposite technique from
+	// DAY_TOKENS) — a near-black panel needs bright text, not dark.
+	syntaxKeyword: 0xff9e5c,
+	syntaxString: 0x8fe3a0,
+	syntaxNumber: 0xc3b2ff,
+	syntaxFunction: 0x7fe6f0,
+	syntaxType: 0xff9fd0,
+	syntaxAttribute: 0xffe28a,
+	editorGutterText: 0xa89fd8,
+	diffAddBg: 0x173a26,
+	diffAddText: 0x9ff0b4,
+	diffDelBg: 0x44182a,
+	diffDelText: 0xffb3c4,
+	// Computed against the night values above — accentPinkInk/warnInk/
+	// guideMoreInk already cleared their threshold here and are left equal
+	// to the token they replace; accentVioletInk and chipInk didn't.
+	accentVioletInk: 0x010102,
+	accentPinkInk: 0x201a3d,
+	chipInk: 0xccc8e6,
+	errorInk: 0xff4fa0,
+	warnInk: 0xffcf4d,
+	guideMoreInk: 0xff7a45,
 };

@@ -10,9 +10,17 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
 	AssetsFileSchema,
+	CabnConfigSchema,
+	GitFilesSchema,
+	GitMetaSchema,
+	MonsterIndexFileSchema,
+	ReleasesFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
+	SignIndexFileSchema,
 	WorldChunkSchema,
+	WorldLayerDeltaSchema,
+	WorldLayerManifestSchema,
 	WorldManifestSchema,
 } from "../dist/index.js";
 
@@ -25,6 +33,14 @@ const schemas = {
 	"search-index": SearchIndexFileSchema,
 	assets: AssetsFileSchema,
 	shelf: ShelfManifestSchema,
+	"cabn-config": CabnConfigSchema,
+	"monsters-index": MonsterIndexFileSchema,
+	"git-meta": GitMetaSchema,
+	"git-files": GitFilesSchema,
+	releases: ReleasesFileSchema,
+	"signs-index": SignIndexFileSchema,
+	"world-layer-delta": WorldLayerDeltaSchema,
+	"world-layer-manifest": WorldLayerManifestSchema,
 };
 
 await mkdir(outDir, { recursive: true });

@@ -1,3 +1,4 @@
+import type { SeynLinkTarget } from "@cabn/world-schema";
 import mitt, { type Emitter } from "mitt";
 
 // Bridge rule: state that must survive a re-render or be queried later lives
@@ -14,9 +15,21 @@ import mitt, { type Emitter } from "mitt";
 export type CabnEvents = {
 	"portal:enter": { portalId: string };
 	"portal:approach": { portalId: string };
+	/** WorldScene -> PortalLivePage, every frame the camera moves the near url arch: its opening in CSS px inside CabnGame's root, and whether the player is standing over it (the page dims so the player isn't hidden behind a DOM layer). */
+	"portal:web-rect": {
+		portalId: string;
+		rect: { x: number; y: number; w: number; h: number };
+		occluded: boolean;
+		/** Same space: the arch sprite plus the reach of any monsters orbiting it — what the preview dock keeps clear of (systems/dockPlacement.ts). */
+		keepout: { x: number; y: number; w: number; h: number };
+	};
 	"cluster:enter": { clusterId: string };
 	"chunk:loaded": { clusterId: string };
-	"shelf:enter-world": { worldId: string };
+	"shelf:enter-world": {
+		worldId: string;
+		/** The shelf entry's display name, for the loading label. */
+		name?: string;
+	};
 	"world:return-to-shelf": { shelfUrl: string };
 	/** React (spyglass/orb result click) -> WorldScene: auto-walk the player to this portal. */
 	"tool:walk-to-portal": { portalId: string };
@@ -24,22 +37,26 @@ export type CabnEvents = {
 	"tool:jump-to-line": { line: number };
 	/** Hotbar B press -> FileScene: start a selection at the nearest line, or confirm one already in progress. */
 	"tool:bag-use": Record<string, never>;
-	/** Registry-mediated opener activation (e.g. a hotbar click) -> WorldScene: same effect as pressing E. */
+	/** The hotbar's opener slot -> whichever of World/Shelf/File is active: same as pressing Enter there (each scene's Enter key and click-to-interact arrival call the same interact method directly). Listeners must check they're the active scene — mitt still delivers to a sleeping WorldScene underneath FileScene. */
 	"tool:opener-use": Record<string, never>;
 	/** Hotbar Q press -> FileScene: open the quill/editor overlay, cursor at the line nearest the player. */
 	"tool:quill-use": Record<string, never>;
 	/** EditorOverlay (Ctrl/Cmd-S) -> FileScene: the open file's full text changed; FileScene re-splits its lines and reports the edit to WorldScene for persistence + the arch marker. */
 	"editor:save": { portalId: string; content: string };
+	/** FileStatusLine's unsaved-changes prompt -> FileScene: leave the file, saving first or discarding the buffer. */
+	"file:leave": { save: boolean };
 	/** BagTray click while the editor is open -> EditorOverlay: paste this slot's text at the caret. */
 	"editor:paste-slot": { slotId: string };
 	/** SpyglassPanel's per-file "reset" button -> WorldScene: drop that portal's saved override. */
 	"tool:reset-file-edits": { portalId: string };
-	/** SettingsCorner's "reset world" button -> WorldScene: drop every saved override/position/visited-cluster/bag-slot for this world. */
+	/** SpyglassPanel's "reset world" button -> WorldScene: drop every saved override/position/visited-cluster/bag-slot for this world. */
 	"tool:reset-world": Record<string, never>;
 	/** WorldScene -> FileScene, answering tool:reset-file-edits when the reset portal is the one currently open: swap the live view back to pristine content. */
 	"file:content-reset": { portalId: string; content: string };
 	/** A battle's edit resolved the annotation that spawned this monster (FileScene, after re-running its originating annotator on save) -> WorldScene: persist it in the save and drop the monster from every rendered scene (this file's, and its portal's arch-hover sprite). */
 	"monster:defeated": { monsterId: string };
+	/** The encounter popup (EncounterBanner) -> FileScene: the player dismissed it with something other than Esc (a click, Enter/Space, any other key) — open the quill on the monster's line, same as it used to do on its own timer. Esc alone just calls store.endEncounter() and stops there. */
+	"encounter:continue": { monsterId: string };
 	/** FileScene, after a save during an encounter that didn't fix the encountered monster -> EditorOverlay: a small transient toast (the editor stays open, the shrug animation plays behind it). */
 	"battle:hint": { message: string };
 	/** Hotbar R press -> FileScene: start a run of the currently-open file with the active ExecutionProvider (TraceProvider by default). */
@@ -50,6 +67,30 @@ export type CabnEvents = {
 	"run:step": Record<string, never>;
 	"run:stop": Record<string, never>;
 	"run:set-speed": { speed: 1 | 2 | 4 };
+	/**
+	 * UniversePicker -> the world's rift (render/rift.ts): reload as another
+	 * universe's prebuilt world (or the main world, universe null). The rift
+	 * owns the scene restart; SceneTransitionOverlay fades over it.
+	 * `restoreOverrides` (portal id -> text) is an in-browser stash being
+	 * restored into the target world's save before it boots.
+	 */
+	"universe:travel": {
+		worldUrl: string;
+		universe: { slug: string; branch: string } | null;
+		restoreOverrides?: Record<string, string>;
+	};
+	/** A sign's internal link was clicked (SignReader/SignPopup) -> render/signposts.ts: walk the player to that portal/fountain/sign and highlight it. */
+	"sign:follow-link": { target: SeynLinkTarget };
+	/** The owner's placement banner (Enter) -> render/signposts.ts: put the new sign where the player stands. */
+	"sign:place-here": Record<string, never>;
+	/** The pet chat's "review in spellbook" -> WorldScene: open this file (the chat then opens the spellbook on it). */
+	"pet:open-file": { portalId: string };
+	/** A layer's hotbar item -> WorldScene: turn this world layer on, or off if it's the one showing. */
+	"layer:toggle": { layerId: string };
+	/** WorldScene, the moment it commits to switching layers (before its restart) -> SceneTransitionOverlay. `color` is the layer skin's transition colour (null: the plain fade). */
+	"layer:changed": { layerId: string | null; color: number | null };
+	/** LayerSaveNotice's "reload from disk" -> WorldScene: refetch that layer file and show it as it is now. */
+	"layer:reload-file": { portalId: string };
 };
 
 export type CabnBus = Emitter<CabnEvents>;

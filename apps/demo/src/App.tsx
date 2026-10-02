@@ -1,4 +1,7 @@
 import { CabnGame, type CabnGameHandle } from "@cabn/engine";
+// Emitted by Vite as a hashed file in this build's own assets — pdf.js's
+// worker is served from the demo's origin, never a CDN.
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 // build:world (see scripts/build-world.mjs) converts both demo projects and
 // writes a shelf.json listing them here, under public/, so it's served as a
@@ -13,8 +16,15 @@ const SHELF_URL = "/worlds/shelf.json";
 // what the smoke test exercises.
 function exposeTestHookIfRequested(handle: CabnGameHandle | null): void {
 	if (new URLSearchParams(window.location.search).get("e2e") !== "1") return;
-	(window as unknown as { __cabnStore: unknown }).__cabnStore =
-		handle?.store ?? undefined;
+	const w = window as unknown as {
+		__cabnStore: unknown;
+		__cabnBus: unknown;
+		__cabnGame: unknown;
+	};
+	w.__cabnStore = handle?.store ?? undefined;
+	w.__cabnBus = handle?.bus ?? undefined;
+	// The file-caret e2e reads FileScene's camera to click an exact character.
+	w.__cabnGame = handle?.game ?? undefined;
 }
 
 export function App(): React.ReactElement {
@@ -41,14 +51,16 @@ export function App(): React.ReactElement {
 			>
 				<h1 style={{ margin: 0, fontSize: 18 }}>cabn</h1>
 				<span style={{ opacity: 0.8, fontSize: 13 }}>
-					walk the shelf of worlds — WASD/arrows to move, E to enter a cabin or
-					a portal arch, Esc to leave a world (at the bonfire) or a file
+					walk the shelf of worlds — WASD/arrows or click to move, Enter or
+					click to go in (cabin, portal) or out (bonfire); inside a file click
+					and type to edit, Esc to leave
 				</span>
 			</header>
 			<div style={{ flex: 1, minHeight: 0 }}>
 				<CabnGame
 					shelfUrl={SHELF_URL}
 					onGameReady={exposeTestHookIfRequested}
+					pdfWorkerUrl={pdfWorkerUrl}
 				/>
 			</div>
 		</div>

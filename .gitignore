@@ -2,6 +2,8 @@ node_modules/
 dist/
 out/
 .env
+.env.*
+!.env.example
 *.tsbuildinfo
 .DS_Store
 

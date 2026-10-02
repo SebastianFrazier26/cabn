@@ -95,6 +95,126 @@ describe("bracketBalance", () => {
 		);
 	});
 
+	test("handles a multi-line backtick template literal without cascading (regression: changesets/changesets get-changelog-entry.test.ts shape)", () => {
+		// Real shape from the wide-pass report: a multi-line backtick containing
+		// markdown with nested single/double quotes used to be read as
+		// "unterminated" at its first newline, dumping the rest of the file
+		// back into normal-code scanning and cascading into ~1000 bogus issues
+		// from one 74-line file — see docs/testing/2026-09-29-wide-pass.md,
+		// Bug 3.
+		const content = [
+			'test("formats a changelog entry", () => {',
+			"  expect(entry).toMatchInlineSnapshot(`",
+			'    - Adds a "feature" flag',
+			"    - Fixes 'a bug' in the release plan",
+			"    - See [notes](./notes.md) for details",
+			"  `);",
+			"});",
+			"",
+		].join("\n");
+		expect(run("get-changelog-entry.test.ts", content)).toHaveLength(0);
+	});
+
+	test("tracks a template literal's interpolation, including a nested template", () => {
+		const content =
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+			"const s = `outer ${`inner ${x + 1}`} tail ${[1, 2, { a: 1 }]}`;\n";
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("does not treat an escaped backtick or an escaped interpolation-opener as ending/opening template content", () => {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+		const content = "const s = `a \\` b \\${notInterp} c`;\n";
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("still catches a real unclosed bracket after a template literal", () => {
+		const content =
+			"const s = `multi\nline`;\nfunction f(a, b {\n  return a;\n}\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:unclosed:("))).toBe(
+			true,
+		);
+	});
+
+	test("still flags a template literal left open at end of file", () => {
+		const results = run("a.ts", "const s = `never closed\nstill going\n");
+		expect(
+			results.some((r) => r.rule.startsWith("bracket:unterminated-string")),
+		).toBe(true);
+	});
+
+	test("Go: backtick raw strings span multiple lines without false positives", () => {
+		const content = 'const s = `line one\nline two "quoted"\nline three`\n';
+		expect(run("a.go", content)).toHaveLength(0);
+	});
+
+	test("regression: a bracket char class in a regex literal (changesets/changesets getLastJsonObjectFromString.ts shape)", () => {
+		const content = [
+			"export const getLastJsonObjectFromString = (str: string) => {",
+			'  str = str.replace(/[^}]*$/, "");',
+			"  return str;",
+			"};",
+			"",
+		].join("\n");
+		expect(run("getLastJsonObjectFromString.ts", content)).toHaveLength(0);
+	});
+
+	test("regression: regex literals inside a template interpolation (changesets/changesets test-utils.ts shape)", () => {
+		const content = [
+			"export function pkg({",
+			"  name,",
+			"  version,",
+			"}: {",
+			"  name: string;",
+			"  version: string;",
+			"}): Package {",
+			"  return {",
+			"    packageJson: {",
+			"      name,",
+			"      version,",
+			"    },",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: source text under test, not a template
+			'    dir: `/packages/${name.replace(/^@/, "").replace(/\\//g, "-")}`,',
+			"  };",
+			"}",
+			"",
+		].join("\n");
+		expect(run("test-utils.ts", content)).toHaveLength(0);
+	});
+
+	test("division (`a / b / c`, `x = y / 2`) is scanned as ordinary code, not a regex", () => {
+		const content = [
+			"function f(a, b, c) {",
+			"  return a / b / c;",
+			"}",
+			"const x = y / 2;",
+			"",
+		].join("\n");
+		expect(run("a.ts", content)).toHaveLength(0);
+	});
+
+	test("division is told apart from a regex literal by the previous token, not just slash-counting", () => {
+		// If the first "/" were wrongly read as starting a regex (identifiers
+		// aren't a regex-ok previous token — only operators/keywords/start-of-
+		// file are), its lookahead would find the *second* "/" as a bogus
+		// closer and swallow the real "(" vs "]" mismatch between them as
+		// inert "pattern text," missing it entirely.
+		const content = "const x = a / (b + c] / d;\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:mismatched:("))).toBe(
+			true,
+		);
+	});
+
+	test("a real unclosed bracket after a regex literal is still caught", () => {
+		const content = "const re = /ab+c/;\nfunction f(a, b {\n  return a;\n}\n";
+		const results = run("a.ts", content);
+		expect(results.some((r) => r.rule.startsWith("bracket:unclosed:("))).toBe(
+			true,
+		);
+	});
+
 	test("skips languages outside the supported set entirely", () => {
 		expect(run("a.rb", "def f( unbalanced")).toHaveLength(0);
 	});

@@ -24,18 +24,33 @@ export const ASSET_PATHS = {
 export const PORTAL_ARCH_FRAME_SIZE = 256;
 export const PORTAL_ARCH_FRAME_COUNT = 6;
 
+// Portal-type overlays (2026-09-28): one static 256px frame per
+// systems/archVariant.ts ARCH_VARIANTS entry, 5 per row, stacked over the
+// animated base strip — tools/asset-pipeline's portal-variants.ts. Optional:
+// without it every arch stays the plain generic one.
+export const PORTAL_VARIANT_SHEET_KEY = "portal-arch-variants";
+export const PORTAL_VARIANT_SHEET_PATH = `${ASSET_BASE}/placeholders/portal_arch_variants_soft.png`;
+
 export const BONFIRE_FRAME_COUNT = 4;
 
 // M6 monster sprites. Ghost (M2) is a single static image — no idle animation
-// — so it gets its own key rather than the frame-pair shape the other five
-// species use (each rendered as two idle frames by tools/asset-pipeline, see
-// its pixelmaps/{rot-sprite,warded-mimic,gremlin,ouroboros,will-o-wisp}.ts).
+// — so it gets its own key rather than the frame-pair shape every other
+// species uses (each rendered as two idle frames by tools/asset-pipeline, see
+// its pixelmaps/*.ts). Species are keyed by string, not @cabn/world-schema's
+// Species enum, so art can ship ahead of (or behind) the schema that names
+// it; render/monsterSprite.ts falls back to shade, then ghost, for any
+// species with no loaded frames.
 const MONSTER_FILE_SLUG: Record<string, string> = {
 	"rot-sprite": "rot_sprite",
 	"warded-mimic": "warded_mimic",
 	gremlin: "gremlin",
 	ouroboros: "ouroboros",
 	"will-o-wisp": "will_o_wisp",
+	imp: "imp",
+	magpie: "magpie",
+	skeleton: "skeleton",
+	bramble: "bramble",
+	shade: "shade",
 };
 
 export const MONSTER_GHOST_KEY = "monster-ghost";
@@ -57,7 +72,43 @@ export const ANIMATED_MONSTER_SPECIES = [
 	"gremlin",
 	"ouroboros",
 	"will-o-wisp",
+	"imp",
+	"magpie",
+	"skeleton",
+	"bramble",
+	"shade",
 ] as const;
+
+// Battle frames (2026-09-28): one hit flash + a three-frame defeat poof per
+// species, ghost included, derived from each idle0 by tools/asset-pipeline's
+// monster-fx.ts at the idle frame's exact size. Optional: FileScene falls
+// back to its old tween-only shrug/fade when a species' frames didn't load.
+export const MONSTER_DEFEAT_FRAME_COUNT = 3;
+
+export const BATTLE_FX_MONSTER_SPECIES = [
+	"ghost",
+	...ANIMATED_MONSTER_SPECIES,
+] as const;
+
+function monsterSlug(species: string): string {
+	return MONSTER_FILE_SLUG[species] ?? species;
+}
+
+export function monsterHitKey(species: string): string {
+	return `monster-${species}-hit`;
+}
+
+export function monsterHitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_hit_soft.png`;
+}
+
+export function monsterDefeatKey(species: string, frame: number): string {
+	return `monster-${species}-defeat${frame}`;
+}
+
+export function monsterDefeatPath(species: string, frame: number): string {
+	return `${ASSET_BASE}/placeholders/${monsterSlug(species)}_defeat${frame}_soft.png`;
+}
 
 function bonfireFrameKey(index: number): string {
 	return `bonfire-frame-${index}`;
@@ -150,12 +201,65 @@ export function propPath(name: PropName): string {
 export const CASTLE_KEEP_KEY = "castle-keep";
 export const CASTLE_KEEP_PATH = `${ASSET_BASE}/placeholders/prop_castle_keep_soft.png`;
 
-// M10b batch 3: replaces ASSET_KEYS.cabinet (the photographic cabinet_256.webp)
-// for WorldScene's in-world cluster markers only — see props.ts's
-// worldCabinet doc comment. Optional/graceful-fallback like every other
-// batch-2/3 asset: WorldScene keeps using ASSET_KEYS.cabinet if this fails to load.
-export const WORLD_CABINET_KEY = "world-cabinet";
-export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet_soft.png`;
+// WorldScene's in-world directory marker (2026-09-28 playtest round 2
+// replaced the procedural curio cabinet with an animated stone fountain —
+// tools/asset-pipeline's world-art/world-fountain.ts). A horizontal strip of
+// frames drawn unscaled (props' 2 screen px per cell), plus a gem overlay the
+// scene tints with the world theme. Part of the worldArt bundle: without it
+// WorldScene falls back to the photographic ASSET_KEYS.cabinet.
+export const WORLD_FOUNTAIN_KEY = "world-fountain";
+export const WORLD_FOUNTAIN_PATH = `${ASSET_BASE}/placeholders/prop_world_fountain_strip_soft.png`;
+export const WORLD_FOUNTAIN_FRAME_WIDTH = 112;
+export const WORLD_FOUNTAIN_FRAME_HEIGHT = 116;
+export const WORLD_FOUNTAIN_FRAME_COUNT = 6;
+export const WORLD_FOUNTAIN_IDLE_ANIM = "world-fountain-idle";
+export const WORLD_FOUNTAIN_GEM_KEY = "world-fountain-gem";
+export const WORLD_FOUNTAIN_GEM_PATH = `${ASSET_BASE}/placeholders/prop_world_fountain_gem_soft.png`;
+
+// M10 art-consistency pass: replaces ASSET_KEYS.cabin (the photographic
+// cabin_256.webp) for ShelfScene's per-world cabins — see
+// tools/asset-pipeline's world-art/shelf-cabin.ts. Optional, same fallback
+// shape as WORLD_FOUNTAIN_KEY: ShelfScene keeps the old cabin if this fails.
+export const SHELF_CABIN_KEY = "shelf-cabin";
+export const SHELF_CABIN_PATH = `${ASSET_BASE}/placeholders/prop_shelf_cabin_soft.png`;
+
+// The guide NPC (tools/asset-pipeline's pixelmaps/guide-npc.ts): three idle
+// frames on the player's own 24x32 grid at soften's cellSize 16, so she's
+// drawn at the player's 0.125 scale and stands exactly as tall. The bubble is
+// the same density; the portrait is a React <img> in the dialogue box, not a
+// Phaser texture. Optional: without the strip WorldScene draws a tinted
+// player sprite in her place.
+export const GUIDE_NPC_KEY = "npc-guide";
+export const GUIDE_NPC_PATH = `${ASSET_BASE}/placeholders/npc_guide_strip_soft.png`;
+export const GUIDE_NPC_FRAME_WIDTH = 384;
+export const GUIDE_NPC_FRAME_HEIGHT = 512;
+export const GUIDE_NPC_SCALE = 0.125;
+export const GUIDE_NPC_IDLE_ANIM = "npc-guide-idle";
+export const GUIDE_NPC_BUBBLE_KEY = "npc-guide-bubble";
+export const GUIDE_NPC_BUBBLE_PATH = `${ASSET_BASE}/placeholders/npc_guide_bubble_soft.png`;
+export const GUIDE_NPC_PORTRAIT_PATH = `${ASSET_BASE}/placeholders/npc_guide_portrait_soft.png`;
+
+// The .seyn signpost (tools/asset-pipeline's pixelmaps/signpost.ts): the
+// guide NPC's 24x32 grid and density, drawn 48x64 like her.
+// Optional: without it render/signposts.ts draws a small wooden board itself.
+export const SIGNPOST_KEY = "seyn-signpost";
+export const SIGNPOST_PATH = `${ASSET_BASE}/placeholders/prop_seyn_sign_soft.png`;
+
+// AI pets (tools/asset-pipeline's pixelmaps/pets.ts): four frames (idle,
+// blink, walk A, walk B) on a 16x16 grid at cellSize 16, drawn at the
+// player's 0.125 scale. Optional, like the guide: a missing strip draws a
+// tinted spark instead.
+export const PET_FRAME_SIZE = 256;
+export const PET_SCALE = 0.125;
+export function petTextureKey(species: string): string {
+	return `pet-${species}`;
+}
+export function petStripPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_strip_soft.png`;
+}
+export function petPortraitPath(species: string): string {
+	return `${ASSET_BASE}/placeholders/pet_${species}_portrait_soft.png`;
+}
 
 // The one shared sprite behind every ambient particle effect (fireflies,
 // motes, embers, smoke — see render/effects.ts) — a smooth radial-gradient
@@ -164,7 +268,8 @@ export const WORLD_CABINET_PATH = `${ASSET_BASE}/placeholders/prop_world_cabinet
 export const FX_SPARK_KEY = "fx-spark";
 export const FX_SPARK_PATH = `${ASSET_BASE}/placeholders/fx_spark.png`;
 
-// M10a: the five hand-drawn item icons and three sparkle particles from the
+// M10a: the hand-drawn item icons (plus the opener's key, redrawn in the
+// same style by the M10 art-consistency pass) and three sparkle particles from the
 // approved UI mockup (assets/generated/ui/), copied into placeholders/ under
 // their existing filenames rather than adding a fourth synced source
 // directory to apps/demo/scripts/build-world.mjs — that directory also holds
@@ -177,6 +282,11 @@ export const UI_ICON_NAMES = [
 	"bag",
 	"quill",
 	"wand",
+	"key",
+	"sign",
+	// The owner's toolkit item (2026-09-29), drawn beside the sign item by
+	// tools/asset-pipeline's signpost.ts.
+	"owner",
 ] as const;
 export type UiIconName = (typeof UI_ICON_NAMES)[number];
 
@@ -184,9 +294,141 @@ export function uiIconPath(name: UiIconName): string {
 	return `${ASSET_BASE}/placeholders/ui_icon_${name}_soft.png`;
 }
 
+// Spellbook toolbar icons (2026-09-28) — tools/asset-pipeline's
+// ui-tool-icons.ts, same soft-rendered family and placeholders/ location as
+// the hotbar item icons above.
+export const UI_TOOL_ICON_NAMES = [
+	"find",
+	"replace",
+	"rename",
+	"format",
+	"comment",
+	"goto",
+	"symbol",
+	"fold",
+	"unfold",
+	"save",
+] as const;
+export type UiToolIconName = (typeof UI_TOOL_ICON_NAMES)[number];
+
+export function uiToolIconPath(name: UiToolIconName): string {
+	return `${ASSET_BASE}/placeholders/ui_tool_${name}_soft.png`;
+}
+
+// Art-density pass (2026-09-28): pixel-art frames for the literal tool
+// screens (crystal ball, spyglass lens, open satchel + its flap) from
+// tools/asset-pipeline's ui-screen-*.ts — plain <img>/CSS assets like the
+// icons above, laid out 1:1 at 3 CSS px per art cell.
+export const UI_SCREEN_NAMES = [
+	"orb",
+	"spyglass",
+	"satchel",
+	"satchel_flap",
+] as const;
+export type UiScreenName = (typeof UI_SCREEN_NAMES)[number];
+
+export function uiScreenPath(name: UiScreenName): string {
+	return `${ASSET_BASE}/placeholders/ui_screen_${name}_soft.png`;
+}
+
 export const UI_SPARKLE_COLORS = ["cyan", "gold", "violet"] as const;
 export type UiSparkleColor = (typeof UI_SPARKLE_COLORS)[number];
 
 export function uiSparklePath(color: UiSparkleColor): string {
 	return `${ASSET_BASE}/placeholders/ui_sparkle_${color}@8x.png`;
+}
+
+// M10 atmosphere pass (2026-09-28) — edge scenery, horizon skyline, night sky
+// ornaments and the path-ribbon pieces, all from gen-world-art.ts (see
+// world-art/scenery.ts). Optional as a group, same graceful-fallback shape as
+// worldArt: missing any one skips edge scenery/skyline and keeps the old
+// strip-stamp paths (PreloadScene's `atmosphereArt`).
+export const SCENERY_NAMES = [
+	"pine",
+	"oak",
+	"blossom-oak",
+	"shrub",
+	"rock-small",
+	"boulder",
+	"berry-shrub",
+	"flower-patch",
+	"reeds",
+	"mushroom",
+	"fallen-log",
+	"stump",
+	"ruin",
+	"windmill",
+	"windmill-sails",
+	"pond",
+	"waymarker",
+] as const;
+export type SceneryName = (typeof SCENERY_NAMES)[number];
+
+export function sceneryKey(name: SceneryName): string {
+	return `scenery-${name}`;
+}
+export function sceneryPath(name: SceneryName): string {
+	return `${ASSET_BASE}/placeholders/scenery_${name.replace(/-/g, "_")}_soft.png`;
+}
+
+export const SKYLINE_PIECES = [
+	"castle",
+	"watchtower",
+	"village",
+	"hill",
+	"treeline",
+] as const;
+export type SkylinePiece = (typeof SKYLINE_PIECES)[number];
+export type SkyVariant = "day" | "night";
+
+export function skylineKey(piece: SkylinePiece, variant: SkyVariant): string {
+	return `skyline-${piece}-${variant}`;
+}
+export function skylinePath(piece: SkylinePiece, variant: SkyVariant): string {
+	return `${ASSET_BASE}/placeholders/skyline_${piece}_${variant}_soft.png`;
+}
+
+export const SKY_DAY_KEY = "sky-day";
+export const SKY_DAY_PATH = `${ASSET_BASE}/placeholders/sky_day.png`;
+export const SKY_NIGHT_KEY = "sky-night";
+export const SKY_NIGHT_PATH = `${ASSET_BASE}/placeholders/sky_night.png`;
+export const SKY_MOON_KEY = "sky-moon";
+export const SKY_MOON_PATH = `${ASSET_BASE}/placeholders/sky_moon_soft.png`;
+export const SKY_STAR_KEY = "sky-star";
+export const SKY_STAR_PATH = `${ASSET_BASE}/placeholders/sky_star_soft.png`;
+
+export const PATH_EDGE_DISC_KEY = "path-edge-disc";
+export const PATH_EDGE_DISC_PATH = `${ASSET_BASE}/placeholders/path_edge_disc_soft.png`;
+export const PATH_BED_DISC_KEY = "path-bed-disc";
+export const PATH_BED_DISC_PATH = `${ASSET_BASE}/placeholders/path_bed_disc_soft.png`;
+export const PATH_COBBLE_COUNT = 4;
+export function pathCobbleKey(index: number): string {
+	return `path-cobble-${index}`;
+}
+export function pathCobblePath(index: number): string {
+	return `${ASSET_BASE}/placeholders/path_cobble_${index}_soft.png`;
+}
+
+/** Every key the atmosphere pass needs, as [key, path] pairs — PreloadScene loads these and derives `atmosphereArt` from them in one place. */
+export function atmosphereAssetEntries(): [string, string][] {
+	return [
+		...SCENERY_NAMES.map((n): [string, string] => [
+			sceneryKey(n),
+			sceneryPath(n),
+		]),
+		...SKYLINE_PIECES.flatMap((p): [string, string][] => [
+			[skylineKey(p, "day"), skylinePath(p, "day")],
+			[skylineKey(p, "night"), skylinePath(p, "night")],
+		]),
+		[SKY_DAY_KEY, SKY_DAY_PATH],
+		[SKY_NIGHT_KEY, SKY_NIGHT_PATH],
+		[SKY_MOON_KEY, SKY_MOON_PATH],
+		[SKY_STAR_KEY, SKY_STAR_PATH],
+		[PATH_EDGE_DISC_KEY, PATH_EDGE_DISC_PATH],
+		[PATH_BED_DISC_KEY, PATH_BED_DISC_PATH],
+		...Array.from({ length: PATH_COBBLE_COUNT }, (_, i): [string, string] => [
+			pathCobbleKey(i),
+			pathCobblePath(i),
+		]),
+	];
 }

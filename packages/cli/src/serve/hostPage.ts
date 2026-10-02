@@ -5,6 +5,8 @@ import * as esbuild from "esbuild";
 export interface HostPageOptions {
 	token: string;
 	allowExec: boolean;
+	/** `cabn serve --owner`: wires @cabn/engine/owner (signs + git clients) into CabnGame. Off, the bundle never references that module. */
+	owner?: boolean;
 }
 
 /**
@@ -25,13 +27,29 @@ function entrySource(opts: HostPageOptions): string {
 				"installLocalRunProvider({ baseUrl: window.location.origin, token: window.__CABN_TOKEN__ });",
 			].join("\n")
 		: "";
+	const ownerWiring = opts.owner
+		? [
+				'import { createOwnerGitClient, createServeOwnerSigns, createShadowLayer } from "@cabn/engine/owner";',
+				"const ownerOpts = { baseUrl: window.location.origin, token: window.__CABN_OWNER_TOKEN__ };",
+				"const owner = { git: createOwnerGitClient(ownerOpts), signs: createServeOwnerSigns(ownerOpts), layers: [createShadowLayer(ownerOpts)] };",
+			].join("\n")
+		: "const owner = undefined;";
+	// Same opt-in hook as the demo's App.tsx: only a page loaded with ?e2e=1
+	// (the owner and spellbook-serve e2es) gets the store on window — a real
+	// serve host has no other way to reach a portal, since world layout is
+	// computed client-side. The owner token is already a page global, so this
+	// exposes nothing a script on the page couldn't read.
 	return `
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { CabnGame } from "@cabn/engine";
 ${localExecWiring}
+${ownerWiring}
+const onGameReady = new URLSearchParams(window.location.search).get("e2e") === "1"
+	? (handle) => { window.__cabnStore = handle?.store; window.__cabnBus = handle?.bus; window.__cabnGame = handle?.game; }
+	: undefined;
 const root = createRoot(document.getElementById("root"));
-root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json" }));
+root.render(React.createElement(CabnGame, { worldUrl: "/world/world.json", pdfWorkerUrl: "/pdfjs/pdf.worker.min.mjs", owner, onGameReady }));
 `;
 }
 
@@ -69,9 +87,18 @@ export async function bundleHostApp(opts: HostPageOptions): Promise<string> {
 	return output.text;
 }
 
-export function hostPageHtml(token: string): string {
+/**
+ * The owner token goes only into this page's inline script — never the URL
+ * (unlike the exec token, it isn't printed, so it doesn't end up in terminal
+ * scrollback or browser history). JSON.stringify of a hex string can't close
+ * the <script> element.
+ */
+export function hostPageHtml(token: string, ownerToken?: string): string {
+	const ownerScript = ownerToken
+		? `\n<script>window.__CABN_OWNER_TOKEN__ = ${JSON.stringify(ownerToken)};</script>`
+		: "";
 	return `<!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>cabn serve</title>
@@ -79,7 +106,7 @@ export function hostPageHtml(token: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>
+<script>window.__CABN_TOKEN__ = ${JSON.stringify(token)};</script>${ownerScript}
 <script type="module" src="/app.js?token=${encodeURIComponent(token)}"></script>
 </body>
 </html>`;

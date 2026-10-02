@@ -1,0 +1,484 @@
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { StoreApi } from "zustand/vanilla";
+import type { CabnBus } from "../bridge/events.js";
+import type { CabnStore } from "../bridge/store.js";
+import { toCssColor } from "../palette.js";
+import { isRepoLoaded, loadBrowserRepo } from "../systems/git/loadRepo.js";
+import type { CommitChanges, RepoCommit } from "../systems/git/types.js";
+import { previewDockOpen } from "../systems/portalFx.js";
+import { activeFocusOwner, classifyFocus } from "../systems/uiFocus.js";
+import { LAYER_FALLBACK_COLOR } from "../systems/worldLayer.js";
+import { mapProjection, type WorldMapSummary } from "../systems/worldMap.js";
+import { LoadingFallback } from "./LoadingOverlay.js";
+import { useCabnStore } from "./useCabnStore.js";
+import { useLoadingWhile } from "./useLoadingWhile.js";
+
+// Only a world with git history ever shows it, and only after the reader loads.
+const MapTimeline = lazy(() =>
+	import("./MapTimeline.js").then((m) => ({ default: m.MapTimeline })),
+);
+
+interface Props {
+	store: StoreApi<CabnStore>;
+	bus: CabnBus;
+}
+
+export function WorldMap({ store, bus }: Props): React.ReactElement | null {
+	const map = useCabnStore(store, (s) => s.worldMap);
+	const mode = useCabnStore(store, (s) => s.mode);
+	const open = useCabnStore(store, (s) => s.mapOpen);
+	// The dock's header sits in the minimap's corner; M still opens the full map.
+	const dockOpen = useCabnStore(store, previewDockOpen);
+	const closeRef = useRef<HTMLButtonElement>(null);
+	const git = useCabnStore(store, (s) => s.git);
+	// null until the git reader loads (lazily: the map itself never pulls the pack in).
+	const [commits, setCommits] = useState<RepoCommit[] | null>(null);
+	const [loadingTimeline, setLoadingTimeline] = useState(false);
+	// Slider position counts from the oldest commit (left) to the newest (right); null = timeline off.
+	const [step, setStep] = useState<number | null>(null);
+	const [changes, setChanges] = useState<CommitChanges | null>(null);
+	const loadTimeline = useMemo(
+		() => () => {
+			if (!git) return;
+			setLoadingTimeline(true);
+			loadBrowserRepo(git.historyBase, git.meta)
+				.then((repo) => repo.log(git.branch))
+				.then(setCommits)
+				.catch(() => setCommits([]))
+				.finally(() => setLoadingTimeline(false));
+		},
+		[git],
+	);
+	useLoadingWhile(store, loadingTimeline, "Reading the world's history…");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the map opens/closes or the universe changes.
+	useEffect(() => {
+		setStep(null);
+		setCommits(null);
+		if (open && git && isRepoLoaded(git.historyBase)) loadTimeline();
+	}, [open, git]);
+	const selectedCommit =
+		step === null || !commits ? undefined : commits[commits.length - 1 - step];
+	useEffect(() => {
+		setChanges(null);
+		if (!selectedCommit || !git) return;
+		let live = true;
+		loadBrowserRepo(git.historyBase, git.meta)
+			.then((repo) => repo.changes(selectedCommit))
+			.then((c) => live && setChanges(c));
+		return () => {
+			live = false;
+		};
+	}, [selectedCommit, git]);
+	const highlight = useMemo(
+		() => new Set(changes?.changes.map((c) => c.path) ?? []),
+		[changes],
+	);
+	useEffect(() => {
+		const onKey = (event: KeyboardEvent) => {
+			const state = store.getState();
+			if (event.metaKey || event.ctrlKey || event.altKey) {
+				if (state.mapOpen) event.stopPropagation();
+				return;
+			}
+			if (state.mapOpen && event.key !== "Tab") {
+				event.stopPropagation();
+				// The timeline slider moves with the arrow keys natively.
+				const onSlider =
+					(event.target as HTMLElement | null)?.getAttribute?.("type") ===
+						"range" && /^(Arrow|Home$|End$|Page)/.test(event.key);
+				if (event.key !== "Enter" && event.key !== " " && !onSlider)
+					event.preventDefault();
+				if (
+					!event.repeat &&
+					(event.key === "Escape" || event.key.toLowerCase() === "m")
+				)
+					state.setMapOpen(false);
+				return;
+			}
+			if (
+				event.defaultPrevented ||
+				event.repeat ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.altKey
+			)
+				return;
+			if (state.mode !== "world" || !state.worldMap || state.guideOpen) return;
+			if (
+				activeFocusOwner() === "text" ||
+				classifyFocus(event.target as HTMLElement) === "text"
+			)
+				return;
+			if (
+				event.key.toLowerCase() !== "m" &&
+				!(state.mapOpen && event.key === "Escape")
+			)
+				return;
+			event.preventDefault();
+			event.stopPropagation();
+			state.setMapOpen(!state.mapOpen);
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [store]);
+	useEffect(() => {
+		if (!open) return;
+		const previous = document.activeElement as HTMLElement | null;
+		closeRef.current?.focus();
+		return () => {
+			previous?.focus();
+		};
+	}, [open]);
+	if (!map || mode !== "world") return null;
+	return (
+		<>
+			<div
+				className="cabn-panel"
+				data-testid="world-minimap"
+				style={{
+					display: dockOpen ? "none" : undefined,
+					position: "absolute",
+					right: 16,
+					top: 66,
+					width: "min(200px, calc(100% - 32px))",
+					zIndex: 5,
+					pointerEvents: "auto",
+				}}
+			>
+				<button
+					type="button"
+					className="cabn-btn neutral"
+					style={{ width: "100%" }}
+					onClick={(e) => {
+						store.getState().setMapOpen(true);
+						e.currentTarget.blur();
+					}}
+				>
+					Map (M)
+				</button>
+				<MapDrawing map={map} store={store} bus={bus} large={false} />
+			</div>
+			{open && (
+				<div
+					style={{
+						position: "absolute",
+						inset: 0,
+						zIndex: 12,
+						pointerEvents: "auto",
+						background: "#0008",
+						display: "grid",
+						placeItems: "center",
+					}}
+				>
+					<div
+						role="dialog"
+						aria-modal="true"
+						aria-label="World map"
+						data-testid="world-map"
+						className="cabn-panel"
+						style={{
+							width: "min(760px, calc(100% - 32px))",
+							maxHeight: "calc(100% - 32px)",
+							overflow: "auto",
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Tab") {
+								const buttons = Array.from(
+									e.currentTarget.querySelectorAll<HTMLElement>(
+										"button, input",
+									),
+								);
+								const index = buttons.indexOf(
+									document.activeElement as HTMLElement,
+								);
+								e.preventDefault();
+								buttons[
+									(index + (e.shiftKey ? -1 : 1) + buttons.length) %
+										buttons.length
+								]?.focus();
+							}
+						}}
+					>
+						<div
+							style={{
+								display: "flex",
+								justifyContent: "space-between",
+								alignItems: "center",
+								padding: 8,
+							}}
+						>
+							<span>{map.name}</span>
+							<button
+								ref={closeRef}
+								type="button"
+								className="cabn-btn cancel"
+								onClick={() => store.getState().setMapOpen(false)}
+							>
+								Close (Esc)
+							</button>
+						</div>
+						<MapDrawing
+							map={map}
+							store={store}
+							bus={bus}
+							large
+							highlight={highlight}
+						/>
+						{git && commits === null && (
+							<div
+								data-testid="map-timeline"
+								style={{ padding: "0 12px 8px", fontSize: 12 }}
+							>
+								<button
+									type="button"
+									className="cabn-btn neutral"
+									data-testid="map-timeline-load"
+									disabled={loadingTimeline}
+									onClick={loadTimeline}
+								>
+									{loadingTimeline
+										? "Reading the history…"
+										: "Show the commit timeline"}
+								</button>
+							</div>
+						)}
+						{commits && commits.length > 0 && (
+							<Suspense
+								fallback={
+									<LoadingFallback
+										store={store}
+										label="Unrolling the timeline…"
+									/>
+								}
+							>
+								<MapTimeline
+									commits={commits}
+									changes={changes}
+									step={step}
+									setStep={setStep}
+									worldPaths={map.portals}
+								/>
+							</Suspense>
+						)}
+						<p style={{ padding: "0 12px", fontSize: 12 }}>
+							Gold: you · cyan squares: files · red: undefeated monsters ·
+							violet diamond: the rift (git history) · bright clearings:
+							visited. Select a file to walk there.
+						</p>
+						<fieldset
+							aria-label="Map destinations"
+							style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 8 }}
+						>
+							{map.portals.map((p) => (
+								<button
+									type="button"
+									className="cabn-btn neutral"
+									key={p.id}
+									onClick={() => {
+										store.getState().setMapOpen(false);
+										bus.emit("tool:walk-to-portal", { portalId: p.id });
+									}}
+								>
+									{p.label}
+								</button>
+							))}
+						</fieldset>
+					</div>
+				</div>
+			)}
+		</>
+	);
+}
+
+function MapDrawing({
+	map,
+	store,
+	bus,
+	large,
+	highlight,
+}: Props & {
+	map: WorldMapSummary;
+	large: boolean;
+	highlight?: ReadonlySet<string>;
+}): React.ReactElement {
+	const player = useCabnStore(store, (s) => s.playerPos);
+	const rift = useCabnStore(store, (s) => s.riftPos);
+	const visited = useCabnStore(store, (s) => s.visitedClusterIds);
+	const defeated = useCabnStore(store, (s) => s.defeatedMonsterIds);
+	const layerTokens = useCabnStore(store, (s) => s.layerUiTokens);
+	const layerColor = toCssColor(
+		layerTokens?.accentPink ?? LAYER_FALLBACK_COLOR,
+	);
+	// A layer's HUD palette recolours the base world's clearings too; the
+	// green defaults are the normal world's meadow and would clash with it.
+	const baseInk = layerTokens
+		? {
+				visited: toCssColor(layerTokens.borderOuter),
+				unvisited: toCssColor(layerTokens.panelBody),
+				rim: toCssColor(layerTokens.textSecondary),
+				portal: toCssColor(layerTokens.accentYellow),
+			}
+		: {
+				visited: "#668763",
+				unvisited: "#354a3d",
+				rim: "#a1b58b",
+				portal: "#71d6d9",
+			};
+	const width = large ? 720 : 200;
+	const height = large ? 400 : 140;
+	const project = useMemo(
+		() => mapProjection(map, width, height),
+		[map, width, height],
+	);
+	const pos = project(player);
+	return (
+		<svg
+			viewBox={`0 0 ${width} ${height}`}
+			role="img"
+			aria-label={large ? "World layout" : "Minimap layout"}
+			style={{
+				display: "block",
+				width: "100%",
+				background: "var(--cabn-bg-panel, #24352b)",
+			}}
+		>
+			{map.paths.map((p) => {
+				const from = project(p.from);
+				const to = project(p.to);
+				return (
+					<line
+						key={`${p.from.x}:${p.from.y}:${p.to.x}:${p.to.y}:${p.kind}`}
+						x1={from.x}
+						y1={from.y}
+						x2={to.x}
+						y2={to.y}
+						stroke={p.layer ? layerColor : "#b3a178"}
+						strokeWidth={large ? 3 : 1}
+						strokeDasharray={p.kind === "import" ? "4 3" : undefined}
+					/>
+				);
+			})}
+			{map.clusters.map((c) => {
+				const p = project(c.pos);
+				return (
+					<g key={c.id}>
+						<circle
+							cx={p.x}
+							cy={p.y}
+							r={large ? 24 : 9}
+							fill={
+								visited.includes(c.id) ? baseInk.visited : baseInk.unvisited
+							}
+							stroke={c.layer ? layerColor : baseInk.rim}
+							strokeWidth={c.layer ? 3 : 1}
+							data-layer={c.layer ? "" : undefined}
+						/>
+						<title>
+							{c.label}
+							{visited.includes(c.id) ? " (visited)" : " (unvisited)"}
+						</title>
+						{large && (
+							<text
+								x={p.x}
+								y={p.y - 28}
+								textAnchor="middle"
+								fill="#f4ead2"
+								fontSize={12}
+							>
+								{c.label}
+							</text>
+						)}
+					</g>
+				);
+			})}
+			{map.portals.map((p) => {
+				const point = project(p.pos);
+				const changed = highlight?.has(p.id) ?? false;
+				return (
+					<g key={p.id}>
+						{changed && (
+							<circle
+								data-testid="map-portal-changed"
+								data-portal-id={p.id}
+								cx={point.x}
+								cy={point.y}
+								r={11}
+								fill="none"
+								stroke="#ffd23f"
+								strokeWidth={3}
+							/>
+						)}
+						{/* Mouse-only: a pointer-clickable dot standing in for the matching
+						    HTML destination button below, which is the real keyboard/AT
+						    path — no role or key handler, so this plain onClick never
+						    surfaces as an interactive node in the accessibility tree (axe
+						    flagged the previous role="button" version as nested-interactive
+						    inside the svg's own role="img"). */}
+						{/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-only convenience duplicate; the same destination is a real, focusable <button> in the fieldset below. */}
+						<rect
+							data-testid={large ? "map-portal" : undefined}
+							data-portal-id={p.id}
+							data-layer={p.layer ? "" : undefined}
+							x={point.x - 5}
+							y={point.y - 5}
+							width={10}
+							height={10}
+							fill={p.layer ? layerColor : baseInk.portal}
+							style={{ cursor: "pointer" }}
+							onClick={() => {
+								if (store.getState().guideOpen) return;
+								store.getState().setMapOpen(false);
+								bus.emit("tool:walk-to-portal", { portalId: p.id });
+							}}
+						/>
+						<title>{p.label}</title>
+					</g>
+				);
+			})}
+			{map.monsters
+				.filter((m) => !defeated.includes(m.id))
+				.map((m) => {
+					const p = project(m.pos);
+					return (
+						<g key={m.id}>
+							<circle
+								data-testid={large ? "map-monster" : undefined}
+								cx={p.x + 7}
+								cy={p.y - 7}
+								r={large ? 4 : 2}
+								fill="#ed7770"
+							/>
+							<title>{m.label}</title>
+						</g>
+					);
+				})}
+			{rift &&
+				(() => {
+					const r = project(rift);
+					const size = large ? 8 : 4;
+					return (
+						<polygon
+							data-testid={large ? "map-rift" : undefined}
+							points={`${r.x},${r.y - size} ${r.x + size},${r.y} ${r.x},${r.y + size} ${r.x - size},${r.y}`}
+							fill="#8a6fd6"
+							stroke="#f1ecff"
+							strokeWidth={1}
+						>
+							<title>The rift of branches</title>
+						</polygon>
+					);
+				})()}
+			<circle
+				data-testid={large ? "map-player" : "minimap-player"}
+				cx={pos.x}
+				cy={pos.y}
+				r={large ? 6 : 4}
+				fill="#ffd86b"
+				stroke="#372811"
+				strokeWidth={2}
+			>
+				<title>You are here</title>
+			</circle>
+		</svg>
+	);
+}

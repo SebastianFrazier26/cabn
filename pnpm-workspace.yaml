@@ -4,3 +4,5 @@ packages:
   - tools/*
 allowBuilds:
   esbuild: true
+ignoredOptionalDependencies:
+  - "@napi-rs/canvas"

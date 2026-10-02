@@ -2,13 +2,25 @@
 // here must avoid node:* imports. DirSource lives outside this barrel; only
 // src/sources/dir.ts is allowed to import node:* (see test/node-imports.test.ts).
 export * from "./annotate/index.js";
+export * from "./cabnConfig.js";
 export * from "./classify.js";
 export * from "./cluster.js";
 export * from "./convert.js";
+export * from "./embedCheck.js";
+export * from "./history/diff.js";
+export * from "./history/githubReleases.js";
+export * from "./history/gitPack.js";
+export * from "./history/gitRepo.js";
+export * from "./history/packfile.js";
+export * from "./imageDimensions.js";
 export * from "./layout.js";
+export * from "./markdownPreview.js";
+export * from "./media.js";
 export * from "./preview.js";
+export * from "./richPreview.js";
 export * from "./search-index.js";
 export * from "./shelf.js";
+export * from "./signs.js";
 export * from "./sources/types.js";
 export * from "./sources/zip.js";
 export * from "./tree.js";

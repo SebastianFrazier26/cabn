@@ -1,0 +1,175 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"cabnConfigVersion": {
+			"type": "number",
+			"const": 1
+		},
+		"previews": {
+			"default": {},
+			"type": "object",
+			"propertyNames": {
+				"type": "string"
+			},
+			"additionalProperties": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "image"
+							},
+							"src": {
+								"type": "string"
+							}
+						},
+						"required": ["kind", "src"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "url"
+							},
+							"url": {
+								"type": "string"
+							},
+							"title": {
+								"type": "string",
+								"maxLength": 200
+							},
+							"fallbackImage": {
+								"type": "string"
+							}
+						},
+						"required": ["kind", "url"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "markdown"
+							},
+							"src": {
+								"type": "string"
+							}
+						},
+						"required": ["kind", "src"],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "text"
+							},
+							"text": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 2000
+							}
+						},
+						"required": ["kind", "text"],
+						"additionalProperties": false
+					}
+				]
+			}
+		},
+		"allowedEmbedOrigins": {
+			"default": [],
+			"type": "array",
+			"items": {
+				"type": "string"
+			}
+		},
+		"media": {
+			"type": "object",
+			"properties": {
+				"maxFileBytes": {
+					"type": "integer",
+					"exclusiveMinimum": 0,
+					"maximum": 26214400
+				},
+				"maxTotalBytes": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 262144000
+				}
+			},
+			"additionalProperties": false
+		},
+		"guide": {
+			"type": "boolean"
+		},
+		"annotate": {
+			"type": "object",
+			"properties": {
+				"maxFunctionLines": {
+					"type": "integer",
+					"minimum": 10,
+					"maximum": 2000
+				},
+				"maxNestingDepth": {
+					"type": "integer",
+					"minimum": 2,
+					"maximum": 20
+				}
+			},
+			"additionalProperties": false
+		},
+		"embedCheck": {
+			"type": "boolean"
+		},
+		"history": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"maxCommitsPerBranch": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 1000
+				},
+				"maxBranches": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 100
+				},
+				"maxTags": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 500
+				},
+				"maxReleases": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100
+				},
+				"maxPackBytes": {
+					"type": "integer",
+					"minimum": 1048576,
+					"maximum": 209715200
+				},
+				"maxBlobBytes": {
+					"type": "integer",
+					"minimum": 16384,
+					"maximum": 26214400
+				},
+				"releases": {
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
+		}
+	},
+	"required": ["cabnConfigVersion", "previews", "allowedEmbedOrigins"],
+	"additionalProperties": false
+}

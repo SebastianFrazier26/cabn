@@ -208,6 +208,38 @@ function featherEdges(
 	}
 }
 
+const MONSTER_FX_SLUGS = [
+	"ghost",
+	"rot_sprite",
+	"warded_mimic",
+	"gremlin",
+	"ouroboros",
+	"will_o_wisp",
+	"imp",
+	"magpie",
+	"skeleton",
+	"bramble",
+	"shade",
+];
+// Ghost's whole body sits above the default bloom threshold (it's drawn in
+// near-white curated tones to begin with), which blew the default settings
+// out to a flat white wash — raise the threshold and dial back strength so
+// the glow reads as "faint", not "overexposed". The wisp has the same
+// overexposure risk — its hot core is bone/moonlight white by design (it's
+// meant to glow). Keyed by file slug; exported so any recoloured set of the
+// same sprites softens the same way.
+export const MONSTER_SOFTEN_OVERRIDES = {
+	ghost: { bloomThreshold: 225, bloomStrength: 0.25, bloomRadiusPx: 5 },
+	will_o_wisp: { bloomThreshold: 225, bloomStrength: 0.3, bloomRadiusPx: 4 },
+} satisfies Record<string, Partial<SoftenOptions>>;
+
+const MONSTER_FX_NAMES = MONSTER_FX_SLUGS.flatMap((slug) => [
+	`${slug}_hit`,
+	`${slug}_defeat0`,
+	`${slug}_defeat1`,
+	`${slug}_defeat2`,
+]);
+
 // ---- script entrypoint: batch-soften the calibration cabin + placeholders ----
 
 interface SoftenJob {
@@ -241,25 +273,18 @@ async function main() {
 		},
 	];
 
-	// Ghost's whole body sits above the default bloom threshold (it's drawn in
-	// near-white curated tones to begin with), which blew the default settings
-	// out to a flat white wash — raise the threshold and dial back strength so
-	// the glow reads as "faint", not "overexposed".
 	const perNameOptions: Record<string, Partial<SoftenOptions>> = {
-		ghost: { bloomThreshold: 225, bloomStrength: 0.25, bloomRadiusPx: 5 },
-		// Same near-white overexposure risk as ghost — the wisp's hot core is
-		// bone/moonlight white by design (it's meant to glow).
-		will_o_wisp_idle0: {
-			bloomThreshold: 225,
-			bloomStrength: 0.3,
-			bloomRadiusPx: 4,
-		},
-		will_o_wisp_idle1: {
-			bloomThreshold: 225,
-			bloomStrength: 0.3,
-			bloomRadiusPx: 4,
-		},
+		ghost: MONSTER_SOFTEN_OVERRIDES.ghost,
+		will_o_wisp_idle0: MONSTER_SOFTEN_OVERRIDES.will_o_wisp,
+		will_o_wisp_idle1: MONSTER_SOFTEN_OVERRIDES.will_o_wisp,
 	};
+
+	// Battle frames (monster-fx.ts) inherit their species' bloom tuning.
+	for (const name of MONSTER_FX_NAMES) {
+		const species = name.replace(/_(hit|defeat\d)$/, "");
+		const base = perNameOptions[species] ?? perNameOptions[`${species}_idle0`];
+		if (base) perNameOptions[name] = base;
+	}
 
 	for (const name of [
 		"portal_arch",
@@ -277,6 +302,17 @@ async function main() {
 		"ouroboros_idle1",
 		"will_o_wisp_idle0",
 		"will_o_wisp_idle1",
+		"imp_idle0",
+		"imp_idle1",
+		"magpie_idle0",
+		"magpie_idle1",
+		"skeleton_idle0",
+		"skeleton_idle1",
+		"bramble_idle0",
+		"bramble_idle1",
+		"shade_idle0",
+		"shade_idle1",
+		...MONSTER_FX_NAMES,
 	]) {
 		if (manifest[name]?.locked) continue;
 		jobs.push({

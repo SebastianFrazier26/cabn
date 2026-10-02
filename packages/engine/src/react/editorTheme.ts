@@ -56,6 +56,93 @@ export const pixelEditorTheme: Extension = EditorView.theme(
 		".cm-scroller": {
 			fontFamily: "var(--cabn-font-mono)",
 		},
+		// Find & replace panel (@codemirror/search), repainted from its default
+		// grey browser-form look into the spellbook's flat pixel chrome.
+		".cm-panels": {
+			backgroundColor: "var(--cabn-panel-body-alt)",
+			color: "var(--cabn-text)",
+		},
+		".cm-panels.cm-panels-top": {
+			borderBottom: "3px solid var(--cabn-border-outer)",
+		},
+		".cm-panel.cm-search": {
+			fontFamily: "var(--cabn-font-display)",
+			fontSize: "12px",
+			padding: "6px 30px 6px 8px",
+			display: "flex",
+			flexWrap: "wrap",
+			alignItems: "center",
+			gap: "6px",
+		},
+		".cm-panel.cm-search br": { flexBasis: "100%", height: 0 },
+		".cm-textfield": {
+			fontFamily: "var(--cabn-font-mono)",
+			fontSize: "13px",
+			color: "var(--cabn-text)",
+			backgroundColor: "var(--cabn-panel-body)",
+			border: "2px solid var(--cabn-border-outer)",
+			borderRadius: "6px",
+			padding: "3px 6px",
+			margin: 0,
+		},
+		".cm-textfield:focus": {
+			outline: "2px solid var(--cabn-accent-yellow)",
+			outlineOffset: "1px",
+		},
+		// Fixed dark ink on the bright accent fill, same reasoning as .cabn-btn.
+		".cm-button": {
+			fontFamily: "var(--cabn-font-display)",
+			fontSize: "11px",
+			color: "#201a3d",
+			backgroundColor: "var(--cabn-accent-yellow)",
+			backgroundImage: "none",
+			border: "2px solid var(--cabn-border-outer)",
+			borderRadius: "8px",
+			padding: "3px 10px",
+			margin: 0,
+			cursor: "pointer",
+		},
+		".cm-button:active": {
+			backgroundImage: "none",
+			transform: "translate(1px, 1px)",
+		},
+		".cm-panel.cm-search label": {
+			display: "inline-flex",
+			alignItems: "center",
+			gap: "3px",
+			fontSize: "11px",
+			margin: 0,
+		},
+		".cm-panel.cm-search input[type=checkbox]": {
+			accentColor: "var(--cabn-accent-violet)",
+			margin: 0,
+		},
+		".cm-panel.cm-search [name=close]": {
+			color: "var(--cabn-text)",
+			fontSize: "20px",
+			top: "4px",
+			right: "8px",
+			cursor: "pointer",
+		},
+		".cm-searchMatch": {
+			backgroundColor: "var(--cabn-search-match-bg)",
+			outline: "1px solid var(--cabn-accent-orange)",
+		},
+		".cm-searchMatch.cm-searchMatch-selected": {
+			backgroundColor: "var(--cabn-search-match-selected-bg)",
+		},
+		".cm-selectionMatch": {
+			backgroundColor: "var(--cabn-selection-match-bg)",
+		},
+		".cm-foldPlaceholder": {
+			fontFamily: "var(--cabn-font-display)",
+			backgroundColor: "var(--cabn-accent-violet)",
+			color: "#201a3d",
+			border: "none",
+			borderRadius: "4px",
+			padding: "0 6px",
+			margin: "0 4px",
+		},
 	},
 	{ dark: false },
 );

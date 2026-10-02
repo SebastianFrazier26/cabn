@@ -7,25 +7,30 @@
 		"predev": "node scripts/build-world.mjs",
 		"dev": "vite",
 		"prebuild": "node scripts/build-world.mjs",
-		"build": "tsc --noEmit -p tsconfig.json && vite build",
-		"postbuild": "node scripts/check-no-exec-in-bundle.mjs",
+		"build": "tsc --noEmit -p tsconfig.json && pnpm typecheck:e2e && vite build",
+		"postbuild": "node scripts/check-no-exec-in-bundle.mjs && node scripts/check-no-secrets-in-bundle.mjs && node scripts/check-no-shadow-in-bundle.mjs && node scripts/check-csp-in-bundle.mjs",
 		"preview": "vite preview",
 		"build:world": "node scripts/build-world.mjs",
 		"test": "vitest run",
+		"typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
 		"e2e": "playwright test"
 	},
 	"dependencies": {
 		"@cabn/engine": "workspace:*",
+		"pdfjs-dist": "6.3.289",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0"
 	},
 	"devDependencies": {
+		"@axe-core/playwright": "4.13.0",
 		"@cabn/cli": "workspace:*",
 		"@playwright/test": "^1.63.0",
+		"@types/node": "^22.20.4",
 		"@types/pngjs": "^6.0.5",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
 		"@vitejs/plugin-react": "^6.1.1",
+		"isomorphic-git": "1.42.2",
 		"pngjs": "^7.0.0",
 		"vite": "^8.3.0"
 	}

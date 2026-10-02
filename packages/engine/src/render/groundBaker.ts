@@ -28,6 +28,10 @@ export interface BakeClusterGroundParams {
 	/** Evenly-spaced flower decals right at the clearing's edge — the "ring of flowers" the clearing-marking brief asks for, on top of (not instead of) the scattered interior decals. 0 skips the ring. */
 	ringFlowerCount?: number;
 	seed: number;
+	/** A world skin's multiply tint (systems/worldLayer.ts); omitted, the art's own colours. */
+	tint?: number;
+	/** A world skin's decal sheet (DECAL_SHEET layout); omitted, the world's own. */
+	decalSheetKey?: string;
 }
 
 // decals.ts's buildDecals() order: 0 = flower-pink, 1 = flower-blue.
@@ -53,6 +57,7 @@ export function bakeClusterGround(
 	const width = grid.cols * GROUND_TILE_SIZE;
 	const height = grid.rows * GROUND_TILE_SIZE;
 	const rt = scene.add.renderTexture(centerX, centerY, width, height);
+	const decalKey = params.decalSheetKey ?? DECAL_SHEET_KEY;
 
 	for (let row = 0; row < grid.rows; row++) {
 		for (let col = 0; col < grid.cols; col++) {
@@ -95,7 +100,7 @@ export function bakeClusterGround(
 		// not its corner.
 		const rtX = decal.x - grid.originX - DECAL_FRAME_SIZE / 2;
 		const rtY = decal.y - grid.originY - DECAL_FRAME_SIZE / 2;
-		rt.drawFrame(DECAL_SHEET_KEY, decal.variant, rtX, rtY);
+		rt.drawFrame(decalKey, decal.variant, rtX, rtY);
 	}
 
 	const ringCount = params.ringFlowerCount ?? 0;
@@ -105,12 +110,13 @@ export function bakeClusterGround(
 		const y = Math.sin(angle) * radiusY * 0.92;
 		const variant = RING_FLOWER_VARIANTS[i % RING_FLOWER_VARIANTS.length] ?? 0;
 		rt.drawFrame(
-			DECAL_SHEET_KEY,
+			decalKey,
 			variant,
 			x - grid.originX - DECAL_FRAME_SIZE / 2,
 			y - grid.originY - DECAL_FRAME_SIZE / 2,
 		);
 	}
 
+	if (params.tint !== undefined) rt.setTint(params.tint);
 	return rt;
 }

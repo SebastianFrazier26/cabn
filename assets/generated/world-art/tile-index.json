@@ -157,10 +157,148 @@
 		"key": "castle-keep",
 		"file": "placeholders/prop_castle_keep_soft.png"
 	},
-	"worldCabinet": {
-		"name": "world-cabinet",
-		"key": "world-cabinet",
-		"file": "placeholders/prop_world_cabinet_soft.png"
+	"worldFountain": {
+		"name": "world-fountain",
+		"key": "world-fountain",
+		"file": "placeholders/prop_world_fountain_strip_soft.png",
+		"frameWidth": 112,
+		"frameHeight": 116,
+		"frames": 6,
+		"gem": "placeholders/prop_world_fountain_gem_soft.png"
+	},
+	"shelfCabin": {
+		"name": "shelf-cabin",
+		"key": "shelf-cabin",
+		"file": "placeholders/prop_shelf_cabin_soft.png"
+	},
+	"scenery": {
+		"pieces": [
+			{
+				"name": "pine",
+				"key": "scenery-pine",
+				"file": "placeholders/scenery_pine_soft.png"
+			},
+			{
+				"name": "oak",
+				"key": "scenery-oak",
+				"file": "placeholders/scenery_oak_soft.png"
+			},
+			{
+				"name": "blossom-oak",
+				"key": "scenery-blossom-oak",
+				"file": "placeholders/scenery_blossom_oak_soft.png"
+			},
+			{
+				"name": "shrub",
+				"key": "scenery-shrub",
+				"file": "placeholders/scenery_shrub_soft.png"
+			},
+			{
+				"name": "berry-shrub",
+				"key": "scenery-berry-shrub",
+				"file": "placeholders/scenery_berry_shrub_soft.png"
+			},
+			{
+				"name": "rock-small",
+				"key": "scenery-rock-small",
+				"file": "placeholders/scenery_rock_small_soft.png"
+			},
+			{
+				"name": "boulder",
+				"key": "scenery-boulder",
+				"file": "placeholders/scenery_boulder_soft.png"
+			},
+			{
+				"name": "flower-patch",
+				"key": "scenery-flower-patch",
+				"file": "placeholders/scenery_flower_patch_soft.png"
+			},
+			{
+				"name": "reeds",
+				"key": "scenery-reeds",
+				"file": "placeholders/scenery_reeds_soft.png"
+			},
+			{
+				"name": "mushroom",
+				"key": "scenery-mushroom",
+				"file": "placeholders/scenery_mushroom_soft.png"
+			},
+			{
+				"name": "fallen-log",
+				"key": "scenery-fallen-log",
+				"file": "placeholders/scenery_fallen_log_soft.png"
+			},
+			{
+				"name": "stump",
+				"key": "scenery-stump",
+				"file": "placeholders/scenery_stump_soft.png"
+			},
+			{
+				"name": "ruin",
+				"key": "scenery-ruin",
+				"file": "placeholders/scenery_ruin_soft.png"
+			},
+			{
+				"name": "windmill",
+				"key": "scenery-windmill",
+				"file": "placeholders/scenery_windmill_soft.png"
+			},
+			{
+				"name": "windmill-sails",
+				"key": "scenery-windmill-sails",
+				"file": "placeholders/scenery_windmill_sails_soft.png"
+			},
+			{
+				"name": "pond",
+				"key": "scenery-pond",
+				"file": "placeholders/scenery_pond_soft.png"
+			},
+			{
+				"name": "waymarker",
+				"key": "scenery-waymarker",
+				"file": "placeholders/scenery_waymarker_soft.png"
+			}
+		]
+	},
+	"skyline": {
+		"pieces": [
+			{
+				"name": "castle",
+				"day": "placeholders/skyline_castle_day_soft.png",
+				"night": "placeholders/skyline_castle_night_soft.png"
+			},
+			{
+				"name": "watchtower",
+				"day": "placeholders/skyline_watchtower_day_soft.png",
+				"night": "placeholders/skyline_watchtower_night_soft.png"
+			},
+			{
+				"name": "village",
+				"day": "placeholders/skyline_village_day_soft.png",
+				"night": "placeholders/skyline_village_night_soft.png"
+			},
+			{
+				"name": "hill",
+				"day": "placeholders/skyline_hill_day_soft.png",
+				"night": "placeholders/skyline_hill_night_soft.png"
+			},
+			{
+				"name": "treeline",
+				"day": "placeholders/skyline_treeline_day_soft.png",
+				"night": "placeholders/skyline_treeline_night_soft.png"
+			}
+		],
+		"moon": "placeholders/sky_moon_soft.png"
+	},
+	"pathRibbon": {
+		"files": [
+			"placeholders/path_edge_disc_soft.png",
+			"placeholders/path_bed_disc_soft.png",
+			"placeholders/path_cobble_0_soft.png",
+			"placeholders/path_cobble_1_soft.png",
+			"placeholders/path_cobble_2_soft.png",
+			"placeholders/path_cobble_3_soft.png"
+		]
 	},
 	"mockScene": "mock-scene.png"
 }

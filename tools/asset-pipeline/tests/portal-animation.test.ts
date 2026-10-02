@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
 	computeMotePositions,
+	PORTAL_GRID,
+	PORTAL_INTERIOR,
+	PORTAL_OPENING_FRAME_PX,
+	PORTAL_STRIP_FRAME_PX,
+	portalArch,
 	portalArchFrame,
 } from "../src/pixelmaps/portal-arch.js";
 
@@ -42,5 +47,37 @@ describe("portalArchFrame", () => {
 		const a = portalArchFrame(0, 6);
 		const b = portalArchFrame(3, 6);
 		expect(a.rows).not.toEqual(b.rows);
+	});
+});
+
+describe("portalArch geometry", () => {
+	test("opening maps onto the unchanged 256px-frame rect the portal previews draw into", () => {
+		const scale = PORTAL_STRIP_FRAME_PX / PORTAL_GRID;
+		expect({
+			x: PORTAL_INTERIOR.x * scale,
+			y: PORTAL_INTERIOR.y * scale,
+			width: PORTAL_INTERIOR.width * scale,
+			height: PORTAL_INTERIOR.height * scale,
+		}).toEqual({ x: 64, y: 80, width: 128, height: 176 });
+		expect(PORTAL_OPENING_FRAME_PX).toEqual({
+			x: 64,
+			y: 80,
+			width: 128,
+			height: 176,
+		});
+	});
+
+	test("the opening is fully transparent and ringed by stone", () => {
+		const { x, y, width, height } = PORTAL_INTERIOR;
+		for (let row = y; row < y + height; row++) {
+			for (let col = x; col < x + width; col++) {
+				expect(portalArch.rows[row]?.[col]).toBe(".");
+			}
+			expect(portalArch.rows[row]?.[x - 1]).not.toBe(".");
+			expect(portalArch.rows[row]?.[x + width]).not.toBe(".");
+		}
+		for (let col = x; col < x + width; col++) {
+			expect(portalArch.rows[y - 1]?.[col]).not.toBe(".");
+		}
 	});
 });

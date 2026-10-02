@@ -118,8 +118,58 @@ describe("startServe — no --allow-exec", () => {
 		expect(manifest.cabnVersion).toBe(1);
 	});
 
+	it("sends a frame-src CSP on the host page ('none' for a world without embeds), and forbids framing it", async () => {
+		const res = await fetch(handle?.url ?? "");
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-security-policy")).toBe(
+			"frame-src 'none'; frame-ancestors 'none'",
+		);
+		const embeds = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/embeds.json`,
+		);
+		expect((await embeds.json()).entries).toEqual({});
+	});
+
+	it("serves media.json and pdf.js's worker from its own origin", async () => {
+		const media = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/media.json`,
+		);
+		expect(media.status).toBe(200);
+		expect((await media.json()).mediaVersion).toBe(1);
+
+		const monsters = await fetch(
+			`http://127.0.0.1:${handle?.port}/world/monsters.json`,
+		);
+		expect(monsters.status).toBe(200);
+		expect((await monsters.json()).monstersVersion).toBe(1);
+
+		const worker = await fetch(
+			`http://127.0.0.1:${handle?.port}/pdfjs/pdf.worker.min.mjs`,
+		);
+		expect(worker.status).toBe(200);
+		expect(worker.headers.get("content-type")).toContain("javascript");
+		expect((await worker.text()).length).toBeGreaterThan(100_000);
+	});
+
+	it("serves only image, audio and font assets", async () => {
+		const base = `http://127.0.0.1:${handle?.port}/assets`;
+		const sprite = await fetch(`${base}/originals/cabin_256.webp`);
+		expect(sprite.status).toBe(200);
+		expect(sprite.headers.get("content-type")).toBe("image/webp");
+		for (const path of [
+			"ui/mockup.html",
+			"UI/MOCKUP.HTML",
+			"palette.json",
+			"ui/STYLE.md",
+			"originals",
+		]) {
+			const res = await fetch(`${base}/${path}`);
+			expect(res.status, path).toBe(404);
+		}
+	});
+
 	it("serves the host page with the token embedded", async () => {
-		const res = await fetch(`http://127.0.0.1:${handle?.port}/`);
+		const res = await fetch(handle?.url ?? "");
 		const html = await res.text();
 		expect(html).toContain(handle?.token);
 	});
@@ -282,6 +332,7 @@ describe.each([
 	"startServe — every route is Host/Origin gated ($label)",
 	({ allowExec }) => {
 		let chunkPath: string;
+		const pagePath = () => `/?token=${handle?.token}`;
 
 		beforeEach(async () => {
 			handle = await startServe(FIXTURE_DIR, { port: 0, allowExec });
@@ -294,11 +345,19 @@ describe.each([
 
 		it.each([
 			"/",
+			"/?token=",
 			"/app.js",
 			"/world/world.json",
 			"/assets/originals/cabin_256.webp",
 		])("rejects a spoofed Host header on GET %s as 403", async (path) => {
 			const res = await rawGet(handle?.port ?? 0, path, {
+				host: "evil.example.com",
+			});
+			expect(res.status).toBe(403);
+		});
+
+		it("rejects a spoofed Host header on the tokened page as 403", async () => {
+			const res = await rawGet(handle?.port ?? 0, pagePath(), {
 				host: "evil.example.com",
 			});
 			expect(res.status).toBe(403);
@@ -312,7 +371,7 @@ describe.each([
 		});
 
 		it("rejects a hostile Origin header on a plain GET as 403", async () => {
-			const res = await rawGet(handle?.port ?? 0, "/", {
+			const res = await rawGet(handle?.port ?? 0, pagePath(), {
 				host: `127.0.0.1:${handle?.port}`,
 				origin: "http://evil.example.com",
 			});
@@ -320,21 +379,21 @@ describe.each([
 		});
 
 		it("still serves a legitimate 127.0.0.1 Host as 200", async () => {
-			const res = await rawGet(handle?.port ?? 0, "/", {
+			const res = await rawGet(handle?.port ?? 0, pagePath(), {
 				host: `127.0.0.1:${handle?.port}`,
 			});
 			expect(res.status).toBe(200);
 		});
 
 		it("still serves a legitimate localhost Host as 200", async () => {
-			const res = await rawGet(handle?.port ?? 0, "/", {
+			const res = await rawGet(handle?.port ?? 0, pagePath(), {
 				host: `localhost:${handle?.port}`,
 			});
 			expect(res.status).toBe(200);
 		});
 
 		it("'/' is never cached and never leaks via Referer", async () => {
-			const res = await rawGet(handle?.port ?? 0, "/", {
+			const res = await rawGet(handle?.port ?? 0, pagePath(), {
 				host: `127.0.0.1:${handle?.port}`,
 			});
 			expect(res.status).toBe(200);
@@ -344,3 +403,61 @@ describe.each([
 		});
 	},
 );
+
+describe("startServe — the page needs the printed token", () => {
+	beforeEach(async () => {
+		handle = await startServe(FIXTURE_DIR, { port: 0, offline: true });
+	});
+
+	const get = (path: string) =>
+		rawGet(handle?.port ?? 0, path, { host: `127.0.0.1:${handle?.port}` });
+
+	it("answers 404 with no token", async () => {
+		const res = await get("/");
+		expect(res.status).toBe(404);
+		expect(res.body).not.toContain(handle?.token);
+	});
+
+	it("answers 404 with a wrong or empty token", async () => {
+		const wrong = (handle?.token ?? "").replace(/.$/, (c) =>
+			c === "0" ? "1" : "0",
+		);
+		for (const path of [
+			`/?token=${wrong}`,
+			"/?token=",
+			`/?token=${handle?.token}x`,
+			`/?token=${handle?.token?.toUpperCase()}`,
+		]) {
+			const res = await get(path);
+			expect(res.status, path).toBe(404);
+			expect(res.body, path).not.toContain(handle?.token);
+		}
+	});
+
+	it("serves the page for the printed url's token", async () => {
+		expect(handle?.url).toContain(`/?token=${handle?.token}`);
+		const printed = new URL(handle?.url ?? "");
+		const res = await get(`${printed.pathname}${printed.search}`);
+		expect(res.status).toBe(200);
+		expect(res.headers["content-type"]).toContain("text/html");
+		expect(res.body).toContain(`window.__CABN_TOKEN__ = "${handle?.token}"`);
+	});
+
+	it("no untokened route carries the session token", async () => {
+		const manifest = (await get("/world/world.json")).body;
+		const clusterId = JSON.parse(manifest).clusters[0].id;
+		for (const path of [
+			"/app.js",
+			`/app.js?token=${handle?.token}`,
+			"/world/world.json",
+			`/world/chunks/${clusterId}.json`,
+			"/assets/originals/cabin_256.webp",
+			"/pdfjs/pdf.worker.min.mjs",
+			"/index.html",
+			"/nope",
+		]) {
+			const res = await get(path);
+			expect(res.body, path).not.toContain(handle?.token);
+		}
+	});
+});

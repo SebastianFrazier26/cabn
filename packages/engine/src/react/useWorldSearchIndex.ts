@@ -1,8 +1,12 @@
-import type { SearchDoc } from "@cabn/converter/browser";
-import { SEARCH_FIELDS, SEARCH_STORE_FIELDS } from "@cabn/converter/browser";
-import { SearchIndexFileSchema } from "@cabn/world-schema";
+import type { SearchDoc } from "@cabn/converter/core";
+import { SEARCH_FIELDS, SEARCH_STORE_FIELDS } from "@cabn/converter/core";
+import {
+	type SearchIndexFile,
+	SearchIndexFileSchema,
+} from "@cabn/world-schema";
 import MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
+import { resolveRelativeUrl } from "../render/resolveUrl.js";
 
 export type WorldSearchIndex = MiniSearch<SearchDoc>;
 
@@ -10,6 +14,65 @@ export interface WorldSearchIndexState {
 	index: WorldSearchIndex | null;
 	error: string | null;
 	loading: boolean;
+}
+
+/** One fetch + parse of a world's search-index.json; also used by the pet's search tool. */
+export async function fetchWorldSearchIndex(
+	worldBase: string,
+): Promise<WorldSearchIndex> {
+	const res = await fetch(resolveRelativeUrl(worldBase, "search-index.json"));
+	return loadWorldSearchIndex(SearchIndexFileSchema.parse(await res.json()));
+}
+
+export function loadWorldSearchIndex(file: SearchIndexFile): WorldSearchIndex {
+	return MiniSearch.loadJSON<SearchDoc>(JSON.stringify(file.index), {
+		fields: [...SEARCH_FIELDS],
+		storeFields: [...SEARCH_STORE_FIELDS],
+	});
+}
+
+/** The active world layer's index (systems/worldLayer.ts), loaded the first time the orb needs it while that layer shows. */
+export function useLayerSearchIndex(
+	provider: { searchIndex(): Promise<WorldSearchIndex> } | null,
+	active: boolean,
+): WorldSearchIndexState {
+	const [state, setState] = useState<WorldSearchIndexState>({
+		index: null,
+		error: null,
+		loading: false,
+	});
+	const loadedFor = useRef<object | null>(null);
+
+	useEffect(() => {
+		if (!provider) {
+			loadedFor.current = null;
+			setState({ index: null, error: null, loading: false });
+			return;
+		}
+		if (!active || loadedFor.current === provider) return;
+		let cancelled = false;
+		setState((s) => ({ ...s, loading: true, error: null }));
+		provider
+			.searchIndex()
+			.then((index) => {
+				if (cancelled) return;
+				loadedFor.current = provider;
+				setState({ index, error: null, loading: false });
+			})
+			.catch((err) => {
+				if (!cancelled)
+					setState({
+						index: null,
+						error: err instanceof Error ? err.message : String(err),
+						loading: false,
+					});
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [provider, active]);
+
+	return state;
 }
 
 /**
@@ -35,18 +98,9 @@ export function useWorldSearchIndex(
 		setLoading(true);
 		setError(null);
 
-		fetch(`${worldBase}search-index.json`)
-			.then((res) => res.json())
-			.then((raw) => {
+		fetchWorldSearchIndex(worldBase)
+			.then((mini) => {
 				if (cancelled) return;
-				const parsed = SearchIndexFileSchema.parse(raw);
-				const mini = MiniSearch.loadJSON<SearchDoc>(
-					JSON.stringify(parsed.index),
-					{
-						fields: [...SEARCH_FIELDS],
-						storeFields: [...SEARCH_STORE_FIELDS],
-					},
-				);
 				loadedForBase.current = worldBase;
 				setIndex(mini);
 			})

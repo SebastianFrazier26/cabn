@@ -14,7 +14,7 @@ export interface Preview {
 // astral character, e.g. most emoji, is two UTF-16 code units). Back the cut
 // off by one unit rather than splitting the pair into a lone lead surrogate,
 // which would corrupt the character on the next UTF-8 encode.
-function safeCutLength(raw: string, maxChars: number): number {
+export function safeCutLength(raw: string, maxChars: number): number {
 	if (raw.length <= maxChars) return raw.length;
 	const codeAtBoundary = raw.charCodeAt(maxChars - 1);
 	const isLeadSurrogate = codeAtBoundary >= 0xd800 && codeAtBoundary <= 0xdbff;

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
 	colorDistance,
@@ -8,6 +8,7 @@ import {
 	type WeightedColor,
 } from "./color.js";
 import { loadRawRgba, writeRawRgbaPng } from "./image-io.js";
+import { writeJsonFile } from "./json-io.js";
 import { medianCut } from "./median-cut.js";
 import {
 	generatedDir,
@@ -88,6 +89,12 @@ const CURATED_COLORS: { name: string; rgb: RGB }[] = [
 	{ name: "wood light bright", rgb: { r: 190, g: 140, b: 90 } },
 	{ name: "terracotta bright", rgb: { r: 210, g: 120, b: 70 } },
 	{ name: "lantern glow bright", rgb: { r: 255, g: 240, b: 180 } },
+	// Portal-type arches (2026-09-28): Python/TypeScript want a true mid and
+	// deep blue (sky blue bright alone reads as "url"/sky), and Go its cyan —
+	// none of the existing blues are dark or green-shifted enough.
+	{ name: "sapphire", rgb: { r: 48, g: 98, b: 170 } },
+	{ name: "deep navy", rgb: { r: 32, g: 52, b: 98 } },
+	{ name: "gopher cyan", rgb: { r: 64, g: 174, b: 206 } },
 ];
 
 function bucket(value: number): number {
@@ -178,10 +185,9 @@ async function main() {
 
 	const palette = {
 		colors: allColors,
-		generatedAt: new Date().toISOString(),
 		sources,
 	};
-	await writeFile(paletteJsonPath, `${JSON.stringify(palette, null, "\t")}\n`);
+	await writeJsonFile(paletteJsonPath, palette);
 
 	const swatchSize = 32;
 	const width = allColors.length * swatchSize;

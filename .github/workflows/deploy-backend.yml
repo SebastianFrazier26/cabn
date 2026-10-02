@@ -3,7 +3,7 @@ name: Deploy Backend
 # Push-to-main keeps the deployed backend in sync with what's merged;
 # workflow_dispatch lets it be re-run on demand (e.g. after adding the
 # Railway secret for the first time). Either way, the job below no-ops
-# cleanly until RAILWAY_TOKEN exists — see README's "Deploying the backend".
+# cleanly until RAILWAY_TOKEN exists — see README's "Deploying (Railway)".
 on:
   workflow_dispatch: {}
   push:
@@ -15,28 +15,35 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy-backend.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # An env-check step, not a bare `if: secrets.RAILWAY_TOKEN != ''` on
       # every later step — this exits neutral with a clear message instead of
       # every subsequent step just silently vanishing from the run log.
+      # Through env, not interpolated: an expression is pasted into the
+      # script text before the shell parses it.
       - name: Check for RAILWAY_TOKEN
         id: check
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          if [ -z "${{ secrets.RAILWAY_TOKEN }}" ]; then
-            echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying the backend' section to add it."
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "RAILWAY_TOKEN is not set — skipping deploy. See README's 'Deploying (Railway)' section to add it."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         if: steps.check.outputs.configured == 'true'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.check.outputs.configured == 'true'
         with:
           node-version: 22
@@ -51,7 +58,7 @@ jobs:
         if: steps.check.outputs.configured == 'true'
       - name: Install Railway CLI
         if: steps.check.outputs.configured == 'true'
-        run: npm install -g @railway/cli
+        run: npm install -g @railway/cli@5.63.1
       - name: Deploy to Railway
         if: steps.check.outputs.configured == 'true'
         env:

@@ -1,17 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
+import type { OwnerCapability } from "../systems/ownerApi.js";
+import {
+	createOwnerToolkitTool,
+	OWNER_TOOLKIT_HOTKEY,
+	ownerToolkitEntries,
+} from "../systems/ownerToolkit.js";
 import {
 	createDefaultToolRegistry,
 	type Tool,
 	type ToolRegistry,
 } from "../systems/tools.js";
+import { classifyFocus, type FocusCandidate } from "../systems/uiFocus.js";
+import { iconFallback, useLayerIcon } from "./layerIcons.js";
+import { OwnerToolkit } from "./OwnerToolkit.js";
 import { useCabnStore } from "./useCabnStore.js";
 
 export interface ToolHotbarProps {
 	store: StoreApi<CabnStore>;
 	bus: CabnBus;
+	/** Only whether it has `git` is read here: the toolkit's git entries. */
+	owner?: OwnerCapability;
 }
 
 // Which tool's slot gets the mockup's gold-ring "selected" treatment — most
@@ -20,6 +31,14 @@ export interface ToolHotbarProps {
 // have their own open states too (mode === "editor"/"run"), but the whole
 // hotbar is hidden in both of those modes (see the early return below), so
 // there's no slot left to ring; opener/bag have no open state at all.
+const HOTKEY_TOOL_IDS: Record<string, string> = {
+	f: "orb",
+	l: "spyglass",
+	b: "bag",
+	q: "quill",
+	r: "wand",
+};
+
 function isToolSelected(
 	toolId: string,
 	state: { spyglassOpen: boolean; searchOpen: boolean },
@@ -29,35 +48,62 @@ function isToolSelected(
 	return false;
 }
 
-function isTypingTarget(target: EventTarget | null): boolean {
-	return (
-		target instanceof HTMLElement &&
-		(target.tagName === "INPUT" || target.tagName === "TEXTAREA")
-	);
-}
-
 /**
- * Bottom hotbar rendering the tool registry's slots. Owns the one global
- * keydown listener for the React-side tools (L/F, Cmd/Ctrl+F) — E stays
- * Phaser-only (WorldScene polls it directly for frame-accurate movement
- * feel; see systems/tools.ts's opener comment) so it isn't bound here.
+ * Bottom hotbar rendering the tool registry's slots, plus the owner's one
+ * toolkit slot on an owner page. Owns the one global keydown listener for
+ * the React-side tools (L/F/B/Q/R, O, Cmd/Ctrl+F) — Enter
+ * stays Phaser-only (each scene polls it directly for frame-accurate feel;
+ * see systems/tools.ts's opener comment) so it isn't bound here.
  */
 export function ToolHotbar({
 	store,
 	bus,
+	owner,
 }: ToolHotbarProps): React.ReactElement | null {
 	const [registry] = useState<ToolRegistry>(() => createDefaultToolRegistry());
+	const [ownerTool] = useState(createOwnerToolkitTool);
+	const iconFor = useLayerIcon(store);
+	const ownerSigns = useCabnStore(store, (s) => s.ownerSigns !== null);
+	const hasGitHistory = useCabnStore(store, (s) => s.git !== null);
+	const worldLayers = useCabnStore(store, (s) => s.worldLayers);
+	const activeLayerId = useCabnStore(store, (s) => s.activeLayerId);
+	const signPlacing = useCabnStore(store, (s) => s.signPlacing);
+	const toolkitOpen = useCabnStore(store, (s) => s.ownerToolkitOpen);
+	const ownerGit = owner?.git !== undefined;
+	const toolkitEntries = useMemo(
+		() =>
+			ownerToolkitEntries({
+				signs: ownerSigns,
+				git: ownerGit && hasGitHistory,
+				layers: worldLayers,
+				signPlacing,
+				activeLayerId,
+			}),
+		[
+			ownerSigns,
+			ownerGit,
+			hasGitHistory,
+			worldLayers,
+			signPlacing,
+			activeLayerId,
+		],
+	);
+	const hasToolkit = toolkitEntries.length > 0;
 	const bagCount = useCabnStore(store, (s) => s.bagSlots.length);
 	const mode = useCabnStore(store, (s) => s.mode);
 	const spyglassOpen = useCabnStore(store, (s) => s.spyglassOpen);
 	const searchOpen = useCabnStore(store, (s) => s.searchOpen);
+	const writing = useCabnStore(
+		store,
+		(s) => s.mode === "file" && s.activeFileState !== null,
+	);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			// The editor traps its own keys (including single letters that would
-			// otherwise dispatch a tool, e.g. typing "b" in code) — CodeMirror's
-			// content div isn't an <input>/<textarea> so isTypingTarget alone
-			// wouldn't catch it, hence the explicit mode check. A run in progress
+			// otherwise dispatch a tool, e.g. typing "b" in code) — the focus
+			// check below covers CodeMirror's contenteditable too, but the mode
+			// check also covers clicks on the spellbook's own buttons. A run in progress
 			// has its own keys (Space/N/1-2-4/Esc, see RunOverlay) that would
 			// otherwise collide with nothing here today but are excluded on the
 			// same principle — this hotbar's keys are for "not currently inside
@@ -75,17 +121,30 @@ export function ToolHotbar({
 				registry.dispatch("orb", { store, bus });
 				return;
 			}
-			if (isTypingTarget(event.target)) return;
+			if (classifyFocus(event.target as FocusCandidate | null) === "text")
+				return;
 
-			if (key === "f") registry.dispatch("orb", { store, bus });
-			else if (key === "l") registry.dispatch("spyglass", { store, bus });
-			else if (key === "b") registry.dispatch("bag", { store, bus });
-			else if (key === "q") registry.dispatch("quill", { store, bus });
-			else if (key === "r") registry.dispatch("wand", { store, bus });
+			// Cmd/Ctrl/Alt chords belong to the browser/OS (Cmd+R reload, Cmd+Q
+			// quit) — they used to fire the wand/quill on their way through.
+			if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+			if (key === OWNER_TOOLKIT_HOTKEY.toLowerCase()) {
+				// No slot means no owner capability (the hosted demo): O is inert.
+				if (!hasToolkit || currentMode !== "world" || event.repeat) return;
+				event.preventDefault();
+				ownerTool.onUse({ store, bus });
+				return;
+			}
+			const toolId = HOTKEY_TOOL_IDS[key];
+			if (!toolId) return;
+			// Opening the orb focuses its input during this same keydown, so
+			// without this the "f" itself landed in the search box.
+			event.preventDefault();
+			registry.dispatch(toolId, { store, bus });
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [registry, store, bus]);
+	}, [registry, ownerTool, hasToolkit, store, bus]);
 
 	// Hidden rather than just non-interactive while the editor is open — its
 	// tools (opener/spyglass/orb/bag-as-selection) all read as "world/file
@@ -114,9 +173,28 @@ export function ToolHotbar({
 					tool={tool}
 					badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
 					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
+					showLabel={mode === "file"}
+					writing={writing}
+					iconFor={iconFor}
 					onUse={() => registry.dispatch(tool.id, { store, bus })}
 				/>
 			))}
+			{hasToolkit && mode === "world" && (
+				<span style={{ position: "relative", display: "flex" }}>
+					<HotbarSlot
+						tool={ownerTool}
+						badge={null}
+						selected={toolkitOpen || signPlacing}
+						showLabel={false}
+						writing={false}
+						iconFor={iconFor}
+						onUse={() => ownerTool.onUse({ store, bus })}
+					/>
+					{toolkitOpen && (
+						<OwnerToolkit store={store} bus={bus} entries={toolkitEntries} />
+					)}
+				</span>
+			)}
 		</div>
 	);
 }
@@ -125,23 +203,46 @@ function HotbarSlot({
 	tool,
 	badge,
 	selected,
+	showLabel,
+	writing,
+	iconFor,
 	onUse,
 }: {
 	tool: Tool;
 	badge: number | null;
 	selected: boolean;
+	showLabel: boolean;
+	/** In a text file the page's caret takes plain letters and Enter, so the shortcuts become Alt chords (see systems/fileCaretKeys.ts). */
+	writing: boolean;
+	iconFor: (src: string) => string;
 	onUse: () => void;
 }): React.ReactElement {
+	const label = showLabel ? tool.label : undefined;
+	const hotkey = writing ? `Alt+${tool.hotkey}` : tool.hotkey;
 	return (
 		<button
 			type="button"
-			onClick={onUse}
-			title={`${tool.name} (${tool.hotkey})`}
-			className={`cabn-hotbar-slot${selected ? " selected" : ""}`}
+			onClick={(event) => {
+				onUse();
+				// A mouse click would otherwise leave focus on this slot, and the
+				// next Enter meant for the world would re-click it as well.
+				event.currentTarget.blur();
+			}}
+			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
+			data-tool={tool.id}
+			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}
 		>
-			<img src={tool.icon} alt={tool.name} />
-			<span className="cabn-key">{tool.hotkey}</span>
+			<img
+				src={iconFor(tool.icon)}
+				alt={tool.name}
+				onError={iconFallback(tool.icon)}
+			/>
+			<span className="cabn-key">
+				{/* The labeled slot's corner only fits one glyph beside the icon. */}
+				{label && tool.hotkey === "Enter" ? "↵" : tool.hotkey}
+			</span>
+			{label && <span className="cabn-slot-label">{label}</span>}
 			{badge !== null && <span className="cabn-badge">{badge}</span>}
 		</button>
 	);

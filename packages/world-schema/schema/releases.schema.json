@@ -1,0 +1,137 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"releasesVersion": {
+			"type": "number",
+			"const": 1
+		},
+		"source": {
+			"type": "string",
+			"enum": ["github", "none", "offline", "unavailable"]
+		},
+		"repo": {
+			"type": "object",
+			"properties": {
+				"owner": {
+					"type": "string",
+					"maxLength": 100
+				},
+				"name": {
+					"type": "string",
+					"maxLength": 100
+				},
+				"url": {
+					"type": "string",
+					"maxLength": 2048
+				}
+			},
+			"required": ["owner", "name", "url"],
+			"additionalProperties": false
+		},
+		"items": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"tagName": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"name": {
+						"type": "string",
+						"maxLength": 255
+					},
+					"body": {
+						"type": "string",
+						"maxLength": 20000
+					},
+					"prerelease": {
+						"type": "boolean"
+					},
+					"publishedAt": {
+						"anyOf": [
+							{
+								"type": "string",
+								"maxLength": 40
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"url": {
+						"type": "string",
+						"maxLength": 2048
+					},
+					"assets": {
+						"maxItems": 50,
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"name": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 255
+								},
+								"size": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 9007199254740991
+								},
+								"downloadCount": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 9007199254740991
+								},
+								"url": {
+									"type": "string",
+									"maxLength": 2048
+								}
+							},
+							"required": ["name", "size", "downloadCount", "url"],
+							"additionalProperties": false
+						}
+					}
+				},
+				"required": [
+					"tagName",
+					"name",
+					"body",
+					"prerelease",
+					"publishedAt",
+					"url",
+					"assets"
+				],
+				"additionalProperties": false
+			}
+		},
+		"packages": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 255
+					},
+					"packageType": {
+						"type": "string",
+						"maxLength": 40
+					},
+					"url": {
+						"type": "string",
+						"maxLength": 2048
+					}
+				},
+				"required": ["name", "packageType", "url"],
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["releasesVersion", "source", "items", "packages"],
+	"additionalProperties": false
+}

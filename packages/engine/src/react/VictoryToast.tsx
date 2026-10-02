@@ -64,6 +64,8 @@ export function VictoryToast({
 	return (
 		<div
 			key={playToken}
+			role="status"
+			aria-live="polite"
 			className="cabn-panel cabn-victory-toast play"
 			style={{
 				position: "absolute",

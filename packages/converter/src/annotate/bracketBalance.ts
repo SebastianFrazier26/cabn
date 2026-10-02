@@ -1,5 +1,7 @@
+import { shortHash } from "../hash.js";
 import { scanCode } from "./codeScanner.js";
 import { langConfigFor } from "./langConfig.js";
+import { normalizeLine, uniquifyRules } from "./syntaxTree.js";
 import type { Annotator, ErrorAnnotation } from "./types.js";
 
 function messageFor(issue: { type: string; ch: string }): string {
@@ -32,13 +34,27 @@ export const bracketBalance: Annotator = (ctx) => {
 	if (!config) return [];
 
 	const { bracketIssues } = scanCode(content, config);
+	const lines = content.split("\n");
+	// Many issues often land on the same line (every unclosed opener on the
+	// stack is reported at EOF; a run of unexpected closers lands wherever
+	// they are) — hash each line once rather than per issue, which re-hashed
+	// the same line (the whole file, on content with no newlines) from
+	// scratch per issue and was quadratic in the issue count.
+	const lineHashes = new Map<number, string>();
+	const hashOf = (line: number): string => {
+		const cached = lineHashes.get(line);
+		if (cached !== undefined) return cached;
+		const hash = shortHash(normalizeLine(lines[line] ?? ""), 8);
+		lineHashes.set(line, hash);
+		return hash;
+	};
 	const results: ErrorAnnotation[] = bracketIssues.map((issue) => ({
 		code: "IoError",
-		rule: `bracket:${issue.type}:${issue.ch}@${issue.loc.line}:${issue.loc.col}`,
+		rule: `bracket:${issue.type}:${issue.ch}:${hashOf(issue.loc.line)}`,
 		message: messageFor(issue),
 		loc: issue.loc,
 		species: "gremlin",
 		tier: 1,
 	}));
-	return results;
+	return uniquifyRules(results);
 };

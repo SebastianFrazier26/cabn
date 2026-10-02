@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
+import { HttpsOriginSchema } from "@cabn/world-schema";
 
 /**
  * Constant-time token compare — a plain `===` leaks timing information
@@ -95,4 +96,27 @@ export async function resolveConfinedPath(
 		);
 	}
 	return realCandidate;
+}
+
+/**
+ * The host page's CSP: only `frame-src`, naming exactly the world's
+ * allowedEmbedOrigins (`'none'` when it has none). Frames are the only thing
+ * restricted — script/style/connect stay unrestricted because the page runs
+ * an inline token script and an esbuild bundle whose needs (blob: workers,
+ * inline styles from React) a broader policy would have to enumerate and
+ * could silently break. No `'self'`: nothing on this page frames its own
+ * origin. Entries that aren't a bare https origin are dropped rather than
+ * trusted, so a hand-edited world.json can't smuggle `*` or a second
+ * directive (`; script-src ...`) into the header.
+ */
+export function frameSrcPolicy(
+	allowedEmbedOrigins: readonly unknown[],
+): string {
+	const origins = allowedEmbedOrigins.filter(
+		(o): o is string =>
+			typeof o === "string" &&
+			HttpsOriginSchema.safeParse(o).success &&
+			/^https:\/\/[A-Za-z0-9.:[\]-]+$/.test(o),
+	);
+	return `frame-src ${origins.length > 0 ? [...new Set(origins)].join(" ") : "'none'"}`;
 }

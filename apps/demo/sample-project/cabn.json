@@ -1,0 +1,27 @@
+{
+	"cabnConfigVersion": 1,
+	"previews": {
+		"README.md": { "kind": "image", "src": "assets/logo.png" },
+		"lib/models.py": { "kind": "markdown", "src": "docs/models.md" },
+		"docs/website.md": {
+			"kind": "url",
+			"url": "https://example.com/",
+			"title": "Project website (example.com, a live web portal)"
+		},
+		"docs/threejs.md": {
+			"kind": "url",
+			"url": "https://threejs.org/",
+			"title": "three.js (a rich site that allows framing)"
+		},
+		"docs/code-host.md": {
+			"kind": "url",
+			"url": "https://github.com/",
+			"title": "GitHub (refuses framing, opens in your browser)"
+		}
+	},
+	"allowedEmbedOrigins": [
+		"https://example.com",
+		"https://threejs.org",
+		"https://github.com"
+	]
+}

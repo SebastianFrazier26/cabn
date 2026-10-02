@@ -4,6 +4,13 @@
 export const CABIN_SCALE = 0.5;
 export const CABINET_SCALE = 0.375;
 export const PORTAL_SCALE = 0.375;
+/**
+ * World file portals only (FileScene's exit arch keeps PORTAL_SCALE): 2x the
+ * old 96px arch, so its opening (~93x127px) is big enough to hold a readable
+ * literal preview of the file — M10 playtest: "portals should be larger and
+ * show a literal preview of the document" (2026-09-28).
+ */
+export const WORLD_PORTAL_SCALE = PORTAL_SCALE * 2;
 
 // bonfire's pixel map is 32x32 (tools/asset-pipeline/src/pixelmaps/bonfire.ts),
 // rendered at soften()'s default cellSize (16) into a 512x512 raw sprite —
@@ -31,16 +38,25 @@ export const WIZARD_TOWER_RAW_WIDTH_PX = 768;
 export const WIZARD_TOWER_RAW_HEIGHT_PX = 1280;
 export const WIZARD_TOWER_SCALE = 0.14;
 
-// castle-keep's pixel map is 32x44 (tools/asset-pipeline/src/world-art/
-// props.ts), cellSize 6 like every other prop -> raw 192x264. Every other
-// prop in this batch is deliberately unscaled (propPlacement.ts never calls
-// setScale — a scattered prop's apparent size comes entirely from its grid
-// dimensions), but the castle keep is a one-off landmark accent sitting
-// right next to the wizard tower, not a scattered prop, and batch 2 shipped
-// it unscaled anyway — bigger than the (correctly scaled) tower beside it,
-// the exact "centerpiece" the tower is supposed to be (M10b batch-3 review).
-// Targets 150px tall via fitSpriteToSize() below — a bit under the tower's
-// own 179px so it reads as a secondary structure.
+// The procedural shelf cabin (52x48 grid) is rendered at the tower's
+// cellSize 16 (tools/asset-pipeline's gen-world-art.ts LANDMARK_CELL_SIZE),
+// so sharing the tower's scale is what gives both the same on-screen pixel
+// size (~2.2px per grid cell, close to the player's 2px) — the M10
+// playtest's "cabins are a lot more detailed than the tower" complaint was
+// exactly a density mismatch. Cabin ~108px tall (~1.7x the 64px player). The
+// world fountain (WorldScene's directory marker) is a props-density asset
+// instead, drawn unscaled — see assetPaths.ts's WORLD_FOUNTAIN_KEY.
+export const SHELF_CABIN_SCALE = WIZARD_TOWER_SCALE;
+
+// Scatter props (tools/asset-pipeline/src/world-art/props.ts) are drawn
+// unscaled: since the 2026-09-28 art-density pass they're authored at the
+// same 2 screen px per fine cell as scenery, so their grid size *is* their
+// on-screen size (propPlacement.ts never calls setScale). The castle keep is
+// the one exception — a one-off landmark accent beside the wizard tower,
+// fitted to a target height via fitSpriteToSize() so it reads as a
+// secondary structure, a bit under the tower's own 179px. Its fine grid
+// (50x68, cellSize 2 -> 100x136 raw) is sized so that fit lands its cells
+// at ~2.2 screen px, the tower's own density.
 export const CASTLE_KEEP_TARGET_HEIGHT_PX = 150;
 
 // Each monster species' pixel map is a different native size (ouroboros is
@@ -58,6 +74,11 @@ export const MONSTER_HOVER_SIZE: Readonly<Record<string, number>> = {
 	gremlin: 32,
 	ouroboros: 64,
 	"will-o-wisp": 20,
+	imp: 32,
+	magpie: 34,
+	skeleton: 34,
+	bramble: 36,
+	shade: 38,
 };
 
 /** Smaller than MONSTER_HOVER_SIZE — FileScene's line height is 20px, so a monster standing beside the text has less room than one hovering near a world portal arch. */
@@ -68,6 +89,11 @@ export const MONSTER_FILE_SIZE: Readonly<Record<string, number>> = {
 	gremlin: 22,
 	ouroboros: 36,
 	"will-o-wisp": 14,
+	imp: 22,
+	magpie: 24,
+	skeleton: 24,
+	bramble: 24,
+	shade: 26,
 };
 
 export function fitSpriteToSize(
