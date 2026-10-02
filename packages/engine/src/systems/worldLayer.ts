@@ -402,7 +402,10 @@ export type WorldLayerSaveResult =
 	| { ok: false; conflict: boolean; message: string };
 
 /** A layer's toolkit entry: a tool without a hotkey of its own. */
-export type LayerTool = Omit<Tool, "hotkey">;
+export type LayerTool = Omit<Tool, "hotkey"> & {
+	/** Shown when `icon` fails to load: a layer's own art can be absent (owner-served, optional package). */
+	fallbackIcon?: string;
+};
 
 export interface WorldLayerProvider {
 	id: string;
