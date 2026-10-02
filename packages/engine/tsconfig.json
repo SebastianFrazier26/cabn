@@ -2,6 +2,9 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"outDir": "dist",
+		// Published from dist/: maps would point at ../src, which isn't shipped.
+		"sourceMap": false,
+		"declarationMap": false,
 		"rootDir": "src",
 		"jsx": "react-jsx"
 	},

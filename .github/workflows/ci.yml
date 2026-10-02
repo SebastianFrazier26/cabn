@@ -25,6 +25,8 @@ jobs:
       # high/critical findings; lower severities are reported, not gated.
       - run: pnpm audit --audit-level=high
       - run: pnpm -r test
+      # Tarball contents: no source maps, no src/, no shadow art in @cabn/cli.
+      - run: pnpm check:packs
 
   browser-smoke:
     # The important check — two bugs so far only showed up in a real browser,
