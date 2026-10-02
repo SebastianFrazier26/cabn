@@ -12,12 +12,15 @@ A short map of how the pieces fit. Commands and file-level detail are in [`CLAUD
 @cabn/engine         the game: Phaser 3 scenes + React HUD, reads a bundle in the browser
         ▲
 @cabn/cli            cabn build / inspect / shelf / serve
+        ┆ optional peer
+@cabn/shadow-art     the shadow realm's art, for cabn serve --owner only
 ```
 
 - **`@cabn/world-schema`** defines everything that crosses a boundary: `world.json`, cluster chunks, the search index, the sidecar files, `cabn.json`, shelf manifests and world layers. The converter validates what it writes and the engine validates what it reads, because a bundle is untrusted input to the engine.
 - **`@cabn/converter`** walks a source (a folder or a zip), classifies files, lays out clusters, runs the annotators that turn problems into monsters, builds the search index and, for a repository root, writes the git pack. It has three entry points: `.` for Node (including `convertShadow`, the shadow realm's converter), `./browser` for converting a branch into a universe inside the browser, and `./core` for the pieces the engine needs at startup (annotators for re-checking a save, media sniffing, the clearing-fit formula).
 - **`@cabn/engine`** is the game. Phaser scenes (`BootScene`, `PreloadScene`, `ShelfScene`, `WorldScene`, `FileScene`) draw and run the world; React components draw the HUD, panels, spellbook and pets. `CabnGame` is the one component a host page renders.
-- **`@cabn/cli`** wraps the converter for the command line and runs `cabn serve`, a small Node HTTP server that converts a folder in memory and serves it with a host page.
+- **`@cabn/cli`** wraps the converter for the command line and runs `cabn serve`, a small Node HTTP server that converts a folder in memory and serves it with a host page. It bundles the sprites a normal world uses in `dist/assets`.
+- **`@cabn/shadow-art`** is only the shadow realm's PNGs (about 14MB) and an entry exporting their directory. It's an optional peer of `@cabn/cli`, so a default install leaves it out. With `--owner`, `cabn serve` reads `/assets/shadow/*` from it, else from the monorepo's `assets/generated/shadow/`, else serves none and prints a hint; the realm then keeps its tint-only skin, because `resolveSkin` drops any texture group that fails to load.
 - **`apps/backend`** is an authenticated Fastify service that converts uploaded zips. **`apps/demo`** is the hosted demo and the home of the Playwright tests. **`tools/asset-pipeline`** generates every sprite deterministically.
 
 ## Bundle compatibility: a strict `world.json` and optional sidecars

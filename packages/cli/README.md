@@ -23,6 +23,14 @@ A git repository root also gets its recent history (branch universes, tags, GitH
 
 `cabn serve` binds to `127.0.0.1` only. `--allow-exec` turns on **real code execution** of whatever file you run with the wand tool — only use it on code you trust. `--owner` lets the page commit in-game edits and create/switch branches in the real repository (never push or fetch). See the [monorepo README](https://github.com/SebastianFrazier26/cabn#cabn-serve--running-a-file-for-real-locally-only) for the full safety model.
 
+`--owner` also opens the shadow realm (your hidden files). Its nether art is a separate, optional package so the default install stays small; install it beside the CLI for the full look:
+
+```sh
+npm install -g @cabn/shadow-art
+```
+
+Without it the realm still works, tinted rather than textured, and `cabn serve --owner` says so once at startup.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
