@@ -308,6 +308,8 @@ In the game, Sudo sinks the normal arches and raises the hidden clusters. The re
 
 The engine's main entry has only a neutral world-layer seam; the shadow client, skin and art are in `@cabn/engine/owner` and `assets/generated/shadow/`, served only with `--owner`, and the demo's postbuild check fails the build if any of it reaches the hosted bundle.
 
+The nether art (about 14MB) ships as its own package, `@cabn/shadow-art`, so a plain `npm i -g @cabn/cli` doesn't download it. Owners who want the full look install it beside the CLI: `npm i -g @cabn/shadow-art`. Without it (and outside this monorepo, whose `assets/generated/shadow/` is the fallback) `cabn serve --owner` prints one hint at startup and the realm keeps working with its tint-only skin.
+
 ### AI pets (bring your own key)
 
 Click **Pet** in the top-left corner of a world, pick Claude, OpenAI, Gemini, Qwen, DeepSeek or a local Ollama, paste a key and summon a pixel pet that follows you and answers questions about the world's files. It lists files, reads raw text, searches and proposes edits, which are applied only after the player accepts a diff in the spellbook. Provider calls go straight from the browser with plain `fetch` (no SDKs); the key lives only in that browser (session storage by default, local storage only on opt-in). An undefeated magpie's secrets are redacted from any file sent to the provider, and the pet never sees hidden files. The demo's postbuild also fails if a key-shaped string (`sk-…`, Google, GitHub, AWS keys, private key blocks) lands in the bundle. The player's side is in [the guide](docs/USER_GUIDE.md#ai-pets-bring-your-own-key); the code is `packages/engine/src/pets/` (provider table in `providers.ts`, agent loop in `agentLoop.ts`).
@@ -339,7 +341,7 @@ See `.env.example` for every variable and `apps/backend/Dockerfile` for the prod
 
 ## Releasing
 
-The four publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`.
+The five publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`, `@cabn/shadow-art`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`. `@cabn/cli` and `@cabn/shadow-art` are a Changesets `fixed` group (`.changeset/config.json`): a changeset for either bumps both to the same version, so the cli's optional peer range on the art (`^0.1.0` today) always matches the art released with it.
 
 ```sh
 pnpm changeset
@@ -348,9 +350,19 @@ pnpm changeset
 Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. The workflow has two jobs: `build` (install, build, test, lint, audit; `contents: read` only) and `publish`, which runs only after `build` passes, only on `main`, only inside the `npm` environment, and is the only job allowed to mint an OIDC token (`id-token: write`). It publishes with `pnpm publish -r --provenance`, which skips private packages and versions already on npm, exchanges the OIDC token for a short-lived npm token itself, and attaches a provenance attestation. One-time setup:
 
 1. Create the `cabn` org on npmjs.com (a manual web step).
-2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm -r publish --access public`.
+2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm check:packs && pnpm -r publish --access public`. That publishes all five; `pnpm check:packs` first confirms no tarball carries source maps, `src/` or (for `@cabn/cli`) shadow art.
 3. Create the GitHub environment: repo Settings → Environments → New environment, named exactly `npm`. Under "Deployment protection rules" tick **Required reviewers** and add yourself (and anyone else allowed to approve a release). Under "Deployment branches and tags" choose "Selected branches and tags" and add `main`. Every run of the publish job then waits for an approval in the Actions tab.
-4. Attach the trusted publisher to each of the four packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI: `npx npm@12.1.0 trust github <package> --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish`. Naming the environment means a token minted by any other job or workflow is refused.
+4. Attach the trusted publisher to each of the five packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI, one command per package:
+
+   ```sh
+   npx npm@12.1.0 trust github @cabn/world-schema --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   npx npm@12.1.0 trust github @cabn/converter --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   npx npm@12.1.0 trust github @cabn/engine --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   npx npm@12.1.0 trust github @cabn/cli --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   npx npm@12.1.0 trust github @cabn/shadow-art --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   ```
+
+   Naming the environment means a token minted by any other job or workflow is refused.
 5. Run the "Release" workflow from the Actions tab on `main`, then approve the `npm` deployment when it asks.
 
 ## Deploying (Railway)

@@ -164,7 +164,7 @@ export function OwnerToolkit({
 									<img
 										src={iconFor(entry.icon)}
 										alt=""
-										onError={iconFallback(entry.icon)}
+										onError={iconFallback(entry.fallbackIcon ?? entry.icon)}
 									/>
 								) : (
 									<span

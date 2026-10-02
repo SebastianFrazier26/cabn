@@ -1,0 +1,38 @@
+{
+	"name": "@cabn/shadow-art",
+	"version": "0.1.0",
+	"description": "The shadow realm's (nether) art for cabn serve --owner: install it beside @cabn/cli for the full nether look.",
+	"keywords": [
+		"cabn",
+		"pixel-art",
+		"sprites"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/shadow-art"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/shadow-art#readme",
+	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		}
+	},
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "node scripts/copy-shadow.mjs",
+		"test": "vitest run"
+	}
+}

@@ -17,6 +17,8 @@ export interface OwnerToolkitEntry {
 	/** A second, quieter line (what it does, or which layer tool it is). */
 	detail: string;
 	icon: string | null;
+	/** What the row shows if `icon` fails to load; the normal icon when unset. */
+	fallbackIcon?: string;
 	/** Rows under the same heading are drawn as one group. */
 	group: string | null;
 	/** Shows an "on" pip: placing a sign, or the entry's layer showing. */
@@ -79,6 +81,7 @@ export function ownerToolkitEntries(
 				label: tool.label ?? tool.name,
 				detail: layerToolDetail(tool),
 				icon: tool.icon,
+				...(tool.fallbackIcon ? { fallbackIcon: tool.fallbackIcon } : {}),
 				group: null,
 				active: sources.activeLayerId === layer.id,
 				run: (ctx) => tool.onUse(ctx),

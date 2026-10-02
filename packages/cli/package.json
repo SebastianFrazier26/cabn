@@ -45,7 +45,16 @@
 		"react-dom": "^19.3.0",
 		"zod": "^4.6.5"
 	},
+	"peerDependencies": {
+		"@cabn/shadow-art": "workspace:^"
+	},
+	"peerDependenciesMeta": {
+		"@cabn/shadow-art": {
+			"optional": true
+		}
+	},
 	"devDependencies": {
+		"@cabn/shadow-art": "workspace:*",
 		"@types/node": "^22.20.4"
 	}
 }

@@ -25,6 +25,8 @@ jobs:
       - run: pnpm -r build
       - run: pnpm -r test
       - run: pnpm lint
+      # Tarball contents: no source maps, no src/, no shadow art in @cabn/cli.
+      - run: pnpm check:packs
       # Audits every dependency including dev tools; fails on high/critical.
       - run: pnpm audit --audit-level=high
 

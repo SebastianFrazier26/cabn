@@ -23,9 +23,7 @@ import {
 	WORLD_ART_BIOMES,
 } from "../../../engine/src/assetPaths.js";
 import { PET_PROVIDERS } from "../../../engine/src/pets/providers.js";
-import { SUDO_ICON_PATH } from "../../../engine/src/shadow/assets.js";
-import * as shadowSkin from "../../../engine/src/shadow/skin.js";
-import { ORIGINALS, PLACEHOLDERS, SHADOW } from "../../scripts/copy-assets.mjs";
+import { ORIGINALS, PLACEHOLDERS } from "../../scripts/copy-assets.mjs";
 
 const REPO_ASSETS = join(
 	import.meta.dirname,
@@ -159,25 +157,13 @@ describe("copy-assets.mjs bundle list", () => {
 		expect(missing).toEqual([]);
 	});
 
-	test("covers every texture the shadow skins name, and nothing shadow leaks into the main list", () => {
-		const found: string[] = [SUDO_ICON_PATH];
-		const walk = (value: unknown): void => {
-			if (isAssetPath(value)) found.push(value);
-			else if (Array.isArray(value)) for (const v of value) walk(v);
-			else if (value && typeof value === "object")
-				for (const v of Object.values(value)) walk(v);
-		};
-		walk(Object.values(shadowSkin));
-		const paths = [...new Set(found)];
-		expect(paths.length).toBeGreaterThan(15);
-		const missing: string[] = [];
-		for (const path of paths) {
-			const [subdir, file] = splitAssetPath(path);
-			if (subdir !== "shadow" || !SHADOW.includes(file)) missing.push(path);
-		}
-		expect(missing).toEqual([]);
+	// The shadow skin's own coverage lives in packages/shadow-art's tests.
+	test("nothing shadow is in the main bundle list", () => {
 		expect(
 			allRuntimeAssetPaths().paths.filter((p) => p.includes("/shadow/")),
+		).toEqual([]);
+		expect(
+			[...ORIGINALS, ...PLACEHOLDERS].filter((f) => f.includes("nether")),
 		).toEqual([]);
 	});
 
@@ -189,9 +175,6 @@ describe("copy-assets.mjs bundle list", () => {
 		for (const file of PLACEHOLDERS) {
 			if (!existsSync(join(REPO_ASSETS, "placeholders", file)))
 				missing.push(file);
-		}
-		for (const file of SHADOW) {
-			if (!existsSync(join(REPO_ASSETS, "shadow", file))) missing.push(file);
 		}
 		expect(missing).toEqual([]);
 	});

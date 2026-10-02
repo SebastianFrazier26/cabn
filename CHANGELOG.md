@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-10-02 — Publish prep: shadow art split out, no source maps in tarballs
+
+- **`@cabn/shadow-art`, a fifth publishable package.** The shadow realm's
+  127 PNGs (about 14MB) no longer ship inside `@cabn/cli`; they're
+  `packages/shadow-art`, built by `scripts/copy-shadow.mjs` from
+  `assets/generated/shadow/` (the `SHADOW` list moved there from the cli's
+  `copy-assets.mjs`). `@cabn/cli` takes it as an optional peer dependency,
+  which npm and pnpm don't install by default, so `npm i -g @cabn/cli` no
+  longer downloads the art; owners add `npm i -g @cabn/shadow-art`.
+  `@cabn/cli`'s tarball drops from 34.6MB to 20.6MB.
+- **Where `cabn serve --owner` finds the art.** `@cabn/shadow-art` when
+  installed, else the monorepo's `assets/generated/shadow/`, else nowhere: the
+  realm still works with its tint-only skin and serve prints one hint at
+  startup. The owner-only gate is unchanged; `/assets/shadow/*` is still a 404
+  without `--owner`. Without the art, the owner toolkit's Sudo entry shows
+  the bundled key icon instead of a broken image (layer tools can name a
+  `fallbackIcon`).
+- **cli and shadow-art version together.** They're a Changesets `fixed`
+  group, so the cli's `^0.1.0` peer range on the art can't drift.
+- **No source maps in published tarballs.** The five published packages build
+  with `sourceMap` and `declarationMap` off (their maps pointed at `../src`,
+  which isn't shipped; 586 `.map` files). The private apps and tools keep them
+  through `tsconfig.base.json`. `pnpm check:packs` (`scripts/check-packs.mjs`)
+  runs `pnpm pack --dry-run --json` per package and fails on any `.map`,
+  `src/`, `tests/` or, in `@cabn/cli`, shadow art; CI and the release workflow
+  run it.
+
 ## 2026-10-01 — Railway deploy: backend and hosted demo
 
 - **Railway project `cabn`.** Two services, `cabn-backend`

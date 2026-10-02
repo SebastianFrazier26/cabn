@@ -36,6 +36,7 @@ import {
 	PathConfinementError,
 	resolveConfinedPath,
 } from "./security.js";
+import { resolveShadowArtDir, SHADOW_ART_HINT } from "./shadowArt.js";
 
 export interface ServeOptions {
 	port?: number;
@@ -60,6 +61,8 @@ export interface ServeOptions {
 	gitDir?: string;
 	/** Tests only: replaces the GitHub releases fetch. */
 	githubFetch?: GithubFetch;
+	/** Tests only: replaces resolveShadowArtDir; null means no art anywhere. */
+	shadowArtDir?: string | null;
 }
 
 export interface ServeHandle {
@@ -145,6 +148,8 @@ interface ServeContext {
 	owner: OwnerGitContext | undefined;
 	/** Owner mode only: the lazily computed, never-bundled layer of hidden files. */
 	shadow: ShadowRealm | undefined;
+	/** Owner mode only: where `/assets/shadow/*` is read from; undefined serves none of it. */
+	shadowArtDir: string | undefined;
 }
 
 async function readJsonBody(
@@ -212,6 +217,9 @@ function hostPagePolicy(frameSrc: string): string {
 async function serveRepoAsset(
 	res: ServerResponse,
 	relPath: string,
+	// Bundled dist/assets checked first so a published install wins even if
+	// this happens to also be running inside the monorepo checkout.
+	bases: readonly string[] = [BUNDLED_ASSETS_DIR, REPO_ASSETS_DIR],
 ): Promise<void> {
 	const contentType = REPO_ASSET_TYPES[extname(relPath).toLowerCase()];
 	if (!contentType) {
@@ -219,9 +227,7 @@ async function serveRepoAsset(
 		res.end("not found");
 		return;
 	}
-	// Bundled dist/assets checked first so a published install wins even if
-	// this happens to also be running inside the monorepo checkout.
-	for (const base of [BUNDLED_ASSETS_DIR, REPO_ASSETS_DIR]) {
+	for (const base of bases) {
 		try {
 			const real = await resolveConfinedPath(base, relPath);
 			// A symlinked name mustn't relabel some other file type.
@@ -412,10 +418,20 @@ async function handleRequest(
 	}
 	if (req.method === "GET" && url.pathname.startsWith("/assets/")) {
 		const rel = url.pathname.slice("/assets/".length);
-		// The shadow realm's art exists only for the owner, like its routes.
-		if (!ctx.ownerToken && isShadowAssetPath(rel)) {
-			res.writeHead(404);
-			res.end("not found");
+		if (isShadowAssetPath(rel)) {
+			// The shadow realm's art exists only for the owner, like its routes.
+			if (!ctx.ownerToken || !ctx.shadowArtDir) {
+				res.writeHead(404);
+				res.end("not found");
+				return;
+			}
+			const inShadow = posix
+				.normalize(rel)
+				.split("/")
+				.filter((s) => s !== "" && s !== ".")
+				.slice(1)
+				.join("/");
+			await serveRepoAsset(res, inShadow, [ctx.shadowArtDir]);
 			return;
 		}
 		await serveRepoAsset(res, rel);
@@ -547,9 +563,14 @@ export async function startServe(
 		outputCapBytes: opts.outputCapBytes,
 		owner: undefined,
 		shadow: undefined,
+		shadowArtDir: undefined,
 	};
 	let worldText = worldTextFromBundle(bundle);
 	if (ownerToken) {
+		ctx.shadowArtDir =
+			opts.shadowArtDir === undefined
+				? await resolveShadowArtDir(resolvePath(REPO_ASSETS_DIR, "shadow"))
+				: (opts.shadowArtDir ?? undefined);
 		ctx.shadow = new ShadowRealm({
 			dir: resolvedDir,
 			...(opts.gitDir ? { gitdir: resolvePath(opts.gitDir) } : {}),
@@ -603,6 +624,7 @@ export async function startServe(
 		console.log(
 			`\u001b[33mOwner mode: this page can edit signs, commit edits and create/switch branches in ${resolvedDir} (never push or fetch).\u001b[0m`,
 		);
+		if (!ctx.shadowArtDir) console.log(SHADOW_ART_HINT);
 	}
 	console.log(`cabn serve: ${url}`);
 
