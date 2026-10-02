@@ -14,7 +14,11 @@
   installed, else the monorepo's `assets/generated/shadow/`, else nowhere: the
   realm still works with its tint-only skin and serve prints one hint at
   startup. The owner-only gate is unchanged; `/assets/shadow/*` is still a 404
-  without `--owner`.
+  without `--owner`. Without the art, the owner toolkit's Sudo entry shows
+  the bundled key icon instead of a broken image (layer tools can name a
+  `fallbackIcon`).
+- **cli and shadow-art version together.** They're a Changesets `fixed`
+  group, so the cli's `^0.1.0` peer range on the art can't drift.
 - **No source maps in published tarballs.** The five published packages build
   with `sourceMap` and `declarationMap` off (their maps pointed at `../src`,
   which isn't shipped; 586 `.map` files). The private apps and tools keep them

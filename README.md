@@ -341,7 +341,7 @@ See `.env.example` for every variable and `apps/backend/Dockerfile` for the prod
 
 ## Releasing
 
-The five publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`, `@cabn/shadow-art`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`.
+The five publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`, `@cabn/shadow-art`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`. `@cabn/cli` and `@cabn/shadow-art` are a Changesets `fixed` group (`.changeset/config.json`): a changeset for either bumps both to the same version, so the cli's optional peer range on the art (`^0.1.0` today) always matches the art released with it.
 
 ```sh
 pnpm changeset
