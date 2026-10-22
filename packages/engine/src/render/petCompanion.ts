@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
+	assetUrl,
 	FX_SPARK_KEY,
 	PET_FRAME_SIZE,
 	PET_SCALE,
@@ -146,7 +147,7 @@ export class PetCompanion {
 			this.createSprite(species);
 			return;
 		}
-		this.scene.load.spritesheet(key, petStripPath(species), {
+		this.scene.load.spritesheet(key, assetUrl(petStripPath(species)), {
 			frameWidth: PET_FRAME_SIZE,
 			frameHeight: PET_FRAME_SIZE,
 		});

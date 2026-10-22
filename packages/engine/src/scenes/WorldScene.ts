@@ -20,6 +20,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
 	ASSET_KEYS,
+	assetUrl,
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
@@ -567,11 +568,11 @@ export class WorldScene extends Phaser.Scene {
 		);
 		for (const t of pending) {
 			if ("frameWidth" in t)
-				this.load.spritesheet(t.key, t.path, {
+				this.load.spritesheet(t.key, assetUrl(t.path), {
 					frameWidth: t.frameWidth,
 					frameHeight: t.frameHeight,
 				});
-			else this.load.image(t.key, t.path);
+			else this.load.image(t.key, assetUrl(t.path));
 		}
 	}
 
@@ -736,12 +737,14 @@ export class WorldScene extends Phaser.Scene {
 		this.spawnSigns();
 		this.raiseLayer(beforeBake);
 		this.setupInput();
-		this.pet = new PetCompanion(this, {
-			store: this.store,
-			reducedMotion: prefersReducedMotion(),
-			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
-		});
-		this.publishPetWorld();
+		if (this.store.getState().petsEnabled) {
+			this.pet = new PetCompanion(this, {
+				store: this.store,
+				reducedMotion: prefersReducedMotion(),
+				playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
+			});
+			this.publishPetWorld();
+		}
 		this.setupCamera();
 		this.publishPortalIndex();
 		this.publishMonsterIndex();

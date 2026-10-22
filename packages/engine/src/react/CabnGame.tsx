@@ -62,6 +62,15 @@ export type CabnGameProps = ({ worldUrl: string } | { shelfUrl: string }) & {
 	owner?: OwnerCapability;
 	/** Older spelling of `owner.signs`, still accepted; `owner.signs` wins when both are given. */
 	ownerSigns?: OwnerSignsApi;
+	/**
+	 * Where the host serves cabn's sprite set (the engine's
+	 * assets/generated/{originals,placeholders}, as `cabn` copies them).
+	 * Default "/assets". A change re-creates the game, like a new worldUrl.
+	 * One base per page: the last CabnGame mounted sets it for all.
+	 */
+	assetBaseUrl?: string;
+	/** false hides and disables the AI pets entirely. Default true. Read when the game is created. */
+	pets?: boolean;
 };
 
 export function CabnGame(props: CabnGameProps): React.ReactElement {
@@ -74,7 +83,8 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 	// not on every render (props is a fresh object every time).
 	const worldUrl = "worldUrl" in props ? props.worldUrl : undefined;
 	const shelfUrl = "shelfUrl" in props ? props.shelfUrl : undefined;
-	const { onGameReady, pdfWorkerUrl, owner, ownerSigns } = props;
+	const { onGameReady, pdfWorkerUrl, owner, ownerSigns, assetBaseUrl } = props;
+	const pets = props.pets !== false;
 	const signsApi = owner?.signs ?? ownerSigns;
 
 	useEffect(() => {
@@ -110,7 +120,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 
 		const target: CabnGameTarget =
 			worldUrl !== undefined ? { worldUrl } : { shelfUrl: shelfUrl as string };
-		const next = createCabnGame(container, target);
+		const next = createCabnGame(container, target, { assetBaseUrl, pets });
 		setHandle(next);
 		onGameReady?.(next);
 
@@ -121,8 +131,10 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 		};
 		// worldUrl/shelfUrl changing is treated as a fresh game, not a hot-swap —
 		// Phaser's scene graph doesn't cleanly support re-pointing an already-
-		// booted world/shelf at a different bundle mid-flight.
-	}, [worldUrl, shelfUrl]);
+		// booted world/shelf at a different bundle mid-flight. Same for the
+		// asset base (textures are cached per game) and pets (a pet sprite is
+		// created with the world, not toggled).
+	}, [worldUrl, shelfUrl, assetBaseUrl, pets]);
 
 	return (
 		<div
@@ -152,7 +164,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<UniversePicker store={handle.store} bus={handle.bus} owner={owner} />
 					<Pensieve store={handle.store} />
 					<Signs store={handle.store} bus={handle.bus} />
-					<PetLayer store={handle.store} bus={handle.bus} />
+					{pets && <PetLayer store={handle.store} bus={handle.bus} />}
 					<EditorOverlay store={handle.store} bus={handle.bus} />
 					<RunOverlay store={handle.store} bus={handle.bus} />
 					<LayerSaveNotice store={handle.store} bus={handle.bus} />

@@ -193,6 +193,8 @@ export interface CabnState {
 	signDraft: SignDraft | null;
 	/** Folder path -> its (non-annex) cluster id, for resolving sign links to folders; render/signposts.ts fills it per world. */
 	folderClusters: Record<string, string>;
+	/** CabnGame's `pets` prop: false means no pet sprite, button, panel or chat at all. Fixed for a game's lifetime. */
+	petsEnabled: boolean;
 	/** The provider whose pet follows the player (react/PetLayer.tsx picks it; keys never live in the store — see pets/keyStore.ts). */
 	petProvider: PetProviderId | null;
 	petPanelOpen: boolean;
@@ -346,6 +348,7 @@ export interface CabnActions {
 	setSignPlacing(placing: boolean): void;
 	/** Ignored without the owner capability. Always ends placement. */
 	setSignDraft(draft: SignDraft | null): void;
+	setPetsEnabled(enabled: boolean): void;
 	setPetProvider(provider: PetProviderId | null): void;
 	setPetPanelOpen(open: boolean): void;
 	setPetChatOpen(open: boolean): void;
@@ -422,6 +425,7 @@ const initialState: CabnState = {
 	signPlacing: false,
 	signDraft: null,
 	folderClusters: {},
+	petsEnabled: true,
 	petProvider: null,
 	petPanelOpen: false,
 	petChatOpen: false,
@@ -685,6 +689,7 @@ export function createCabnStore(): StoreApi<CabnStore> {
 				signDraft: get().ownerSigns !== null ? signDraft : null,
 				signPlacing: false,
 			}),
+		setPetsEnabled: (petsEnabled) => set({ petsEnabled }),
 		setPetProvider: (petProvider) => set({ petProvider }),
 		setPetPanelOpen: (petPanelOpen) => set({ petPanelOpen }),
 		setPetChatOpen: (petChatOpen) =>

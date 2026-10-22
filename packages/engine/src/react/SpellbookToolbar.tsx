@@ -1,4 +1,4 @@
-import { uiIconPath, uiToolIconPath } from "../assetPaths.js";
+import { assetUrl, uiIconPath, uiToolIconPath } from "../assetPaths.js";
 import {
 	SPELLBOOK_TOOLS,
 	type SpellbookTool,
@@ -30,7 +30,7 @@ const GROUP_ENDS = new Set<SpellbookToolId>([
 export function SpellbookToolbar({
 	isMac,
 	onTool,
-	iconFor = (src) => src,
+	iconFor = assetUrl,
 }: SpellbookToolbarProps): React.ReactElement {
 	return (
 		<div

@@ -10,6 +10,7 @@ import {
 	ANIMATED_MONSTER_SPECIES,
 	ASSET_KEYS,
 	ASSET_PATHS,
+	assetUrl,
 	atmosphereAssetEntries,
 	BATTLE_FX_MONSTER_SPECIES,
 	BIOME_TILE_FRAME_SIZE,
@@ -138,57 +139,67 @@ export class PreloadScene extends Phaser.Scene {
 			},
 		);
 
-		this.load.image(ASSET_KEYS.cabin, ASSET_PATHS[ASSET_KEYS.cabin]);
-		this.load.image(ASSET_KEYS.cabinet, ASSET_PATHS[ASSET_KEYS.cabinet]);
+		this.load.image(ASSET_KEYS.cabin, assetUrl(ASSET_PATHS[ASSET_KEYS.cabin]));
+		this.load.image(
+			ASSET_KEYS.cabinet,
+			assetUrl(ASSET_PATHS[ASSET_KEYS.cabinet]),
+		);
 		this.load.image(
 			ASSET_KEYS.characterIdle,
-			ASSET_PATHS[ASSET_KEYS.characterIdle],
+			assetUrl(ASSET_PATHS[ASSET_KEYS.characterIdle]),
 		);
 		this.load.spritesheet(
 			ASSET_KEYS.portalArchStrip,
-			ASSET_PATHS[ASSET_KEYS.portalArchStrip],
+			assetUrl(ASSET_PATHS[ASSET_KEYS.portalArchStrip]),
 			{
 				frameWidth: PORTAL_ARCH_FRAME_SIZE,
 				frameHeight: PORTAL_ARCH_FRAME_SIZE,
 			},
 		);
-		this.load.spritesheet(PORTAL_VARIANT_SHEET_KEY, PORTAL_VARIANT_SHEET_PATH, {
-			frameWidth: PORTAL_ARCH_FRAME_SIZE,
-			frameHeight: PORTAL_ARCH_FRAME_SIZE,
-		});
+		this.load.spritesheet(
+			PORTAL_VARIANT_SHEET_KEY,
+			assetUrl(PORTAL_VARIANT_SHEET_PATH),
+			{
+				frameWidth: PORTAL_ARCH_FRAME_SIZE,
+				frameHeight: PORTAL_ARCH_FRAME_SIZE,
+			},
+		);
 
 		this.load.image(
 			OPTIONAL_ASSET_KEYS.wizardTower,
-			OPTIONAL_ASSET_PATHS[OPTIONAL_ASSET_KEYS.wizardTower],
+			assetUrl(OPTIONAL_ASSET_PATHS[OPTIONAL_ASSET_KEYS.wizardTower]),
 		);
 		this.load.image(
 			OPTIONAL_ASSET_KEYS.characterIdleBack,
-			OPTIONAL_ASSET_PATHS[OPTIONAL_ASSET_KEYS.characterIdleBack],
+			assetUrl(OPTIONAL_ASSET_PATHS[OPTIONAL_ASSET_KEYS.characterIdleBack]),
 		);
 		for (let i = 0; i < BONFIRE_FRAME_COUNT; i++) {
 			this.load.image(
 				OPTIONAL_ASSET_KEYS.bonfireFrame(i),
-				OPTIONAL_ASSET_PATHS.bonfireFrame(i),
+				assetUrl(OPTIONAL_ASSET_PATHS.bonfireFrame(i)),
 			);
 		}
 
-		this.load.image(MONSTER_GHOST_KEY, MONSTER_GHOST_PATH);
+		this.load.image(MONSTER_GHOST_KEY, assetUrl(MONSTER_GHOST_PATH));
 		for (const species of ANIMATED_MONSTER_SPECIES) {
 			this.load.image(
 				monsterFrameKey(species, 0),
-				monsterFramePath(species, 0),
+				assetUrl(monsterFramePath(species, 0)),
 			);
 			this.load.image(
 				monsterFrameKey(species, 1),
-				monsterFramePath(species, 1),
+				assetUrl(monsterFramePath(species, 1)),
 			);
 		}
 		for (const species of BATTLE_FX_MONSTER_SPECIES) {
-			this.load.image(monsterHitKey(species), monsterHitPath(species));
+			this.load.image(
+				monsterHitKey(species),
+				assetUrl(monsterHitPath(species)),
+			);
 			for (let i = 0; i < MONSTER_DEFEAT_FRAME_COUNT; i++) {
 				this.load.image(
 					monsterDefeatKey(species, i),
-					monsterDefeatPath(species, i),
+					assetUrl(monsterDefeatPath(species, i)),
 				);
 			}
 		}
@@ -196,35 +207,35 @@ export class PreloadScene extends Phaser.Scene {
 		for (const biome of WORLD_ART_BIOMES) {
 			this.load.spritesheet(
 				biomeTileSheetKey(biome),
-				biomeTileSheetPath(biome),
+				assetUrl(biomeTileSheetPath(biome)),
 				{
 					frameWidth: BIOME_TILE_FRAME_SIZE,
 					frameHeight: BIOME_TILE_FRAME_SIZE,
 				},
 			);
 		}
-		this.load.spritesheet(DECAL_SHEET_KEY, DECAL_SHEET_PATH, {
+		this.load.spritesheet(DECAL_SHEET_KEY, assetUrl(DECAL_SHEET_PATH), {
 			frameWidth: DECAL_FRAME_SIZE,
 			frameHeight: DECAL_FRAME_SIZE,
 		});
 		for (let i = 0; i < PATH_STAMP_COUNT; i++) {
-			this.load.image(pathStampKey(i), pathStampPath(i));
+			this.load.image(pathStampKey(i), assetUrl(pathStampPath(i)));
 		}
 		for (const name of PROP_NAMES) {
-			this.load.image(propKey(name), propPath(name));
+			this.load.image(propKey(name), assetUrl(propPath(name)));
 		}
-		this.load.image(CASTLE_KEEP_KEY, CASTLE_KEEP_PATH);
-		this.load.spritesheet(WORLD_FOUNTAIN_KEY, WORLD_FOUNTAIN_PATH, {
+		this.load.image(CASTLE_KEEP_KEY, assetUrl(CASTLE_KEEP_PATH));
+		this.load.spritesheet(WORLD_FOUNTAIN_KEY, assetUrl(WORLD_FOUNTAIN_PATH), {
 			frameWidth: WORLD_FOUNTAIN_FRAME_WIDTH,
 			frameHeight: WORLD_FOUNTAIN_FRAME_HEIGHT,
 		});
-		this.load.image(WORLD_FOUNTAIN_GEM_KEY, WORLD_FOUNTAIN_GEM_PATH);
-		this.load.image(SHELF_CABIN_KEY, SHELF_CABIN_PATH);
+		this.load.image(WORLD_FOUNTAIN_GEM_KEY, assetUrl(WORLD_FOUNTAIN_GEM_PATH));
+		this.load.image(SHELF_CABIN_KEY, assetUrl(SHELF_CABIN_PATH));
 		preloadGuideNpcAssets(this.load);
 		preloadSignAssets(this.load);
-		this.load.image(FX_SPARK_KEY, FX_SPARK_PATH);
+		this.load.image(FX_SPARK_KEY, assetUrl(FX_SPARK_PATH));
 		for (const [key, path] of atmosphereAssetEntries()) {
-			this.load.image(key, path);
+			this.load.image(key, assetUrl(path));
 		}
 	}
 
