@@ -21,10 +21,10 @@ cabn serve <dir> [--allow-exec] [--owner]  # convert in memory, serve as a walka
 
 `cabn build` also takes:
 
-- `--name <name>`: the world's display name. The default is the input's basename. It also names the default output dir and becomes `meta.source`, which never holds an absolute path.
-- `--config <file>`: a `cabn.json` kept outside the source, merged over the source's own with its keys winning (see `@cabn/converter`'s `ConvertOptions.config`).
+- `--name <name>`: the world's display name. It beats any `cabn.json` `world.title`. Without it, the title (the injected config's when `--config` is given) names the world, else the input's basename. It also names the default output dir and becomes `meta.source`, which never holds an absolute path.
+- `--config <file>`: a `cabn.json` kept outside the source. The injected config owns the embed allowlist and the showcase: the repo's `allowedEmbedOrigins`, `world` and `sites` are not used (see `@cabn/converter`'s `ConvertOptions.config`). Its other keys merge over the repo's.
 
-`cabn shelf --name <name>` names the shelf. `runBuild(input, { name, config })` and `runShelf(dirs, { name })` take the same options, and `config` may be a path or a parsed object. `cabn shelf` reads each bundle's `showcase.json` for the entry's description, links, hero url and sort order. `collectWorldEmbedOrigins(bundleDirs)` returns the sorted union of every built world's `allowedEmbedOrigins`, which a host serving those worlds needs in its CSP `frame-src`. The pure `collectEmbedOrigins(configs)` is re-exported too.
+`cabn shelf --name <name>` names the shelf. `runBuild(input, { name, config })` and `runShelf(dirs, { name })` take the same options, and `config` may be a path or a parsed object. `cabn shelf` reads each bundle's `showcase.json` for the entry's description, links, hero url and sort order. `collectWorldEmbedOrigins(bundleDirs, { excludeOrigin })` returns the sorted union of every built world's `allowedEmbedOrigins`, which a host serving those worlds needs in its CSP `frame-src`. Build it from the built worlds, not the `cabn.json` inputs, because injection changes the list. It throws on any entry that isn't an exact https origin. The pure `collectEmbedOrigins` is re-exported too.
 
 A git repository root also gets its recent history (branch universes, tags, GitHub releases, file history); `--no-history` skips it and `--git-dir <path>` reads another git directory. `--offline` skips every network request (the url-preview framing check and the GitHub releases request).
 

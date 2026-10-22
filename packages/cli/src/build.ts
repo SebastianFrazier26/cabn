@@ -64,7 +64,7 @@ export interface HistorySummary {
 
 export interface BuildOptions {
 	outDir?: string;
-	/** World display name (meta.name, and the default output dir's prefix). Defaults to the input's basename. */
+	/** World display name (meta.name, and the default output dir's prefix). Beats any cabn.json `world.title`; without it the title, else the input's basename, names the world. */
 	name?: string;
 	/**
 	 * A cabn.json kept outside the source (`--config <path>`): either the
@@ -270,7 +270,8 @@ export async function runBuild(
 		: undefined;
 	const warnings: string[] = [];
 	const bundle = await convert(source, {
-		name,
+		name: inputName,
+		...(opts.name !== undefined ? { nameOverride: opts.name } : {}),
 		// world.json is published; an absolute path would leak the builder's
 		// directory layout (home directory, user name) to every visitor.
 		source: name,

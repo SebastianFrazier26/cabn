@@ -11,7 +11,7 @@ import {
 } from "@cabn/world-schema";
 import { afterEach, describe, expect, test } from "vitest";
 import { CabnConfigError } from "../src/cabnConfig.js";
-import { convert } from "../src/convert.js";
+import { convert, safeSource } from "../src/convert.js";
 import type { EmbedFetch } from "../src/embedCheck.js";
 import { DirSource } from "../src/sources/dir.js";
 
@@ -244,6 +244,44 @@ describe("cabn.json sites", () => {
 	});
 });
 
+describe("display name and meta.source", () => {
+	const titled = (title: string) => ({
+		cabnConfigVersion: 1,
+		world: { title },
+	});
+
+	test("nameOverride > injected title > repo title > name", async () => {
+		const root = await project(titled("Repo"));
+		const name = async (extra: Partial<Parameters<typeof convert>[1]>) =>
+			entry<WorldManifest>(await build(root, extra), "world.json").meta.name;
+		expect(await name({})).toBe("Repo");
+		expect(await name({ config: titled("Host") })).toBe("Host");
+		expect(await name({ config: titled("Host"), nameOverride: "Flag" })).toBe(
+			"Flag",
+		);
+		expect(await name({ config: { cabnConfigVersion: 1 } })).toBe("p");
+	});
+
+	test("an absolute source never reaches world.json", async () => {
+		const root = await project();
+		for (const source of [
+			root,
+			"C:\\Users\\me\\proj",
+			"\\\\host\\share\\proj",
+		]) {
+			const meta = entry<WorldManifest>(
+				await build(root, { source }),
+				"world.json",
+			).meta;
+			expect(meta.source).not.toMatch(/[\\/]/);
+		}
+		expect(safeSource("/a/b/proj/")).toBe("proj");
+		expect(safeSource("C:\\x\\proj")).toBe("proj");
+		expect(safeSource("upload.zip")).toBe("upload.zip");
+		expect(safeSource("proj#side")).toBe("proj#side");
+	});
+});
+
 describe("ConvertOptions.config (injected cabn.json)", () => {
 	test("is used when the source has no cabn.json", async () => {
 		const root = await project();
@@ -284,6 +322,59 @@ describe("ConvertOptions.config (injected cabn.json)", () => {
 		expect(parseShowcase(entry(bundle, SHOWCASE_FILENAME)).title).toBe(
 			"Injected",
 		);
+	});
+
+	test("a host that sets no allowlist gets none: the repo's can't widen it", async () => {
+		const root = await project({
+			cabnConfigVersion: 1,
+			previews: { "README.md": { kind: "url", url: `${ORIGIN}/` } },
+			allowedEmbedOrigins: [ORIGIN],
+		});
+		await expect(
+			build(root, { config: { cabnConfigVersion: 1, world: { title: "T" } } }),
+		).rejects.toThrow(/not listed in allowedEmbedOrigins/);
+		const plain = await build(root, {
+			config: { cabnConfigVersion: 1, previews: {} },
+		});
+		expect(
+			entry<WorldManifest>(plain, "world.json").allowedEmbedOrigins,
+		).toEqual([]);
+	});
+
+	test("the repo's world and sites are dropped, with a warning", async () => {
+		const root = await project({
+			cabnConfigVersion: 1,
+			allowedEmbedOrigins: [ORIGIN],
+			world: {
+				title: "Repo title",
+				links: [{ label: "Sneaky", url: "https://repo.example/" }],
+			},
+			sites: [{ id: "repo-site", title: "R", url: `${ORIGIN}/`, hero: true }],
+		});
+		const warnings: string[] = [];
+		const bundle = await build(root, {
+			config: { cabnConfigVersion: 1, allowedEmbedOrigins: [ORIGIN] },
+			onWarning: (m) => warnings.push(m),
+		});
+		expect(warnings.join("\n")).toMatch(/world and sites ignored/);
+		const showcase = parseShowcase(entry(bundle, SHOWCASE_FILENAME));
+		expect(showcase.links).toEqual([]);
+		expect(showcase.heroPortalId).toBeNull();
+		const manifest = entry<WorldManifest>(bundle, "world.json");
+		expect(manifest.meta.name).toBe("p");
+		expect(manifest.portals.some((p) => p.id.startsWith("@cabn-site/"))).toBe(
+			false,
+		);
+	});
+
+	test("a non-object repo cabn.json fails the same way with or without injection", async () => {
+		const root = await project([1, 2]);
+		const without = await build(root).catch((e: Error) => e.message);
+		const withConfig = await build(root, {
+			config: { cabnConfigVersion: 1 },
+		}).catch((e: Error) => e.message);
+		expect(typeof without).toBe("string");
+		expect(withConfig).toBe(without);
 	});
 
 	test("the merged result is validated as a whole", async () => {

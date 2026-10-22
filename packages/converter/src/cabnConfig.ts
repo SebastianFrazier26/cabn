@@ -39,17 +39,27 @@ export interface LoadedCabnConfig {
 }
 
 /**
- * `injected` (ConvertOptions.config) is merged over the source's own
- * cabn.json one top-level key at a time: a key the injected config sets
- * replaces the repo's value for that key wholesale (no deep merge — an
- * injected `previews` or `allowedEmbedOrigins` is the whole list), and keys
- * it leaves out keep the repo's. The merged object is validated as one
- * cabn.json, so cross-field rules (url origins vs allowedEmbedOrigins, one
- * hero) see the result, not either half alone.
+ * With `injected` (ConvertOptions.config) the host owns the world's
+ * showcase and its embed allowlist; the repo keeps everything else. This is
+ * fail-closed on purpose, so a repository can never widen what a host
+ * page may frame or rewrite how the host presents it:
+ *
+ * - `allowedEmbedOrigins` is the injected list, or empty when the host sets
+ *   none. The repo's list is never used, so a repo url preview whose origin
+ *   the host didn't allow fails the build.
+ * - `world` and `sites` come only from the injected config. The repo's are
+ *   dropped, with a warning.
+ * - Every other key (previews, media, guide, annotate, embedCheck, history)
+ *   is merged one top-level key at a time, the injected value replacing the
+ *   repo's wholesale.
+ *
+ * The repo's cabn.json must be valid on its own first (the same errors as
+ * without injection), and the merged result is validated again as a whole.
  */
 export async function loadCabnConfig(
 	source: FileSource,
 	injected?: CabnConfigInput,
+	onWarning?: (message: string) => void,
 ): Promise<LoadedCabnConfig> {
 	const entries = new Map<string, SourceEntry>();
 	for await (const entry of source.entries()) entries.set(entry.path, entry);
@@ -57,7 +67,7 @@ export async function loadCabnConfig(
 	const configEntry = entries.get(CABN_CONFIG_PATH);
 	if (!configEntry) {
 		if (!injected) return { config: undefined, entries };
-		return { config: validateMerged(injected, true), entries };
+		return { config: validateMerged(hostOwned({}, injected), true), entries };
 	}
 
 	const raw = await configEntry.read();
@@ -76,16 +86,33 @@ export async function loadCabnConfig(
 		throw new CabnConfigError(`invalid JSON (${(err as Error).message})`);
 	}
 
-	if (!injected) return { config: validateMerged(json, false), entries };
-	const repo = isPlainObject(json) ? json : {};
+	const repoConfig = validateMerged(json, false);
+	if (!injected) return { config: repoConfig, entries };
+	const repo = json as Record<string, unknown>;
+	const dropped = (["world", "sites"] as const).filter(
+		(key) => repo[key] !== undefined,
+	);
+	if (dropped.length > 0) {
+		onWarning?.(
+			`cabn.json: ${dropped.join(" and ")} ignored — the injected config owns the showcase`,
+		);
+	}
 	return {
-		config: validateMerged({ ...repo, ...injected }, true),
+		config: validateMerged(hostOwned(repo, injected), true),
 		entries,
 	};
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+function hostOwned(
+	repo: Record<string, unknown>,
+	injected: CabnConfigInput,
+): Record<string, unknown> {
+	const { world: _world, sites: _sites, ...rest } = repo;
+	const merged: Record<string, unknown> = { ...rest, ...injected };
+	merged.allowedEmbedOrigins = injected.allowedEmbedOrigins ?? [];
+	if (injected.world === undefined) delete merged.world;
+	if (injected.sites === undefined) delete merged.sites;
+	return merged;
 }
 
 function validateMerged(json: unknown, injected: boolean): CabnConfig {

@@ -155,16 +155,28 @@ async function resolveMediaFile(
 const CABN_CONFIG_FILENAME = "cabn.json";
 
 export interface ConvertOptions {
-	/** World display name (meta.name). */
+	/**
+	 * Fallback world display name (meta.name), typically the source's
+	 * basename. The name actually used is, first to be set: `nameOverride`,
+	 * then the config's `world.title` (the injected config's when one is
+	 * given — a repo's own `world` is ignored then), then this.
+	 */
 	name: string;
-	/** Original path/zip identifier, stored as meta.source — it ships in world.json, so hosts pass a name, never an absolute path. */
+	/** A display name the host chose explicitly (`cabn build --name`): beats every cabn.json title. */
+	nameOverride?: string;
+	/**
+	 * Original path/zip identifier, stored as meta.source. It ships in
+	 * world.json, so an absolute path is cut to its last segment here
+	 * whatever the host passes (see safeSource).
+	 */
 	source: string;
 	/**
 	 * A cabn.json supplied by the host rather than read from the source (a
-	 * portfolio keeping its per-project config outside each repo). Merged
-	 * over the source's own cabn.json key by key, the injected value winning
-	 * (see loadCabnConfig); validated like any cabn.json. Its paths
-	 * (previews keys, `src`, `fallbackImage`) still name files in the source.
+	 * portfolio keeping its per-project config outside each repo). The host
+	 * then owns the embed allowlist and the showcase (`world`, `sites`); the
+	 * repo's are not used. Other keys merge, the injected value winning. See
+	 * loadCabnConfig. Its paths (previews keys, `src`, `fallbackImage`) still
+	 * name files in the source.
 	 */
 	config?: CabnConfigInput;
 	ignore?: string[];
@@ -230,7 +242,11 @@ export async function convert(
 	const { config: cabnConfig, entries: sourceEntries } = await loadCabnConfig(
 		source,
 		opts.config,
+		opts.onWarning,
 	);
+	const worldName =
+		opts.nameOverride ?? cabnConfig?.world?.title ?? opts.name;
+	const metaSource = safeSource(opts.source);
 
 	const walked = await walk(source, {
 		ignore: [...(opts.ignore ?? []), CABN_CONFIG_FILENAME],
@@ -367,13 +383,14 @@ export async function convert(
 		}
 	}
 
-	await addSitePortals(
+	const placedSites = await addSitePortals(
 		sites,
 		clusters,
 		portals,
 		sourceEntries,
 		maxFileBytes,
 		mediaBudget,
+		opts.onWarning,
 	);
 
 	const annotated = annotateWorld(annotateInputs, fileClusterId, paths, {
@@ -399,15 +416,15 @@ export async function convert(
 	const manifest: WorldManifest = {
 		cabnVersion: CABN_VERSION,
 		meta: {
-			name: opts.name,
-			source: opts.source,
+			name: worldName,
+			source: metaSource,
 			generatedAt: (opts.now?.() ?? new Date()).toISOString(),
 			fileCount: worldFiles.length,
 			totalBytes: walked.totalBytes,
 			truncated: walked.truncated,
 			skippedFiles: walked.skippedFiles,
 			themeSeed: worldTreeSeed({
-				meta: { name: opts.name },
+				meta: { name: worldName },
 				clusters,
 				portals,
 			}),
@@ -480,7 +497,7 @@ export async function convert(
 	bundle.set(SIGN_INDEX_FILENAME, JSON.stringify(signIndex.file, null, 2));
 	bundle.set(
 		SHOWCASE_FILENAME,
-		JSON.stringify(buildShowcase(cabnConfig), null, 2),
+		JSON.stringify(buildShowcase(cabnConfig, placedSites), null, 2),
 	);
 	for (const [assetPath, bytes] of mediaBudget.assets()) {
 		bundle.set(assetPath, bytes);
@@ -530,6 +547,21 @@ async function addGitDirectory(
 	for (const [key, value] of files) bundle.set(key, value);
 }
 
+/**
+ * meta.source ships in every published world.json; an absolute path there
+ * leaks the builder's directory layout (home directory, user name). Cut to
+ * the last path segment, POSIX or Windows. Browser-safe: no node:path.
+ */
+export function safeSource(source: string): string {
+	const absolute =
+		source.startsWith("/") ||
+		source.startsWith("\\\\") ||
+		/^[A-Za-z]:[\\/]/.test(source);
+	if (!absolute) return source;
+	const segments = source.split(/[\\/]+/).filter(Boolean);
+	return segments.at(-1) ?? "world";
+}
+
 /** A real file at a site's portal path would make two portals share one id. */
 function checkSiteIdsFree(
 	sites: NonNullable<CabnConfig["sites"]>,
@@ -560,10 +592,18 @@ async function addSitePortals(
 	entries: Map<string, SourceEntry>,
 	maxFileBytes: number,
 	budget: MediaBudget,
-): Promise<void> {
-	if (sites.length === 0) return;
+	onWarning: ((message: string) => void) | undefined,
+): Promise<NonNullable<CabnConfig["sites"]>> {
+	if (sites.length === 0) return [];
 	const root = clusters.find((c) => c.path === ".") ?? clusters[0];
-	if (!root) return;
+	if (!root) {
+		// buildClusterTree always keeps a root, so this is a guard, not a path
+		// any real source takes: no cluster means nowhere to stand an arch.
+		onWarning?.(
+			`cabn.json sites dropped: this world has no clusters to place them in (${sites.map((s) => s.id).join(", ")})`,
+		);
+		return [];
+	}
 	const ids: string[] = [];
 	for (const site of sites) {
 		const id = sitePortalId(site.id);
@@ -597,13 +637,18 @@ async function addSitePortals(
 		ids.push(id);
 	}
 	root.portalIds = [...ids, ...root.portalIds];
+	return sites;
 }
 
-function buildShowcase(config: CabnConfig | undefined): ShowcaseFile {
+/** Only sites that actually became portals are listed, so showcase.json never names a hero the world doesn't have. */
+function buildShowcase(
+	config: CabnConfig | undefined,
+	placedSites: NonNullable<CabnConfig["sites"]>,
+): ShowcaseFile {
 	const showcase: ShowcaseFile = {
 		showcaseVersion: SHOWCASE_VERSION,
 		...(config?.world ? { world: config.world } : {}),
-		sites: (config?.sites ?? []).map((site) => ({
+		sites: placedSites.map((site) => ({
 			portalId: sitePortalId(site.id),
 			hero: site.hero === true,
 		})),

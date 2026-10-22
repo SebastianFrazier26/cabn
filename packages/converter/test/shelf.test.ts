@@ -137,7 +137,7 @@ describe("buildShelf with showcase info", () => {
 		]);
 	});
 
-	test("carries title, description, links, order and the hero url", () => {
+	test("carries description, links, order and the hero url; the name is world.json's", () => {
 		const manifest = fakeManifest({ name: "repo" });
 		manifest.clusters = [
 			{
@@ -185,8 +185,8 @@ describe("buildShelf with showcase info", () => {
 			{ now: FIXED_NOW },
 		);
 		expect(shelf.worlds[0]).toMatchObject({
-			id: "pretty-title",
-			name: "Pretty Title",
+			id: "repo",
+			name: "repo",
 			description: "What it does.",
 			links: [{ label: "Repo", url: "https://github.com/x/y" }],
 			heroUrl: "https://demo.example.org/",

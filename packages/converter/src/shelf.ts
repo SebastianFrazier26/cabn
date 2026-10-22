@@ -10,7 +10,7 @@ export interface ShelfWorldInput {
 	name: string;
 	worldUrl: string;
 	manifest: WorldManifest;
-	/** The world's parsed showcase.json: its title (when set) becomes the entry's name; description, links, order and the hero site's url ride along. */
+	/** The world's parsed showcase.json: description, links, order and the hero site's url ride along. The entry's name is `name` (world.json's meta.name, which already applied the title precedence). */
 	showcase?: Showcase;
 }
 
@@ -45,7 +45,7 @@ function uniqueId(candidate: string, usedIds: Set<string>): string {
 }
 
 function displayName(world: ShelfWorldInput): string {
-	return world.showcase?.title ?? world.name;
+	return world.name;
 }
 
 /**

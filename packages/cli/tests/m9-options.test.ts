@@ -246,3 +246,75 @@ describe("shelf showcase info", () => {
 		]);
 	});
 });
+
+describe("serveSource", () => {
+	test("is stable per directory, never the path, and differs between same-named dirs", async () => {
+		const { serveSource } = await import("../src/serve/server.js");
+		const a = serveSource("/home/me/one/proj");
+		expect(a).toMatch(/^proj~[0-9a-f]{8}$/);
+		expect(serveSource("/home/me/one/proj")).toBe(a);
+		expect(serveSource("/home/me/two/proj")).not.toBe(a);
+	});
+});
+
+describe("--name beats every cabn.json title", () => {
+	test("world.json and shelf.json agree on the name", async () => {
+		const outDir = join(root, "w");
+		await runBuild(FIXTURE, {
+			outDir,
+			offline: true,
+			name: "Flag",
+			config: { cabnConfigVersion: 1, world: { title: "Host" } },
+		});
+		expect(
+			(await readJson<{ meta: { name: string } }>(join(outDir, "world.json")))
+				.meta.name,
+		).toBe("Flag");
+		const out = join(root, "shelf");
+		await runShelf([outDir], { outDir: out });
+		const shelf = await readJson<{ worlds: { name: string }[] }>(
+			join(out, "shelf.json"),
+		);
+		expect(shelf.worlds[0]?.name).toBe("Flag");
+	});
+
+	test("without --name the injected title names both", async () => {
+		const outDir = join(root, "w");
+		await runBuild(FIXTURE, {
+			outDir,
+			offline: true,
+			config: { cabnConfigVersion: 1, world: { title: "Host" } },
+		});
+		const out = join(root, "shelf");
+		await runShelf([outDir], { outDir: out });
+		const shelf = await readJson<{ worlds: { name: string }[] }>(
+			join(out, "shelf.json"),
+		);
+		expect(shelf.worlds[0]?.name).toBe("Host");
+	});
+
+	test("repo world.links never reach the shelf under injection", async () => {
+		const src = join(root, "src");
+		await cp(FIXTURE, src, { recursive: true });
+		await writeFile(
+			join(src, "cabn.json"),
+			JSON.stringify({
+				cabnConfigVersion: 1,
+				world: { links: [{ label: "Sneaky", url: "https://repo.example/" }] },
+			}),
+		);
+		const outDir = join(root, "w");
+		await runBuild(src, {
+			outDir,
+			offline: true,
+			config: { cabnConfigVersion: 1, world: { description: "Host" } },
+		});
+		const out = join(root, "shelf");
+		await runShelf([outDir], { outDir: out });
+		const shelf = await readJson<{
+			worlds: { links?: unknown[]; description?: string }[];
+		}>(join(out, "shelf.json"));
+		expect(shelf.worlds[0]?.links).toBeUndefined();
+		expect(shelf.worlds[0]?.description).toBe("Host");
+	});
+});
