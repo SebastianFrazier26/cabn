@@ -39,6 +39,9 @@ async function readShowcase(bundleDir: string): Promise<Showcase> {
 	}
 }
 
+/** Re-exported so a host that only depends on @cabn/cli can union cabn.json configs too. */
+export { collectEmbedOrigins };
+
 async function readManifest(bundleDir: string): Promise<WorldManifest> {
 	const raw = await readFile(join(resolve(bundleDir), "world.json"), "utf8");
 	return validateManifest(JSON.parse(raw));

@@ -42,7 +42,9 @@ export const DEMO_CSP_DIRECTIVES = {
 		"http://127.0.0.1:11434",
 	],
 	"worker-src": ["'self'"],
-	// The sample world's cabn.json allowedEmbedOrigins, nothing broader.
+	// The demo worlds' allowedEmbedOrigins (sample-project/cabn.json and the
+	// notes world's injected notes-showcase.json), nothing broader —
+	// tests/csp-frame-src.test.mjs keeps the two equal.
 	"frame-src": [
 		"https://example.com",
 		"https://threejs.org",

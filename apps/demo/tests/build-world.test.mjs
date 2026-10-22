@@ -96,6 +96,24 @@ describe("world fingerprint", () => {
 		}
 	});
 
+	it("changes with an injected config file, and adding one changes it too", async () => {
+		const config = join(root, "outside.cabn.json");
+		await writeFile(config, '{"cabnConfigVersion":1}');
+		const without = await worldFingerprint(world(), await toolchain());
+		const withConfig = await worldFingerprint(
+			{ ...world(), configPath: config },
+			await toolchain(),
+		);
+		expect(withConfig).not.toBe(without);
+		await writeFile(config, '{"cabnConfigVersion":1,"guide":false}');
+		expect(
+			await worldFingerprint(
+				{ ...world(), configPath: config },
+				await toolchain(),
+			),
+		).not.toBe(withConfig);
+	});
+
 	it("changes with the converter's version or built output, not its bundled sprites", async () => {
 		const base = await worldFingerprint(world(), await toolchain());
 		await writeFile(join(pkg, "dist", "assets", "sprite.png"), "png2");
