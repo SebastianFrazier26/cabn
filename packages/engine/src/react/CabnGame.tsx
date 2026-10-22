@@ -25,6 +25,7 @@ import { PixelTheme } from "./pixelTheme.js";
 import { RunOverlay } from "./RunOverlay.js";
 import { SceneTransitionOverlay } from "./SceneTransitionOverlay.js";
 import { SettingsCorner } from "./SettingsCorner.js";
+import { ShelfWorldCard } from "./ShelfWorldCard.js";
 import { Signs } from "./SignPanels.js";
 import { SpyglassPanel } from "./SpyglassPanel.js";
 import { ToolHotbar } from "./ToolHotbar.js";
@@ -150,6 +151,7 @@ export function CabnGame(props: CabnGameProps): React.ReactElement {
 					<FileOverlay store={handle.store} />
 					<FileStatusLine store={handle.store} bus={handle.bus} />
 					<PortalPreviewDock store={handle.store} bus={handle.bus} />
+					<ShelfWorldCard store={handle.store} />
 					<ToolHotbar store={handle.store} bus={handle.bus} owner={owner} />
 					<SpyglassPanel store={handle.store} bus={handle.bus} />
 					<OrbSearch store={handle.store} bus={handle.bus} />
