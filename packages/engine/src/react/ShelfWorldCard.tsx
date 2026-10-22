@@ -1,3 +1,4 @@
+import type { ShelfWorldEntry } from "@cabn/world-schema";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnStore } from "../bridge/store.js";
 import { DOCK_MARGIN_PX } from "../systems/dockPlacement.js";
@@ -29,6 +30,17 @@ export function ShelfWorldCard({
 	usePortalFxStyles();
 	const world = useCabnStore(store, (s) => s.nearShelfWorld);
 	if (!world) return null;
+	return <ShelfWorldCardView world={world} />;
+}
+
+/** Hook-free body, so a test can call it and click a link without a DOM. Every link goes through openShowcaseLink (https only, noopener). */
+export function ShelfWorldCardView({
+	world,
+	openLink = openShowcaseLink,
+}: {
+	world: ShelfWorldEntry;
+	openLink?: (url: string) => boolean;
+}): React.ReactElement | null {
 	const links = world.links ?? [];
 	if (!world.description && links.length === 0 && !world.heroUrl) return null;
 
@@ -71,7 +83,7 @@ export function ShelfWorldCard({
 							className="cabn-btn neutral"
 							onClick={(e) => {
 								e.currentTarget.blur();
-								openShowcaseLink(link.url);
+								openLink(link.url);
 							}}
 						>
 							{link.label} ↗
