@@ -55,6 +55,7 @@ import {
 	openGitRepo,
 	redactRepoPaths,
 } from "./history/gitRepo.js";
+import { HERO_ROOT_MIN_RING_RADIUS_PX } from "./layout.js";
 import { markdownToStructuredPreview } from "./markdownPreview.js";
 import {
 	isImageFormat,
@@ -257,6 +258,9 @@ export async function convert(
 		maxFilesPerCluster:
 			opts.maxFilesPerCluster ?? DEFAULT_MAX_FILES_PER_CLUSTER,
 		extraRootPortals: sites.length,
+		...(sites.some((s) => s.hero)
+			? { rootMinRingRadius: HERO_ROOT_MIN_RING_RADIUS_PX }
+			: {}),
 	});
 
 	// Built as Map<string, ChunkFile> and converted via Object.fromEntries at

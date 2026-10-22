@@ -153,6 +153,8 @@ export interface ClusterBuildOptions {
 	maxFilesPerCluster?: number;
 	/** Portals the caller adds to the root cluster on top of its files (cabn.json sites), so the root clearing is sized for them. */
 	extraRootPortals?: number;
+	/** Floor on the root's arch-ring radius (a hero site inside it). */
+	rootMinRingRadius?: number;
 }
 
 /**
@@ -183,6 +185,8 @@ export function buildClusters(
 	const [layoutRoot, ...rootAnnexLayoutNodes] = toLayoutNode(rootGroup);
 	layoutRoot.children = [...layoutRoot.children, ...rootAnnexLayoutNodes];
 	layoutRoot.weight += opts.extraRootPortals ?? 0;
+	if (opts.rootMinRingRadius !== undefined)
+		layoutRoot.minRingRadius = opts.rootMinRingRadius;
 	const positions = computeLayout(layoutRoot);
 
 	const fileClusterId = new Map<string, string>();

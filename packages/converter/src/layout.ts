@@ -5,6 +5,8 @@ export interface LayoutTreeNode {
 	/** This node's own weight (typically file count), excluding descendants. */
 	weight: number;
 	children: LayoutTreeNode[];
+	/** A floor on this node's arch-ring radius (the root's, when a hero site stands inside it). */
+	minRingRadius?: number;
 }
 
 export interface LayoutPosition {
@@ -66,9 +68,12 @@ function collectInfo(
 	const children = node.children.map((child) =>
 		collectInfo(child, depth + 1, true, out),
 	);
-	const clearingRadius = estimatedClearingRadius(
-		Math.max(node.weight, 0),
-		node.children.length + (hasParent ? 1 : 0),
+	const clearingRadius = Math.max(
+		estimatedClearingRadius(
+			Math.max(node.weight, 0),
+			node.children.length + (hasParent ? 1 : 0),
+		),
+		(node.minRingRadius ?? 0) + CLEARING_OUTER_MARGIN_PX,
 	);
 	const info: NodeInfo = {
 		node,
@@ -172,6 +177,10 @@ const PATH_GATE_PX = 96;
 const PORTAL_RING_MIN_RADIUS_PX = 180;
 const CLEARING_OUTER_MARGIN_PX = 90;
 export const CLEARING_GAP_PX = 60; // visible gap between two clearings' *edges*, not just their centers
+// The engine's systems/heroPortal.ts HERO_ROOT_MIN_RING_RADIUS_PX: a hero
+// site arch stands 176px from the bonfire, so the root's ring keeps one arch
+// slot (192px) beyond it.
+export const HERO_ROOT_MIN_RING_RADIUS_PX = 368;
 
 export function portalRingBaseRadius(
 	portalCount: number,

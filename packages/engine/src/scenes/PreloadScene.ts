@@ -2,6 +2,7 @@ import type {
 	EmbedVerdict,
 	MediaPreview,
 	ShelfManifest,
+	Showcase,
 	SignEntry,
 	WorldManifest,
 } from "@cabn/world-schema";
@@ -76,6 +77,7 @@ export type PreloadSceneData =
 			embeds?: ReadonlyMap<string, EmbedVerdict>;
 			git?: WorldGitData;
 			signs?: readonly SignEntry[];
+			showcase?: Showcase;
 	  }
 	| { shelfManifest: ShelfManifest; shelfBase: string; shelfUrl: string };
 
