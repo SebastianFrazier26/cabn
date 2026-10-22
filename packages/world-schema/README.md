@@ -68,7 +68,9 @@ Neither key goes into `world.json`. Older engines parse `world.json` strictly, s
 
 `shelf.json` entries take the matching optional `description`, `links`, `heroUrl` and `order`. They are written only when set.
 
-`collectEmbedOrigins(configsOrManifests)` returns the sorted union of their `allowedEmbedOrigins`. A host serving several worlds uses it as its CSP `frame-src` list.
+`collectEmbedOrigins(configsOrManifests, { excludeOrigin })` returns the sorted union of their `allowedEmbedOrigins`. A host serving several worlds uses it as its CSP `frame-src` list. It fails closed: any entry that isn't an exact https origin (`*`, a path, `http:`, a `;`) throws `EmbedOriginError`. `excludeOrigin` drops the host's own origin.
+
+The new `shelf.json` entry fields need `@cabn/engine` ≥ 0.2.0 (with world-schema ≥ 0.2.0). Older engines validate `shelf.json` strictly and reject an entry that carries them.
 
 ## License
 

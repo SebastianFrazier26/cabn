@@ -23,16 +23,40 @@
   enough that the live page in the arch is the first thing in view. The
   root ring and clearing are sized one arch beyond it.
 - **Injected config.** `ConvertOptions.config`, `runBuild({ config })` and
-  `cabn build --config <file>` merge a cabn.json kept outside the source
-  over the source's own, one top-level key at a time. The injected value
-  wins, and the merged result is validated as one cabn.json.
-- **Names and paths.** `cabn build --name` and `cabn shelf --name` (and
-  `runBuild`/`runShelf` `name`). `world.json`'s `meta.source` is now the
-  world name, never the absolute input path (`cabn serve`, which never
-  publishes its world, still stores its directory).
+  `cabn build --config <file>` take a cabn.json kept outside the source.
+  _Superseded the same day by the fail-closed rule below:_ ~~merged one
+  key at a time, injected value winning~~.
+- **Security decision, pending owner sign-off: an injected config owns
+  the embed allowlist and the showcase (fail closed).** With a config
+  injected:
+  - The effective `allowedEmbedOrigins` is the injected list, or empty if
+    the host sets none, so a repository can never widen what the host page
+    frames. A repo url preview outside it fails the build.
+  - The repo's `world` and `sites` are ignored, with a warning.
+  - Other keys still merge with the injected value winning.
+  - A repo cabn.json must be valid on its own (a non-object one fails as
+    it would without injection).
+
+  Without injection nothing changes.
+- **Names and paths.**
+  - `cabn build --name` and `cabn shelf --name` (and `runBuild`/`runShelf`
+    `name`).
+  - Display name precedence: `--name` (`ConvertOptions.nameOverride`),
+    then the injected `world.title`, then the repo's `world.title` (only
+    without injection), then the input's basename. `world.json`'s
+    `meta.name` and the shelf entry name now always agree.
+  - `meta.source` can no longer be absolute: `convert()` itself cuts an
+    absolute path to its last segment (`safeSource`), for every host.
+  - `cabn serve` now stores `<basename>~<hash of the path>`. Saves are
+    keyed on `meta.source` plus the conversion time, which changes on every
+    serve restart anyway, so no saves are lost. The in-browser universe
+    stash is keyed on `meta.source`, so a stash written before this change
+    is orphaned once. From now on the key stays stable across restarts and
+    differs between same-named folders.
 - **Shelf.** Entries gain optional `description`, `links`, `heroUrl` and
-  `order`, taken from each bundle's `showcase.json`. A world's
-  `world.title` becomes its entry name. Entries sort by `order`, then
+  `order`, taken from each bundle's `showcase.json`. These fields need
+  `@cabn/engine` ≥ 0.2.0 (and world-schema ≥ 0.2.0): older engines
+  validate shelf.json strictly and reject entries that carry them. Entries sort by `order`, then
   name, when any world sets one, and otherwise keep the old input order.
   Walking up to a cabin with showcase info shows it in a card. The cabin
   ring keeps its 480px radius up to 8 cabins and widens beyond that so
@@ -44,12 +68,15 @@
 - **CSP helper.** `collectEmbedOrigins` (`@cabn/world-schema`,
   re-exported by `@cabn/cli`) and `collectWorldEmbedOrigins(bundleDirs)`
   (`@cabn/cli`) return the sorted union of `allowedEmbedOrigins` for a
-  host's `frame-src`.
+  host's `frame-src`. They fail closed: an entry that isn't an exact
+  https origin throws `EmbedOriginError`. `excludeOrigin` drops the host's
+  own origin.
 - **Demo.** The notes world's cabn.json now comes from outside the vault
   (`apps/demo/notes-showcase.json`), with a description, a link and a
   hero site (`https://example.com/`, which allows framing; the demo
   itself sends `X-Frame-Options: DENY`, so it can't be the target). A
-  test keeps the demo CSP's `frame-src` equal to the worlds' origin union.
+  test keeps the demo CSP's `frame-src` equal to the origin union of the
+  built worlds.
 
 ## 2026-10-02 — Publish prep: shadow art split out, no source maps in tarballs
 
