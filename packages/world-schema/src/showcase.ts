@@ -4,6 +4,7 @@ import {
 	WorldInfoConfigSchema,
 	WorldLinkSchema,
 } from "./cabnConfig.js";
+import { isHttpsOrigin } from "./shared.js";
 
 /**
  * cabn.json's `world` info and `sites` ship in their own `showcase.json`, for
@@ -110,17 +111,41 @@ export function parseShowcase(json: unknown): Showcase {
 	};
 }
 
+export class EmbedOriginError extends Error {
+	constructor(readonly origin: string) {
+		super(
+			`not an exact https:// origin, refusing to put it in a CSP frame-src: ${JSON.stringify(origin)}`,
+		);
+		this.name = "EmbedOriginError";
+	}
+}
+
+export interface CollectEmbedOriginsOptions {
+	/** The host page's own origin: dropped from the result, since a world never needs to frame the page it runs in (embedGuard refuses that anyway). */
+	excludeOrigin?: string;
+}
+
 /**
  * The union of every world's allowedEmbedOrigins (cabn.json configs or built
  * world.json manifests alike), sorted and deduplicated: what a host serving
- * several worlds lists in its Content-Security-Policy `frame-src`.
+ * several worlds lists in its Content-Security-Policy `frame-src`. Fails
+ * closed: an entry that isn't an exact https origin (a `*`, a path, http, a
+ * `;` that would start a new CSP directive) throws EmbedOriginError instead
+ * of reaching a policy. Inputs are usually validated already; this is the
+ * last check before the strings become a header.
  */
 export function collectEmbedOrigins(
 	sources: Iterable<{ allowedEmbedOrigins?: readonly string[] | undefined }>,
+	opts: CollectEmbedOriginsOptions = {},
 ): string[] {
 	const out = new Set<string>();
 	for (const source of sources) {
-		for (const origin of source.allowedEmbedOrigins ?? []) out.add(origin);
+		for (const origin of source.allowedEmbedOrigins ?? []) {
+			if (typeof origin !== "string" || !isHttpsOrigin(origin))
+				throw new EmbedOriginError(String(origin));
+			out.add(origin);
+		}
 	}
+	if (opts.excludeOrigin !== undefined) out.delete(opts.excludeOrigin);
 	return [...out].sort();
 }

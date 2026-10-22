@@ -4,6 +4,7 @@ import {
 	CabnConfigValidationError,
 	collectEmbedOrigins,
 	EMPTY_SHOWCASE,
+	EmbedOriginError,
 	parseShowcase,
 	SHOWCASE_VERSION,
 	ShowcaseFileSchema,
@@ -241,5 +242,30 @@ describe("collectEmbedOrigins", () => {
 				{},
 			]),
 		).toEqual(["https://a.example", "https://b.example"]);
+	});
+
+	test("fails closed on anything that is not an exact https origin", () => {
+		for (const bad of [
+			"*",
+			"https://*.example.com",
+			"https://a.example/path",
+			"http://a.example",
+			"https://a.example; script-src *",
+			"https://a.example frame-ancestors",
+			"",
+		]) {
+			expect(() =>
+				collectEmbedOrigins([{ allowedEmbedOrigins: [bad] }]),
+			).toThrow(EmbedOriginError);
+		}
+	});
+
+	test("drops the host's own origin when asked", () => {
+		expect(
+			collectEmbedOrigins(
+				[{ allowedEmbedOrigins: ["https://me.example", "https://a.example"] }],
+				{ excludeOrigin: "https://me.example" },
+			),
+		).toEqual(["https://a.example"]);
 	});
 });

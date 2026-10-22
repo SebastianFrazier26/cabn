@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { buildShelf } from "@cabn/converter";
 import {
+	type CollectEmbedOriginsOptions,
 	collectEmbedOrigins,
 	EMPTY_SHOWCASE,
 	parseShowcase,
@@ -54,8 +55,12 @@ async function readManifest(bundleDir: string): Promise<WorldManifest> {
  */
 export async function collectWorldEmbedOrigins(
 	bundleDirs: readonly string[],
+	opts: CollectEmbedOriginsOptions = {},
 ): Promise<string[]> {
-	return collectEmbedOrigins(await Promise.all(bundleDirs.map(readManifest)));
+	return collectEmbedOrigins(
+		await Promise.all(bundleDirs.map(readManifest)),
+		opts,
+	);
 }
 
 export async function runShelf(
