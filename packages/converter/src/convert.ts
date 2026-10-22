@@ -244,8 +244,7 @@ export async function convert(
 		opts.config,
 		opts.onWarning,
 	);
-	const worldName =
-		opts.nameOverride ?? cabnConfig?.world?.title ?? opts.name;
+	const worldName = opts.nameOverride ?? cabnConfig?.world?.title ?? opts.name;
 	const metaSource = safeSource(opts.source);
 
 	const walked = await walk(source, {
