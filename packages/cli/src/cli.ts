@@ -16,6 +16,8 @@ async function build(rest: string[]): Promise<number> {
 				offline: { type: "boolean" },
 				"no-history": { type: "boolean" },
 				"git-dir": { type: "string" },
+				name: { type: "string" },
+				config: { type: "string" },
 			},
 			allowPositionals: true,
 		});
@@ -27,6 +29,8 @@ async function build(rest: string[]): Promise<number> {
 
 		const summary = await runBuild(input, {
 			outDir: values.out,
+			name: values.name,
+			config: values.config,
 			includeSecrets: values["include-secrets"],
 			findingsPaths: values.findings,
 			offline: values.offline,
@@ -94,7 +98,10 @@ async function shelf(rest: string[]): Promise<number> {
 	try {
 		const { values, positionals } = parseArgs({
 			args: rest,
-			options: { out: { type: "string", short: "o" } },
+			options: {
+				out: { type: "string", short: "o" },
+				name: { type: "string" },
+			},
 			allowPositionals: true,
 		});
 		if (positionals.length === 0) {
@@ -102,7 +109,10 @@ async function shelf(rest: string[]): Promise<number> {
 			return 1;
 		}
 
-		const summary = await runShelf(positionals, { outDir: values.out });
+		const summary = await runShelf(positionals, {
+			outDir: values.out,
+			name: values.name,
+		});
 		console.log(`Wrote shelf at ${summary.outDir} (${summary.worlds} worlds)`);
 		return 0;
 	} catch (err) {

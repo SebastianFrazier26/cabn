@@ -2,6 +2,7 @@ import * as nodeFs from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
+	CabnConfigError,
 	convert,
 	DirSource,
 	type EmbedCheckNetwork,
@@ -15,6 +16,7 @@ import {
 	ZipSource,
 } from "@cabn/converter";
 import {
+	type CabnConfigInput,
 	EMBED_INDEX_FILENAME,
 	type FindingsSummary,
 	GIT_META_FILENAME,
@@ -62,6 +64,15 @@ export interface HistorySummary {
 
 export interface BuildOptions {
 	outDir?: string;
+	/** World display name (meta.name, and the default output dir's prefix). Defaults to the input's basename. */
+	name?: string;
+	/**
+	 * A cabn.json kept outside the source (`--config <path>`): either the
+	 * path to that JSON file or the parsed object itself. Merged over the
+	 * source's own cabn.json, the injected keys winning (see
+	 * ConvertOptions.config).
+	 */
+	config?: string | CabnConfigInput;
 	/** Read secret-pattern files (.env, *.pem, id_rsa*, ...) normally instead of metadata-only. Default false. */
 	includeSecrets?: boolean;
 	/** ESLint JSON or SARIF results files to turn into monsters (`--findings`, repeatable). */
@@ -74,6 +85,26 @@ export interface BuildOptions {
 	gitDir?: string;
 	/** Replaces the network fetch for GitHub releases — the demo's canned releases and tests use it; GITHUB_TOKEN is still only ever added by cliGithubNetwork. */
 	githubFetch?: GithubFetch;
+}
+
+// cabn.json itself is never close to this; anything larger is the wrong file.
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024;
+
+/** Reads `--config`: unreadable, oversized or non-JSON input fails the build naming the file; shape is checked by convert() after the merge. */
+export async function loadConfigFile(path: string): Promise<CabnConfigInput> {
+	const raw = await readFile(resolve(path));
+	if (raw.byteLength > MAX_CONFIG_FILE_BYTES) {
+		throw new CabnConfigError(
+			`--config ${path} is over ${MAX_CONFIG_FILE_BYTES} bytes`,
+		);
+	}
+	try {
+		return JSON.parse(raw.toString("utf8")) as CabnConfigInput;
+	} catch (err) {
+		throw new CabnConfigError(
+			`--config ${path} is not valid JSON: ${(err as Error).message}`,
+		);
+	}
 }
 
 // 50 MB: comfortably above a large monorepo's SARIF, well below anything that
@@ -221,10 +252,15 @@ export async function runBuild(
 	const start = performance.now();
 	const resolvedInput = resolve(inputPath);
 	const isZip = extname(resolvedInput).toLowerCase() === ".zip";
-	const name = isZip
+	const inputName = isZip
 		? basename(resolvedInput, extname(resolvedInput))
 		: basename(resolvedInput);
+	const name = opts.name ?? inputName;
 	const outDir = resolve(opts.outDir ?? `./${name}-world`);
+	const config =
+		typeof opts.config === "string"
+			? await loadConfigFile(opts.config)
+			: opts.config;
 
 	const source = isZip
 		? new ZipSource(await readFile(resolvedInput))
@@ -235,7 +271,10 @@ export async function runBuild(
 	const warnings: string[] = [];
 	const bundle = await convert(source, {
 		name,
-		source: resolvedInput,
+		// world.json is published; an absolute path would leak the builder's
+		// directory layout (home directory, user name) to every visitor.
+		source: name,
+		...(config ? { config } : {}),
 		includeSecrets: opts.includeSecrets,
 		findings,
 		// Tools report paths relative to (or absolute under) the directory they
