@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-10-22 — Showcase worlds for a portfolio shelf (M9 engine work)
+
+- **World info and site portals in `cabn.json`.** Optional `world`
+  (`title`, `description` ≤500 chars, up to 8 https `links`, an integer
+  `order`) and `sites` (up to 8 web portals with no file behind them:
+  `id`, `title`, an https `url` whose origin must be in
+  `allowedEmbedOrigins`, optional `fallbackImage`, at most one `hero`).
+  Site portals are ordinary url portals in `world.json`
+  (`@cabn-site/<id>`, first in the root cluster), so the framability
+  check, the blocked-site fallback card and "Open in browser" all apply
+  as before. They never count as files or spawn monsters.
+- **`showcase.json`, a new always-written sidecar.** It carries the world
+  info and which site is the hero. Per the bundle rule (new data goes in
+  a sidecar, never in strict `world.json`), the world info is not in
+  `world.json`'s `meta`, so older engines still load these worlds.
+- **The hero portal.** The engine stands the hero site's arch inside the
+  root clearing, between the spawn bonfire and the arch ring. It goes in
+  the widest gap between the root's paths, or due east when there are
+  none. It gets a pulsing gold glow from the existing arch art plus a
+  light pool. A fresh visit spawns on the bonfire-to-hero line, close
+  enough that the live page in the arch is the first thing in view. The
+  root ring and clearing are sized one arch beyond it.
+- **Injected config.** `ConvertOptions.config`, `runBuild({ config })` and
+  `cabn build --config <file>` merge a cabn.json kept outside the source
+  over the source's own, one top-level key at a time. The injected value
+  wins, and the merged result is validated as one cabn.json.
+- **Names and paths.** `cabn build --name` and `cabn shelf --name` (and
+  `runBuild`/`runShelf` `name`). `world.json`'s `meta.source` is now the
+  world name, never the absolute input path (`cabn serve`, which never
+  publishes its world, still stores its directory).
+- **Shelf.** Entries gain optional `description`, `links`, `heroUrl` and
+  `order`, taken from each bundle's `showcase.json`. A world's
+  `world.title` becomes its entry name. Entries sort by `order`, then
+  name, when any world sets one, and otherwise keep the old input order.
+  Walking up to a cabin with showcase info shows it in a card. The cabin
+  ring keeps its 480px radius up to 8 cabins and widens beyond that so
+  neighbours stay one 300px slot apart. Captions wrap at 180px.
+- **`CabnGame` props.** `assetBaseUrl` (default `/assets`; every sprite
+  load and HUD image goes through one `assetUrl()` rewrite) and `pets`
+  (`false` removes pets entirely). `createCabnGame` takes both as a
+  third argument.
+- **CSP helper.** `collectEmbedOrigins` (`@cabn/world-schema`,
+  re-exported by `@cabn/cli`) and `collectWorldEmbedOrigins(bundleDirs)`
+  (`@cabn/cli`) return the sorted union of `allowedEmbedOrigins` for a
+  host's `frame-src`.
+- **Demo.** The notes world's cabn.json now comes from outside the vault
+  (`apps/demo/notes-showcase.json`), with a description, a link and a
+  hero site (`https://example.com/`, which allows framing; the demo
+  itself sends `X-Frame-Options: DENY`, so it can't be the target). A
+  test keeps the demo CSP's `frame-src` equal to the worlds' origin union.
+
 ## 2026-10-02 — Publish prep: shadow art split out, no source maps in tarballs
 
 - **`@cabn/shadow-art`, a fifth publishable package.** The shadow realm's

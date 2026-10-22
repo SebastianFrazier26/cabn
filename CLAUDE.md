@@ -23,9 +23,9 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 
 ### The CLI (`node packages/cli/dist/main.js`, bin name `cabn`)
 
-- `cabn build <dir|zip> [-o outDir] [--include-secrets] [--offline] [--findings file]... [--no-history] [--git-dir path]` — default output `./<name>-world/`. `--offline` skips the build-time url-preview framability check and the GitHub releases request (the only network requests cabn makes; the backend never makes them). A repo root (a real `<dir>/.git` directory, checked with lstat) also ships a read-only `git/` directory and `releases.json`. A `.git` symlink or pointer file (worktrees, submodules) gets no history and a path-free note; `--git-dir` is the explicit opt-in (linked worktrees still fail: isomorphic-git doesn't follow `commondir`)
+- `cabn build <dir|zip> [-o outDir] [--name name] [--config file] [--include-secrets] [--offline] [--findings file]... [--no-history] [--git-dir path]` — default output `./<name>-world/`. `--name` sets the world's display name (default: the input's basename; also `meta.source`, which never holds an absolute path). `--config` merges a cabn.json kept outside the source over the source's own, the injected keys winning (`ConvertOptions.config`). `--offline` skips the build-time url-preview framability check and the GitHub releases request (the only network requests cabn makes; the backend never makes them). A repo root (a real `<dir>/.git` directory, checked with lstat) also ships a read-only `git/` directory and `releases.json`. A `.git` symlink or pointer file (worktrees, submodules) gets no history and a path-free note; `--git-dir` is the explicit opt-in (linked worktrees still fail: isomorphic-git doesn't follow `commondir`)
 - `cabn serve <dir> [--port 5178] [--allow-exec] [--timeout ms] [--offline] [--owner] [--no-history] [--git-dir path]` — converts in memory, serves on `127.0.0.1` only. The page (`GET /`) answers 404 unless `?token=` matches the session token in the printed URL; e2e specs navigate to that printed URL. `--allow-exec` enables REAL execution of wand runs (trusted code only). `--owner` (off by default, the one owner flag) enables owner mode: the owner's toolkit (`O`), sign writes, git writes (commit/branch/switch, never push/fetch) and the shadow realm. `?e2e=1` on a serve page exposes `window.__cabnStore`/`__cabnBus` for tests
-- `cabn shelf <bundleDir...> [-o outDir]`, `cabn inspect <bundleDir>`
+- `cabn shelf <bundleDir...> [-o outDir] [--name name]` (reads each bundle's `showcase.json` for description/links/hero url/order), `cabn inspect <bundleDir>`
 
 ### Test and debug switches
 
@@ -51,7 +51,7 @@ TypeScript pnpm monorepo. Node 22, ESM only, TypeScript strict, Biome for lint +
 
 ## Layout
 
-- `packages/world-schema` — `@cabn/world-schema`: zod schemas for `world.json` (strict), chunks, search index, the optional sidecars (`media.json`, `embeds.json`, `monsters.json`, `signs.json`, `git/`, `releases.json`), `cabn.json` (`src/cabnConfig.ts`), world layers (`src/layer.ts`) and the `.seyn` parser. `CABN_VERSION` is 1
+- `packages/world-schema` — `@cabn/world-schema`: zod schemas for `world.json` (strict), chunks, search index, the optional sidecars (`media.json`, `embeds.json`, `monsters.json`, `signs.json`, `showcase.json`, `git/`, `releases.json`), `cabn.json` (`src/cabnConfig.ts`), world layers (`src/layer.ts`) and the `.seyn` parser. `CABN_VERSION` is 1
 - `packages/converter` — `@cabn/converter`: `.` (Node: `convert`, `buildShelf`, `convertShadow`), `./browser` (in-browser conversion for universes; must never reach `shadow.ts`/`shadowLayout.ts`, enforced by an import-graph test), `./core` (annotators, media sniffing, `clearingFit`, search-index shape; what the engine's first chunk may import). Tests live in `test/` (singular)
 - `packages/engine` — `@cabn/engine`: Phaser 3 scenes (`src/scenes/`), rendering (`src/render/`), pure logic (`src/systems/`), React HUD (`src/react/`), pets (`src/pets/`), and the React↔Phaser bridge (`src/bridge/store.ts` zustand, `src/bridge/events.ts` mitt). Three entries:
   - `.` — always execution-safe (`TraceProvider` only) and owner-free

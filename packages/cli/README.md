@@ -19,6 +19,13 @@ cabn shelf <bundleDir...> [-o dir]  # build a shelf.json listing several worlds
 cabn serve <dir> [--allow-exec] [--owner]  # convert in memory, serve as a walkable game on 127.0.0.1
 ```
 
+`cabn build` also takes:
+
+- `--name <name>`: the world's display name. The default is the input's basename. It also names the default output dir and becomes `meta.source`, which never holds an absolute path.
+- `--config <file>`: a `cabn.json` kept outside the source, merged over the source's own with its keys winning (see `@cabn/converter`'s `ConvertOptions.config`).
+
+`cabn shelf --name <name>` names the shelf. `runBuild(input, { name, config })` and `runShelf(dirs, { name })` take the same options, and `config` may be a path or a parsed object. `cabn shelf` reads each bundle's `showcase.json` for the entry's description, links, hero url and sort order. `collectWorldEmbedOrigins(bundleDirs)` returns the sorted union of every built world's `allowedEmbedOrigins`, which a host serving those worlds needs in its CSP `frame-src`. The pure `collectEmbedOrigins(configs)` is re-exported too.
+
 A git repository root also gets its recent history (branch universes, tags, GitHub releases, file history); `--no-history` skips it and `--git-dir <path>` reads another git directory. `--offline` skips every network request (the url-preview framing check and the GitHub releases request).
 
 `cabn serve` binds to `127.0.0.1` only. `--allow-exec` turns on **real code execution** of whatever file you run with the wand tool — only use it on code you trust. `--owner` lets the page commit in-game edits and create/switch branches in the real repository (never push or fetch). See the [monorepo README](https://github.com/SebastianFrazier26/cabn#cabn-serve--running-a-file-for-real-locally-only) for the full safety model.
