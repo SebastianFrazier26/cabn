@@ -151,6 +151,8 @@ export interface ClusterBuildResult {
 
 export interface ClusterBuildOptions {
 	maxFilesPerCluster?: number;
+	/** Portals the caller adds to the root cluster on top of its files (cabn.json sites), so the root clearing is sized for them. */
+	extraRootPortals?: number;
 }
 
 /**
@@ -180,6 +182,7 @@ export function buildClusters(
 	// only their ring position is borrowed from depth 1.
 	const [layoutRoot, ...rootAnnexLayoutNodes] = toLayoutNode(rootGroup);
 	layoutRoot.children = [...layoutRoot.children, ...rootAnnexLayoutNodes];
+	layoutRoot.weight += opts.extraRootPortals ?? 0;
 	const positions = computeLayout(layoutRoot);
 
 	const fileClusterId = new Map<string, string>();

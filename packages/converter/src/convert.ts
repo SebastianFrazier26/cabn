@@ -2,6 +2,8 @@ import {
 	type AssetsFile,
 	AssetsFileSchema,
 	CABN_VERSION,
+	type CabnConfig,
+	type CabnConfigInput,
 	type ChunkFile,
 	EMBED_INDEX_FILENAME,
 	EMBED_INDEX_VERSION,
@@ -23,7 +25,12 @@ import {
 	resolveHistoryCaps,
 	type SearchIndexFile,
 	SearchIndexFileSchema,
+	SHOWCASE_FILENAME,
+	SHOWCASE_VERSION,
+	type ShowcaseFile,
+	ShowcaseFileSchema,
 	SIGN_INDEX_FILENAME,
+	sitePortalId,
 	validateManifest,
 	type WorldChunk,
 	WorldChunkSchema,
@@ -32,6 +39,7 @@ import {
 import type { ExternalFinding } from "./annotate/externalFindings.js";
 import { type AnnotateFileInput, annotateWorld } from "./annotate/run.js";
 import {
+	CabnConfigError,
 	checkOverrideTargetsExist,
 	loadCabnConfig,
 	resolveOverride,
@@ -148,8 +156,16 @@ const CABN_CONFIG_FILENAME = "cabn.json";
 export interface ConvertOptions {
 	/** World display name (meta.name). */
 	name: string;
-	/** Original path/zip identifier, stored as meta.source. */
+	/** Original path/zip identifier, stored as meta.source — it ships in world.json, so hosts pass a name, never an absolute path. */
 	source: string;
+	/**
+	 * A cabn.json supplied by the host rather than read from the source (a
+	 * portfolio keeping its per-project config outside each repo). Merged
+	 * over the source's own cabn.json key by key, the injected value winning
+	 * (see loadCabnConfig); validated like any cabn.json. Its paths
+	 * (previews keys, `src`, `fallbackImage`) still name files in the source.
+	 */
+	config?: CabnConfigInput;
 	ignore?: string[];
 	maxFiles?: number;
 	maxFileBytes?: number;
@@ -210,8 +226,10 @@ export async function convert(
 	// walk() below drains it again for the normal file walk (see
 	// LoadedCabnConfig's doc comment for why that's an accepted, documented
 	// double-decompression cost on zip sources for now).
-	const { config: cabnConfig, entries: sourceEntries } =
-		await loadCabnConfig(source);
+	const { config: cabnConfig, entries: sourceEntries } = await loadCabnConfig(
+		source,
+		opts.config,
+	);
 
 	const walked = await walk(source, {
 		ignore: [...(opts.ignore ?? []), CABN_CONFIG_FILENAME],
@@ -230,12 +248,15 @@ export async function convert(
 			new Set(worldFiles.map((f) => f.path)),
 		);
 	}
+	const sites = cabnConfig?.sites ?? [];
+	checkSiteIdsFree(sites, worldFiles);
 
 	const dirTree = buildDirTree(worldFiles);
 	const clusterTree = buildClusterTree(dirTree);
 	const { clusters, paths, fileClusterId } = buildClusters(clusterTree, {
 		maxFilesPerCluster:
 			opts.maxFilesPerCluster ?? DEFAULT_MAX_FILES_PER_CLUSTER,
+		extraRootPortals: sites.length,
 	});
 
 	// Built as Map<string, ChunkFile> and converted via Object.fromEntries at
@@ -342,6 +363,15 @@ export async function convert(
 		}
 	}
 
+	await addSitePortals(
+		sites,
+		clusters,
+		portals,
+		sourceEntries,
+		maxFileBytes,
+		mediaBudget,
+	);
+
 	const annotated = annotateWorld(annotateInputs, fileClusterId, paths, {
 		annotate: cabnConfig?.annotate,
 		findings: opts.findings,
@@ -444,6 +474,10 @@ export async function convert(
 	// Always written, like media.json, so an engine can fetch it
 	// unconditionally for any bundle this converter produced.
 	bundle.set(SIGN_INDEX_FILENAME, JSON.stringify(signIndex.file, null, 2));
+	bundle.set(
+		SHOWCASE_FILENAME,
+		JSON.stringify(buildShowcase(cabnConfig), null, 2),
+	);
 	for (const [assetPath, bytes] of mediaBudget.assets()) {
 		bundle.set(assetPath, bytes);
 	}
@@ -490,6 +524,87 @@ async function addGitDirectory(
 	}
 	if (!files) return;
 	for (const [key, value] of files) bundle.set(key, value);
+}
+
+/** A real file at a site's portal path would make two portals share one id. */
+function checkSiteIdsFree(
+	sites: NonNullable<CabnConfig["sites"]>,
+	files: readonly WalkedFile[],
+): void {
+	if (sites.length === 0) return;
+	const paths = new Set(files.map((f) => f.path));
+	for (const site of sites) {
+		const id = sitePortalId(site.id);
+		if (paths.has(id)) {
+			throw new CabnConfigError(
+				`sites["${site.id}"] would collide with the file "${id}" (rename the site id)`,
+			);
+		}
+	}
+}
+
+/**
+ * cabn.json sites become ordinary url portals in the root cluster (the
+ * spawn bonfire's clearing), first in its ring order. They have no file
+ * behind them: bytes 0, no chunk entry, no search doc, no annotator input —
+ * so they never count toward meta.fileCount and never spawn monsters.
+ */
+async function addSitePortals(
+	sites: NonNullable<CabnConfig["sites"]>,
+	clusters: WorldManifest["clusters"],
+	portals: WorldManifest["portals"],
+	entries: Map<string, SourceEntry>,
+	maxFileBytes: number,
+	budget: MediaBudget,
+): Promise<void> {
+	if (sites.length === 0) return;
+	const root = clusters.find((c) => c.path === ".") ?? clusters[0];
+	if (!root) return;
+	const ids: string[] = [];
+	for (const site of sites) {
+		const id = sitePortalId(site.id);
+		const resolved = await resolveOverride(
+			id,
+			{
+				kind: "url",
+				url: site.url,
+				title: site.title,
+				...(site.fallbackImage ? { fallbackImage: site.fallbackImage } : {}),
+			},
+			entries,
+			maxFileBytes,
+			budget,
+			`sites["${site.id}"]`,
+		);
+		portals.push({
+			id,
+			clusterId: root.id,
+			file: {
+				path: id,
+				name: site.title,
+				kind: "unknown",
+				bytes: 0,
+				binary: false,
+			},
+			preview: { lines: [], truncated: false },
+			richPreview: resolved.preview,
+			spawns: [],
+		});
+		ids.push(id);
+	}
+	root.portalIds = [...ids, ...root.portalIds];
+}
+
+function buildShowcase(config: CabnConfig | undefined): ShowcaseFile {
+	const showcase: ShowcaseFile = {
+		showcaseVersion: SHOWCASE_VERSION,
+		...(config?.world ? { world: config.world } : {}),
+		sites: (config?.sites ?? []).map((site) => ({
+			portalId: sitePortalId(site.id),
+			hero: site.hero === true,
+		})),
+	};
+	return ShowcaseFileSchema.parse(showcase);
 }
 
 /** Always written (like media.json) so its presence says "this converter knew about embed checks"; offline entries carry basis "offline" so a reader can tell "assumed" from "checked". */

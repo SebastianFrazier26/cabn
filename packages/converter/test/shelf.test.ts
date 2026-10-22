@@ -1,4 +1,4 @@
-import type { WorldManifest } from "@cabn/world-schema";
+import type { Showcase, WorldManifest } from "@cabn/world-schema";
 import { describe, expect, test } from "vitest";
 import { buildShelf } from "../src/shelf.js";
 
@@ -93,5 +93,111 @@ describe("buildShelf", () => {
 	test("produces an empty-but-valid shelf for no worlds", () => {
 		const shelf = buildShelf([], { now: FIXED_NOW });
 		expect(shelf.worlds).toEqual([]);
+	});
+});
+
+describe("buildShelf with showcase info", () => {
+	const showcase = (extra: Partial<Showcase> = {}): Showcase => ({
+		links: [],
+		sitePortalIds: [],
+		heroPortalId: null,
+		...extra,
+	});
+	const world = (name: string, extra: Partial<Showcase> = {}) => ({
+		name,
+		worldUrl: `${name}/world.json`,
+		manifest: fakeManifest({ name }),
+		showcase: showcase(extra),
+	});
+
+	test("keeps input order when no world sets an order", () => {
+		const shelf = buildShelf([world("zeta"), world("alpha")], {
+			now: FIXED_NOW,
+		});
+		expect(shelf.worlds.map((w) => w.name)).toEqual(["zeta", "alpha"]);
+	});
+
+	test("sorts by order, then name, unordered worlds last", () => {
+		const shelf = buildShelf(
+			[
+				world("delta"),
+				world("charlie", { order: 2 }),
+				world("bravo", { order: 1 }),
+				world("alpha", { order: 2 }),
+				world("echo"),
+			],
+			{ now: FIXED_NOW },
+		);
+		expect(shelf.worlds.map((w) => w.name)).toEqual([
+			"bravo",
+			"alpha",
+			"charlie",
+			"delta",
+			"echo",
+		]);
+	});
+
+	test("carries title, description, links, order and the hero url", () => {
+		const manifest = fakeManifest({ name: "repo" });
+		manifest.clusters = [
+			{
+				id: "root",
+				path: ".",
+				label: "root",
+				pos: { x: 0, y: 0 },
+				biome: "meadow",
+				portalIds: ["@cabn-site/live"],
+				chunk: "chunks/root.json",
+			},
+		];
+		manifest.portals = [
+			{
+				id: "@cabn-site/live",
+				clusterId: "root",
+				file: {
+					path: "@cabn-site/live",
+					name: "Live",
+					kind: "unknown",
+					bytes: 0,
+					binary: false,
+				},
+				preview: { lines: [], truncated: false },
+				richPreview: { kind: "url", url: "https://demo.example.org/" },
+				spawns: [],
+			},
+		];
+		const shelf = buildShelf(
+			[
+				{
+					name: "repo",
+					worldUrl: "repo/world.json",
+					manifest,
+					showcase: showcase({
+						title: "Pretty Title",
+						description: "What it does.",
+						links: [{ label: "Repo", url: "https://github.com/x/y" }],
+						order: 1,
+						sitePortalIds: ["@cabn-site/live"],
+						heroPortalId: "@cabn-site/live",
+					}),
+				},
+			],
+			{ now: FIXED_NOW },
+		);
+		expect(shelf.worlds[0]).toMatchObject({
+			id: "pretty-title",
+			name: "Pretty Title",
+			description: "What it does.",
+			links: [{ label: "Repo", url: "https://github.com/x/y" }],
+			heroUrl: "https://demo.example.org/",
+			order: 1,
+		});
+	});
+
+	test("an empty showcase adds no keys to the entry", () => {
+		const shelf = buildShelf([world("plain")], { now: FIXED_NOW });
+		expect(Object.keys(shelf.worlds[0] ?? {}).sort()).toEqual(
+			["fileCount", "id", "name", "themeSeed", "totalBytes", "worldUrl"].sort(),
+		);
 	});
 });

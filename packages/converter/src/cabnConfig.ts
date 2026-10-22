@@ -1,5 +1,6 @@
 import {
 	type CabnConfig,
+	type CabnConfigInput,
 	CabnConfigValidationError,
 	type PreviewOverride,
 	type RichPortalPreview,
@@ -37,14 +38,27 @@ export interface LoadedCabnConfig {
 	entries: Map<string, SourceEntry>;
 }
 
+/**
+ * `injected` (ConvertOptions.config) is merged over the source's own
+ * cabn.json one top-level key at a time: a key the injected config sets
+ * replaces the repo's value for that key wholesale (no deep merge — an
+ * injected `previews` or `allowedEmbedOrigins` is the whole list), and keys
+ * it leaves out keep the repo's. The merged object is validated as one
+ * cabn.json, so cross-field rules (url origins vs allowedEmbedOrigins, one
+ * hero) see the result, not either half alone.
+ */
 export async function loadCabnConfig(
 	source: FileSource,
+	injected?: CabnConfigInput,
 ): Promise<LoadedCabnConfig> {
 	const entries = new Map<string, SourceEntry>();
 	for await (const entry of source.entries()) entries.set(entry.path, entry);
 
 	const configEntry = entries.get(CABN_CONFIG_PATH);
-	if (!configEntry) return { config: undefined, entries };
+	if (!configEntry) {
+		if (!injected) return { config: undefined, entries };
+		return { config: validateMerged(injected, true), entries };
+	}
 
 	const raw = await configEntry.read();
 	// Only reachable if cabn.json itself tripped a source's archive-wide byte
@@ -62,11 +76,28 @@ export async function loadCabnConfig(
 		throw new CabnConfigError(`invalid JSON (${(err as Error).message})`);
 	}
 
+	if (!injected) return { config: validateMerged(json, false), entries };
+	const repo = isPlainObject(json) ? json : {};
+	return {
+		config: validateMerged({ ...repo, ...injected }, true),
+		entries,
+	};
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateMerged(json: unknown, injected: boolean): CabnConfig {
 	try {
-		return { config: validateCabnConfig(json), entries };
+		return validateCabnConfig(json);
 	} catch (err) {
 		if (err instanceof CabnConfigValidationError) {
-			throw new CabnConfigError(err.issues);
+			throw new CabnConfigError(
+				injected
+					? `(with the injected config merged over it)\n${err.issues}`
+					: err.issues,
+			);
 		}
 		throw err;
 	}
@@ -95,7 +126,7 @@ export function checkOverrideTargetsExist(
 }
 
 async function readOverrideBytes(
-	overriddenPath: string,
+	where: string,
 	fieldLabel: string,
 	src: string,
 	entries: Map<string, SourceEntry>,
@@ -104,18 +135,18 @@ async function readOverrideBytes(
 	// Refused rather than read: a normal world never carries a hidden file's bytes.
 	if (isHiddenPath(src)) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is a hidden path; hidden files never appear in a normal world`,
+			`${where}.${fieldLabel} "${src}" is a hidden path; hidden files never appear in a normal world`,
 		);
 	}
 	const entry = entries.get(src);
 	if (!entry) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" does not exist in the world source`,
+			`${where}.${fieldLabel} "${src}" does not exist in the world source`,
 		);
 	}
 	if (entry.bytes > maxFileBytes) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is ${entry.bytes} bytes, over the ${maxFileBytes}-byte cap applied to every file in this conversion`,
+			`${where}.${fieldLabel} "${src}" is ${entry.bytes} bytes, over the ${maxFileBytes}-byte cap applied to every file in this conversion`,
 		);
 	}
 	const bytes = await entry.read();
@@ -124,7 +155,7 @@ async function readOverrideBytes(
 	// the check above already ruled that out.
 	if (bytes === undefined) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" could not be read (the archive's total size cap was reached before its content)`,
+			`${where}.${fieldLabel} "${src}" could not be read (the archive's total size cap was reached before its content)`,
 		);
 	}
 	return bytes;
@@ -143,7 +174,7 @@ export interface ResolvedOverride {
  * (or a url card without its fallback picture).
  */
 function admitOverrideImage(
-	overriddenPath: string,
+	where: string,
 	fieldLabel: string,
 	src: string,
 	bytes: Uint8Array,
@@ -155,7 +186,7 @@ function admitOverrideImage(
 	if (admission.ok) return admission.assetPath;
 	if (admission.reason === "type-mismatch") {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is not a PNG, JPEG, GIF, or WebP image (checked by its content, not its extension)`,
+			`${where}.${fieldLabel} "${src}" is not a PNG, JPEG, GIF, or WebP image (checked by its content, not its extension)`,
 		);
 	}
 	return undefined;
@@ -167,6 +198,8 @@ export async function resolveOverride(
 	entries: Map<string, SourceEntry>,
 	maxFileBytes: number,
 	budget: MediaBudget,
+	/** How errors name the override; cabn.json sites pass `sites["<id>"]`. */
+	where = `previews["${overriddenPath}"]`,
 ): Promise<ResolvedOverride> {
 	switch (override.kind) {
 		case "text":
@@ -174,14 +207,14 @@ export async function resolveOverride(
 
 		case "image": {
 			const bytes = await readOverrideBytes(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				entries,
 				maxFileBytes,
 			);
 			const assetPath = admitOverrideImage(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				bytes,
@@ -196,7 +229,7 @@ export async function resolveOverride(
 
 		case "markdown": {
 			const bytes = await readOverrideBytes(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				entries,
@@ -211,14 +244,14 @@ export async function resolveOverride(
 			let fallbackImage: string | undefined;
 			if (override.fallbackImage) {
 				const bytes = await readOverrideBytes(
-					overriddenPath,
+					where,
 					"fallbackImage",
 					override.fallbackImage,
 					entries,
 					maxFileBytes,
 				);
 				fallbackImage = admitOverrideImage(
-					overriddenPath,
+					where,
 					"fallbackImage",
 					override.fallbackImage,
 					bytes,
