@@ -35,13 +35,20 @@ describe("hero portal placement", () => {
 
 	test("a fresh spawn is in live-page range of the hero but outside the dock's focus", () => {
 		const hub = { x: 10, y: -20 };
-		for (const angle of [0, 1, -2.5, Math.PI]) {
+		for (const angle of [0, 1, -2.5, Math.PI, Math.PI / 2, -Math.PI / 2]) {
 			const hero = heroPosition(hub, angle);
 			const spawn = heroSpawnPosition(hub, angle, SPAWN_OFFSET);
 			const d = Math.hypot(hero.x - spawn.x, hero.y - spawn.y);
 			expect(d).toBeLessThan(150);
 			expect(d).toBeGreaterThan(100);
 		}
+	});
+
+	test("at angle 0 the spawn is exactly the old east spawn", () => {
+		expect(heroSpawnPosition({ x: 5, y: 7 }, 0, SPAWN_OFFSET)).toEqual({
+			x: 5 + SPAWN_OFFSET,
+			y: 7,
+		});
 	});
 
 	test("defaults east and otherwise sits in the widest gap between paths", () => {

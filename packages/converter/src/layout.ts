@@ -178,9 +178,9 @@ const PORTAL_RING_MIN_RADIUS_PX = 180;
 const CLEARING_OUTER_MARGIN_PX = 90;
 export const CLEARING_GAP_PX = 60; // visible gap between two clearings' *edges*, not just their centers
 // The engine's systems/heroPortal.ts HERO_ROOT_MIN_RING_RADIUS_PX: a hero
-// site arch stands 176px from the bonfire, so the root's ring keeps one arch
+// site arch stands 192px from the bonfire, so the root's ring keeps one arch
 // slot (192px) beyond it.
-export const HERO_ROOT_MIN_RING_RADIUS_PX = 368;
+export const HERO_ROOT_MIN_RING_RADIUS_PX = 384;
 
 export function portalRingBaseRadius(
 	portalCount: number,

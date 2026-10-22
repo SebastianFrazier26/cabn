@@ -214,8 +214,8 @@ describe("cabn.json sites", () => {
 		const src = (m: WorldManifest) => m.clusters.find((c) => c.path === "src");
 		const d = (m: WorldManifest) =>
 			Math.hypot(src(m)?.pos.x ?? 0, src(m)?.pos.y ?? 0);
-		// Root clearing 368 + 90 margin, plus the child's own clearing and the gap.
-		expect(d(withHero)).toBeGreaterThanOrEqual(368 + 90 + 60);
+		// Root clearing 384 + 90 margin, plus the child's own clearing and the gap.
+		expect(d(withHero)).toBeGreaterThanOrEqual(384 + 90 + 60);
 		expect(d(withHero)).toBeGreaterThan(d(withoutHero));
 	});
 

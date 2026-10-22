@@ -10,15 +10,22 @@ import { largestAngularGapMidpoint } from "./angularGap.js";
  * and just outside PORTAL_FOCUS_RADIUS (100), so one step toward it docks the
  * page at a readable size without the dock covering the world on arrival.
  */
-export const HERO_SPAWN_GAP_PX = 112;
+export const HERO_SPAWN_GAP_PX = 128;
 
 /**
- * Hub-to-hero distance: the bonfire's half-width (80px at BONFIRE_SCALE) plus
+ * Hub-to-hero distance: the bonfire's half-width (40px at BONFIRE_SCALE) plus
  * the spawn's clearance (24px) plus HERO_SPAWN_GAP_PX. Mirrored in
  * packages/converter/src/layout.ts (HERO_ROOT_MIN_RING_RADIUS_PX), which sizes
  * the root clearing for it.
  */
-export const HERO_HUB_DISTANCE_PX = 176;
+export const HERO_HUB_DISTANCE_PX = 192;
+
+/**
+ * Extra spawn offset when the hero is north or south of the fire: the
+ * player sprite is taller than wide, so the old east-only clearance let a
+ * vertical spawn overlap the flames. Scaled by |sin(angle)|.
+ */
+export const HERO_SPAWN_VERTICAL_EXTRA_PX = 16;
 
 /** The root's arch ring must clear the hero arch: hub distance plus one arch slot (192px). */
 export const HERO_ROOT_MIN_RING_RADIUS_PX = HERO_HUB_DISTANCE_PX + 192;
@@ -51,15 +58,17 @@ export function heroPosition(hub: Point, angle: number): Point {
 	};
 }
 
-/** A fresh spawn beside the bonfire, on the hub-to-hero line (the old spawn was the same offset due east). */
+/** A fresh spawn beside the bonfire, on the hub-to-hero line (at angle 0 exactly the old east spawn). */
 export function heroSpawnPosition(
 	hub: Point,
 	angle: number,
 	offsetPx: number,
 ): Point {
+	const offset =
+		offsetPx + Math.abs(Math.sin(angle)) * HERO_SPAWN_VERTICAL_EXTRA_PX;
 	return {
-		x: hub.x + Math.cos(angle) * offsetPx,
-		y: hub.y + Math.sin(angle) * offsetPx,
+		x: hub.x + Math.cos(angle) * offset,
+		y: hub.y + Math.sin(angle) * offset,
 	};
 }
 
