@@ -1,7 +1,16 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { buildShelf } from "@cabn/converter";
-import { validateManifest } from "@cabn/world-schema";
+import {
+	type CollectEmbedOriginsOptions,
+	collectEmbedOrigins,
+	EMPTY_SHOWCASE,
+	parseShowcase,
+	SHOWCASE_FILENAME,
+	type Showcase,
+	validateManifest,
+	type WorldManifest,
+} from "@cabn/world-schema";
 
 export interface ShelfSummary {
 	outDir: string;
@@ -20,6 +29,40 @@ function toUrlPath(path: string): string {
 	return sep === "/" ? path : path.split(sep).join("/");
 }
 
+/** A bundle from before showcase.json (or with an unreadable one) is a world with no showcase info, never a failed shelf. */
+async function readShowcase(bundleDir: string): Promise<Showcase> {
+	try {
+		return parseShowcase(
+			JSON.parse(await readFile(join(bundleDir, SHOWCASE_FILENAME), "utf8")),
+		);
+	} catch {
+		return EMPTY_SHOWCASE;
+	}
+}
+
+/** Re-exported so a host that only depends on @cabn/cli can union cabn.json configs too. */
+export { collectEmbedOrigins };
+
+async function readManifest(bundleDir: string): Promise<WorldManifest> {
+	const raw = await readFile(join(resolve(bundleDir), "world.json"), "utf8");
+	return validateManifest(JSON.parse(raw));
+}
+
+/**
+ * Every origin any of these built worlds may embed (their world.json
+ * allowedEmbedOrigins, cabn.json sites included), sorted and deduplicated:
+ * the `frame-src` list for a host page serving them.
+ */
+export async function collectWorldEmbedOrigins(
+	bundleDirs: readonly string[],
+	opts: CollectEmbedOriginsOptions = {},
+): Promise<string[]> {
+	return collectEmbedOrigins(
+		await Promise.all(bundleDirs.map(readManifest)),
+		opts,
+	);
+}
+
 export async function runShelf(
 	bundleDirs: string[],
 	opts: ShelfOptions = {},
@@ -33,7 +76,8 @@ export async function runShelf(
 			const raw = await readFile(join(resolvedBundleDir, "world.json"), "utf8");
 			const manifest = validateManifest(JSON.parse(raw));
 			const worldUrl = `${toUrlPath(relative(outDir, resolvedBundleDir))}/world.json`;
-			return { name: manifest.meta.name, worldUrl, manifest };
+			const showcase = await readShowcase(resolvedBundleDir);
+			return { name: manifest.meta.name, worldUrl, manifest, showcase };
 		}),
 	);
 

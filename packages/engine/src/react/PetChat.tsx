@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { petPortraitPath } from "../assetPaths.js";
+import { assetUrl, petPortraitPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore, PetChatMessage } from "../bridge/store.js";
 import type { PetProgress } from "../pets/agentLoop.js";
@@ -134,7 +134,7 @@ export function PetChat({
 						data-role={m.role}
 					>
 						{m.role === "pet" && (
-							<img src={petPortraitPath(config.species)} alt="" />
+							<img src={assetUrl(petPortraitPath(config.species))} alt="" />
 						)}
 						<div className="cabn-pet-bubble">
 							{m.text}

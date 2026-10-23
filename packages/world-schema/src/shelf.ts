@@ -1,4 +1,10 @@
 import { iso, z } from "zod";
+import {
+	WORLD_DESCRIPTION_MAX_CHARS,
+	WORLD_LINKS_MAX,
+	WorldLinkSchema,
+} from "./cabnConfig.js";
+import { HttpsUrlSchema } from "./shared.js";
 import { CABN_VERSION } from "./version.js";
 
 export const ShelfMetaSchema = z.strictObject({
@@ -14,6 +20,14 @@ export const ShelfWorldEntrySchema = z.strictObject({
 	themeSeed: z.number().int(),
 	fileCount: z.number().int().nonnegative(),
 	totalBytes: z.number().int().nonnegative(),
+	// The four below come from the world's showcase.json and are written only
+	// when set, so a shelf of worlds without one still validates against
+	// engines from before these fields (same contract as world.json's `guide`).
+	description: z.string().max(WORLD_DESCRIPTION_MAX_CHARS).optional(),
+	links: z.array(WorldLinkSchema).max(WORLD_LINKS_MAX).optional(),
+	/** The world's hero site url, for a host that wants to link it straight from the shelf. */
+	heroUrl: HttpsUrlSchema.optional(),
+	order: z.number().int().optional(),
 });
 export type ShelfWorldEntry = z.infer<typeof ShelfWorldEntrySchema>;
 

@@ -104,6 +104,43 @@ export const AnnotateConfigSchema = z
 	.partial();
 export type AnnotateConfig = z.infer<typeof AnnotateConfigSchema>;
 
+export const WORLD_LINKS_MAX = 8;
+export const WORLD_DESCRIPTION_MAX_CHARS = 500;
+
+export const WorldLinkSchema = z.strictObject({
+	label: z.string().min(1).max(60),
+	url: HttpsUrlSchema,
+});
+export type WorldLink = z.infer<typeof WorldLinkSchema>;
+
+/** World-level metadata a host (e.g. a portfolio shelf) shows about a world. Carried into the bundle's showcase.json and the shelf entry, never world.json. */
+export const WorldInfoConfigSchema = z.strictObject({
+	title: z.string().min(1).max(200).optional(),
+	description: z.string().max(WORLD_DESCRIPTION_MAX_CHARS).optional(),
+	links: z.array(WorldLinkSchema).max(WORLD_LINKS_MAX).optional(),
+	/** Shelf sort key: lower first; worlds without one follow, by name. */
+	order: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+});
+export type WorldInfoConfig = z.infer<typeof WorldInfoConfigSchema>;
+
+export const SITES_MAX = 8;
+
+/** Ids become part of a portal id ("@cabn-site/<id>"), so they stay slug-shaped. */
+export const SiteIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, {
+	message:
+		"must be 1-40 chars of a-z, 0-9 and -, starting with a letter or digit",
+});
+
+export const SiteConfigSchema = z.strictObject({
+	id: SiteIdSchema,
+	title: z.string().min(1).max(200),
+	url: HttpsUrlSchema,
+	fallbackImage: RelativeSourcePathSchema.optional(),
+	/** At most one per world: placed beside the spawn bonfire, emphasized, and the first live page a visitor sees. */
+	hero: z.boolean().optional(),
+});
+export type SiteConfig = z.infer<typeof SiteConfigSchema>;
+
 const CabnConfigShapeSchema = z.strictObject({
 	cabnConfigVersion: z.literal(CABN_CONFIG_VERSION),
 	/** Relative path (from the source root) -> preview override. Leave absent for the converter's default preview. */
@@ -122,9 +159,13 @@ const CabnConfigShapeSchema = z.strictObject({
 	embedCheck: z.boolean().optional(),
 	/** Git history, alternate-branch universes and GitHub releases (see history.ts). Optional and additive, same compat note as `media`. */
 	history: HistoryConfigSchema.optional(),
-	// Room for future per-world options (e.g. a default biome override, a
-	// world-level title/description) without another version bump — add them
-	// as optional fields here, not by loosening this strictObject.
+	/** World-level title/description/links/shelf order. Optional and additive, same compat note as `media`. */
+	world: WorldInfoConfigSchema.optional(),
+	/** Web portals not backed by any file in the source (a project's live site or demo). Optional and additive, same compat note as `media`. */
+	sites: z.array(SiteConfigSchema).max(SITES_MAX).optional(),
+	// Room for future per-world options (e.g. a default biome override)
+	// without another version bump — add them as optional fields here, not by
+	// loosening this strictObject.
 });
 
 // A url override whose origin isn't allowlisted is a converter validation
@@ -143,9 +184,38 @@ export const CabnConfigSchema = CabnConfigShapeSchema.superRefine(
 				});
 			}
 		}
+		const siteIds = new Set<string>();
+		let heroes = 0;
+		for (const [index, site] of (config.sites ?? []).entries()) {
+			if (siteIds.has(site.id)) {
+				ctx.addIssue({
+					code: "custom",
+					message: `duplicate site id "${site.id}"`,
+					path: ["sites", index, "id"],
+				});
+			}
+			siteIds.add(site.id);
+			if (site.hero) heroes++;
+			if (!isAllowedEmbedOrigin(site.url, config.allowedEmbedOrigins)) {
+				ctx.addIssue({
+					code: "custom",
+					message: `site "${site.id}" has an origin not listed in allowedEmbedOrigins: ${site.url}`,
+					path: ["sites", index, "url"],
+				});
+			}
+		}
+		if (heroes > 1) {
+			ctx.addIssue({
+				code: "custom",
+				message: `at most one site can be the hero (found ${heroes})`,
+				path: ["sites"],
+			});
+		}
 	},
 );
 export type CabnConfig = z.infer<typeof CabnConfigSchema>;
+/** What a hand-written cabn.json (or an injected config) looks like before defaults are applied. */
+export type CabnConfigInput = z.input<typeof CabnConfigSchema>;
 
 export class CabnConfigValidationError extends Error {
 	constructor(readonly issues: string) {

@@ -1,10 +1,17 @@
-import type { ShelfManifest, WorldManifest } from "@cabn/world-schema";
+import type {
+	ShelfManifest,
+	ShelfWorldEntry,
+	Showcase,
+	WorldManifest,
+} from "@cabn/world-schema";
 import { CABN_VERSION, validateShelf } from "@cabn/world-schema";
 
 export interface ShelfWorldInput {
 	name: string;
 	worldUrl: string;
 	manifest: WorldManifest;
+	/** The world's parsed showcase.json: description, links, order and the hero site's url ride along. The entry's name is `name` (world.json's meta.name, which already applied the title precedence). */
+	showcase?: Showcase;
 }
 
 export interface BuildShelfOptions {
@@ -37,6 +44,61 @@ function uniqueId(candidate: string, usedIds: Set<string>): string {
 	return withSuffix;
 }
 
+function displayName(world: ShelfWorldInput): string {
+	return world.name;
+}
+
+/**
+ * Shelf order: when any world sets showcase `order`, worlds sort by it
+ * (lowest first, unset last) and then by name; with none set, the input
+ * order is kept exactly as before `order` existed.
+ */
+export function orderShelfWorlds(
+	worlds: readonly ShelfWorldInput[],
+): ShelfWorldInput[] {
+	if (!worlds.some((w) => w.showcase?.order !== undefined)) return [...worlds];
+	return [...worlds].sort((a, b) => {
+		const oa = a.showcase?.order ?? Number.POSITIVE_INFINITY;
+		const ob = b.showcase?.order ?? Number.POSITIVE_INFINITY;
+		if (oa !== ob) return oa < ob ? -1 : 1;
+		const na = displayName(a);
+		const nb = displayName(b);
+		return na < nb ? -1 : na > nb ? 1 : 0;
+	});
+}
+
+function heroUrl(world: ShelfWorldInput): string | undefined {
+	const heroId = world.showcase?.heroPortalId;
+	if (!heroId) return undefined;
+	const preview = world.manifest.portals.find(
+		(p) => p.id === heroId,
+	)?.richPreview;
+	return preview?.kind === "url" ? preview.url : undefined;
+}
+
+function entryFor(
+	world: ShelfWorldInput,
+	usedIds: Set<string>,
+): ShelfWorldEntry {
+	const name = displayName(world);
+	const showcase = world.showcase;
+	const hero = heroUrl(world);
+	return {
+		id: uniqueId(slug(name), usedIds),
+		name,
+		worldUrl: world.worldUrl,
+		themeSeed: world.manifest.meta.themeSeed ?? 0,
+		fileCount: world.manifest.meta.fileCount,
+		totalBytes: world.manifest.meta.totalBytes,
+		...(showcase?.description !== undefined
+			? { description: showcase.description }
+			: {}),
+		...(showcase?.links.length ? { links: showcase.links } : {}),
+		...(hero !== undefined ? { heroUrl: hero } : {}),
+		...(showcase?.order !== undefined ? { order: showcase.order } : {}),
+	};
+}
+
 /** Pure: builds a validated ShelfManifest listing a user's converted worlds for the hub/shelf scene. */
 export function buildShelf(
 	worlds: ShelfWorldInput[],
@@ -49,14 +111,7 @@ export function buildShelf(
 			name: opts.name ?? "My Worlds",
 			generatedAt: (opts.now?.() ?? new Date()).toISOString(),
 		},
-		worlds: worlds.map((world) => ({
-			id: uniqueId(slug(world.name), usedIds),
-			name: world.name,
-			worldUrl: world.worldUrl,
-			themeSeed: world.manifest.meta.themeSeed ?? 0,
-			fileCount: world.manifest.meta.fileCount,
-			totalBytes: world.manifest.meta.totalBytes,
-		})),
+		worlds: orderShelfWorlds(worlds).map((world) => entryFor(world, usedIds)),
 	};
 	return validateShelf(shelf);
 }

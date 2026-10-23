@@ -22,6 +22,8 @@ export type { PortalPreviewDockProps } from "./react/PortalPreviewDock.js";
 export { PortalPreviewDock } from "./react/PortalPreviewDock.js";
 export { RunOverlay } from "./react/RunOverlay.js";
 export { SettingsCorner } from "./react/SettingsCorner.js";
+export type { ShelfWorldCardProps } from "./react/ShelfWorldCard.js";
+export { ShelfWorldCard } from "./react/ShelfWorldCard.js";
 export { SpyglassPanel } from "./react/SpyglassPanel.js";
 export { ToolHotbar } from "./react/ToolHotbar.js";
 export { UniverseBadge } from "./react/UniverseBadge.js";

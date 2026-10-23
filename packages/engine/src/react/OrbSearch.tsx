@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiScreenPath, uiSparklePath } from "../assetPaths.js";
+import { assetUrl, uiScreenPath, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import {
@@ -250,7 +250,7 @@ export function OrbSearch({
 					// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
 					key={i}
 					className="cabn-sparkle"
-					src={uiSparklePath(s.color)}
+					src={assetUrl(uiSparklePath(s.color))}
 					alt=""
 					style={{
 						top: s.top,
@@ -279,7 +279,11 @@ export function OrbSearch({
 					<div className="cabn-crystal-ball-mist" />
 					<div className="cabn-crystal-ball-mist two" />
 				</div>
-				<img className="cabn-tool-frame" src={uiScreenPath("orb")} alt="" />
+				<img
+					className="cabn-tool-frame"
+					src={assetUrl(uiScreenPath("orb"))}
+					alt=""
+				/>
 				<div className="cabn-crystal-ball-content">
 					{scope === "world" && loading && (
 						<Status text="loading the world's search index..." />
@@ -343,7 +347,7 @@ export function OrbSearch({
 							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
 							key={i}
 							className="cabn-spark"
-							src={uiSparklePath(s.color)}
+							src={assetUrl(uiSparklePath(s.color))}
 							alt=""
 							style={
 								{

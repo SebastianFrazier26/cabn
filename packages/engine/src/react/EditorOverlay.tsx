@@ -12,7 +12,7 @@ import {
 import { EditorView, keymap } from "@codemirror/view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiSparklePath } from "../assetPaths.js";
+import { assetUrl, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { annotateFileLive } from "../systems/battle.js";
@@ -142,7 +142,7 @@ function Mote({ mote }: { mote: BorderMote }): React.ReactElement {
 				animationDelay: `${mote.delayMs}ms`,
 			}}
 		>
-			{mote.symbol ?? <img src={uiSparklePath("violet")} alt="" />}
+			{mote.symbol ?? <img src={assetUrl(uiSparklePath("violet"))} alt="" />}
 		</span>
 	);
 }
@@ -898,7 +898,7 @@ export function EditorOverlay({
 						<img
 							key={`${s.left}-${s.top}`}
 							className="cabn-spark"
-							src={uiSparklePath("violet")}
+							src={assetUrl(uiSparklePath("violet"))}
 							alt=""
 							style={
 								{

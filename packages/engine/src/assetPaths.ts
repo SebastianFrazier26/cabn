@@ -3,7 +3,30 @@
 // (see apps/demo/scripts/build-world.mjs). Keeping this separate from the
 // world bundle means the same sprite set works across many converted worlds
 // without duplicating sprites per-world.
+//
+// Every path below is written against this canonical base and rewritten at
+// the point of use by assetUrl(), so a host can serve the sprites elsewhere
+// (CabnGame's assetBaseUrl) without these import-time constants changing.
 const ASSET_BASE = "/assets";
+export const DEFAULT_ASSET_BASE_URL = ASSET_BASE;
+
+let assetBaseUrl: string = ASSET_BASE;
+
+/** Where the host serves the sprite set ("/assets" by default; a trailing slash is dropped). Process-wide: one base for every game on the page. */
+export function setAssetBaseUrl(url: string | undefined): void {
+	assetBaseUrl = (url ?? ASSET_BASE).replace(/\/+$/, "");
+}
+
+export function getAssetBaseUrl(): string {
+	return assetBaseUrl;
+}
+
+/** A canonical "/assets/..." path as the host actually serves it. Apply exactly once, where the path is handed to a loader or an <img>. */
+export function assetUrl(path: string): string {
+	if (assetBaseUrl === ASSET_BASE || !path.startsWith(`${ASSET_BASE}/`))
+		return path;
+	return `${assetBaseUrl}${path.slice(ASSET_BASE.length)}`;
+}
 
 export const ASSET_KEYS = {
 	cabin: "cabin",
