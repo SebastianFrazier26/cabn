@@ -1,6 +1,6 @@
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { getStoreState, walkToward } from "./helpers";
+import { getStoreState, scaled, walkToward } from "./helpers";
 
 // The two bugs mentioned in this milestone's brief (blank world, glow
 // pipeline lookup) both only showed up in a real browser — jsdom-based
@@ -71,7 +71,9 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 	await page.mouse.click(box.x + box.width / 2 + 160, box.y + box.height / 2);
 	await expect
 		.poll(async () => (await getStoreState(page))?.playerPos.x ?? spawn.x, {
-			timeout: 5_000,
+			// Walking speed is frame-bound (see CLAUDE.md, e2e:core);
+			// 160px took ~11s at the 5fps CI's software GL manages.
+			timeout: scaled(20_000),
 		})
 		.toBeGreaterThan(spawn.x + 100);
 
@@ -107,12 +109,12 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 	// across a frame boundary (confirmed empirically, not documented anywhere)
 	// is what makes this reliable under a headless CDP driver.
 	await page.keyboard.down("Enter");
-	await page.waitForTimeout(150);
+	await page.waitForTimeout(500);
 	await page.keyboard.up("Enter");
 
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.not.toBeNull();
 
@@ -122,7 +124,7 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 		.poll(
 			async () =>
 				new Set((await getStoreState(page))?.monsters.map((m) => m.species)),
-			{ timeout: 10_000 },
+			{ timeout: scaled(10_000) },
 		)
 		.toEqual(
 			new Set([
