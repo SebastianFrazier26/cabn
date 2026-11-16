@@ -1,6 +1,11 @@
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { clickWalkToward, getStoreState, scaled } from "./helpers";
+import {
+	clickWalkToward,
+	getStoreState,
+	scaled,
+	waitUntilStill,
+} from "./helpers";
 
 // The two bugs mentioned in this milestone's brief (blank world, glow
 // pipeline lookup) both only showed up in a real browser — jsdom-based
@@ -80,10 +85,10 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 	// A click on a React panel over the canvas must not become a walk command.
 	// Wait for the click-walk above to finish first so any movement seen
 	// after the panel click could only have come from it.
-	await page.waitForTimeout(1200);
+	await waitUntilStill(page);
 	const beforePanelClick = (await getStoreState(page))?.playerPos;
 	await page.getByRole("button", { name: "Auto" }).click();
-	await page.waitForTimeout(500);
+	await page.waitForTimeout(1000);
 	const afterPanelClick = (await getStoreState(page))?.playerPos;
 	expect(afterPanelClick).toEqual(beforePanelClick);
 

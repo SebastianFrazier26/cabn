@@ -156,3 +156,20 @@ export async function clickWalkToward(
 		`clickWalkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
 	);
 }
+
+/** Resolves once the player's position is unchanged across `settleMs`; a fixed sleep can't know how far a slow runner got. */
+export async function waitUntilStill(
+	page: Page,
+	options: { settleMs?: number; maxMs?: number } = {},
+): Promise<void> {
+	const settleMs = options.settleMs ?? 600;
+	const deadline = Date.now() + scaled(options.maxMs ?? 30_000);
+	let last = (await getStoreState(page))?.playerPos;
+	while (Date.now() < deadline) {
+		await page.waitForTimeout(settleMs);
+		const pos = (await getStoreState(page))?.playerPos;
+		if (last && pos && pos.x === last.x && pos.y === last.y) return;
+		last = pos;
+	}
+	throw new Error("waitUntilStill: player kept moving");
+}
