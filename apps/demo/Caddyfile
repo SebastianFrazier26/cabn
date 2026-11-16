@@ -12,10 +12,11 @@
 	root * /srv
 	encode zstd gzip
 
+	# No X-Frame-Options: it can't express the frame-ancestors allowlist, and
+	# browsers that read frame-ancestors ignore it.
 	header {
 		Content-Security-Policy "__CABN_DEMO_CSP__"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), midi=()"
 		Strict-Transport-Security "max-age=31536000"

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-15 — Hosted demo framable by the portfolio
+
+- **The hosted demo's `frame-ancestors` allowlist.** Caddy now sends
+  `frame-ancestors 'self' https://sebastianfrazier.com https://www.sebastianfrazier.com`
+  (`DEMO_FRAME_ANCESTORS` in `apps/demo/csp-policy.mjs`) in place of
+  `frame-ancestors 'none'`, so the portfolio's hero can frame the demo.
+  `X-Frame-Options: DENY` is dropped: it can't name an allowlist, and
+  browsers that read `frame-ancestors` ignored it already. Every other
+  header is unchanged. The demo serves static files only; no auth or API
+  route is involved.
+
 ## 2026-10-22 — Showcase worlds for a portfolio shelf (M9 engine work)
 
 - **World info and site portals in `cabn.json`.** Optional `world`

@@ -50,7 +50,8 @@ export function App(): React.ReactElement {
 				}}
 			>
 				<h1 style={{ margin: 0, fontSize: 18 }}>cabn</h1>
-				<span style={{ opacity: 0.8, fontSize: 13 }}>
+				{/* Hidden under 480px (index.html): the hero preview is 360px wide, and the hint takes a third of its height. */}
+				<span className="demo-hint" style={{ opacity: 0.8, fontSize: 13 }}>
 					walk the shelf of worlds — WASD/arrows or click to move, Enter or
 					click to go in (cabin, portal) or out (bonfire); inside a file click
 					and type to edit, Esc to leave
