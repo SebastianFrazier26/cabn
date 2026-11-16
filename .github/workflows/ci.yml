@@ -31,12 +31,13 @@ jobs:
   browser-smoke:
     # The important check — two bugs so far only showed up in a real browser,
     # never in jsdom-based component tests. Runs against a `vite preview` of
-    # the actual production build, not `vite dev`.
+    # the actual production build, not `vite dev`. Only the @core subset gates
+    # PRs: the full suite starves ubuntu-latest's CPU (software-GL ground
+    # bakes) and took ~1.7h failing; it runs in browser-full instead.
     runs-on: ubuntu-latest
     needs: ci
-    # A failing run took ~1.7h (every test burning its timeout plus a retry)
-    # before the 6h default would ever fire; cap it so slowness fails fast.
-    timeout-minutes: 60
+    # Cap it so slowness fails fast rather than waiting on the 6h default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -55,7 +56,9 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm --filter @cabn/demo exec playwright install --with-deps chromium
-      - run: pnpm --filter @cabn/demo exec playwright test
+      - run: pnpm --filter @cabn/demo exec playwright test --grep @core --workers=1
+        env:
+          E2E_TIME_SCALE: "2"
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

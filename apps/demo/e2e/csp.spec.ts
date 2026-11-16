@@ -3,10 +3,9 @@ import { expect, test } from "./cspGuard";
 
 // The guard in cspGuard.ts is only worth something if the policy is live and
 // a violation actually reaches it.
-test("the served page enforces the demo CSP and the guard sees violations", async ({
-	page,
-	cspViolations,
-}) => {
+test("the served page enforces the demo CSP and the guard sees violations", {
+	tag: "@core",
+}, async ({ page, cspViolations }) => {
 	await page.goto("/");
 	const policy = await page
 		.locator('meta[http-equiv="Content-Security-Policy"]')

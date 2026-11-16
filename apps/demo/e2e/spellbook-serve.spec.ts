@@ -96,9 +96,9 @@ test.afterAll(async () => {
 	if (serve && serve.exitCode === null) serve.kill("SIGKILL");
 });
 
-test("spellbook: opening a file under a real cabn serve shows its text", async ({
-	page,
-}) => {
+test("spellbook: opening a file under a real cabn serve shows its text", {
+	tag: "@core",
+}, async ({ page }) => {
 	test.setTimeout(60_000);
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));

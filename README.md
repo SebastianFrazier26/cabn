@@ -175,7 +175,7 @@ pnpm -F @cabn/demo e2e
 
 The production build carries a strict Content-Security-Policy in a `<meta>` tag (`apps/demo/csp-policy.mjs`, injected by `vite.config.ts` at build time only, checked by `scripts/check-csp-in-bundle.mjs`). The specs that import `test` from `e2e/cspGuard.ts` fail on any CSP violation. A meta policy can't set `frame-ancestors`; a host that wants to control which sites frame it must send `frame-ancestors` as a response header. The hosted demo's Caddy sends an allowlist for the portfolio (see "Deploying (Railway)").
 
-CI installs its own matching Chromium. Locally, if the Chromium that `@playwright/test` expects isn't cached in `~/Library/Caches/ms-playwright/`, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a cached build instead of installing a new one. Ports and other test switches are listed in `CLAUDE.md`.
+CI installs its own matching Chromium. Locally, if the Chromium that `@playwright/test` expects isn't cached in `~/Library/Caches/ms-playwright/`, point `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` at a cached build instead of installing a new one. Pull requests run only the tests tagged `@core` (`pnpm -F @cabn/demo e2e:core`, about a minute); the full suite runs nightly and on demand via the `E2E (full suite)` workflow. Ports and other test switches are listed in `CLAUDE.md`.
 
 CI also runs `pnpm audit --audit-level=high`, which fails only on high or critical findings.
 
