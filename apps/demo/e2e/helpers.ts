@@ -108,3 +108,51 @@ export async function enterSampleWorld(
 		.not.toBeNull();
 	await page.waitForTimeout(settleMs);
 }
+
+/**
+ * Walks by clicking the ground toward `target` in canvas-sized hops, waiting
+ * for the player to stop between clicks. Unlike walkToward this lets the
+ * game's own click-walker steer and stop on arrival (it never overshoots), so
+ * it still works when software GL renders ~5fps and a held key keeps carrying
+ * the player past the target for several polls before the test can react.
+ * The camera follows the player, so the canvas centre is (about) the player.
+ */
+export async function clickWalkToward(
+	page: Page,
+	target: { x: number; y: number },
+	withinPx: number,
+	options: { maxMs?: number } = {},
+): Promise<void> {
+	const maxMs = scaled(options.maxMs ?? 60_000);
+	const deadline = Date.now() + maxMs;
+	const canvas = page.locator("canvas").first();
+	const box = await canvas.boundingBox();
+	if (!box) throw new Error("canvas has no bounding box");
+	const reach = Math.min(box.width, box.height) / 2 - 80;
+
+	let last: { x: number; y: number } | undefined;
+	while (Date.now() < deadline) {
+		const pos = (await getStoreState(page))?.playerPos;
+		if (!pos) break;
+		const dx = target.x - pos.x;
+		const dy = target.y - pos.y;
+		const dist = Math.hypot(dx, dy);
+		if (dist <= withinPx) return;
+		const moving =
+			last !== undefined && Math.hypot(pos.x - last.x, pos.y - last.y) > 1;
+		last = pos;
+		if (moving) {
+			await page.waitForTimeout(500);
+			continue;
+		}
+		const k = dist > reach ? reach / dist : 1;
+		await page.mouse.click(
+			box.x + box.width / 2 + dx * k,
+			box.y + box.height / 2 + dy * k,
+		);
+		await page.waitForTimeout(500);
+	}
+	throw new Error(
+		`clickWalkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
+	);
+}

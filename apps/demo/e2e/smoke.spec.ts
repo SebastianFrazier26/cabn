@@ -1,6 +1,6 @@
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { getStoreState, scaled, walkToward } from "./helpers";
+import { clickWalkToward, getStoreState, scaled } from "./helpers";
 
 // The two bugs mentioned in this milestone's brief (blank world, glow
 // pipeline lookup) both only showed up in a real browser — jsdom-based
@@ -101,16 +101,18 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 	// just outside it the instant before Enter is pressed.
 	const CABIN_POS = { x: 0, y: -480 };
 	const WALK_STOP_RADIUS = 50;
-	await walkToward(page, CABIN_POS, WALK_STOP_RADIUS);
+	await clickWalkToward(page, CABIN_POS, WALK_STOP_RADIUS);
 	// Not page.keyboard.press("Enter") — CDP's down+up pair for a `.press()` can
 	// land within a single browser input-processing tick, before the game
 	// loop's next update() ever polls the key, and Phaser's JustDown() then
 	// never observes it. A real keypress is never this fast; holding it
 	// across a frame boundary (confirmed empirically, not documented anywhere)
 	// is what makes this reliable under a headless CDP driver.
-	await page.keyboard.down("Enter");
-	await page.waitForTimeout(500);
-	await page.keyboard.up("Enter");
+	if ((await getStoreState(page))?.activeWorldBase === null) {
+		await page.keyboard.down("Enter");
+		await page.waitForTimeout(500);
+		await page.keyboard.up("Enter");
+	}
 
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {
