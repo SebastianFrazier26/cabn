@@ -1,6 +1,6 @@
 {
 	"name": "@cabn/converter",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Converts a directory or zipfile into a validated cabn world bundle: walk, classify, layout, cluster/annex split, search index, and error annotation into monsters.",
 	"keywords": [
 		"cabn",

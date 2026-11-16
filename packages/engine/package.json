@@ -1,6 +1,6 @@
 {
 	"name": "@cabn/engine",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Phaser 3 + zustand + mitt game engine that renders a cabn world bundle as a walkable game, with a React bridge (CabnGame) and HUD components.",
 	"keywords": [
 		"cabn",
