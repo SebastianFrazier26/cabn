@@ -59,7 +59,17 @@ export const DEMO_CSP = Object.entries(DEMO_CSP_DIRECTIVES)
 	.map(([name, values]) => `${name} ${values.join(" ")}`)
 	.join("; ");
 
+// Origins allowed to frame the hosted demo: the portfolio's hero previews.
+// Header-only like frame-ancestors itself. Fixed here rather than read from an
+// env var at runtime: the header is rendered into the Caddyfile at image build
+// time, and a runtime value would split the policy across two sources.
+export const DEMO_FRAME_ANCESTORS = [
+	"'self'",
+	"https://sebastianfrazier.com",
+	"https://www.sebastianfrazier.com",
+];
+
 // What the hosted demo's Caddy sends as a response header
 // (scripts/render-caddyfile.mjs). Same policy plus the one directive a meta
 // tag can't carry.
-export const DEMO_CSP_HEADER = `${DEMO_CSP}; frame-ancestors 'none'`;
+export const DEMO_CSP_HEADER = `${DEMO_CSP}; frame-ancestors ${DEMO_FRAME_ANCESTORS.join(" ")}`;
