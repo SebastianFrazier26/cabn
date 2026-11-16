@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // Media previews end to end: the converter shipped media/<hash> files and
 // media.json, the engine decodes/renders them in the dock and file view, and
@@ -47,34 +48,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page.evaluate((t) => {
 		const store = (
@@ -116,7 +89,7 @@ async function focusPortal(page: Page, portalId: string) {
 	}, portalId);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId, {
-			timeout: 20_000,
+			timeout: scaled(20_000),
 		})
 		.toBe(portalId);
 	await page.waitForTimeout(1200);
@@ -183,7 +156,7 @@ const MEDIA = [
 test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock and file view", async ({
 	page,
 }) => {
-	test.setTimeout(240_000);
+	test.setTimeout(scaled(240_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	const requests: string[] = [];
@@ -200,7 +173,9 @@ test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock a
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 
@@ -220,11 +195,11 @@ test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock a
 				await expect(dock.locator("img")).toHaveJSProperty("complete", true);
 			if (media.kind === "audio")
 				await expect(dock.locator("canvas.cabn-wave")).toBeVisible({
-					timeout: 10_000,
+					timeout: scaled(10_000),
 				});
 			if (media.kind === "pdf")
 				await expect(dock.locator(".cabn-pdf-scroll canvas")).toBeVisible({
-					timeout: 15_000,
+					timeout: scaled(15_000),
 				});
 			if (media.kind === "table")
 				await expect(dock.locator(".cabn-table tbody tr")).toHaveCount(24);
@@ -265,7 +240,7 @@ test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock a
 				}
 				if (media.kind === "pdf") {
 					await expect(view.locator(".cabn-pdf-scroll canvas")).toBeVisible({
-						timeout: 15_000,
+						timeout: scaled(15_000),
 					});
 					await view.getByRole("button", { name: "Next page" }).click();
 					await expect(view).toContainText("page 2 / 2");
@@ -276,7 +251,9 @@ test("media previews: image, audio, PDF, CSV and a sealed mismatch in the dock a
 			await shoot(page, `${media.slug}-file-${tod}`);
 			await holdKey(page, "Escape");
 			await expect
-				.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+				.poll(async () => (await state(page))?.mode, {
+					timeout: scaled(10_000),
+				})
 				.toBe("world");
 			await page.waitForTimeout(600);
 		}

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // Regression coverage for the M10 perf fix that shrank the ground-field
 // bake area from a flat viewport-based margin to exactly half the viewport
@@ -26,34 +27,6 @@ function state(page: Page): Promise<CabnStoreSnapshot | undefined> {
 		).__cabnStore;
 		return store?.getState();
 	});
-}
-
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-): Promise<void> {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const key of keys) await page.keyboard.down(key);
-		await page.waitForTimeout(150);
-		for (const key of keys) await page.keyboard.up(key);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
 }
 
 // game.ts's Phaser.Game `backgroundColor` — the one colour that can only
@@ -206,7 +179,7 @@ async function runCheckAtViewport(
 	await holdKey(page, "Enter");
 	await expect
 		.poll(async () => (await state(page))?.activeWorldBase ?? null, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(500);
@@ -218,13 +191,13 @@ async function runCheckAtViewport(
 test("no unbaked void at any reachable camera corner — 1280x720", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	await runCheckAtViewport(page, { width: 1280, height: 720 });
 });
 
 test("no unbaked void at any reachable camera corner — 1920x1200", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	await runCheckAtViewport(page, { width: 1920, height: 1200 });
 });

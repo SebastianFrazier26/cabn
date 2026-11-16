@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The guide NPC end to end: she stands by the first world's bonfire (and
 // not in the second world), a click walks to her and opens the dialogue,
@@ -50,34 +51,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 }
 
 /** Held across a frame boundary — see smoke.spec.ts for why a CDP `.press()` can slip between two Phaser updates. */
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(120);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page
 		.getByRole("button", { name: tod === "day" ? "Day" : "Night" })
@@ -120,7 +93,7 @@ async function shoot(
 test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -140,7 +113,7 @@ test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", 
 	await holdKey(page, "Enter");
 	await expect
 		.poll(async () => (await state(page))?.guideNpc ?? null, {
-			timeout: 15_000,
+			timeout: scaled(15_000),
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(1200);
@@ -164,7 +137,9 @@ test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", 
 		box.y + box.height / 2 + (guide.pos.y - from.y),
 	);
 	await expect
-		.poll(async () => (await state(page))?.guideOpen, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.guideOpen, {
+			timeout: scaled(10_000),
+		})
 		.toBe(true);
 	const dialog = page.getByTestId("guide-dialog");
 	await expect(dialog).toBeVisible();
@@ -239,7 +214,7 @@ test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", 
 	// base until the next world loads, so that's not a usable signal here).
 	await expect
 		.poll(async () => (await state(page))?.guideNpc ?? null, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.toBeNull();
 	await page.waitForTimeout(1200);
@@ -247,7 +222,7 @@ test("guide NPC: first world only, click to talk, pages, Esc, Enter to reopen", 
 	await holdKey(page, "Enter");
 	await expect
 		.poll(async () => (await state(page))?.activeWorldBase ?? null, {
-			timeout: 15_000,
+			timeout: scaled(15_000),
 		})
 		.toBe("/worlds/notes/");
 	await page.waitForTimeout(1500);

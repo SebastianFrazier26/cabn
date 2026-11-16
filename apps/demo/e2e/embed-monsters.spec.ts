@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { enterSampleWorld, scaled, walkToPortal, walkToward } from "./helpers";
 
 // A url arch's live mini-page is a DOM layer over the canvas, so monsters on
 // that arch fly a wider orbit that never passes under it; the docked page
@@ -71,54 +72,6 @@ function state(page: Page) {
 				}
 			: undefined;
 	});
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(60);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
-async function enterSampleWorld(page: Page) {
-	await page.goto("/?e2e=1");
-	await expect(page.locator("canvas").first()).toBeVisible();
-	await page.waitForTimeout(1500);
-	await walkToward(page, { x: 0, y: -480 }, 50);
-	await page.keyboard.down("Enter");
-	await page.waitForTimeout(150);
-	await page.keyboard.up("Enter");
-	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
-		.not.toBeNull();
-	await page.waitForTimeout(1500);
-}
-
-async function walkToPortal(page: Page, portalId: string) {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect
-		.poll(async () => (await state(page))?.focused, { timeout: 20_000 })
-		.toBe(portalId);
-	await page.waitForTimeout(1200);
 }
 
 /** The arch's world position and every moved monster's drawn bounds, in page CSS px. */
@@ -197,7 +150,7 @@ for (const viewport of [
 	test(`web arch at ${viewport.width}: monsters stay clear of the live page, the dock clears the arch, the minimap yields`, async ({
 		page,
 	}) => {
-		test.setTimeout(150_000);
+		test.setTimeout(scaled(150_000));
 		const errors: string[] = [];
 		page.on("pageerror", (err) => errors.push(err.message));
 		await stubSites(page);
@@ -214,10 +167,14 @@ for (const viewport of [
 			await route.fulfill({ response: res, json: world });
 		});
 		await page.setViewportSize(viewport);
-		await enterSampleWorld(page);
+		await enterSampleWorld(page, { viewport: null });
 
 		// --- mini-page on the arch: sample the orbit over several frames ------
-		await walkToPortal(page, WEB_PORTAL);
+		await walkToPortal(
+			page,
+			WEB_PORTAL,
+			async () => (await state(page))?.focused,
+		);
 		const { world: archWorld } = await screenGeometry(page, WEB_PORTAL, []);
 		expect(archWorld).not.toBeNull();
 		if (!archWorld) return;
@@ -248,9 +205,13 @@ for (const viewport of [
 		expect(seen).toBeGreaterThan(0);
 
 		// --- docked: the page clears the arch, the minimap yields its header --
-		await walkToPortal(page, WEB_PORTAL);
+		await walkToPortal(
+			page,
+			WEB_PORTAL,
+			async () => (await state(page))?.focused,
+		);
 		await expect(live).toHaveAttribute("data-docked", "true", {
-			timeout: 5000,
+			timeout: scaled(5000),
 		});
 		await page.waitForTimeout(700);
 		const dock = await box(page, "portal-preview-dock");
@@ -289,15 +250,19 @@ for (const viewport of [
 test("at 1280 with no monsters on the web arch the dock keeps today's spot and width", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	await stubSites(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
-	await enterSampleWorld(page);
-	await walkToPortal(page, WEB_PORTAL);
+	await enterSampleWorld(page, { viewport: null });
+	await walkToPortal(
+		page,
+		WEB_PORTAL,
+		async () => (await state(page))?.focused,
+	);
 	await expect(page.getByTestId("portal-live-page")).toHaveAttribute(
 		"data-docked",
 		"true",
-		{ timeout: 5000 },
+		{ timeout: scaled(5000) },
 	);
 	await page.waitForTimeout(500);
 	const dock = page.getByTestId("portal-preview-dock");

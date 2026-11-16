@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 async function state(page: Page) {
 	return page.evaluate(() => {
@@ -19,33 +20,10 @@ async function state(page: Page) {
 	});
 }
 
-async function hold(page: Page, key: string, ms = 180) {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walk(page: Page, target: { x: number; y: number }) {
-	const deadline = Date.now() + 25000;
-	while (Date.now() < deadline) {
-		const { pos } = await state(page);
-		if (Math.hypot(target.x - pos.x, target.y - pos.y) < 45) return;
-		const keys = [];
-		if (Math.abs(target.x - pos.x) > 8)
-			keys.push(target.x > pos.x ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(target.y - pos.y) > 8)
-			keys.push(target.y > pos.y ? "ArrowDown" : "ArrowUp");
-		for (const key of keys) await page.keyboard.down(key);
-		await page.waitForTimeout(100);
-		for (const key of keys) await page.keyboard.up(key);
-	}
-	throw new Error("Map test walk timed out");
-}
-
 test("map: movement, modal keys, typing, destinations and shelf lifecycle", async ({
 	page,
 }, testInfo) => {
-	test.setTimeout(120000);
+	test.setTimeout(scaled(120000));
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await page.setViewportSize({ width: 1280, height: 800 });
@@ -53,22 +31,22 @@ test("map: movement, modal keys, typing, destinations and shelf lifecycle", asyn
 	await expect(page.locator("canvas")).toBeVisible();
 	await page.waitForTimeout(1500);
 	await expect(page.getByTestId("world-minimap")).toHaveCount(0);
-	await walk(page, { x: 0, y: -480 });
-	await hold(page, "Enter");
+	await walkToward(page, { x: 0, y: -480 }, 45);
+	await holdKey(page, "Enter");
 	await expect(page.getByTestId("world-minimap")).toBeVisible({
-		timeout: 20000,
+		timeout: scaled(20000),
 	});
 	await page.waitForTimeout(1200);
 	const spawn = (await state(page)).pos;
 	const marker = page.getByTestId("minimap-player");
 	const oldX = await marker.getAttribute("cx");
-	await hold(page, "ArrowRight", 300);
+	await holdKey(page, "ArrowRight", 300);
 	expect(await marker.getAttribute("cx")).not.toBe(oldX);
 	await page.keyboard.press("m");
 	await expect(page.getByRole("dialog", { name: "World map" })).toBeVisible();
 	await page.screenshot({ path: testInfo.outputPath("map-overview.png") });
 	const before = (await state(page)).pos;
-	await hold(page, "ArrowRight", 300);
+	await holdKey(page, "ArrowRight", 300);
 	expect((await state(page)).pos).toEqual(before);
 	await page.keyboard.press("f");
 	expect((await state(page)).search).toBe(false);
@@ -99,18 +77,18 @@ test("map: movement, modal keys, typing, destinations and shelf lifecycle", asyn
 				const { pos } = await state(page);
 				return Math.hypot(pos.x - target.pos.x, pos.y - target.pos.y);
 			},
-			{ timeout: 20000 },
+			{ timeout: scaled(20000) },
 		)
 		.toBeLessThan(110);
 	expect((await state(page)).mode).toBe("world");
-	await walk(page, spawn);
+	await walkToward(page, spawn, 45);
 	await page.keyboard.press("m");
 	await expect(page.getByTestId("world-map")).toBeVisible();
 	await page.keyboard.press("Enter");
 	await page.waitForTimeout(300);
 	expect((await state(page)).base).not.toBeNull();
 	await expect(page.getByTestId("world-map")).toHaveCount(0);
-	await hold(page, "Escape");
+	await holdKey(page, "Escape");
 	await expect(page.getByTestId("world-minimap")).toHaveCount(0);
 	expect((await state(page)).map).toBeNull();
 	expect((await state(page)).visited).toEqual([]);

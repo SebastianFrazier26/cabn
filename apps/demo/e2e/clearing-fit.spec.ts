@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
-import { walkToward } from "./helpers";
+import { enterSampleWorld, scaled } from "./helpers";
 
 // 2026-09-29: each clearing's ground ellipse grows in height until its
 // portal ring's arches fit (@cabn/converter's clearingFit.ts).
@@ -23,44 +23,6 @@ const SHOTS_DIR = join(
 );
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 const PREFIX = process.env.CABN_REVIEW_PREFIX ?? "after";
-
-interface Snapshot {
-	activeWorldBase: string | null;
-	playerPos: { x: number; y: number };
-}
-
-function state(page: Page): Promise<Snapshot | undefined> {
-	return page.evaluate(() => {
-		const store = (
-			window as unknown as {
-				__cabnStore?: { getState(): Snapshot };
-			}
-		).__cabnStore;
-		const s = store?.getState();
-		return s
-			? { activeWorldBase: s.activeWorldBase, playerPos: s.playerPos }
-			: undefined;
-	});
-}
-
-async function holdKeys(page: Page, keys: string[], ms: number) {
-	for (const k of keys) await page.keyboard.down(k);
-	await page.waitForTimeout(ms);
-	for (const k of keys) await page.keyboard.up(k);
-}
-
-async function enterSampleWorld(page: Page) {
-	await page.setViewportSize({ width: 1280, height: 720 });
-	await page.goto("/?e2e=1");
-	await expect(page.locator("canvas").first()).toBeVisible();
-	await page.waitForTimeout(1500);
-	await walkToward(page, { x: 0, y: -480 }, 50);
-	await holdKeys(page, ["Enter"], 150);
-	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
-		.not.toBeNull();
-	await page.waitForTimeout(1500);
-}
 
 interface ArchFit {
 	cluster: string;
@@ -153,8 +115,8 @@ async function setTimeOfDay(page: Page, tod: "day" | "night") {
 test("every root arch sits inside its clearing at 1280x720", async ({
 	page,
 }) => {
-	test.setTimeout(90_000);
-	await enterSampleWorld(page);
+	test.setTimeout(scaled(90_000));
+	await enterSampleWorld(page, { viewport: { width: 1280, height: 720 } });
 	const fits = await archFits(page);
 	const root = fits.filter((f) => f.cluster === "root");
 	expect(root.length).toBeGreaterThan(0);
@@ -166,8 +128,8 @@ test("every root arch sits inside its clearing at 1280x720", async ({
 
 test("clearing review shots", async ({ page }) => {
 	test.skip(!TAKE_SHOTS, "CABN_REVIEW_SHOTS=1 only");
-	test.setTimeout(120_000);
-	await enterSampleWorld(page);
+	test.setTimeout(scaled(120_000));
+	await enterSampleWorld(page, { viewport: { width: 1280, height: 720 } });
 	await mkdir(SHOTS_DIR, { recursive: true });
 	const framings: [string, number][] = [
 		["root", 0.62],

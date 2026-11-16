@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The git multiverse end to end, against the sample world's generated
 // history (scripts/gen-git-fixture.mjs): the rift by the bonfire opens the
@@ -72,34 +73,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(90);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 async function shoot(page: Page, name: string) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
@@ -136,7 +109,9 @@ async function enterSampleWorld(page: Page, errors: string[]) {
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.riftPos ?? null, { timeout: 20_000 })
+		.poll(async () => (await state(page))?.riftPos ?? null, {
+			timeout: scaled(20_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1000);
 }
@@ -159,7 +134,7 @@ async function openRift(page: Page, shotName?: string) {
 test("git: the rift switches universes and back; releases render safely", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors: string[] = [];
 	await enterSampleWorld(page, errors);
 	await setTimeOfDay(page, "day");
@@ -230,13 +205,17 @@ test("git: the rift switches universes and back; releases render safely", async 
 	if (await page.getByTestId("loading-overlay").isVisible())
 		await shoot(page, "universe-loading-day");
 	await expect
-		.poll(async () => (await state(page))?.universe, { timeout: 20_000 })
+		.poll(async () => (await state(page))?.universe, {
+			timeout: scaled(20_000),
+		})
 		.toBe("feature/lantern-festival");
 	await expect(page.getByTestId("universe-badge")).toContainText(
 		"feature/lantern-festival",
 	);
 	await expect
-		.poll(async () => (await state(page))?.portals ?? [], { timeout: 10_000 })
+		.poll(async () => (await state(page))?.portals ?? [], {
+			timeout: scaled(10_000),
+		})
 		.toContain("docs/lantern-festival.md");
 	await page.waitForTimeout(1200);
 	await shoot(page, "universe-feature-day");
@@ -261,7 +240,9 @@ test("git: the rift switches universes and back; releases render safely", async 
 	await setTimeOfDay(page, "day");
 
 	await expect
-		.poll(async () => (await state(page))?.riftPos ?? null, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.riftPos ?? null, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await openRift(page, "rift-universe");
 	await page
@@ -270,11 +251,13 @@ test("git: the rift switches universes and back; releases render safely", async 
 		.click();
 	await expect
 		.poll(async () => (await state(page))?.universe ?? "main", {
-			timeout: 20_000,
+			timeout: scaled(20_000),
 		})
 		.toBe("main");
 	await expect
-		.poll(async () => (await state(page))?.portals ?? [], { timeout: 10_000 })
+		.poll(async () => (await state(page))?.portals ?? [], {
+			timeout: scaled(10_000),
+		})
 		.not.toContain("docs/lantern-festival.md");
 	expect(errors).toEqual([]);
 });
@@ -282,7 +265,7 @@ test("git: the rift switches universes and back; releases render safely", async 
 test("git: the pensieve shows a file's timeline, diff and a rebuilt past version", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors: string[] = [];
 	await enterSampleWorld(page, errors);
 	await setTimeOfDay(page, "day");
@@ -292,7 +275,9 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 		).__cabnBus.emit("tool:walk-to-portal", { portalId: "README.md" }),
 	);
 	await expect
-		.poll(async () => (await state(page))?.focusedPortalId, { timeout: 20_000 })
+		.poll(async () => (await state(page))?.focusedPortalId, {
+			timeout: scaled(20_000),
+		})
 		.toBe("README.md");
 	await expect(page.getByTestId("dock-pensieve")).toBeVisible();
 	await page.keyboard.press("h");
@@ -336,7 +321,7 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 	// Inside a file the pensieve is Alt/Option+H, and Esc closes it without leaving the file.
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("file");
 	await page.waitForTimeout(600);
 	await page.keyboard.press("Alt+KeyH");
@@ -350,7 +335,7 @@ test("git: the pensieve shows a file's timeline, diff and a rebuilt past version
 test("git: the map timeline highlights the files a commit changed", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors: string[] = [];
 	await enterSampleWorld(page, errors);
 	await setTimeOfDay(page, "day");

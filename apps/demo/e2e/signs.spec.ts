@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // Signs (.seyn files) in the hosted demo: three signposts in the sample
 // world, the popup on approach, the reader on Enter, an internal link that
@@ -88,30 +89,6 @@ function signSpots(page: Page): Promise<Record<string, Pos>> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(page: Page, target: Pos, within: number) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(90);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page
 		.getByRole("button", { name: tod === "day" ? "Day" : "Night" })
@@ -149,7 +126,7 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	page,
 	context,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -170,7 +147,7 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 	await holdKey(page, "Enter");
 	await expect
 		.poll(async () => (await state(page))?.signs.length ?? 0, {
-			timeout: 15_000,
+			timeout: scaled(15_000),
 		})
 		.toBe(3);
 	await page.waitForTimeout(1200);
@@ -254,7 +231,7 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 					? Math.hypot(p.x - docs.pos.x, p.y - (docs.pos.y + 86))
 					: Infinity;
 			},
-			{ timeout: 20_000 },
+			{ timeout: scaled(20_000) },
 		)
 		.toBeLessThan(40);
 	expect(startDist).toBeGreaterThan(200);
@@ -269,7 +246,7 @@ test("signs: popup, reader, internal link walks, web link opens a tab; no sign i
 		canvasBox.x + canvasBox.width / 2 + (about.x - me.x),
 		canvasBox.y + canvasBox.height / 2 + (about.y - me.y),
 	);
-	await expect(reader).toBeVisible({ timeout: 10_000 });
+	await expect(reader).toBeVisible({ timeout: scaled(10_000) });
 	await expect(reader).toHaveAttribute("data-sign-path", "docs/about.seyn");
 	// A link to a file becomes a button that walks there; Esc closes.
 	await expect(reader.getByRole("button", { name: "models.py" })).toBeVisible();

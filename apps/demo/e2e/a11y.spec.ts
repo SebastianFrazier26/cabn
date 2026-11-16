@@ -8,6 +8,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import * as git from "isomorphic-git";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The M10 a11y pass's automated sweep — see docs/testing/2026-09-30-a11y.md
 // for the full write-up, what's fixed and what's a reported (not fixed)
@@ -87,33 +88,6 @@ async function storeCall(page: Page, method: string, ...args: unknown[]) {
 	);
 }
 
-async function holdKey(page: Page, key: string, ms = 150) {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page)).playerPos;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(120);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 /** Every panel this pass fixed traps Tab inside itself now — this confirms it for real, not by reading the source. */
 async function assertTabStaysWithin(page: Page, containerSelector: string) {
 	const container = page.locator(containerSelector);
@@ -142,7 +116,7 @@ async function bootWorld(
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page)).mode, { timeout: 15_000 })
+		.poll(async () => (await state(page)).mode, { timeout: scaled(15_000) })
 		.toBe("world");
 	await page.waitForTimeout(1200);
 	return errors;
@@ -159,7 +133,7 @@ for (const viewport of VIEWPORTS) {
 	test(`a11y sweep (base HUD + spyglass/orb/map/guide): ${viewport.name}`, async ({
 		page,
 	}) => {
-		test.setTimeout(120_000);
+		test.setTimeout(scaled(120_000));
 		const errors = await bootWorld(page, viewport);
 
 		// Base HUD: hotbar, minimap, settings corner, monster counter,
@@ -213,7 +187,7 @@ for (const viewport of VIEWPORTS) {
 test("a11y sweep (every remaining panel, 1280x800): sign reader, bag, pensieve, rift, encounter, pets, file + spellbook", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors = await bootWorld(page, { width: 1280, height: 800 });
 
 	// Sign reader — a real sign from the sample project (welcome.seyn at root).
@@ -274,7 +248,7 @@ test("a11y sweep (every remaining panel, 1280x800): sign reader, bag, pensieve, 
 
 	// Pet setup panel, opened for real through its corner button.
 	await expect(page.getByTestId("cabn-pet-corner")).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await page.getByTestId("cabn-pet-corner").click();
 	const petPanel = page.getByTestId("cabn-pet-panel");
@@ -323,12 +297,12 @@ test("a11y sweep (every remaining panel, 1280x800): sign reader, bag, pensieve, 
 					}
 				).__cabnStore.getState().focusedPortalPreview?.portalId === id,
 			portalId,
-			{ timeout: 20_000 },
+			{ timeout: scaled(20_000) },
 		);
 		await page.waitForTimeout(500);
 		await holdKey(page, "Enter");
 		await expect
-			.poll(async () => (await state(page)).mode, { timeout: 10_000 })
+			.poll(async () => (await state(page)).mode, { timeout: scaled(10_000) })
 			.toBe("file");
 		await page.waitForTimeout(500);
 		await scan(page, '[data-testid="cabn-file-status"]');
@@ -342,7 +316,7 @@ test("a11y sweep (every remaining panel, 1280x800): sign reader, bag, pensieve, 
 		// "writing" comment and spellbook-serve.spec.ts's identical keypress).
 		await page.keyboard.press("Alt+KeyQ");
 		await expect
-			.poll(async () => (await state(page)).mode, { timeout: 10_000 })
+			.poll(async () => (await state(page)).mode, { timeout: scaled(10_000) })
 			.toBe("editor");
 		await page.waitForTimeout(600);
 		await scan(page, ".cabn-spellbook-toolbar");
@@ -392,7 +366,7 @@ test("a11y sweep (every remaining panel, 1280x800): sign reader, bag, pensieve, 
 
 		await page.keyboard.press("Escape");
 		await expect
-			.poll(async () => (await state(page)).mode, { timeout: 10_000 })
+			.poll(async () => (await state(page)).mode, { timeout: scaled(10_000) })
 			.toBe("file");
 	}
 
@@ -498,17 +472,21 @@ test.afterAll(async () => {
 test("a11y sweep (owner toolkit, sign editor, shadow realm, rift's owner tab)", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors: string[] = [];
 	page.on("pageerror", (e) => errors.push(e.message));
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto(`${ownerUrl}&e2e=1`);
-	await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
+	await expect(page.locator("canvas").first()).toBeVisible({
+		timeout: scaled(20_000),
+	});
 	await expect
-		.poll(async () => (await state(page)).portals.length, { timeout: 30_000 })
+		.poll(async () => (await state(page)).portals.length, {
+			timeout: scaled(30_000),
+		})
 		.toBeGreaterThan(0);
 	await expect(page.locator('[data-tool="owner"]')).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await page.waitForTimeout(1000);
 

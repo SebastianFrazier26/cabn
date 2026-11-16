@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // Regressions for two file-view bugs (2026-09-28):
 // - clicking an enchanted markdown line placed the caret by the raw-source
@@ -66,34 +67,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function shoot(page: Page, name: string) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
@@ -116,7 +89,7 @@ async function enterFile(page: Page, portalId: string) {
 	}, portalId);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId, {
-			timeout: 20_000,
+			timeout: scaled(20_000),
 		})
 		.toBe(portalId);
 	await page.waitForTimeout(900);
@@ -130,7 +103,7 @@ async function leaveFile(page: Page, discard: boolean) {
 	await page.keyboard.press("Escape");
 	if (discard) await page.getByRole("button", { name: "Discard" }).click();
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	await page.waitForTimeout(600);
 }
@@ -143,7 +116,9 @@ async function openWorld(page: Page) {
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 }
@@ -245,7 +220,7 @@ async function clearClickMarks(page: Page) {
 test("enchanted markdown: a click lands the caret on the glyph that was clicked", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 
@@ -332,7 +307,7 @@ function monsterViews(page: Page): Promise<MonsterView[]> {
 test("monsters follow their code as lines are inserted and deleted above them", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 

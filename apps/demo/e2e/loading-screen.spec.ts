@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The loading overlay end to end: a slow world.json (Playwright route
 // throttling) shows the panel over the held cabin fade with the world's
@@ -138,34 +139,6 @@ function visibleMs(log: LogEntry[], end: number): number {
 	return total;
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(120);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 async function shoot(page: Page, name: string) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
@@ -179,7 +152,7 @@ async function waitForShelf(page: Page) {
 				const s = await state(page);
 				return !!s && s.shelfActive && !s.loading.active && !s.loading.visible;
 			},
-			{ timeout: 30_000 },
+			{ timeout: scaled(30_000) },
 		)
 		.toBe(true);
 	// Past the shelf's own arrival fade.
@@ -200,7 +173,7 @@ async function waitForWorld(page: Page, base = "/worlds/sample/") {
 					!s.loading.visible
 				);
 			},
-			{ timeout: 30_000 },
+			{ timeout: scaled(30_000) },
 		)
 		.toBe(true);
 }
@@ -239,7 +212,7 @@ function trackErrors(page: Page) {
 test("a slow world.json shows the loading panel over the held fade, and a fast load never does", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const pageErrors = trackErrors(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	// Startup: a slow shelf.json keeps it past the show delay on a warm
@@ -254,12 +227,12 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	});
 	await page.goto("/?e2e=1");
 	const overlay = page.getByTestId("loading-overlay");
-	await expect(overlay).toBeVisible({ timeout: 15_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(15_000) });
 	await expect(page.getByTestId("loading-label")).toHaveText(
 		"Waking the cabin…",
 	);
 	await expect(page.getByTestId("loading-bar")).toBeVisible({
-		timeout: 10_000,
+		timeout: scaled(10_000),
 	});
 	// The overlay swallows clicks (the Day button underneath included), so the store sets the look.
 	await page.evaluate(() =>
@@ -287,7 +260,7 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	await throttleWorld(page);
 	await recordLoading(page);
 	await enterSampleWorld(page);
-	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(5_000) });
 	await expect(page.getByTestId("loading-label")).toHaveText(
 		"Walking to sample-project…",
 	);
@@ -343,7 +316,7 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 test("a failed world.json shows the in-world error; Try again and Back to shelf both work", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const pageErrors = trackErrors(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto("/?e2e=1");
@@ -353,7 +326,7 @@ test("a failed world.json shows the in-world error; Try again and Back to shelf 
 	await throttleWorld(page);
 	await enterSampleWorld(page);
 	const overlay = page.getByTestId("loading-overlay");
-	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(5_000) });
 	await page.waitForTimeout(400);
 	await shoot(page, "entering-world-night");
 	await waitForWorld(page);
@@ -368,7 +341,7 @@ test("a failed world.json shows the in-world error; Try again and Back to shelf 
 	});
 	await enterSampleWorld(page);
 	const error = page.getByTestId("loading-error");
-	await expect(error).toBeVisible({ timeout: 10_000 });
+	await expect(error).toBeVisible({ timeout: scaled(10_000) });
 	await expect(error).toContainText("The path to this world has washed out.");
 	await expect(error).toContainText("HTTP 404");
 	const back = page.getByRole("button", { name: "Back to shelf" });
@@ -382,9 +355,9 @@ test("a failed world.json shows the in-world error; Try again and Back to shelf 
 	expect(firstAttempt).toBeGreaterThan(0);
 	await page.getByRole("button", { name: "Try again" }).click();
 	await expect
-		.poll(() => requests, { timeout: 10_000 })
+		.poll(() => requests, { timeout: scaled(10_000) })
 		.toBeGreaterThan(firstAttempt);
-	await expect(error).toBeVisible({ timeout: 10_000 });
+	await expect(error).toBeVisible({ timeout: scaled(10_000) });
 
 	await back.click();
 	await waitForShelf(page);
@@ -410,7 +383,7 @@ test("a failed world.json shows the in-world error; Try again and Back to shelf 
 test("reduced motion: the panel is still, the fade is flat, and it still waits for the world", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const pageErrors = trackErrors(page);
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.setViewportSize({ width: 1280, height: 800 });
@@ -420,7 +393,7 @@ test("reduced motion: the panel is still, the fade is flat, and it still waits f
 	await throttleWorld(page);
 	await enterSampleWorld(page);
 	const overlay = page.getByTestId("loading-overlay");
-	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(5_000) });
 	await expect(overlay).toHaveAttribute("data-reduced-motion", "");
 	await expect(page.getByTestId("loading-swirl")).toBeVisible();
 	await expect(
@@ -436,7 +409,7 @@ test("reduced motion: the panel is still, the fade is flat, and it still waits f
 test("a PDF whose document is slow puts up the panel in the file view, labelled with the viewer's own line", async ({
 	page,
 }) => {
-	test.setTimeout(150_000);
+	test.setTimeout(scaled(150_000));
 	const pageErrors = trackErrors(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	// Held until released below: the dock and the arch thumbnail share the
@@ -478,7 +451,7 @@ test("a PDF whose document is slow puts up the panel in the file view, labelled 
 							}
 						).__cabnStore.getState().focusedPortalPreview?.portalId ?? null,
 				),
-			{ timeout: 20_000 },
+			{ timeout: scaled(20_000) },
 		)
 		.toBe(portalId);
 	await page.waitForTimeout(900);
@@ -488,7 +461,7 @@ test("a PDF whose document is slow puts up the panel in the file view, labelled 
 	await expect.poll(async () => (await state(page))?.mode).toBe("file");
 
 	const overlay = page.getByTestId("loading-overlay");
-	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(5_000) });
 	await expect(page.getByTestId("loading-label")).toHaveText(
 		"Unrolling the scroll…",
 	);
@@ -497,12 +470,12 @@ test("a PDF whose document is slow puts up the panel in the file view, labelled 
 	release();
 	const view = page.getByTestId("cabn-file-media-view");
 	await expect(view.locator(".cabn-pdf-scroll canvas")).toBeVisible({
-		timeout: 15_000,
+		timeout: scaled(15_000),
 	});
-	await expect(overlay).toBeHidden({ timeout: 5_000 });
+	await expect(overlay).toBeHidden({ timeout: scaled(5_000) });
 	await holdKey(page, "Escape");
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	expect(pageErrors).toEqual([]);
 });

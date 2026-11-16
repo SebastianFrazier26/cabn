@@ -7,7 +7,14 @@ import { PNG } from "pngjs";
 // under plain Node module resolution.
 import { SpeciesSchema } from "../../../packages/world-schema/dist/index.js";
 import { expect, test } from "./cspGuard";
-import { enterSampleWorld, walkToward } from "./helpers";
+import {
+	enterSampleWorld,
+	holdKeys,
+	scaled,
+	waitUntilStill,
+	walkToPortal,
+	walkToward,
+} from "./helpers";
 
 // World monsters swirl around their portal arches (render/monsterOrbit.ts).
 // Pixel-level orbit assertions would be flaky against the arch's own idle
@@ -60,12 +67,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKeys(page: Page, keys: string[], ms: number) {
-	for (const k of keys) await page.keyboard.down(k);
-	await page.waitForTimeout(ms);
-	for (const k of keys) await page.keyboard.up(k);
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page.evaluate((t) => {
 		(
@@ -79,29 +80,13 @@ async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page.waitForTimeout(400);
 }
 
-/** walk-to-portal walks onto the portal's own anchor, so once the player stops moving their position is the arch's. */
-async function settledPos(page: Page) {
-	let last = (await state(page))?.playerPos ?? { x: 0, y: 0 };
-	for (let i = 0; i < 40; i++) {
-		await page.waitForTimeout(150);
-		const now = (await state(page))?.playerPos ?? last;
-		if (Math.hypot(now.x - last.x, now.y - last.y) < 0.5) return now;
-		last = now;
-	}
-	return last;
-}
-
 /** Walks to the portal, then steps south of it so the arch and its orbit sit in the upper-middle of a clip. Returns the arch's offset from the player (≈ canvas centre). */
 async function standBelowPortal(page: Page, portalId: string) {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect
-		.poll(async () => (await state(page))?.focusedPortalId, { timeout: 20_000 })
-		.toBe(portalId);
-	const arch = await settledPos(page);
+	const arch = await walkToPortal(
+		page,
+		portalId,
+		async () => (await state(page))?.focusedPortalId,
+	);
 	await walkToward(page, { x: arch.x, y: arch.y + 190 }, 12);
 	await page.waitForTimeout(600);
 	const at = (await state(page))?.playerPos ?? arch;
@@ -236,7 +221,7 @@ function collectErrors(page: Page) {
 test("world monsters swirl around their arches without errors", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
 
@@ -279,7 +264,7 @@ test("world monsters swirl around their arches without errors", async ({
 			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
 		).__cabnBus.emit("tool:walk-to-portal", { portalId: "lib/utils.py" });
 	});
-	await settledPos(page);
+	await waitUntilStill(page);
 	await holdKeys(page, ["Enter"], 150);
 	await expect.poll(async () => (await state(page))?.mode).toBe("file");
 	await page.waitForTimeout(1200);
@@ -300,7 +285,7 @@ const SPECIES_SWAP: Record<string, string> = {
 };
 
 test("annotator species render in the world", async ({ page }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const accepted = new Set<string>(SpeciesSchema.options);
 	const swap = Object.fromEntries(
 		Object.entries(SPECIES_SWAP).filter(([, to]) => accepted.has(to)),
