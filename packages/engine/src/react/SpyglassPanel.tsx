@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiScreenPath, uiSparklePath } from "../assetPaths.js";
+import { assetUrl, uiScreenPath, uiSparklePath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { useCabnStore } from "./useCabnStore.js";
@@ -274,7 +274,7 @@ export function SpyglassPanel({
 							// biome-ignore lint/suspicious/noArrayIndexKey: fixed, static list
 							key={i}
 							className="cabn-spark"
-							src={uiSparklePath(s.color)}
+							src={assetUrl(uiSparklePath(s.color))}
 							alt=""
 							style={
 								{
@@ -287,7 +287,11 @@ export function SpyglassPanel({
 					))}
 				</div>
 			</div>
-			<img className="cabn-tool-frame" src={uiScreenPath("spyglass")} alt="" />
+			<img
+				className="cabn-tool-frame"
+				src={assetUrl(uiScreenPath("spyglass"))}
+				alt=""
+			/>
 		</div>
 	);
 }

@@ -1,0 +1,21 @@
+{
+	"cabnConfigVersion": 1,
+	"allowedEmbedOrigins": ["https://example.com"],
+	"world": {
+		"description": "A markdown notes vault: daily logs, projects and recipes. Its hero arch beside the bonfire is a live web page, injected from outside the vault (cabn build --config).",
+		"links": [
+			{
+				"label": "cabn on GitHub",
+				"url": "https://github.com/SebastianFrazier26/cabn"
+			}
+		]
+	},
+	"sites": [
+		{
+			"id": "home",
+			"title": "Live site (example.com, the hero portal)",
+			"url": "https://example.com/",
+			"hero": true
+		}
+	]
+}

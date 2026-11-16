@@ -168,6 +168,74 @@
 				}
 			},
 			"additionalProperties": false
+		},
+		"world": {
+			"type": "object",
+			"properties": {
+				"title": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 200
+				},
+				"description": {
+					"type": "string",
+					"maxLength": 500
+				},
+				"links": {
+					"maxItems": 8,
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"label": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 60
+							},
+							"url": {
+								"type": "string"
+							}
+						},
+						"required": ["label", "url"],
+						"additionalProperties": false
+					}
+				},
+				"order": {
+					"type": "integer",
+					"minimum": -1000000,
+					"maximum": 1000000
+				}
+			},
+			"additionalProperties": false
+		},
+		"sites": {
+			"maxItems": 8,
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+					},
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"url": {
+						"type": "string"
+					},
+					"fallbackImage": {
+						"type": "string"
+					},
+					"hero": {
+						"type": "boolean"
+					}
+				},
+				"required": ["id", "title", "url"],
+				"additionalProperties": false
+			}
 		}
 	},
 	"required": ["cabnConfigVersion", "previews", "allowedEmbedOrigins"],

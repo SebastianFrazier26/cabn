@@ -10,6 +10,7 @@ import type {
 	Monster,
 	Portal,
 	Position,
+	Showcase,
 	SignEntry,
 	WorldChunk,
 	WorldManifest,
@@ -20,6 +21,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
 	ASSET_KEYS,
+	assetUrl,
 	biomeTileSheetKey,
 	OPTIONAL_ASSET_KEYS,
 	PORTAL_ARCH_FRAME_SIZE,
@@ -142,6 +144,17 @@ import {
 } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import {
+	HERO_GLOW_ALPHA_MAX,
+	HERO_GLOW_ALPHA_MIN,
+	HERO_GLOW_PULSE_MS,
+	HERO_GLOW_SCALE,
+	HERO_ROOT_MIN_RING_RADIUS_PX,
+	heroAngle,
+	heroPosition,
+	heroSpawnPosition,
+	resolveHeroPortalId,
+} from "../systems/heroPortal.js";
+import {
 	monsterClearancePx,
 	type PortalOrbitShape,
 	portalOrbitEllipseFor,
@@ -242,6 +255,8 @@ export interface WorldSceneData {
 	spawnAt?: Position;
 	/** Set by the restart that leaves a layer which hid the base arches: they rise back out of the ground. */
 	raiseArches?: boolean;
+	/** The bundle's showcase.json (BootScene): which site portal is the hero. Absent or empty: no hero. */
+	showcase?: Showcase;
 }
 
 export interface WorldGitData {
@@ -385,6 +400,8 @@ const EDGE_SCENERY_CLEARING_PAD = 36;
 const EDGE_SCENERY_PATH_HALF_WIDTH = 20;
 /** Subtle per-world identity tint over the tiled ground — a low-alpha overlay rather than Phaser's multiplicative sprite tint, which would recolor the tile art itself instead of just washing over it. */
 const GROUND_THEME_TINT_ALPHA = 0.12;
+/** Just under the arches (depth 3), so the hero's glow rims the stone instead of washing over it. */
+const HERO_GLOW_DEPTH = 2.95;
 /** A skin's arch overlay (runes) sits on the stone, under the portal-type trim. */
 const ARCH_SKIN_OVERLAY_DEPTH = 3.005;
 /** The brazier standing in for the root bonfire reads as the world's hearth: a little larger than a cluster's. */
@@ -427,6 +444,10 @@ export class WorldScene extends Phaser.Scene {
 	private drawnGroundRadii = new Map<string, { x: number; y: number }>();
 	private clearingRadiiY = new Map<string, number>();
 	private portalSprites = new Map<string, Phaser.GameObjects.Sprite>();
+	/** showcase.json's hero site portal, when it is really in the root cluster (systems/heroPortal.ts). */
+	private heroPortalId: string | null = null;
+	/** Hub-to-hero direction, set by computePortalPositions(); also where a fresh spawn stands. */
+	private heroAngleRad: number | null = null;
 	private portalVariantOverlays = new Map<string, Phaser.GameObjects.Image>();
 	private portalVariants = new Map<string, ArchVariant>();
 	private portalPathById = new Map<string, string>();
@@ -538,6 +559,11 @@ export class WorldScene extends Phaser.Scene {
 		this.availability = data.availability;
 		this.returnTo = data.returnTo;
 		this.shelfIndex = data.shelfIndex;
+		this.heroPortalId = resolveHeroPortalId(
+			data.showcase?.heroPortalId,
+			this.rootCluster()?.portalIds,
+		);
+		this.heroAngleRad = null;
 		this.git = data.git;
 		// Phaser reuses the scene instance across scene.start(), so a flag set
 		// by the last visit's return-to-shelf would otherwise still be true.
@@ -567,11 +593,11 @@ export class WorldScene extends Phaser.Scene {
 		);
 		for (const t of pending) {
 			if ("frameWidth" in t)
-				this.load.spritesheet(t.key, t.path, {
+				this.load.spritesheet(t.key, assetUrl(t.path), {
 					frameWidth: t.frameWidth,
 					frameHeight: t.frameHeight,
 				});
-			else this.load.image(t.key, t.path);
+			else this.load.image(t.key, assetUrl(t.path));
 		}
 	}
 
@@ -736,12 +762,14 @@ export class WorldScene extends Phaser.Scene {
 		this.spawnSigns();
 		this.raiseLayer(beforeBake);
 		this.setupInput();
-		this.pet = new PetCompanion(this, {
-			store: this.store,
-			reducedMotion: prefersReducedMotion(),
-			playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
-		});
-		this.publishPetWorld();
+		if (this.store.getState().petsEnabled) {
+			this.pet = new PetCompanion(this, {
+				store: this.store,
+				reducedMotion: prefersReducedMotion(),
+				playerPos: () => ({ x: this.player.body.x, y: this.player.body.y }),
+			});
+			this.publishPetWorld();
+		}
 		this.setupCamera();
 		this.publishPortalIndex();
 		this.publishMonsterIndex();
@@ -943,6 +971,19 @@ export class WorldScene extends Phaser.Scene {
 		}
 		lights.push(...(this.edgeDressing?.lights ?? []));
 		lights.push(...this.pathGlowLights());
+		const heroPos = this.heroPortalId
+			? this.portalWorldPos.get(this.heroPortalId)
+			: undefined;
+		if (heroPos) {
+			lights.push({
+				x: heroPos.x,
+				y: heroPos.y,
+				radiusPx: 130,
+				color: PALETTE.gold,
+				alpha: 0.6,
+				dayStrength: 0.35,
+			});
+		}
 		if (this.availability.worldArt) {
 			for (const cluster of this.manifest.clusters) {
 				if (cluster === root) continue;
@@ -1960,6 +2001,7 @@ export class WorldScene extends Phaser.Scene {
 
 	/** Fills portalWorldPos without creating any sprites — drawGround()'s scatter exclusions need real portal positions before drawPortals() itself runs (see create()'s ordering comment). */
 	private computePortalPositions(): void {
+		const root = this.rootCluster();
 		for (const cluster of this.manifest.clusters) {
 			const pathAngles: number[] = [];
 			for (const path of this.ringPaths(cluster.id)) {
@@ -1975,10 +2017,25 @@ export class WorldScene extends Phaser.Scene {
 						),
 					);
 			}
+			const hero =
+				cluster === root && this.heroPortalId !== null
+					? this.heroPortalId
+					: null;
+			const ringIds = hero
+				? cluster.portalIds.filter((id) => id !== hero)
+				: cluster.portalIds;
 			const ring = layoutPortalRing(
-				cluster.portalIds.length,
+				ringIds.length,
 				pathAngles,
-				PORTAL_RING_SIZES,
+				hero
+					? {
+							...PORTAL_RING_SIZES,
+							minRadiusPx: Math.max(
+								PORTAL_RING_SIZES.minRadiusPx,
+								HERO_ROOT_MIN_RING_RADIUS_PX,
+							),
+						}
+					: PORTAL_RING_SIZES,
 			);
 			this.portalRingRadii.set(cluster.id, ring.radius);
 			this.clearingRadiiY.set(
@@ -1989,13 +2046,20 @@ export class WorldScene extends Phaser.Scene {
 					ring.radius + CLEARING_OUTER_MARGIN,
 				),
 			);
-			cluster.portalIds.forEach((portalId, index) => {
+			ringIds.forEach((portalId, index) => {
 				const angle = ring.angles[index] ?? 0;
 				this.portalWorldPos.set(portalId, {
 					x: cluster.pos.x + Math.cos(angle) * ring.radius,
 					y: cluster.pos.y + Math.sin(angle) * ring.radius,
 				});
 			});
+			if (hero) {
+				this.heroAngleRad = heroAngle(pathAngles);
+				this.portalWorldPos.set(
+					hero,
+					heroPosition(cluster.pos, this.heroAngleRad),
+				);
+			}
 		}
 	}
 
@@ -2054,6 +2118,7 @@ export class WorldScene extends Phaser.Scene {
 				if (!pos || !this.portalsById.has(portalId)) return;
 
 				const arch = this.skin.arch;
+				if (portalId === this.heroPortalId) this.drawHeroGlow(pos);
 				const sprite = this.add.sprite(
 					pos.x,
 					pos.y,
@@ -2080,6 +2145,26 @@ export class WorldScene extends Phaser.Scene {
 				}
 			});
 		}
+	}
+
+	/** The hero arch's emphasis: a larger gold copy of the arch strip's first frame behind it, additive, pulsing unless reduced motion is on. */
+	private drawHeroGlow(pos: Position): void {
+		const glow = this.add
+			.image(pos.x, pos.y, ASSET_KEYS.portalArchStrip, 0)
+			.setScale(WORLD_PORTAL_SCALE * HERO_GLOW_SCALE)
+			.setTint(PALETTE.gold)
+			.setBlendMode(Phaser.BlendModes.ADD)
+			.setAlpha(HERO_GLOW_ALPHA_MAX)
+			.setDepth(HERO_GLOW_DEPTH);
+		if (prefersReducedMotion()) return;
+		this.tweens.add({
+			targets: glow,
+			alpha: HERO_GLOW_ALPHA_MIN,
+			duration: HERO_GLOW_PULSE_MS,
+			yoyo: true,
+			repeat: -1,
+			ease: "Sine.easeInOut",
+		});
 	}
 
 	/** Portal-type trim (render order: base arch 3 < overlay < preview 3.05) — the overlay never touches the opening, so previews, click targets and orbits see the same arch either way. */
@@ -2348,17 +2433,13 @@ export class WorldScene extends Phaser.Scene {
 
 	/** Where a fresh save starts — also kept clear of the guide NPC, whatever the current save says. */
 	private defaultSpawnPos(): Position {
-		const root =
-			this.manifest.clusters.find((c) => c.path === ".") ??
-			this.manifest.clusters[0];
+		const root = this.rootCluster();
 		if (!root) return { x: 0, y: 0 };
-		const bonfireWidth = this.availability.bonfire
-			? BONFIRE_RAW_SIZE_PX * BONFIRE_SCALE
-			: PORTAL_ARCH_FRAME_SIZE * BONFIRE_SCALE;
-		return {
-			x: root.pos.x + bonfireWidth / 2 + BONFIRE_SPAWN_CLEARANCE,
-			y: root.pos.y,
-		};
+		return heroSpawnPosition(
+			root.pos,
+			this.heroAngleRad ?? 0,
+			this.bonfireDisplayWidth() / 2 + BONFIRE_SPAWN_CLEARANCE,
+		);
 	}
 
 	private createPlayer(spawn: Position): void {
@@ -3122,6 +3203,7 @@ export class WorldScene extends Phaser.Scene {
 		const radius = this.portalRingRadii.get(clusterId);
 		if (!cluster || radius === undefined) return undefined;
 		const archAngles = cluster.portalIds.flatMap((id) => {
+			if (id === this.heroPortalId) return [];
 			const pos = this.portalWorldPos.get(id);
 			return pos
 				? [Math.atan2(pos.y - cluster.pos.y, pos.x - cluster.pos.x)]

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { petPortraitPath } from "../assetPaths.js";
+import { assetUrl, petPortraitPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import type { PetProgress } from "../pets/agentLoop.js";
@@ -128,7 +128,7 @@ export function PetLayer({
 						store.getState().setPetPanelOpen(true);
 					}}
 				>
-					{species && <img src={petPortraitPath(species)} alt="" />}
+					{species && <img src={assetUrl(petPortraitPath(species))} alt="" />}
 					<span>{provider ? "Pet" : "Pet ✦"}</span>
 				</button>
 			)}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { petPortraitPath } from "../assetPaths.js";
+import { assetUrl, petPortraitPath } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
 import { testPetConnection } from "../pets/connection.js";
 import type { PetErrorMessage } from "../pets/errors.js";
@@ -251,7 +251,7 @@ export function PetSetupPanel({
 								data-testid={`cabn-pet-provider-${id}`}
 								onClick={() => setSelected(id)}
 							>
-								<img src={petPortraitPath(p.species)} alt="" />
+								<img src={assetUrl(petPortraitPath(p.species))} alt="" />
 								<span>
 									{p.label}
 									<small>{p.petName}</small>

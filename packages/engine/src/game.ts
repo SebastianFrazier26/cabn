@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { setAssetBaseUrl } from "./assetPaths.js";
 import { createCabnBus } from "./bridge/events.js";
 import { createCabnStore } from "./bridge/store.js";
 import { attachKeyboardFocusGate } from "./render/keyboardFocusGate.js";
@@ -29,6 +30,13 @@ export interface CabnGameHandle {
 /** Boot straight into a single world, or into the shelf hub listing many. */
 export type CabnGameTarget = BootSceneData;
 
+export interface CabnGameOptions {
+	/** Where the host serves the sprite set (assets/generated/{originals,placeholders}); default "/assets". */
+	assetBaseUrl?: string;
+	/** false: no AI pets at all (no sprite, corner button, setup panel or chat). Default true. */
+	pets?: boolean;
+}
+
 /**
  * Store/bus live in game.registry rather than being threaded through every
  * scene.start() payload — they're cross-cutting singletons for this game
@@ -38,8 +46,12 @@ export type CabnGameTarget = BootSceneData;
 export function createCabnGame(
 	parent: HTMLElement,
 	target: CabnGameTarget,
+	options: CabnGameOptions = {},
 ): CabnGameHandle {
+	// Before the Game exists: PreloadScene reads it when it queues the sprites.
+	setAssetBaseUrl(options.assetBaseUrl);
 	const store = createCabnStore();
+	store.getState().setPetsEnabled(options.pets !== false);
 	const bus = createCabnBus();
 	store.getState().setTimeOfDayOverride(loadTimeOfDayOverride() ?? "auto");
 	const timeOfDayInterval = setInterval(

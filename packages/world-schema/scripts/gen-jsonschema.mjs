@@ -17,6 +17,7 @@ import {
 	ReleasesFileSchema,
 	SearchIndexFileSchema,
 	ShelfManifestSchema,
+	ShowcaseFileSchema,
 	SignIndexFileSchema,
 	WorldChunkSchema,
 	WorldLayerDeltaSchema,
@@ -39,6 +40,7 @@ const schemas = {
 	"git-files": GitFilesSchema,
 	releases: ReleasesFileSchema,
 	"signs-index": SignIndexFileSchema,
+	showcase: ShowcaseFileSchema,
 	"world-layer-delta": WorldLayerDeltaSchema,
 	"world-layer-manifest": WorldLayerManifestSchema,
 };

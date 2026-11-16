@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { convert, DirSource } from "@cabn/converter";
 import { parseGitMeta, type WorldManifest } from "@cabn/world-schema";
 import * as git from "isomorphic-git";
@@ -134,7 +134,8 @@ describe("the browser git reader over the shipped pack", () => {
 			world.get("world.json") as string,
 		) as WorldManifest;
 		expect(manifest.portals.map((p) => p.id)).toContain("side.md");
-		expect(manifest.meta.source).toBe(`${dir}#side`);
+		// convert() cuts an absolute source to its last segment (safeSource).
+		expect(manifest.meta.source).toBe(`${basename(dir)}#side`);
 		expect(manifest.meta.generatedAt).toBe("2026-09-28T00:00:00.000Z");
 		expect(manifest.guide).toBe(false);
 	});

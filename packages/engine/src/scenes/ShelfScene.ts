@@ -78,6 +78,11 @@ import {
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
+import {
+	CABIN_CARD_RADIUS,
+	CABIN_LABEL_WRAP_PX,
+	cabinPosition,
+} from "../systems/shelfLayout.js";
 import { subtleTint, themeFromSeed } from "../systems/theme.js";
 import { activeFocusOwner } from "../systems/uiFocus.js";
 import type { AssetAvailability } from "./PreloadScene.js";
@@ -89,7 +94,6 @@ export interface ShelfSceneData {
 	availability: AssetAvailability;
 }
 
-const CABIN_RING_RADIUS = 480;
 const CABIN_ENTER_RADIUS = 70;
 /** Where a click-walk to a cabin stops (and enters) — well inside CABIN_ENTER_RADIUS so arrival always lands within Enter's reach. */
 const CABIN_ARRIVE_RADIUS = 40;
@@ -211,6 +215,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.setupAmbientEffects(tower);
 		perfMark("cabn:shelf:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			this.store.getState().setNearShelfWorld(null);
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
 			this.ambientEffects?.destroy();
@@ -332,19 +337,11 @@ export class ShelfScene extends Phaser.Scene {
 
 	private layoutCabins(): void {
 		const worlds = this.shelfManifest.worlds;
-		const count = worlds.length;
-		this.cabins = worlds.map((world, index) => {
-			const angle =
-				(Phaser.Math.PI2 * index) / Math.max(count, 1) - Math.PI / 2;
-			return {
-				world,
-				pos: {
-					x: Math.cos(angle) * CABIN_RING_RADIUS,
-					y: Math.sin(angle) * CABIN_RING_RADIUS,
-				},
-				hitRadius: CABIN_ARRIVE_RADIUS,
-			};
-		});
+		this.cabins = worlds.map((world, index) => ({
+			world,
+			pos: cabinPosition(index, worlds.length),
+			hitRadius: CABIN_ARRIVE_RADIUS,
+		}));
 	}
 
 	private drawTower(): Phaser.GameObjects.Image {
@@ -575,6 +572,8 @@ export class ShelfScene extends Phaser.Scene {
 					color: toCssColor(PALETTE.cream),
 					stroke: toCssColor(PALETTE.ink),
 					strokeThickness: 3,
+					align: "center",
+					wordWrap: { width: CABIN_LABEL_WRAP_PX },
 				})
 				.setOrigin(anchor.originX, anchor.originY)
 				.setDepth(LABEL_DEPTH);
@@ -662,6 +661,7 @@ export class ShelfScene extends Phaser.Scene {
 		);
 		this.store.getState().setPlayerPos(pos);
 		this.handleCabinApproach(pos);
+		this.publishNearCabin(pos);
 		if (arrivedAt?.kind === "cabin") {
 			const cabin = this.cabins.find((c) => c.world.id === arrivedAt.id);
 			if (cabin) this.enterCabin(cabin);
@@ -682,6 +682,27 @@ export class ShelfScene extends Phaser.Scene {
 			this.cabinsInRange,
 		);
 		this.cabinsInRange = inRange;
+	}
+
+	/** The nearest cabin within CABIN_CARD_RADIUS drives the showcase card (react/ShelfWorldCard.tsx). */
+	private publishNearCabin(pos: { x: number; y: number }): void {
+		let nearest: CabinPlacement | null = null;
+		let nearestDist = CABIN_CARD_RADIUS;
+		if (!this.enteringWorld) {
+			for (const cabin of this.cabins) {
+				const dist = Phaser.Math.Distance.Between(
+					pos.x,
+					pos.y,
+					cabin.pos.x,
+					cabin.pos.y,
+				);
+				if (dist <= nearestDist) {
+					nearestDist = dist;
+					nearest = cabin;
+				}
+			}
+		}
+		this.store.getState().setNearShelfWorld(nearest?.world ?? null);
 	}
 
 	private handleCabinEnter(pos: { x: number; y: number }): void {
@@ -713,6 +734,7 @@ export class ShelfScene extends Phaser.Scene {
 	private enterCabin(cabin: CabinPlacement): void {
 		if (this.enteringWorld) return;
 		this.enteringWorld = true;
+		this.store.getState().setNearShelfWorld(null);
 		this.walker.cancel();
 		const worldUrl = resolveRelativeUrl(this.shelfBase, cabin.world.worldUrl);
 		this.bus.emit("shelf:enter-world", {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { GUIDE_NPC_PORTRAIT_PATH } from "../assetPaths.js";
+import { assetUrl, GUIDE_NPC_PORTRAIT_PATH } from "../assetPaths.js";
 import type { CabnStore } from "../bridge/store.js";
 import {
 	GUIDE_GREETING,
@@ -181,7 +181,7 @@ function GuideDialogBox({ store }: GuideDialogProps): React.ReactElement {
 				<div className="cabn-guide-name">{GUIDE_NPC_NAME}</div>
 				<div className="cabn-guide-portrait">
 					<img
-						src={GUIDE_NPC_PORTRAIT_PATH}
+						src={assetUrl(GUIDE_NPC_PORTRAIT_PATH)}
 						alt=""
 						onError={(e) => {
 							e.currentTarget.style.visibility = "hidden";

@@ -41,6 +41,11 @@ const fingerprintDir = join(demoRoot, "node_modules", ".cache", "cabn-worlds");
 // request. The notes vault has none: without `history: false` it would
 // otherwise stay history-less anyway (it isn't a repository root), but
 // saying so keeps the build from ever looking.
+//
+// The notes world's cabn.json lives outside the vault (notes-showcase.json,
+// passed as runBuild's `config`, i.e. `cabn build --config`): the way a
+// portfolio keeps per-project showcase info (description, links, a hero
+// site portal) without committing it to each repository.
 const WORLDS = [
 	{
 		sourceDir: join(demoRoot, "sample-project"),
@@ -48,7 +53,11 @@ const WORLDS = [
 		findingsPaths: [join(demoRoot, "sample-findings.eslint.json")],
 		gitFixture: true,
 	},
-	{ sourceDir: join(demoRoot, "notes-vault"), name: "notes" },
+	{
+		sourceDir: join(demoRoot, "notes-vault"),
+		name: "notes",
+		configPath: join(demoRoot, "notes-showcase.json"),
+	},
 ];
 
 // Everything a built world is a function of besides its own inputs: the
@@ -252,7 +261,8 @@ export async function toolchainFingerprint(
 
 /**
  * One world's fingerprint: its source tree (cabn.json included — it's a file
- * in the tree), any findings files, the build options, and the toolchain.
+ * in the tree), any findings files, an injected config file, the build
+ * options, and the toolchain.
  * The git fixture is generated from the source tree plus gen-git-fixture.mjs,
  * so both already cover it.
  */
@@ -266,10 +276,16 @@ export async function worldFingerprint(world, toolchain) {
 				.digest("hex"),
 		});
 	}
+	const config = world.configPath
+		? createHash("sha256")
+				.update(await readFile(world.configPath))
+				.digest("hex")
+		: null;
 	const inputs = {
 		name: world.name,
 		source: await hashTree(world.sourceDir),
 		findings,
+		...(config ? { config } : {}),
 		gitFixture: world.gitFixture === true,
 		toolchain,
 	};
@@ -314,6 +330,7 @@ async function main() {
 				summary = await runBuild(world.sourceDir, {
 					outDir,
 					findingsPaths: world.findingsPaths,
+					...(world.configPath ? { config: world.configPath } : {}),
 					...(fixture
 						? { gitDir: fixture.gitdir, githubFetch: demoGithubFetch }
 						: { history: false }),

@@ -126,7 +126,8 @@ describe("computeScenerySeed", () => {
 	it("gives the same scenery and skyline for the same tree converted at different times from different temp folders", async () => {
 		const a = await convertTree(TREE, new Date("2026-09-29T10:00:00.000Z"));
 		const b = await convertTree(TREE, new Date("2026-09-30T18:30:00.000Z"));
-		expect(a.meta.source).not.toBe(b.meta.source);
+		// Absolute temp paths are cut to their basename by convert(), so only
+		// generatedAt tells the two conversions apart.
 		expect(a.meta.generatedAt).not.toBe(b.meta.generatedAt);
 		// Saves stay keyed per conversion.
 		expect(computeWorldId(a.meta)).not.toBe(computeWorldId(b.meta));

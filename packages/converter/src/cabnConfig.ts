@@ -1,5 +1,6 @@
 import {
 	type CabnConfig,
+	type CabnConfigInput,
 	CabnConfigValidationError,
 	type PreviewOverride,
 	type RichPortalPreview,
@@ -37,14 +38,37 @@ export interface LoadedCabnConfig {
 	entries: Map<string, SourceEntry>;
 }
 
+/**
+ * With `injected` (ConvertOptions.config) the host owns the world's
+ * showcase and its embed allowlist; the repo keeps everything else. This is
+ * fail-closed on purpose, so a repository can never widen what a host
+ * page may frame or rewrite how the host presents it:
+ *
+ * - `allowedEmbedOrigins` is the injected list, or empty when the host sets
+ *   none. The repo's list is never used, so a repo url preview whose origin
+ *   the host didn't allow fails the build.
+ * - `world` and `sites` come only from the injected config. The repo's are
+ *   dropped, with a warning.
+ * - Every other key (previews, media, guide, annotate, embedCheck, history)
+ *   is merged one top-level key at a time, the injected value replacing the
+ *   repo's wholesale.
+ *
+ * The repo's cabn.json must be valid on its own first (the same errors as
+ * without injection), and the merged result is validated again as a whole.
+ */
 export async function loadCabnConfig(
 	source: FileSource,
+	injected?: CabnConfigInput,
+	onWarning?: (message: string) => void,
 ): Promise<LoadedCabnConfig> {
 	const entries = new Map<string, SourceEntry>();
 	for await (const entry of source.entries()) entries.set(entry.path, entry);
 
 	const configEntry = entries.get(CABN_CONFIG_PATH);
-	if (!configEntry) return { config: undefined, entries };
+	if (!configEntry) {
+		if (!injected) return { config: undefined, entries };
+		return { config: validateMerged(hostOwned({}, injected), true), entries };
+	}
 
 	const raw = await configEntry.read();
 	// Only reachable if cabn.json itself tripped a source's archive-wide byte
@@ -62,11 +86,45 @@ export async function loadCabnConfig(
 		throw new CabnConfigError(`invalid JSON (${(err as Error).message})`);
 	}
 
+	const repoConfig = validateMerged(json, false);
+	if (!injected) return { config: repoConfig, entries };
+	const repo = json as Record<string, unknown>;
+	const dropped = (["world", "sites"] as const).filter(
+		(key) => repo[key] !== undefined,
+	);
+	if (dropped.length > 0) {
+		onWarning?.(
+			`cabn.json: ${dropped.join(" and ")} ignored — the injected config owns the showcase`,
+		);
+	}
+	return {
+		config: validateMerged(hostOwned(repo, injected), true),
+		entries,
+	};
+}
+
+function hostOwned(
+	repo: Record<string, unknown>,
+	injected: CabnConfigInput,
+): Record<string, unknown> {
+	const { world: _world, sites: _sites, ...rest } = repo;
+	const merged: Record<string, unknown> = { ...rest, ...injected };
+	merged.allowedEmbedOrigins = injected.allowedEmbedOrigins ?? [];
+	if (injected.world === undefined) delete merged.world;
+	if (injected.sites === undefined) delete merged.sites;
+	return merged;
+}
+
+function validateMerged(json: unknown, injected: boolean): CabnConfig {
 	try {
-		return { config: validateCabnConfig(json), entries };
+		return validateCabnConfig(json);
 	} catch (err) {
 		if (err instanceof CabnConfigValidationError) {
-			throw new CabnConfigError(err.issues);
+			throw new CabnConfigError(
+				injected
+					? `(with the injected config merged over it)\n${err.issues}`
+					: err.issues,
+			);
 		}
 		throw err;
 	}
@@ -95,7 +153,7 @@ export function checkOverrideTargetsExist(
 }
 
 async function readOverrideBytes(
-	overriddenPath: string,
+	where: string,
 	fieldLabel: string,
 	src: string,
 	entries: Map<string, SourceEntry>,
@@ -104,18 +162,18 @@ async function readOverrideBytes(
 	// Refused rather than read: a normal world never carries a hidden file's bytes.
 	if (isHiddenPath(src)) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is a hidden path; hidden files never appear in a normal world`,
+			`${where}.${fieldLabel} "${src}" is a hidden path; hidden files never appear in a normal world`,
 		);
 	}
 	const entry = entries.get(src);
 	if (!entry) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" does not exist in the world source`,
+			`${where}.${fieldLabel} "${src}" does not exist in the world source`,
 		);
 	}
 	if (entry.bytes > maxFileBytes) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is ${entry.bytes} bytes, over the ${maxFileBytes}-byte cap applied to every file in this conversion`,
+			`${where}.${fieldLabel} "${src}" is ${entry.bytes} bytes, over the ${maxFileBytes}-byte cap applied to every file in this conversion`,
 		);
 	}
 	const bytes = await entry.read();
@@ -124,7 +182,7 @@ async function readOverrideBytes(
 	// the check above already ruled that out.
 	if (bytes === undefined) {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" could not be read (the archive's total size cap was reached before its content)`,
+			`${where}.${fieldLabel} "${src}" could not be read (the archive's total size cap was reached before its content)`,
 		);
 	}
 	return bytes;
@@ -143,7 +201,7 @@ export interface ResolvedOverride {
  * (or a url card without its fallback picture).
  */
 function admitOverrideImage(
-	overriddenPath: string,
+	where: string,
 	fieldLabel: string,
 	src: string,
 	bytes: Uint8Array,
@@ -155,7 +213,7 @@ function admitOverrideImage(
 	if (admission.ok) return admission.assetPath;
 	if (admission.reason === "type-mismatch") {
 		throw new CabnConfigError(
-			`previews["${overriddenPath}"].${fieldLabel} "${src}" is not a PNG, JPEG, GIF, or WebP image (checked by its content, not its extension)`,
+			`${where}.${fieldLabel} "${src}" is not a PNG, JPEG, GIF, or WebP image (checked by its content, not its extension)`,
 		);
 	}
 	return undefined;
@@ -167,6 +225,8 @@ export async function resolveOverride(
 	entries: Map<string, SourceEntry>,
 	maxFileBytes: number,
 	budget: MediaBudget,
+	/** How errors name the override; cabn.json sites pass `sites["<id>"]`. */
+	where = `previews["${overriddenPath}"]`,
 ): Promise<ResolvedOverride> {
 	switch (override.kind) {
 		case "text":
@@ -174,14 +234,14 @@ export async function resolveOverride(
 
 		case "image": {
 			const bytes = await readOverrideBytes(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				entries,
 				maxFileBytes,
 			);
 			const assetPath = admitOverrideImage(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				bytes,
@@ -196,7 +256,7 @@ export async function resolveOverride(
 
 		case "markdown": {
 			const bytes = await readOverrideBytes(
-				overriddenPath,
+				where,
 				"src",
 				override.src,
 				entries,
@@ -211,14 +271,14 @@ export async function resolveOverride(
 			let fallbackImage: string | undefined;
 			if (override.fallbackImage) {
 				const bytes = await readOverrideBytes(
-					overriddenPath,
+					where,
 					"fallbackImage",
 					override.fallbackImage,
 					entries,
 					maxFileBytes,
 				);
 				fallbackImage = admitOverrideImage(
-					overriddenPath,
+					where,
 					"fallbackImage",
 					override.fallbackImage,
 					bytes,

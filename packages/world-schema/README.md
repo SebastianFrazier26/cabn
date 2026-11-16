@@ -40,6 +40,38 @@ A world source's `cabn.json` (validated by `validateCabnConfig`) lets its author
 
 `"guide": false` hides the guide NPC (Wren) in that world. The converter copies it into `world.json` as `WorldManifest.guide` only when the author set it, so bundles that don't mention it are unchanged. Left out, the engine shows the guide in the first world of a shelf (the first entry of `shelf.json`'s `worlds`) and in a world booted on its own.
 
+### World info and site portals (`world`, `sites`)
+
+Two optional keys turn a world into a showcase (a portfolio shelf of projects):
+
+```json
+{
+	"cabnConfigVersion": 1,
+	"allowedEmbedOrigins": ["https://demo.example.org"],
+	"world": {
+		"title": "Climbing risk",
+		"description": "Route risk borrowed from characteristically similar climbs.",
+		"links": [{ "label": "Repo", "url": "https://github.com/me/climb" }],
+		"order": 1
+	},
+	"sites": [
+		{ "id": "app", "title": "Live app", "url": "https://demo.example.org/", "hero": true },
+		{ "id": "docs", "title": "Docs", "url": "https://demo.example.org/docs", "fallbackImage": "docs/shot.png" }
+	]
+}
+```
+
+- `world`: `title` (≤200 chars), `description` (≤500), `links` (≤8, `https://` only) and `order` (an integer shelf sort key).
+- `sites` (≤8): web portals with no file behind them. Each `url` must be `https://` and its origin listed in `allowedEmbedOrigins`; ids are slugs (`a-z`, `0-9`, `-`); at most one site is the `hero`. `fallbackImage` names an image in the source, shown when the site can't be framed.
+
+Neither key goes into `world.json`. Older engines parse `world.json` strictly, so the converter writes them to a separate, always-present `showcase.json` (`ShowcaseFileSchema`; read it with `parseShowcase`, which never throws). The site portals themselves are ordinary url portals in `world.json` with ids `@cabn-site/<id>` (`sitePortalId`), so any engine renders them.
+
+`shelf.json` entries take the matching optional `description`, `links`, `heroUrl` and `order`. They are written only when set.
+
+`collectEmbedOrigins(configsOrManifests, { excludeOrigin })` returns the sorted union of their `allowedEmbedOrigins`. A host serving several worlds uses it as its CSP `frame-src` list. It fails closed: any entry that isn't an exact https origin (`*`, a path, `http:`, a `;`) throws `EmbedOriginError`. `excludeOrigin` drops the host's own origin.
+
+The new `shelf.json` entry fields need `@cabn/engine` ≥ 0.2.0 (with world-schema ≥ 0.2.0). Older engines validate `shelf.json` strictly and reject an entry that carries them.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

@@ -3,6 +3,7 @@ import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
 import {
 	ASSET_KEYS,
+	assetUrl,
 	FX_SPARK_KEY,
 	GUIDE_NPC_BUBBLE_KEY,
 	GUIDE_NPC_BUBBLE_PATH,
@@ -51,11 +52,11 @@ const IDLE_FRAMES = [0, 1, 0, 1, 0, 2];
 const BUBBLE_SCALE = GUIDE_NPC_SCALE * 1.5;
 
 export function preloadGuideNpcAssets(load: Phaser.Loader.LoaderPlugin): void {
-	load.spritesheet(GUIDE_NPC_KEY, GUIDE_NPC_PATH, {
+	load.spritesheet(GUIDE_NPC_KEY, assetUrl(GUIDE_NPC_PATH), {
 		frameWidth: GUIDE_NPC_FRAME_WIDTH,
 		frameHeight: GUIDE_NPC_FRAME_HEIGHT,
 	});
-	load.image(GUIDE_NPC_BUBBLE_KEY, GUIDE_NPC_BUBBLE_PATH);
+	load.image(GUIDE_NPC_BUBBLE_KEY, assetUrl(GUIDE_NPC_BUBBLE_PATH));
 }
 
 export interface GuideNpcOptions {

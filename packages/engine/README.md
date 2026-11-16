@@ -18,6 +18,15 @@ function App() {
 }
 ```
 
+Two optional props cover hosting:
+
+- `assetBaseUrl` (default `"/assets"`): where the host serves cabn's sprite set (`originals/`, `placeholders/`, as copied from `assets/generated`), for example a CDN prefix. It is one setting per page: the last `CabnGame` mounted sets it for all. Changing it re-creates the game.
+- `pets` (default `true`): `false` removes the AI pets entirely. No sprite, corner button, setup panel or chat.
+
+`createCabnGame(container, target, { assetBaseUrl, pets })` takes the same options.
+
+A world whose `showcase.json` names a hero site (cabn.json `sites[].hero`) stands that site's arch between the spawn bonfire and the arch ring, with a pulsing gold glow (static under reduced motion). A fresh visit spawns close enough that the site's live page is the first thing in view. On a shelf, walking up to a cabin whose entry has a description, links or a hero url shows them in a card (`ShelfWorldCard`). Up to 8 cabins keep the classic 480px ring, and more widen it so neighbours never overlap.
+
 Real code execution (`LocalRunProvider`) is not part of the main entry point — it lives behind `@cabn/engine/local-exec`, meant only for a `cabn serve --allow-exec` host page. Every other consumer, including this package's main export, only ever simulates a run (`TraceProvider`).
 
 The same split applies to repository writes: `CabnGame`'s optional `owner` prop takes an `OwnerCapability`, and the HTTP client that implements it (`createOwnerGitClient`) lives behind `@cabn/engine/owner`, imported only by a `cabn serve --owner` host page. Git history (the rift, universe picker, pensieve and map timeline) needs no capability: it reads the bundle's read-only `git/` directory with isomorphic-git (a lazy chunk, loaded on first use, with a `Buffer` polyfill) and converts other branches in the browser on demand. A host needs no configuration for it, but a bundler must be able to split dynamic imports for it to stay out of the first load.

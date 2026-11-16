@@ -12,7 +12,10 @@ import {
 	parseGitMeta,
 	parseMediaIndex,
 	parseMonsterIndex,
+	parseShowcase,
 	parseSignIndex,
+	SHOWCASE_FILENAME,
+	type Showcase,
 	SIGN_INDEX_FILENAME,
 	type SignEntry,
 	validateManifest,
@@ -129,7 +132,8 @@ export class BootScene extends Phaser.Scene {
 			loadEmbedIndex(resolveRelativeUrl(worldBase, EMBED_INDEX_FILENAME)),
 			loadSignIndex(resolveRelativeUrl(worldBase, SIGN_INDEX_FILENAME)),
 			loadGitMeta(resolveRelativeUrl(historyBase, GIT_META_FILENAME)),
-		]).then(([media, extraMonsters, embeds, signs, gitMeta]) => {
+			loadShowcase(resolveRelativeUrl(worldBase, SHOWCASE_FILENAME)),
+		]).then(([media, extraMonsters, embeds, signs, gitMeta, showcase]) => {
 			if (!this.scene.isActive()) return;
 			perfMark("cabn:boot:sidecars-ready");
 			// Merged here, once, so every scene and HUD piece downstream sees one
@@ -143,6 +147,7 @@ export class BootScene extends Phaser.Scene {
 				...(shelfIndex !== undefined ? { shelfIndex } : {}),
 				embeds,
 				signs,
+				showcase,
 				...(gitMeta
 					? {
 							git: {
@@ -238,6 +243,17 @@ async function loadEmbedIndex(url: string): Promise<Map<string, EmbedVerdict>> {
 		return parseEmbedIndex(await res.json());
 	} catch {
 		return new Map();
+	}
+}
+
+/** showcase.json: same optional/advisory contract as media.json — any failure means no hero and no description, as before it existed. */
+async function loadShowcase(url: string): Promise<Showcase> {
+	try {
+		const res = await fetch(url);
+		if (!res.ok) return parseShowcase(null);
+		return parseShowcase(await res.json());
+	} catch {
+		return parseShowcase(null);
 	}
 }
 

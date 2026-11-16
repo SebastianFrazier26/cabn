@@ -12,6 +12,7 @@ export * from "./search-index.js";
 export * from "./seyn.js";
 export * from "./shared.js";
 export * from "./shelf.js";
+export * from "./showcase.js";
 export * from "./signs.js";
 export * from "./validate.js";
 export * from "./version.js";

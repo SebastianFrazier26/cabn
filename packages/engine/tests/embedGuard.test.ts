@@ -5,6 +5,7 @@ import { PortalEmbed } from "../src/react/PortalEmbed.js";
 import {
 	canOpenPortalLink,
 	openPortalLink,
+	openShowcaseLink,
 	shouldMountEmbed,
 } from "../src/systems/embedGuard.js";
 
@@ -136,5 +137,26 @@ describe("canOpenPortalLink / openPortalLink", () => {
 		expect(openPortalLink("https://example.com/", allowed, undefined)).toBe(
 			false,
 		);
+	});
+});
+
+describe("openShowcaseLink", () => {
+	test("opens an https link in a noopener tab", () => {
+		const calls: unknown[][] = [];
+		expect(
+			openShowcaseLink("https://github.com/x", (...args) => calls.push(args)),
+		).toBe(true);
+		expect(calls).toEqual([
+			["https://github.com/x", "_blank", "noopener,noreferrer"],
+		]);
+	});
+
+	test("refuses anything that is not https", () => {
+		const open = () => {
+			throw new Error("must not open");
+		};
+		expect(openShowcaseLink("javascript:alert(1)", open)).toBe(false);
+		expect(openShowcaseLink("http://example.com/", open)).toBe(false);
+		expect(openShowcaseLink("not a url", open)).toBe(false);
 	});
 });

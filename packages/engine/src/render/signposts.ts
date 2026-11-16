@@ -9,7 +9,12 @@ import {
 } from "@cabn/world-schema";
 import Phaser from "phaser";
 import type { StoreApi } from "zustand/vanilla";
-import { FX_SPARK_KEY, SIGNPOST_KEY, SIGNPOST_PATH } from "../assetPaths.js";
+import {
+	assetUrl,
+	FX_SPARK_KEY,
+	SIGNPOST_KEY,
+	SIGNPOST_PATH,
+} from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { PALETTE, toCssColor } from "../palette.js";
@@ -47,7 +52,7 @@ const SIGN_ARRIVE_RADIUS = 40;
 const HIGHLIGHT_MS = 2400;
 
 export function preloadSignAssets(load: Phaser.Loader.LoaderPlugin): void {
-	load.image(SIGNPOST_KEY, SIGNPOST_PATH);
+	load.image(SIGNPOST_KEY, assetUrl(SIGNPOST_PATH));
 }
 
 export interface SignLayerOptions {

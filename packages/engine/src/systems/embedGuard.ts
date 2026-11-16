@@ -1,4 +1,4 @@
-import { isAllowedEmbedOrigin } from "@cabn/world-schema";
+import { isAllowedEmbedOrigin, isHttpsUrl } from "@cabn/world-schema";
 
 /**
  * The runtime gate PortalEmbed (react/PortalEmbed.tsx) renders behind —
@@ -71,6 +71,18 @@ export function openPortalLink(
 		: window.open.bind(window),
 ): boolean {
 	if (!open || !canOpenPortalLink(url, allowedEmbedOrigins)) return false;
+	open(url, "_blank", "noopener,noreferrer");
+	return true;
+}
+
+/** A shelf showcase link (shelf.json `links`, `heroUrl`): https only, re-checked here because shelf.json is fetched, untrusted input. Same noopener,noreferrer tab as openPortalLink. */
+export function openShowcaseLink(
+	url: string,
+	open: WindowOpen | undefined = typeof window === "undefined"
+		? undefined
+		: window.open.bind(window),
+): boolean {
+	if (!open || !isHttpsUrl(url)) return false;
 	open(url, "_blank", "noopener,noreferrer");
 	return true;
 }

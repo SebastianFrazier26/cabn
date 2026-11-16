@@ -1,0 +1,69 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"type": "object",
+	"properties": {
+		"showcaseVersion": {
+			"type": "number",
+			"const": 1
+		},
+		"world": {
+			"type": "object",
+			"properties": {
+				"title": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 200
+				},
+				"description": {
+					"type": "string",
+					"maxLength": 500
+				},
+				"links": {
+					"maxItems": 8,
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"label": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 60
+							},
+							"url": {
+								"type": "string"
+							}
+						},
+						"required": ["label", "url"],
+						"additionalProperties": false
+					}
+				},
+				"order": {
+					"type": "integer",
+					"minimum": -1000000,
+					"maximum": 1000000
+				}
+			},
+			"additionalProperties": false
+		},
+		"sites": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"portalId": {
+						"type": "string",
+						"format": "starts_with",
+						"pattern": "^@cabn-site\\/.*"
+					},
+					"hero": {
+						"type": "boolean"
+					}
+				},
+				"required": ["portalId", "hero"],
+				"additionalProperties": false
+			}
+		}
+	},
+	"required": ["showcaseVersion", "sites"],
+	"additionalProperties": false
+}

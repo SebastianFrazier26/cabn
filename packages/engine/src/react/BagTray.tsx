@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { StoreApi } from "zustand/vanilla";
-import { uiIconPath, uiScreenPath } from "../assetPaths.js";
+import { assetUrl, uiIconPath, uiScreenPath } from "../assetPaths.js";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
 import { iconFallback, useLayerIcon } from "./layerIcons.js";
@@ -67,12 +67,14 @@ export function BagTray({
 				<div
 					key="open"
 					className="cabn-satchel-open"
-					style={{ backgroundImage: `url(${uiScreenPath("satchel")})` }}
+					style={{
+						backgroundImage: `url(${assetUrl(uiScreenPath("satchel"))})`,
+					}}
 				>
 					<div
 						className="cabn-satchel-flap"
 						style={{
-							backgroundImage: `url(${uiScreenPath("satchel_flap")})`,
+							backgroundImage: `url(${assetUrl(uiScreenPath("satchel_flap"))})`,
 						}}
 					/>
 					{/* Laid out inside the art's stitched front panel (see

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
 	createServer,
@@ -534,7 +534,12 @@ export async function startServe(
 	const convertWorld = () =>
 		convert(new DirSource(resolvedDir), {
 			name: basename(resolvedDir),
-			source: resolvedDir,
+			// Not the absolute path (convert() would cut it to the basename
+			// anyway): the basename plus a hash of the path, so two projects
+			// with the same folder name served on the same port keep separate
+			// in-browser universe stashes (keyed on meta.source), and a restart
+			// keeps the same key.
+			source: serveSource(resolvedDir),
 			embedNetwork: cliEmbedNetwork(opts.offline),
 			git: cliGitInput(resolvedDir, opts),
 			onWarning: (message) => console.warn(`cabn serve: ${message}`),
@@ -639,4 +644,10 @@ export async function startServe(
 				server.close(() => resolveClose());
 			}),
 	};
+}
+
+/** meta.source for a served world: stable per directory, never the path itself. */
+export function serveSource(resolvedDir: string): string {
+	const hash = createHash("sha256").update(resolvedDir).digest("hex");
+	return `${basename(resolvedDir)}~${hash.slice(0, 8)}`;
 }
