@@ -1,6 +1,6 @@
 {
 	"name": "@cabn/cli",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "The cabn CLI: build/inspect a world bundle, build a shelf of worlds, and cabn serve for a local walkable game with optional real code execution.",
 	"keywords": [
 		"cabn",
