@@ -23,8 +23,10 @@ FROM fetch AS build
 COPY . .
 RUN pnpm install --frozen-lockfile --offline
 # The demo's prebuild needs the cli's dist/ (build-world.mjs refuses a stale
-# one), so the whole workspace builds in topological order.
-RUN pnpm -r build
+# one), so the whole workspace builds in topological order. shadow-art is
+# skipped: .railwayignore leaves out assets/generated/shadow/, and the demo
+# never serves the owner-only shadow sprites.
+RUN pnpm -r --filter '!@cabn/shadow-art' build
 RUN node apps/demo/scripts/render-caddyfile.mjs apps/demo/Caddyfile /repo/Caddyfile.rendered
 
 FROM caddy:2.11.4-alpine@sha256:6aeddd44c3078b0f9a35206472a11420648a79c184603ef95957d0a20044cb2b AS runtime
