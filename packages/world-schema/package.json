@@ -36,6 +36,6 @@
 		"gen:jsonschema": "pnpm run build && node scripts/gen-jsonschema.mjs"
 	},
 	"dependencies": {
-		"zod": "^4.6.5"
+		"zod": "^4.6.7"
 	}
 }
