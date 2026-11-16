@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { walkToward } from "./helpers";
 
 // 2026-09-29: each clearing's ground ellipse grows in height until its
 // portal ring's arches fit (@cabn/converter's clearingFit.ts).
@@ -46,26 +47,6 @@ async function holdKeys(page: Page, keys: string[], ms: number) {
 	for (const k of keys) await page.keyboard.down(k);
 	await page.waitForTimeout(ms);
 	for (const k of keys) await page.keyboard.up(k);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		await holdKeys(page, keys, 150);
-	}
-	throw new Error("walkToward timed out");
 }
 
 async function enterSampleWorld(page: Page) {

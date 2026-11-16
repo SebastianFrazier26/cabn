@@ -1,33 +1,12 @@
-import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
+import { getStoreState, walkToward } from "./helpers";
 
 // The two bugs mentioned in this milestone's brief (blank world, glow
 // pipeline lookup) both only showed up in a real browser — jsdom-based
 // component tests never touch WebGL at all. This is the backstop for that
 // class of bug: build the production bundle, preview it, and actually look
 // at pixels.
-
-interface CabnStoreSnapshot {
-	mode: string;
-	activeWorldBase: string | null;
-	playerPos: { x: number; y: number };
-	monsters: { species: string }[];
-}
-
-// window.__cabnStore only exists when the page is loaded with ?e2e=1 — see
-// apps/demo/src/App.tsx's exposeTestHookIfRequested, which is the only place
-// this ever gets set on a real (non-test) page load.
-function getStoreState(page: Page): Promise<CabnStoreSnapshot | undefined> {
-	return page.evaluate(() => {
-		const store = (
-			window as unknown as {
-				__cabnStore?: { getState(): CabnStoreSnapshot };
-			}
-		).__cabnStore;
-		return store?.getState();
-	});
-}
 
 /** Downsampled grid of luminance samples across the screenshot — cheap variance check without pulling in a full image-diff library. */
 function luminanceSamples(png: PNG, gridSize = 12): number[] {
@@ -51,69 +30,9 @@ function variance(values: number[]): number {
 	return values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
 }
 
-/**
- * Steers toward `target` in short key-bursts, re-reading position and
- * re-choosing which arrow keys to hold after each burst, rather than picking
- * a direction once and holding it for the whole walk. Movement speed doesn't
- * slow down near the target (see playerController.ts — it's a constant-speed
- * walk, not a seek-and-decelerate), so a single fixed diagonal held the
- * whole time overshoots the axis that arrives first and then just keeps
- * going, increasing distance instead of arriving — confirmed manually running
- * this against the shelf spawn, not a hypothetical.
- */
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	withinPx: number,
-	options: { maxMs?: number; burstMs?: number } = {},
-): Promise<void> {
-	// Generous by default: CI's software-GL runner renders the full world at a
-	// small fraction of a dev machine's frame rate (2026-09-28: a 20s budget
-	// only covered ~60% of the shelf walk there after M10's heavier scene).
-	const maxMs = options.maxMs ?? 60_000;
-	const burstMs = options.burstMs ?? 100;
-	const deadline = Date.now() + maxMs;
-	// Keys stay held across polls and only change when the needed direction
-	// does — releasing every burst threw away frames on slow runners where a
-	// single burst spans only a couple of game updates.
-	let held: string[] = [];
-	const release = async () => {
-		for (const key of held) await page.keyboard.up(key);
-		held = [];
-	};
-
-	while (Date.now() < deadline) {
-		const pos = (await getStoreState(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= withinPx) {
-			await release();
-			return;
-		}
-
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const key of held) {
-			if (!keys.includes(key)) await page.keyboard.up(key);
-		}
-		for (const key of keys) {
-			if (!held.includes(key)) await page.keyboard.down(key);
-		}
-		held = keys;
-		await page.waitForTimeout(burstMs);
-	}
-
-	await release();
-	throw new Error(
-		`walkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
-	);
-}
-
-test("demo loads, renders a non-blank world, click-to-move works, and walking into a cabin loads a world", async ({
-	page,
-}) => {
+test("demo loads, renders a non-blank world, click-to-move works, and walking into a cabin loads a world", {
+	tag: "@core",
+}, async ({ page }) => {
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	page.on("console", (msg) => {

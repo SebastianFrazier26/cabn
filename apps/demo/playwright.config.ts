@@ -1,5 +1,6 @@
 import os from "node:os";
 import { defineConfig, devices } from "@playwright/test";
+import { TIME_SCALE } from "./e2e/timeScale";
 
 // Runs against `vite preview` of an already-built production bundle (see
 // package.json's "build"/"e2e" scripts and CLAUDE.md) — this is deliberately
@@ -25,8 +26,9 @@ const DEFAULT_WORKERS = Math.max(1, Math.floor(os.cpus().length / 4));
 export default defineConfig({
 	testDir: "./e2e",
 	// Must exceed walkToward's own 60s budget plus boot and world load, or the
-	// test-level timeout fires first with a less useful error.
-	timeout: 120_000,
+	// test-level timeout fires first with a less useful error. Stretched by the
+	// same E2E_TIME_SCALE as e2e/helpers.ts's budgets (see TIME_SCALE there).
+	timeout: 120_000 * TIME_SCALE,
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 1 : 0,

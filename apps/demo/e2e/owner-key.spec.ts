@@ -319,7 +319,9 @@ test("owner: O opens the one toolkit; keys and mouse drive it, and git entries o
 	expect(pageErrors).toEqual([]);
 });
 
-test("hosted: no owner slot, and O does nothing", async ({ page }) => {
+test("hosted: no owner slot, and O does nothing", { tag: "@core" }, async ({
+	page,
+}) => {
 	await page.goto("/?e2e=1");
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect(page.locator('[data-tool="opener"]')).toBeVisible({

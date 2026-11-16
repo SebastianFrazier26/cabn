@@ -13,7 +13,8 @@
 		"build:world": "node scripts/build-world.mjs",
 		"test": "vitest run",
 		"typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
-		"e2e": "playwright test"
+		"e2e": "playwright test",
+		"e2e:core": "playwright test --grep @core --workers=1"
 	},
 	"dependencies": {
 		"@cabn/engine": "workspace:*",

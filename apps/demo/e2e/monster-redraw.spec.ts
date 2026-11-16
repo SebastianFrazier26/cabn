@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
+import { enterSampleWorld, walkToward } from "./helpers";
 
 // 2026-09-28 monster redraw: the five legacy species' new sprites orbit
 // without errors, and fixing a file plays the hit flash + three-frame defeat
@@ -64,39 +65,6 @@ async function holdKeys(page: Page, keys: string[], ms: number) {
 	for (const k of keys) await page.keyboard.down(k);
 	await page.waitForTimeout(ms);
 	for (const k of keys) await page.keyboard.up(k);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		await holdKeys(page, keys, 150);
-	}
-	throw new Error("walkToward timed out");
-}
-
-async function enterSampleWorld(page: Page) {
-	await page.setViewportSize({ width: 1280, height: 800 });
-	await page.goto("/?e2e=1");
-	await expect(page.locator("canvas").first()).toBeVisible();
-	await page.waitForTimeout(1500);
-	await walkToward(page, { x: 0, y: -480 }, 50);
-	await holdKeys(page, ["Enter"], 150);
-	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
-		.not.toBeNull();
-	await page.waitForTimeout(1500);
 }
 
 async function setTimeOfDay(page: Page, tod: "day" | "night") {

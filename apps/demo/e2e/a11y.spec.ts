@@ -156,9 +156,9 @@ const VIEWPORTS = [
 ] as const;
 
 for (const viewport of VIEWPORTS) {
-	test(`a11y sweep (base HUD + spyglass/orb/map/guide): ${viewport.name}`, async ({
-		page,
-	}) => {
+	test(`a11y sweep (base HUD + spyglass/orb/map/guide): ${viewport.name}`, {
+		tag: viewport.name.includes("baseline") ? "@core" : [],
+	}, async ({ page }) => {
 		test.setTimeout(120_000);
 		const errors = await bootWorld(page, viewport);
 

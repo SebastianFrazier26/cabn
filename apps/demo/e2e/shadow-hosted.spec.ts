@@ -3,10 +3,9 @@ import { expect, test } from "./cspGuard";
 
 // The hosted demo is a normal world: no world layers and no owner toolkit
 // (so O does nothing), and the shadow realm's routes don't exist on its server.
-test("hosted: no owner toolkit, no world layers, and no shadow routes", async ({
-	page,
-	request,
-}) => {
+test("hosted: no owner toolkit, no world layers, and no shadow routes", {
+	tag: "@core",
+}, async ({ page, request }) => {
 	await page.goto("/?e2e=1");
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect(page.locator('[data-tool="opener"]')).toBeVisible({
