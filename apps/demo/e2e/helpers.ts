@@ -5,6 +5,14 @@ export { scaled, TIME_SCALE } from "./timeScale";
 
 import { scaled } from "./timeScale";
 
+/**
+ * Budget for a world to go active after Enter. The fetches finish in ~10ms;
+ * the wait is WorldScene's synchronous ground-field bake, which on CI's
+ * software-GL runner took >25s on a slow day (the 2026-11-17 smoke failures:
+ * loading card up, store still null at 20s), so 10s * scale was too tight.
+ */
+export const WORLD_LOAD_TIMEOUT_MS = scaled(45_000);
+
 export interface CabnStoreSnapshot {
 	mode: string;
 	activeWorldBase: string | null;
@@ -110,7 +118,7 @@ export async function enterSampleWorld(
 	await holdKeys(page, ["Enter"], 150);
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {
-			timeout: scaled(10_000),
+			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(settleMs);
