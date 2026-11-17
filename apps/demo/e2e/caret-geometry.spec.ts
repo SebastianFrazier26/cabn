@@ -11,6 +11,7 @@ import { PNG } from "pngjs";
 // "not too wide" sanity check both the old and new geometry would pass.
 import { caretGeometry } from "../../../packages/engine/dist/systems/caretMotion.js";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // Pixel-level regression for the file view's inline caret (2026-09-29: it
 // used to sit on top of the glyph beside a clicked boundary instead of in
@@ -35,43 +36,6 @@ const SHOTS_DIR = join(
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 const FILE = "config/settings.json";
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = await page.evaluate(
-			() =>
-				(
-					window as unknown as {
-						__cabnStore: {
-							getState(): { playerPos: { x: number; y: number } };
-						};
-					}
-				).__cabnStore.getState().playerPos,
-		);
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function enterFile(page: Page, portalId: string) {
 	await page.evaluate((id) => {
 		(
@@ -88,7 +52,7 @@ async function enterFile(page: Page, portalId: string) {
 				}
 			).__cabnStore.getState().focusedPortalPreview?.portalId === id,
 		portalId,
-		{ timeout: 20_000 },
+		{ timeout: scaled(20_000) },
 	);
 	await page.waitForTimeout(900);
 	await holdKey(page, "Enter");
@@ -123,7 +87,7 @@ async function enterSampleFile(page: Page) {
 							}
 						).__cabnStore.getState().activeWorldBase,
 				),
-			{ timeout: 10_000 },
+			{ timeout: scaled(10_000) },
 		)
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
@@ -237,7 +201,7 @@ for (const dpr of [1, 2]) {
 		test(`click lands exactly on the boundary and the caret paints in the inter-glyph gap (DPR ${dpr})`, async ({
 			page,
 		}) => {
-			test.setTimeout(60_000);
+			test.setTimeout(scaled(60_000));
 			const errors: string[] = [];
 			page.on("pageerror", (err) => errors.push(err.message));
 			await enterSampleFile(page);
@@ -317,7 +281,7 @@ for (const dpr of [1, 2]) {
 		test(`arrow keys move the caret by exactly one column (DPR ${dpr})`, async ({
 			page,
 		}) => {
-			test.setTimeout(60_000);
+			test.setTimeout(scaled(60_000));
 			await enterSampleFile(page);
 			const doc = await docOf(page);
 			const geom = await readGeom(page);

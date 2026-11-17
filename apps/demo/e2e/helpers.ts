@@ -5,6 +5,14 @@ export { scaled, TIME_SCALE } from "./timeScale";
 
 import { scaled } from "./timeScale";
 
+/**
+ * Budget for a world to go active after Enter. The fetches finish in ~10ms;
+ * the wait is WorldScene's synchronous ground-field bake, which on CI's
+ * software-GL runner took >25s on a slow day (the 2026-11-17 smoke failures:
+ * loading card up, store still null at 20s), so 10s * scale was too tight.
+ */
+export const WORLD_LOAD_TIMEOUT_MS = scaled(45_000);
+
 export interface CabnStoreSnapshot {
 	mode: string;
 	activeWorldBase: string | null;
@@ -37,13 +45,18 @@ export async function holdKeys(
 	for (const k of keys) await page.keyboard.up(k);
 }
 
+export function holdKey(page: Page, key: string, ms = 150): Promise<void> {
+	return holdKeys(page, [key], ms);
+}
+
 /**
  * Steers toward `target` in short key-bursts, re-reading position after each
- * and re-choosing which arrow keys to hold. Movement speed is constant (see
+ * and re-choosing which arrow keys to press. Movement speed is constant (see
  * playerController.ts — no deceleration), so one fixed diagonal held for the
- * whole walk overshoots the axis that arrives first. Keys stay held across
- * polls and only change when the needed direction does: releasing every burst
- * threw away frames on slow runners where a burst spans a couple of updates.
+ * whole walk overshoots the axis that arrives first. Keys are released after
+ * every burst: holding them across polls lets a frame-starved runner carry
+ * the player past the target (or lose the held state when an embed or modal
+ * takes focus) and the walk never converges.
  */
 export async function walkToward(
 	page: Page,
@@ -52,38 +65,32 @@ export async function walkToward(
 	options: { maxMs?: number; burstMs?: number } = {},
 ): Promise<void> {
 	const maxMs = scaled(options.maxMs ?? 60_000);
-	const burstMs = options.burstMs ?? 100;
+	const maxBurstMs = options.burstMs ?? 100;
+	let burstMs = maxBurstMs;
+	let lastDist = Number.POSITIVE_INFINITY;
 	const deadline = Date.now() + maxMs;
-	let held: string[] = [];
-	const release = async () => {
-		for (const key of held) await page.keyboard.up(key);
-		held = [];
-	};
 
 	while (Date.now() < deadline) {
 		const pos = (await getStoreState(page))?.playerPos;
 		if (!pos) break;
 		const dx = target.x - pos.x;
 		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= withinPx) {
-			await release();
-			return;
-		}
+		const dist = Math.hypot(dx, dy);
+		if (dist <= withinPx) return;
+		// A burst that moves the player further than the tolerance window can
+		// leap over it forever on a frame-starved runner: shrink on overshoot,
+		// grow again when a burst moved nothing (shorter than one frame).
+		if (dist > lastDist + 0.5) burstMs = Math.max(30, burstMs / 2);
+		else if (Math.abs(dist - lastDist) <= 0.5)
+			burstMs = Math.min(maxBurstMs * 2, burstMs * 2);
+		lastDist = dist;
 
 		const keys: string[] = [];
 		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
 		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const key of held) {
-			if (!keys.includes(key)) await page.keyboard.up(key);
-		}
-		for (const key of keys) {
-			if (!held.includes(key)) await page.keyboard.down(key);
-		}
-		held = keys;
-		await page.waitForTimeout(burstMs);
+		await holdKeys(page, keys, burstMs);
 	}
 
-	await release();
 	throw new Error(
 		`walkToward: did not reach (${target.x}, ${target.y}) within ${maxMs}ms`,
 	);
@@ -92,10 +99,18 @@ export async function walkToward(
 /** Loads the shelf and walks into the sample-project cabin; resolves once its world is active. */
 export async function enterSampleWorld(
 	page: Page,
-	options: { settleMs?: number } = {},
+	options: {
+		settleMs?: number;
+		/** Pass null to keep a viewport the spec already set. */
+		viewport?: { width: number; height: number } | null;
+	} = {},
 ): Promise<void> {
 	const settleMs = options.settleMs ?? 1500;
-	await page.setViewportSize({ width: 1280, height: 800 });
+	const viewport =
+		options.viewport === undefined
+			? { width: 1280, height: 800 }
+			: options.viewport;
+	if (viewport) await page.setViewportSize(viewport);
 	await page.goto("/?e2e=1");
 	await expect(page.locator("canvas").first()).toBeVisible();
 	await page.waitForTimeout(1500);
@@ -103,7 +118,7 @@ export async function enterSampleWorld(
 	await holdKeys(page, ["Enter"], 150);
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {
-			timeout: scaled(10_000),
+			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(settleMs);
@@ -172,4 +187,25 @@ export async function waitUntilStill(
 		last = pos;
 	}
 	throw new Error("waitUntilStill: player kept moving");
+}
+
+/**
+ * Summons the in-game walk-to-portal tool and resolves with the player's
+ * position once it has actually stopped at the arch. `readFocused` supplies
+ * the portal id from each spec's own state snapshot (the field name differs
+ * per spec); the 20s wait covers the summoned walk, which is frame-bound.
+ */
+export async function walkToPortal(
+	page: Page,
+	portalId: string,
+	readFocused: () => Promise<string | null | undefined>,
+): Promise<{ x: number; y: number }> {
+	await page.evaluate((id) => {
+		(
+			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
+		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
+	}, portalId);
+	await expect.poll(readFocused, { timeout: scaled(20_000) }).toBe(portalId);
+	await waitUntilStill(page);
+	return (await getStoreState(page))?.playerPos ?? { x: 0, y: 0 };
 }

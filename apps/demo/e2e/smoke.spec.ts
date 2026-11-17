@@ -4,6 +4,7 @@ import {
 	clickWalkToward,
 	getStoreState,
 	scaled,
+	WORLD_LOAD_TIMEOUT_MS,
 	waitUntilStill,
 } from "./helpers";
 
@@ -121,7 +122,7 @@ test("demo loads, renders a non-blank world, click-to-move works, and walking in
 
 	await expect
 		.poll(async () => (await getStoreState(page))?.activeWorldBase, {
-			timeout: scaled(10_000),
+			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
 

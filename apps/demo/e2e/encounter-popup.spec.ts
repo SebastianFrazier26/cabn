@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The file view's monster encounter popup (react/EncounterBanner.tsx): it
 // used to auto-advance into the quill on a fixed 1.4s timer regardless of
@@ -25,43 +26,6 @@ const SHOTS_DIR = join(
 const TAKE_SHOTS = process.env.CABN_REVIEW_SHOTS === "1";
 const FILE = "lib/utils.py"; // has a gremlin in the sample world (see monsters.spec.ts)
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = await page.evaluate(
-			() =>
-				(
-					window as unknown as {
-						__cabnStore: {
-							getState(): { playerPos: { x: number; y: number } };
-						};
-					}
-				).__cabnStore.getState().playerPos,
-		);
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function enterFile(page: Page, portalId: string) {
 	await page.evaluate((id) => {
 		(
@@ -78,7 +42,7 @@ async function enterFile(page: Page, portalId: string) {
 				}
 			).__cabnStore.getState().focusedPortalPreview?.portalId === id,
 		portalId,
-		{ timeout: 20_000 },
+		{ timeout: scaled(20_000) },
 	);
 	await page.waitForTimeout(900);
 	await holdKey(page, "Enter");
@@ -113,7 +77,7 @@ async function enterSampleFile(page: Page) {
 							}
 						).__cabnStore.getState().activeWorldBase,
 				),
-			{ timeout: 10_000 },
+			{ timeout: scaled(10_000) },
 		)
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
@@ -191,7 +155,7 @@ async function shoot(page: Page, name: string) {
 test("clicking a monster opens a popup that outlasts the old 1.4s timer, and Enter continues into the editor", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	const errors: string[] = [];
 	page.on("pageerror", (err) => errors.push(err.message));
 	await enterSampleFile(page);
@@ -244,7 +208,7 @@ test("clicking a monster opens a popup that outlasts the old 1.4s timer, and Ent
 test("Esc closes the popup without continuing, and gives the caret its focus back", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	await enterSampleFile(page);
 
 	await clickMonster(page);
@@ -264,7 +228,7 @@ test("Esc closes the popup without continuing, and gives the caret its focus bac
 test("a click anywhere dismisses and continues, same as a key", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	await enterSampleFile(page);
 
 	await clickMonster(page);
@@ -278,7 +242,7 @@ test("a click anywhere dismisses and continues, same as a key", async ({
 
 if (TAKE_SHOTS) {
 	test("popup in night and crimson", async ({ page }) => {
-		test.setTimeout(60_000);
+		test.setTimeout(scaled(60_000));
 		await enterSampleFile(page);
 		await page.evaluate(() =>
 			(

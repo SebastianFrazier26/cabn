@@ -4,7 +4,14 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { enterSampleWorld, walkToward } from "./helpers";
+import {
+	clickWalkToward,
+	enterSampleWorld,
+	holdKeys,
+	scaled,
+	walkToPortal,
+	walkToward,
+} from "./helpers";
 
 // 2026-09-28 art polish 2: the paler wisp, poof-only defeats, pet night
 // glow, the ferret redraw, the warm fountain and the root clearing.
@@ -81,34 +88,9 @@ async function storeCall(page: Page, method: string, ...args: unknown[]) {
 	);
 }
 
-async function holdKeys(page: Page, keys: string[], ms: number) {
-	for (const k of keys) await page.keyboard.down(k);
-	await page.waitForTimeout(ms);
-	for (const k of keys) await page.keyboard.up(k);
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await storeCall(page, "setTimeOfDayOverride", tod);
 	await page.waitForTimeout(800);
-}
-
-async function walkToPortal(page: Page, portalId: string) {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect
-		.poll(async () => (await state(page))?.focusedPortalId, { timeout: 20_000 })
-		.toBe(portalId);
-	let last = (await state(page))?.playerPos ?? { x: 0, y: 0 };
-	for (let i = 0; i < 40; i++) {
-		await page.waitForTimeout(150);
-		const now = (await state(page))?.playerPos ?? last;
-		if (Math.hypot(now.x - last.x, now.y - last.y) < 0.5) return now;
-		last = now;
-	}
-	return last;
 }
 
 type Clip = { x: number; y: number; width: number; height: number };
@@ -225,10 +207,14 @@ function setZoom(page: Page, zoom: number) {
 }
 
 test("the wisp reads by day and night", async ({ page }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
-	const arch = await walkToPortal(page, "src/routes/gardeners.ts");
+	const arch = await walkToPortal(
+		page,
+		"src/routes/gardeners.ts",
+		async () => (await state(page))?.focusedPortalId,
+	);
 	await walkToward(page, { x: arch.x, y: arch.y + 190 }, 12);
 	await page.waitForTimeout(600);
 	expect(await spritePos(page, "wisp")).not.toBeNull();
@@ -250,10 +236,14 @@ test("the wisp reads by day and night", async ({ page }) => {
 });
 
 test("a fixed monster leaves with the poof alone", async ({ page }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
-	await walkToPortal(page, "lib/utils.py");
+	await walkToPortal(
+		page,
+		"lib/utils.py",
+		async () => (await state(page))?.focusedPortalId,
+	);
 	await page.waitForTimeout(600);
 	await holdKeys(page, ["Enter"], 150);
 	await expect.poll(async () => (await state(page))?.mode).toBe("file");
@@ -375,11 +365,11 @@ const PETS = [
 ] as const;
 
 test("pets stay readable at night", async ({ page }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
 	const start = (await state(page))?.playerPos ?? { x: 0, y: 0 };
-	await walkToward(page, { x: start.x + 90, y: start.y + 40 }, 12);
+	await clickWalkToward(page, { x: start.x + 90, y: start.y + 40 }, 12);
 	const rows: Record<"day" | "night", PNG[]> = { day: [], night: [] };
 	for (const provider of PETS) {
 		if (provider !== "ollama") {
@@ -391,7 +381,7 @@ test("pets stay readable at night", async ({ page }) => {
 		await storeCall(page, "setPetProvider", provider);
 		await expect
 			.poll(async () => (await state(page))?.petNpc ?? null, {
-				timeout: 10_000,
+				timeout: scaled(10_000),
 			})
 			.not.toBeNull();
 		const at = (await state(page))?.playerPos ?? start;
@@ -417,7 +407,7 @@ test("pets stay readable at night", async ({ page }) => {
 test("fountain close-up and the root clearing, day and night", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
 	if (TAKE_SHOTS) {
@@ -432,7 +422,11 @@ test("fountain close-up and the root clearing, day and night", async ({
 		if (shot) await save("root-clearing-day", shot);
 		await setZoom(page, 1);
 	}
-	await walkToPortal(page, "lib/utils.py");
+	await walkToPortal(
+		page,
+		"lib/utils.py",
+		async () => (await state(page))?.focusedPortalId,
+	);
 	const fountain = await spritePos(page, "world-fountain");
 	expect(fountain).not.toBeNull();
 	if (TAKE_SHOTS && fountain) {

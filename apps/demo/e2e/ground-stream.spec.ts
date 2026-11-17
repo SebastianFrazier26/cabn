@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
+import { holdKeys } from "./helpers";
 
 // M10 stream-bake: with the ground field/cluster ground now baked around the
 // camera instead of over the whole world up front (see
@@ -25,12 +26,6 @@ function state(page: Page): Promise<CabnStoreSnapshot | undefined> {
 		).__cabnStore;
 		return store?.getState();
 	});
-}
-
-async function holdKeys(page: Page, keys: string[], ms: number): Promise<void> {
-	for (const key of keys) await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	for (const key of keys) await page.keyboard.up(key);
 }
 
 // game.ts's Phaser.Game backgroundColor — same colour world-bounds.spec.ts

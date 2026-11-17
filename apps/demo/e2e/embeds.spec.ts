@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToPortal, walkToward } from "./helpers";
 
 // Web portals end to end: a site whose headers refuse framing never gets an
 // iframe (title card + "Open in browser" instead), and a framable site's one
@@ -69,50 +70,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(80);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
-async function walkToPortal(page: Page, portalId: string) {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect
-		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId, {
-			timeout: 20_000,
-		})
-		.toBe(portalId);
-	// Let the summoned walk finish so the player stands at the arch.
-	await page.waitForTimeout(1200);
-	return (await state(page))?.playerPos ?? { x: 0, y: 0 };
-}
-
 async function shoot(page: Page, name: string) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
@@ -125,7 +82,7 @@ const activeTag = (page: Page) =>
 test("web portals: blocked site falls back, framable page docks and returns the keyboard", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	const requests: string[] = [];
@@ -168,12 +125,18 @@ test("web portals: blocked site falls back, framable page docks and returns the 
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 
 	// --- blocked site: no iframe anywhere, fallback card in the dock --------
-	await walkToPortal(page, BLOCKED);
+	await walkToPortal(
+		page,
+		BLOCKED,
+		async () => (await state(page))?.focusedPortalPreview?.portalId,
+	);
 	expect((await state(page))?.focusedPortalPreview?.preview).toMatchObject({
 		kind: "url",
 		embedBlocked: "X-Frame-Options: deny",
@@ -194,9 +157,15 @@ test("web portals: blocked site falls back, framable page docks and returns the 
 	await shoot(page, "blocked-dock");
 
 	// --- framable site: the one live page moves into the dock --------------
-	const archPos = await walkToPortal(page, FRAMABLE);
+	const archPos = await walkToPortal(
+		page,
+		FRAMABLE,
+		async () => (await state(page))?.focusedPortalPreview?.portalId,
+	);
 	const live = page.getByTestId("portal-live-page");
-	await expect(live).toHaveAttribute("data-docked", "true", { timeout: 5000 });
+	await expect(live).toHaveAttribute("data-docked", "true", {
+		timeout: scaled(5000),
+	});
 	await expect(page.locator("iframe")).toHaveCount(1);
 	const iframe = page.locator("iframe");
 	await expect(iframe).toHaveAttribute(
@@ -263,20 +232,30 @@ test("web portals: blocked site falls back, framable page docks and returns the 
 	expect(after.x).toBeLessThan(before.x - 10);
 
 	// Enter reaches the world too: back at the arch, it enters the portal.
-	await walkToPortal(page, FRAMABLE);
+	await walkToPortal(
+		page,
+		FRAMABLE,
+		async () => (await state(page))?.focusedPortalPreview?.portalId,
+	);
 	await holdKey(page, "Enter");
 	await expect.poll(async () => (await state(page))?.mode).toBe("file");
 	await expect(page.locator("iframe")).toHaveCount(0);
 	await holdKey(page, "Escape");
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	await page.waitForTimeout(800);
 
 	// Stepping back out of dock range (but inside the approach radius) returns
 	// the same page to the arch as a thumbnail, still exactly one iframe.
-	await walkToPortal(page, FRAMABLE);
-	await expect(live).toHaveAttribute("data-docked", "true", { timeout: 5000 });
+	await walkToPortal(
+		page,
+		FRAMABLE,
+		async () => (await state(page))?.focusedPortalPreview?.portalId,
+	);
+	await expect(live).toHaveAttribute("data-docked", "true", {
+		timeout: scaled(5000),
+	});
 	await walkToward(page, { x: archPos.x, y: archPos.y + 125 }, 12);
 	await expect
 		.poll(
@@ -293,7 +272,11 @@ test("web portals: blocked site falls back, framable page docks and returns the 
 	await shoot(page, "live-arch-thumbnail");
 
 	// The blocked site's arch: title card with the "opens in browser" note.
-	await walkToPortal(page, BLOCKED);
+	await walkToPortal(
+		page,
+		BLOCKED,
+		async () => (await state(page))?.focusedPortalPreview?.portalId,
+	);
 	const blockedArch = (await state(page))?.playerPos ?? { x: 0, y: 0 };
 	await walkToward(page, { x: blockedArch.x, y: blockedArch.y + 125 }, 12);
 	await page.waitForTimeout(900);

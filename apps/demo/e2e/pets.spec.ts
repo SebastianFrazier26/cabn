@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page, Request } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { clickWalkToward, holdKey, scaled, walkToward } from "./helpers";
 
 // AI pets end to end, against a MOCKED provider (page.route): no real key
 // and no real provider request ever leaves the test browser. Covers setup
@@ -171,34 +172,6 @@ async function storeCall(page: Page, method: string, ...args: unknown[]) {
 	);
 }
 
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(120);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
-async function holdKey(page: Page, key: string, ms = 150) {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
 async function enterFirstWorld(page: Page) {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto("/?e2e=1");
@@ -207,7 +180,9 @@ async function enterFirstWorld(page: Page) {
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.petWorld, { timeout: 15_000 })
+		.poll(async () => (await state(page))?.petWorld, {
+			timeout: scaled(15_000),
+		})
 		.toBe(true);
 	await page.waitForTimeout(1000);
 }
@@ -287,7 +262,7 @@ function collectErrors(page: Page) {
 test("pets: configure a session key, ask, read a raw file, propose + accept an edit", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors = collectErrors(page);
 	const leaks = watchForKeyLeaks(page);
 	const mock = await mockProviders(page);
@@ -332,7 +307,9 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 	await expect(panel).toBeHidden();
 
 	await expect
-		.poll(async () => (await state(page))?.petNpc ?? null, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.petNpc ?? null, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(800);
 	const pet = (await state(page))?.petNpc;
@@ -347,7 +324,9 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 		box.y + box.height / 2 + (pet.pos.y - 8 - from.y),
 	);
 	await expect
-		.poll(async () => (await state(page))?.petChatOpen, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.petChatOpen, {
+			timeout: scaled(10_000),
+		})
 		.toBe(true);
 	const chat = page.getByTestId("cabn-pet-chat");
 	await expect(chat).toBeVisible();
@@ -387,7 +366,7 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 	await page.getByTestId("cabn-pet-input").press("Enter");
 	await expect(chat.getByTestId("cabn-pet-message").last()).toContainText(
 		"mounts /health",
-		{ timeout: 10_000 },
+		{ timeout: scaled(10_000) },
 	);
 	await expect(chat.getByTestId("cabn-pet-cite")).toHaveText(["src/server.ts"]);
 	const second = mock.captured[before + 1];
@@ -446,7 +425,7 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 
 	await card.getByTestId("cabn-pet-review").click();
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 15_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(15_000) })
 		.toBe("editor");
 	expect((await state(page))?.activePortalId).toBe("src/index.ts");
 	const review = page.getByTestId("cabn-pet-proposal");
@@ -477,7 +456,7 @@ test("pets: configure a session key, ask, read a raw file, propose + accept an e
 test("pets: a magpie-guarded file reaches the pet redacted, never with its planted secret", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	const errors = collectErrors(page);
 	const mock = await mockProviders(page);
 	await enterFirstWorld(page);
@@ -488,7 +467,9 @@ test("pets: a magpie-guarded file reaches the pet redacted, never with its plant
 	);
 	await storeCall(page, "setPetProvider", "anthropic");
 	await expect
-		.poll(async () => (await state(page))?.petNpc ?? null, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.petNpc ?? null, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await storeCall(page, "setPetChatOpen", true);
 	const chat = page.getByTestId("cabn-pet-chat");
@@ -525,7 +506,7 @@ test("pets: a magpie-guarded file reaches the pet redacted, never with its plant
 	await page.getByTestId("cabn-pet-input").press("Enter");
 	await expect(chat.getByTestId("cabn-pet-message").last()).toContainText(
 		"naming API",
-		{ timeout: 10_000 },
+		{ timeout: scaled(10_000) },
 	);
 
 	const sentBodies = mock.captured.slice(before).map((c) => c.body);
@@ -641,14 +622,14 @@ const CREDIT_ERRORS: Record<
 test("pets: every provider's out-of-credits message, all six pets, remember + forget key", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors = collectErrors(page);
 	const mock = await mockProviders(page);
 	await enterFirstWorld(page);
 
 	// Walk off the spawn a little so the pets have room to trail into view.
 	const start = (await state(page))?.playerPos ?? { x: 0, y: 0 };
-	await walkToward(page, { x: start.x + 90, y: start.y + 40 }, 12);
+	await clickWalkToward(page, { x: start.x + 90, y: start.y + 40 }, 12);
 
 	for (const [provider, expected] of Object.entries(CREDIT_ERRORS)) {
 		if (provider !== "ollama") {
@@ -660,7 +641,7 @@ test("pets: every provider's out-of-credits message, all six pets, remember + fo
 		await storeCall(page, "setPetProvider", provider);
 		await expect
 			.poll(async () => (await state(page))?.petNpc ?? null, {
-				timeout: 10_000,
+				timeout: scaled(10_000),
 			})
 			.not.toBeNull();
 		// Nudge the player so the pet walks, then let it settle for the shot.
@@ -736,7 +717,7 @@ test("pets: every provider's out-of-credits message, all six pets, remember + fo
 test("pets: hotbar and walk keys stay out while the chat or setup panel has focus", async ({
 	page,
 }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	const errors = collectErrors(page);
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto("/?e2e=1");

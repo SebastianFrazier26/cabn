@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { scaled, walkToward } from "./helpers";
 
 // M9 showcase worlds: the notes world's injected config (notes-showcase.json)
 // gives its shelf cabin a description card and its root a hero site portal.
@@ -43,32 +44,10 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 25_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(120);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error(`walkToward (${target.x}, ${target.y}) timed out`);
-}
-
 test("showcase: cabin card on approach, hero site live at spawn", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -107,7 +86,7 @@ test("showcase: cabin card on approach, hero site live at spawn", async ({
 	await page.keyboard.up("Enter");
 	await expect
 		.poll(async () => (await state(page))?.activeWorldBase ?? null, {
-			timeout: 15_000,
+			timeout: scaled(15_000),
 		})
 		.toBe("/worlds/notes/");
 	await expect(page.getByTestId("shelf-world-card")).toHaveCount(0);
@@ -115,12 +94,12 @@ test("showcase: cabin card on approach, hero site live at spawn", async ({
 	// No movement: the hero's live page is already up.
 	await expect
 		.poll(async () => (await state(page))?.nearWebPortal?.portalId ?? null, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.toBe(HERO);
 	expect((await state(page))?.nearWebPortal?.url).toBe(`${HERO_ORIGIN}/`);
 	await expect(page.locator(`iframe[src^="${HERO_ORIGIN}"]`)).toHaveCount(1, {
-		timeout: 10_000,
+		timeout: scaled(10_000),
 	});
 
 	expect(consoleErrors).toEqual([]);

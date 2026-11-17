@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // The file view's inline caret end to end: click places a caret at an exact
 // character, arrows move it, typing edits the store's shared buffer, Enter
@@ -78,34 +79,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150): Promise<void> {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function shoot(page: Page, name: string) {
 	if (!TAKE_SHOTS) return;
 	await mkdir(SHOTS_DIR, { recursive: true });
@@ -120,7 +93,7 @@ async function enterFile(page: Page, portalId: string) {
 	}, portalId);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId, {
-			timeout: 20_000,
+			timeout: scaled(20_000),
 		})
 		.toBe(portalId);
 	await page.waitForTimeout(900);
@@ -200,7 +173,7 @@ function lineCol(doc: string, pos: number) {
 test("file view caret: click, arrows, typing, Enter, save + re-annotate, spellbook sync, leave prompt", async ({
 	page,
 }) => {
-	test.setTimeout(150_000);
+	test.setTimeout(scaled(150_000));
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -215,7 +188,9 @@ test("file view caret: click, arrows, typing, Enter, save + re-annotate, spellbo
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 
@@ -364,7 +339,7 @@ test("file view caret: click, arrows, typing, Enter, save + re-annotate, spellbo
 	await page.keyboard.press("Escape");
 	await page.getByRole("button", { name: "Discard" }).click();
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	await page.waitForTimeout(600);
 
@@ -373,7 +348,7 @@ test("file view caret: click, arrows, typing, Enter, save + re-annotate, spellbo
 	// A clean file leaves on Esc straight away, as before.
 	await page.keyboard.press("Escape");
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 
 	if (TAKE_SHOTS) {
@@ -408,7 +383,7 @@ async function setLoopAsleep(page: Page, asleep: boolean) {
 test("file view: an Esc right after a panel closes still leaves, with no frame in between", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 
@@ -419,7 +394,9 @@ test("file view: an Esc right after a panel closes still leaves, with no frame i
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 
@@ -435,7 +412,7 @@ test("file view: an Esc right after a panel closes still leaves, with no frame i
 	await page.keyboard.press("Escape");
 	await setLoopAsleep(page, false);
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	await page.waitForTimeout(600);
 
@@ -471,7 +448,7 @@ test("file view: an Esc right after a panel closes still leaves, with no frame i
 	await page.keyboard.press("Escape");
 	await setLoopAsleep(page, false);
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 
 	expect(pageErrors).toEqual([]);

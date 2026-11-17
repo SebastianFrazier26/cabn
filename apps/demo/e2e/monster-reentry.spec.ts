@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { holdKey, scaled, walkToward } from "./helpers";
 
 // 2026-09-29: re-entering a file whose saved edit moved code used to put its
 // monsters back on their build-time lines (the live-edit anchors only last a
@@ -43,34 +44,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKey(page: Page, key: string, ms = 150) {
-	await page.keyboard.down(key);
-	await page.waitForTimeout(ms);
-	await page.keyboard.up(key);
-}
-
-async function walkToward(
-	page: Page,
-	target: { x: number; y: number },
-	within: number,
-) {
-	const deadline = Date.now() + 20_000;
-	while (Date.now() < deadline) {
-		const pos = (await state(page))?.playerPos;
-		if (!pos) break;
-		const dx = target.x - pos.x;
-		const dy = target.y - pos.y;
-		if (Math.hypot(dx, dy) <= within) return;
-		const keys: string[] = [];
-		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
-		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-		for (const k of keys) await page.keyboard.down(k);
-		await page.waitForTimeout(150);
-		for (const k of keys) await page.keyboard.up(k);
-	}
-	throw new Error("walkToward timed out");
-}
-
 async function openWorld(page: Page) {
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto("/?e2e=1");
@@ -79,7 +52,9 @@ async function openWorld(page: Page) {
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page))?.activeWorldBase, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.activeWorldBase, {
+			timeout: scaled(10_000),
+		})
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
 }
@@ -92,7 +67,7 @@ async function enterFile(page: Page, portalId: string) {
 	}, portalId);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalId, {
-			timeout: 20_000,
+			timeout: scaled(20_000),
 		})
 		.toBe(portalId);
 	await page.waitForTimeout(900);
@@ -109,7 +84,7 @@ async function enterFile(page: Page, portalId: string) {
 async function leaveFile(page: Page) {
 	await page.keyboard.press("Escape");
 	await expect
-		.poll(async () => (await state(page))?.mode, { timeout: 10_000 })
+		.poll(async () => (await state(page))?.mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	await page.waitForTimeout(600);
 }
@@ -149,7 +124,7 @@ function monsterView(page: Page, key: string) {
 test("a monster stays on its moved line after save, leave, re-enter and reload", async ({
 	page,
 }) => {
-	test.setTimeout(150_000);
+	test.setTimeout(scaled(150_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 
@@ -193,7 +168,7 @@ test("a monster stays on its moved line after save, leave, re-enter and reload",
 test("a TODO wisp survives a blank line saved above it, on the moved line", async ({
 	page,
 }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 	const defeated = () =>

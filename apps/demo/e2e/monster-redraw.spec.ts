@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { enterSampleWorld, walkToward } from "./helpers";
+import {
+	enterSampleWorld,
+	holdKeys,
+	scaled,
+	walkToPortal,
+	walkToward,
+} from "./helpers";
 
 // 2026-09-28 monster redraw: the five legacy species' new sprites orbit
 // without errors, and fixing a file plays the hit flash + three-frame defeat
@@ -61,12 +67,6 @@ function state(page: Page): Promise<Snapshot | undefined> {
 	});
 }
 
-async function holdKeys(page: Page, keys: string[], ms: number) {
-	for (const k of keys) await page.keyboard.down(k);
-	await page.waitForTimeout(ms);
-	for (const k of keys) await page.keyboard.up(k);
-}
-
 async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page.evaluate((t) => {
 		(
@@ -80,28 +80,13 @@ async function setTimeOfDay(page: Page, tod: "day" | "night") {
 	await page.waitForTimeout(400);
 }
 
-async function walkToPortal(page: Page, portalId: string) {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect
-		.poll(async () => (await state(page))?.focusedPortalId, { timeout: 20_000 })
-		.toBe(portalId);
-	let last = (await state(page))?.playerPos ?? { x: 0, y: 0 };
-	for (let i = 0; i < 40; i++) {
-		await page.waitForTimeout(150);
-		const now = (await state(page))?.playerPos ?? last;
-		if (Math.hypot(now.x - last.x, now.y - last.y) < 0.5) return now;
-		last = now;
-	}
-	return last;
-}
-
 /** Steps south of the arch so it and its orbit sit mid-clip; returns the arch's offset from the player (≈ canvas centre). */
 async function standBelowPortal(page: Page, portalId: string) {
-	const arch = await walkToPortal(page, portalId);
+	const arch = await walkToPortal(
+		page,
+		portalId,
+		async () => (await state(page))?.focusedPortalId,
+	);
 	await walkToward(page, { x: arch.x, y: arch.y + 190 }, 12);
 	await page.waitForTimeout(600);
 	const at = (await state(page))?.playerPos ?? arch;
@@ -193,7 +178,7 @@ const ORBIT_PORTALS = [
 test("redrawn monsters orbit their arches by day and night", async ({
 	page,
 }) => {
-	test.setTimeout(180_000);
+	test.setTimeout(scaled(180_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
 	const times = TAKE_SHOTS ? (["day", "night"] as const) : (["day"] as const);
@@ -223,10 +208,14 @@ test("redrawn monsters orbit their arches by day and night", async ({
 });
 
 test("fixing the file plays the gremlin's defeat poof", async ({ page }) => {
-	test.setTimeout(120_000);
+	test.setTimeout(scaled(120_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
-	await walkToPortal(page, "lib/utils.py");
+	await walkToPortal(
+		page,
+		"lib/utils.py",
+		async () => (await state(page))?.focusedPortalId,
+	);
 	await page.waitForTimeout(600);
 	await holdKeys(page, ["Enter"], 150);
 	await expect.poll(async () => (await state(page))?.mode).toBe("file");
