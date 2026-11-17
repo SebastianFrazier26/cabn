@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
-import { holdKey, scaled, walkToward } from "./helpers";
+import { holdKey, holdKeys, scaled, walkToward } from "./helpers";
 
 // Media previews end to end: the converter shipped media/<hash> files and
 // media.json, the engine decodes/renders them in the dock and file view, and
@@ -102,9 +102,16 @@ async function focusPortal(page: Page, portalId: string) {
 		keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
 	if (Math.abs(dy) > Math.abs(dx) * 0.4)
 		keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-	for (const k of keys) await page.keyboard.down(k);
-	await page.waitForTimeout(300);
-	for (const k of keys) await page.keyboard.up(k);
+	// Stepping is measured in pixels, not wall-clock: a timed hold covers
+	// ~100px (the whole focus radius) once CDP round-trips are counted, which
+	// carried the player out of focus range from the arch they arrived beside.
+	const STEP_PX = 30;
+	const stepDeadline = Date.now() + scaled(10_000);
+	while (Date.now() < stepDeadline) {
+		const p = (await state(page))?.playerPos ?? at;
+		if (Math.hypot(p.x - at.x, p.y - at.y) >= STEP_PX) break;
+		await holdKeys(page, keys, 40);
+	}
 	await page.waitForTimeout(900);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId)
