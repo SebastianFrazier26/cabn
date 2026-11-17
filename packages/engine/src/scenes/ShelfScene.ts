@@ -69,6 +69,7 @@ import {
 	clampToBounds,
 	type Interactable,
 } from "../systems/clickWalk.js";
+import { followLerp } from "../systems/frameTiming.js";
 import { labelAnchor, pickLabelSide } from "../systems/labelPlacement.js";
 import { perfMark } from "../systems/perfMarks.js";
 import {
@@ -652,6 +653,8 @@ export class ShelfScene extends Phaser.Scene {
 	};
 
 	update(_time: number, delta: number): void {
+		const lerp = followLerp(0.1, delta);
+		this.cameras.main.setLerp(lerp, lerp);
 		const { pos, arrivedAt } = drivePlayer(
 			this.player,
 			this.movementKeys,

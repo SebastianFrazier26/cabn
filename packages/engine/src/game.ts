@@ -9,6 +9,7 @@ import { FileScene } from "./scenes/FileScene.js";
 import { PreloadScene } from "./scenes/PreloadScene.js";
 import { ShelfScene } from "./scenes/ShelfScene.js";
 import { WorldScene } from "./scenes/WorldScene.js";
+import { PHASER_FPS_CONFIG } from "./systems/frameTiming.js";
 import { prefersReducedMotion } from "./systems/reducedMotion.js";
 import {
 	SCENE_LOADING_REGISTRY_KEY,
@@ -79,6 +80,7 @@ export function createCabnGame(
 		pixelArt: true,
 		roundPixels: true,
 		backgroundColor: "#1f2a17",
+		fps: PHASER_FPS_CONFIG,
 		physics: {
 			default: "arcade",
 			arcade: { gravity: { x: 0, y: 0 }, debug: false },
