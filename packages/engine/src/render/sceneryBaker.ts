@@ -56,14 +56,14 @@ export interface SceneryChunkSkin {
 }
 
 /**
- * Which chunk(s) each planned item's footprint overlaps — pure grouping,
- * split out of bakeScenery so a streamer (WorldScene's edgeSceneryStreamer)
- * can bake one chunk's items on demand instead of every chunk up front. An
- * item straddling a seam lands in every chunk its footprint touches, same as
- * groundField.ts's chunk math and worldChunkGrid.ts's indexPointsByChunk —
- * kept as its own loop rather than reusing that helper because a footprint's
- * box isn't centered on the item's own point (origin is bottom-center, see
- * stampFor's `setOrigin(0.5, 1)` below), so the box math differs slightly.
+ * Which chunk(s) each planned item's footprint overlaps — an item straddling
+ * a seam lands in every chunk its footprint touches, so no RenderTexture clips
+ * it. Used for the POIs (planned whole-world) and the non-streamed bake only:
+ * lazily planned filler is owned by one chunk per grid cell and gets its seam
+ * overlap from planFillerChunkWithOverflow instead. Kept as its own loop
+ * rather than reusing worldChunkGrid.ts's indexPointsByChunk because a
+ * footprint's box isn't centered on the item's point (origin is bottom-center,
+ * see stampFor's `setOrigin(0.5, 1)` below).
  */
 export function groupSceneryItemsByChunk(
 	items: readonly SceneryItem[],
