@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-11-18 — World-entry walks survive high input latency
+
+- **`walkToward` (and so `enterSampleWorld`) hands over to `clickWalkToward` when key bursts can't converge.**
+  On the GPU-less runner every CDP call costs ~530ms, so a "100ms" key burst
+  holds the key ~1.6s and the player oscillated around the target until the
+  180s timeout (32 of 41 failures in run 44285735688). `walkToward` now notices
+  bursts that overrun their hold by >400ms while also overshooting and
+  finishes the walk by clicking, where the game's own walker stops on arrival.
+  Healthy machines keep the keyboard path unchanged (a direct click walk
+  from `enterSampleWorld` failed locally at 360px and 1920x1200 viewports). `PWSLOWMO=<ms>` in the
+  Playwright config adds `slowMo` to reproduce the lag locally; unset by
+  default. Test-only; no package bump, so no changeset.
+
 ## 2026-11-18 — Full-suite e2e waits scale with E2E_TIME_SCALE
 
 - **Fixed-duration `timeout:` literals in nine specs now go through `scaled()`.**
