@@ -16,9 +16,15 @@ permissions:
 jobs:
   e2e-full:
     runs-on: ubuntu-latest
-    # A starved run took ~1.7h before the cap; this suite is slow by nature,
-    # so the cap is generous but still well under the 6h default.
-    timeout-minutes: 180
+    # Six shards of ~11 tests at ~3.4 min each is ~37 min; 90 leaves room for
+    # a starved runner. One unsharded job needed ~224 min and hit the cap.
+    # --retries=0 per shard: a retry doubles that shard's wall time, and the
+    # suite is non-gating.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -37,20 +43,20 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm --filter @cabn/demo exec playwright install --with-deps chromium
-      - run: pnpm --filter @cabn/demo exec playwright test --workers=1
+      - run: pnpm --filter @cabn/demo exec playwright test --workers=1 --shard=${{ matrix.shard }}/6 --retries=0
         env:
           E2E_TIME_SCALE: "3"
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-report-full
+          name: playwright-report-full-${{ matrix.shard }}
           path: apps/demo/playwright-report
           retention-days: 7
       - name: Upload Playwright traces/screenshots
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-test-results-full
+          name: playwright-test-results-full-${{ matrix.shard }}
           path: apps/demo/test-results
           retention-days: 7
