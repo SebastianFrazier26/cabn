@@ -8,7 +8,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import * as git from "isomorphic-git";
 import { expect, test } from "./cspGuard";
-import { holdKey, scaled, walkToward } from "./helpers";
+import { holdKey, scaled, WORLD_LOAD_TIMEOUT_MS, walkToward } from "./helpers";
 
 // The M10 a11y pass's automated sweep — see docs/testing/2026-09-30-a11y.md
 // for the full write-up, what's fixed and what's a reported (not fixed)
@@ -116,7 +116,9 @@ async function bootWorld(
 	await walkToward(page, { x: 0, y: -480 }, 50);
 	await holdKey(page, "Enter");
 	await expect
-		.poll(async () => (await state(page)).mode, { timeout: scaled(15_000) })
+		.poll(async () => (await state(page)).mode, {
+			timeout: WORLD_LOAD_TIMEOUT_MS,
+		})
 		.toBe("world");
 	await page.waitForTimeout(1200);
 	return errors;
@@ -129,11 +131,20 @@ const VIEWPORTS = [
 	{ name: "~800 wide", width: 800, height: 700 },
 ] as const;
 
+// Software-GL cost is per pixel, so the whole sweep (every axe scan and key
+// press waits on a rendering main thread) stretches with the viewport.
+// Measured 2026-11-17 on a loaded 10-core Mac: raf 16fps at 1280x800 vs
+// 3.2fps at 1920x1200 (main thread ~100% native GL, no JS hot spot), sweep
+// 43s vs >125s. The 120s budget fits 1280x800, not 1920x1200.
+const BASELINE_PIXELS = 1280 * 800;
+const sweepBudgetMs = (v: { width: number; height: number }) =>
+	scaled(120_000) * Math.max(1, (v.width * v.height) / BASELINE_PIXELS);
+
 for (const viewport of VIEWPORTS) {
 	test(`a11y sweep (base HUD + spyglass/orb/map/guide): ${viewport.name}`, async ({
 		page,
 	}) => {
-		test.setTimeout(scaled(120_000));
+		test.setTimeout(sweepBudgetMs(viewport));
 		const errors = await bootWorld(page, viewport);
 
 		// Base HUD: hotbar, minimap, settings corner, monster counter,

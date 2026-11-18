@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { holdKey, scaled, walkToward } from "./helpers";
+import { holdKey, scaled, WORLD_LOAD_TIMEOUT_MS, walkToward } from "./helpers";
 
 // Regression coverage for the M10 perf fix that shrank the ground-field
 // bake area from a flat viewport-based margin to exactly half the viewport
@@ -179,7 +179,7 @@ async function runCheckAtViewport(
 	await holdKey(page, "Enter");
 	await expect
 		.poll(async () => (await state(page))?.activeWorldBase ?? null, {
-			timeout: scaled(10_000),
+			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(500);
@@ -191,13 +191,13 @@ async function runCheckAtViewport(
 test("no unbaked void at any reachable camera corner — 1280x720", async ({
 	page,
 }) => {
-	test.setTimeout(scaled(60_000));
+	test.setTimeout(scaled(60_000) + WORLD_LOAD_TIMEOUT_MS);
 	await runCheckAtViewport(page, { width: 1280, height: 720 });
 });
 
 test("no unbaked void at any reachable camera corner — 1920x1200", async ({
 	page,
 }) => {
-	test.setTimeout(scaled(60_000));
+	test.setTimeout(scaled(60_000) + WORLD_LOAD_TIMEOUT_MS);
 	await runCheckAtViewport(page, { width: 1920, height: 1200 });
 });
