@@ -1,5 +1,19 @@
 # @cabn/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [137a85c]
+- Updated dependencies [71cd71d]
+- Updated dependencies [63fc264]
+- Updated dependencies [ad0750a]
+- Updated dependencies [f9d56a6]
+- Updated dependencies [f30ea7a]
+  - @cabn/engine@0.3.0
+  - @cabn/converter@0.3.0
+  - @cabn/shadow-art@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
