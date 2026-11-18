@@ -153,6 +153,11 @@ export class ChunkStreamer<K, T> {
 		return this.loaded.has(key);
 	}
 
+	/** Snapshot of everything currently loaded, for callers that must act on live payloads (e.g. a layer raise) without owning a parallel map. */
+	entries(): [K, T][] {
+		return [...this.loaded];
+	}
+
 	/** Bakes every given key immediately, no budget — for the entry set, which is deliberately kept small (viewport + margin only) so a synchronous bake of it is cheap. */
 	loadNowSync(keys: readonly K[]): void {
 		for (const key of keys) {

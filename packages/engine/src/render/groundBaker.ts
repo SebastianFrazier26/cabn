@@ -1,16 +1,12 @@
 import type Phaser from "phaser";
+import { DECAL_SHEET_KEY } from "../assetPaths.js";
+import type { ScatterExclusion } from "../systems/scatter.js";
 import {
-	BIOME_TILE_VARIANT_COUNT,
-	DECAL_COUNT,
-	DECAL_FRAME_SIZE,
-	DECAL_SHEET_KEY,
-} from "../assetPaths.js";
-import { placeScatter, type ScatterExclusion } from "../systems/scatter.js";
-import {
-	computeGroundGrid,
-	GROUND_TILE_SIZE,
-	tileFrameFor,
-} from "./groundTiles.js";
+	CLUSTER_TILE_PX,
+	type ClusterGroundDraw,
+	planClusterGroundDraws,
+} from "./clusterGroundPlan.js";
+import { computeGroundGrid, GROUND_TILE_SIZE } from "./groundTiles.js";
 
 export interface BakeClusterGroundParams {
 	scene: Phaser.Scene;
@@ -34,9 +30,6 @@ export interface BakeClusterGroundParams {
 	decalSheetKey?: string;
 }
 
-// decals.ts's buildDecals() order: 0 = flower-pink, 1 = flower-blue.
-const RING_FLOWER_VARIANTS = [0, 1];
-
 /**
  * Bakes one cluster's tiled biome ground plus its scattered decals into a
  * single static `RenderTexture` — the perf-load-bearing choice this batch
@@ -57,66 +50,80 @@ export function bakeClusterGround(
 	const width = grid.cols * GROUND_TILE_SIZE;
 	const height = grid.rows * GROUND_TILE_SIZE;
 	const rt = scene.add.renderTexture(centerX, centerY, width, height);
-	const decalKey = params.decalSheetKey ?? DECAL_SHEET_KEY;
+	drawClusterGround(rt, planBakeClusterGround(params), params);
+	if (params.tint !== undefined) rt.setTint(params.tint);
+	return rt;
+}
 
-	for (let row = 0; row < grid.rows; row++) {
-		for (let col = 0; col < grid.cols; col++) {
-			const frame = tileFrameFor(grid.insideAt, col, row, {
-				variantCount: BIOME_TILE_VARIANT_COUNT,
-				seed: params.seed,
-			});
-			if (frame === null) continue;
-			rt.drawFrame(
-				params.biomeSheetKey,
-				frame,
-				col * GROUND_TILE_SIZE,
-				row * GROUND_TILE_SIZE,
-			);
-		}
-	}
-
-	// placeScatter works in the same coordinate space its exclusions are
-	// given in — run it in cluster-local space (0,0 = center) so the caller's
-	// world-space exclusions need translating, not the other way around.
-	const localExclusions: ScatterExclusion[] = params.exclusions.map((e) => ({
-		x: e.x - centerX,
-		y: e.y - centerY,
-		radius: e.radius,
-	}));
-	const decals = placeScatter({
-		clusterId: `${params.clusterId}:decals`,
-		centerX: 0,
-		centerY: 0,
-		radiusX,
-		radiusY,
-		count: params.decalCount,
-		minSpacing: params.decalMinSpacing ?? 20,
-		variantCount: DECAL_COUNT,
-		exclusions: localExclusions,
+/** The plan for a cluster given world-space exclusions (placeScatter works cluster-local, so they're translated here, not in the caller). */
+export function planBakeClusterGround(
+	params: BakeClusterGroundParams,
+): ClusterGroundDraw[] {
+	return planClusterGroundDraws({
+		clusterId: params.clusterId,
+		radiusX: params.radiusX,
+		radiusY: params.radiusY,
+		localExclusions: params.exclusions.map((e) => ({
+			x: e.x - params.centerX,
+			y: e.y - params.centerY,
+			radius: e.radius,
+		})),
+		decalCount: params.decalCount,
+		...(params.decalMinSpacing !== undefined
+			? { decalMinSpacing: params.decalMinSpacing }
+			: {}),
+		...(params.ringFlowerCount !== undefined
+			? { ringFlowerCount: params.ringFlowerCount }
+			: {}),
+		seed: params.seed,
 	});
-	for (const decal of decals) {
-		// Cluster-local (0,0 centered) -> RT-local (top-left origin), then
-		// offset by half the decal frame so (decal.x, decal.y) is its center,
-		// not its corner.
-		const rtX = decal.x - grid.originX - DECAL_FRAME_SIZE / 2;
-		const rtY = decal.y - grid.originY - DECAL_FRAME_SIZE / 2;
-		rt.drawFrame(decalKey, decal.variant, rtX, rtY);
-	}
+}
 
-	const ringCount = params.ringFlowerCount ?? 0;
-	for (let i = 0; i < ringCount; i++) {
-		const angle = (Math.PI * 2 * i) / ringCount;
-		const x = Math.cos(angle) * radiusX * 0.92;
-		const y = Math.sin(angle) * radiusY * 0.92;
-		const variant = RING_FLOWER_VARIANTS[i % RING_FLOWER_VARIANTS.length] ?? 0;
+/** Paints `draws` into `rt`, shifted so (offsetX, offsetY) in cluster-grid px is the RT's top-left. Draws partly outside the RT are clipped by the GPU, which is what makes tile seams invisible. */
+export function drawClusterGround(
+	rt: Phaser.GameObjects.RenderTexture,
+	draws: readonly ClusterGroundDraw[],
+	params: Pick<BakeClusterGroundParams, "biomeSheetKey" | "decalSheetKey">,
+	offsetX = 0,
+	offsetY = 0,
+): void {
+	const decalKey = params.decalSheetKey ?? DECAL_SHEET_KEY;
+	for (const draw of draws) {
 		rt.drawFrame(
-			decalKey,
-			variant,
-			x - grid.originX - DECAL_FRAME_SIZE / 2,
-			y - grid.originY - DECAL_FRAME_SIZE / 2,
+			draw.sheet === "tile" ? params.biomeSheetKey : decalKey,
+			draw.frame,
+			draw.x - offsetX,
+			draw.y - offsetY,
 		);
 	}
+}
 
+/** One CLUSTER_TILE_PX square of a cluster's ground, whose top-left sits at (worldX, worldY); `draws` is that tile's slice of the cluster plan (assignDrawsToTiles), in cluster-grid px, and `tileCol`/`tileRow` locate the tile in that grid. */
+export function bakeClusterGroundTile(
+	scene: Phaser.Scene,
+	draws: readonly ClusterGroundDraw[],
+	params: Pick<
+		BakeClusterGroundParams,
+		"biomeSheetKey" | "decalSheetKey" | "tint"
+	>,
+	tileCol: number,
+	tileRow: number,
+	worldX: number,
+	worldY: number,
+): Phaser.GameObjects.RenderTexture {
+	const rt = scene.add.renderTexture(
+		worldX + CLUSTER_TILE_PX / 2,
+		worldY + CLUSTER_TILE_PX / 2,
+		CLUSTER_TILE_PX,
+		CLUSTER_TILE_PX,
+	);
+	drawClusterGround(
+		rt,
+		draws,
+		params,
+		tileCol * CLUSTER_TILE_PX,
+		tileRow * CLUSTER_TILE_PX,
+	);
 	if (params.tint !== undefined) rt.setTint(params.tint);
 	return rt;
 }

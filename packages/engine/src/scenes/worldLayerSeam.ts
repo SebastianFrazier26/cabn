@@ -253,6 +253,11 @@ export class WorldLayerSeam {
 		this.riser.addRiser(object);
 	}
 
+	/** A riser leaving the scene early (an evicted ground tile): it must stop being tweened, and a pooled texture it was must not carry a stale rest state. */
+	removeRiser(object: Phaser.GameObjects.GameObject): void {
+		this.riser.removeRiser(object);
+	}
+
 	rise(
 		scene: Phaser.Scene,
 		durationMs: number,
@@ -334,6 +339,13 @@ export class GroundRiser {
 	 */
 	addRiser(object: Phaser.GameObjects.GameObject): void {
 		this.risers.push(object);
+	}
+
+	removeRiser(object: Phaser.GameObjects.GameObject): void {
+		const at = this.risers.indexOf(object);
+		if (at >= 0) this.risers.splice(at, 1);
+		this.restY.delete(object);
+		this.restAlpha.delete(object);
 	}
 
 	/** Raises the objects out of the ground with a dust burst; instant under reduced motion. */

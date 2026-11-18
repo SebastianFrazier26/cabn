@@ -40,7 +40,7 @@ import {
 	type AtmosphereHandle,
 	attachAtmosphere,
 } from "../render/atmosphere.js";
-import { ChunkStreamer } from "../render/chunkStream.js";
+import { ChunkStreamer, type StreamCandidate } from "../render/chunkStream.js";
 import {
 	attachPointerInput,
 	BOUNDS_INSET_PX,
@@ -49,13 +49,21 @@ import {
 	type PointerInputHandle,
 	physicsBounds,
 } from "../render/clickWalker.js";
+import {
+	assignDrawsToTiles,
+	CLUSTER_TILE_PX,
+	type ClusterGroundDraw,
+	clusterTileLocalKey,
+	layoutClusterTiles,
+	planClusterGroundDraws,
+} from "../render/clusterGroundPlan.js";
 import { dashedLine } from "../render/dashedLine.js";
 import {
 	attachLanternFlicker,
 	attachWorldEffects,
 	type WorldEffectsHandle,
 } from "../render/effects.js";
-import { bakeClusterGround } from "../render/groundBaker.js";
+import { bakeClusterGroundTile } from "../render/groundBaker.js";
 import { bakeGroundFieldChunk, CHUNK_SIZE_PX } from "../render/groundField.js";
 import { GUIDE_INTERACT_RADIUS, GuideNpc } from "../render/guideNpc.js";
 import type { LightPoolOptions } from "../render/lightPools.js";
@@ -479,7 +487,7 @@ export class WorldScene extends Phaser.Scene {
 	private placedProps: PlacedProp[] = [];
 	/** Where every cluster's props go — planned for the whole world up front (cheap position data, no sprites), independent of which clusters have actually streamed in. Signs/spawn/click-walk keepouts and the shadow-owner e2e's "props never move" expectations read this instead of waiting on placedProps. */
 	private plannedProps = new Map<string, PlannedProp[]>();
-	/** True once raiseLayer() has run its one-time seam.collect() scan — a cluster's ground/props materialized before that point are picked up by that scan; materialized after, they need an explicit layerSeam.addRiser() instead (see bakeOneClusterGround/materializeClusterProps). */
+	/** True once raiseLayer() has run its one-time seam.collect() scan — a cluster's ground/props materialized before that point are picked up by that scan; materialized after, they need an explicit layerSeam.addRiser() instead (see bakeClusterGroundTileByKey/materializeClusterProps). */
 	private layerRisersCollected = false;
 	/** Ground-field grid chunks streamed in/out around the camera (render/chunkStream.ts) — see drawGround()'s doc comment for why only the field itself evicts and per-cluster ground below doesn't. */
 	private groundFieldStreamer: ChunkStreamer<
@@ -488,8 +496,19 @@ export class WorldScene extends Phaser.Scene {
 	> | null = null;
 	private clusterGroundStreamer: ChunkStreamer<
 		string,
-		Phaser.GameObjects.RenderTexture
+		Phaser.GameObjects.RenderTexture | null
 	> | null = null;
+	/** Every ground tile of every cluster, keyed `clusterId|col,row`, with its world-space centre; built once in drawGround from geometry alone. */
+	private clusterTiles = new Map<
+		string,
+		{ clusterId: string; col: number; row: number; x: number; y: number }
+	>();
+	private clusterTileCandidates: StreamCandidate<string>[] = [];
+	/** Per cluster, its decal/ring draws split by tile; filled when the cluster's first tile streams in (initClusterGround). */
+	private clusterGroundPlans = new Map<
+		string,
+		Map<string, ClusterGroundDraw[]>
+	>();
 	/** Cluster-ground streaming's theme-tint ellipses accrete into this one Graphics as each cluster's ground bakes (in whatever order the streamer picks), same as they always did in the old all-at-once loop. */
 	private groundTintOverlay: Phaser.GameObjects.Graphics | null = null;
 	/** Payload is null for a chunk that was checked and has nothing to draw (bakeScenery/path chunks only exist where content actually falls — see sceneryBaker.ts's own doc comment) — still "loaded" so the streamer never re-checks it every frame. */
@@ -801,7 +820,7 @@ export class WorldScene extends Phaser.Scene {
 			this.portalVariants.clear();
 			this.groundFieldStreamer?.destroyAll((_key, rt) => rt.destroy());
 			this.groundFieldStreamer = null;
-			this.clusterGroundStreamer?.destroyAll((_key, rt) => rt.destroy());
+			this.clusterGroundStreamer?.destroyAll((_key, rt) => rt?.destroy());
 			this.clusterGroundStreamer = null;
 			this.groundTintOverlay?.destroy();
 			this.groundTintOverlay = null;
@@ -1347,33 +1366,27 @@ export class WorldScene extends Phaser.Scene {
 		return this.streamLoadRadiusPx() + GROUND_STREAM_EVICT_HYSTERESIS_PX;
 	}
 
-	/** One cluster's ground RT + its theme-tint ellipse — split out of drawGround so clusterGroundStreamer (below) can call it for whichever cluster it's baking, in whatever order distance/direction picks, same as bakeGroundFieldChunk for field chunks. Never called twice for the same cluster (clusterGroundStreamer's evictRadius is Infinity — see drawGround's doc comment on why clusters don't evict). */
-	private bakeOneClusterGround(
-		clusterId: string,
-		spawn: Position,
-	): Phaser.GameObjects.RenderTexture {
+	/** A cluster's once-only ground setup, run when its first ground tile streams in: the decal/ring plan (placeScatter, cached per cluster), its theme-tint ellipse and its props. Tiles then bake from the cached plan in whatever order distance/direction picks. */
+	private initClusterGround(clusterId: string, spawn: Position): void {
+		if (this.clusterGroundPlans.has(clusterId)) return;
 		const cluster = this.clustersById.get(clusterId);
 		if (!cluster)
-			throw new Error(`bakeOneClusterGround: unknown cluster ${clusterId}`);
+			throw new Error(`initClusterGround: unknown cluster ${clusterId}`);
 		const { x: radiusX, y: radiusY } = this.drawnGround(cluster);
-		const exclusions = this.clusterExclusions(cluster, spawn);
-		const rt = bakeClusterGround({
-			scene: this,
+		const draws = planClusterGroundDraws({
 			clusterId: cluster.id,
-			biomeSheetKey:
-				this.skin.clearingTiles?.key ?? biomeTileSheetKey(cluster.biome),
-			centerX: cluster.pos.x,
-			centerY: cluster.pos.y,
 			radiusX,
 			radiusY,
-			exclusions,
+			localExclusions: this.clusterExclusions(cluster, spawn).map((e) => ({
+				x: e.x - cluster.pos.x,
+				y: e.y - cluster.pos.y,
+				radius: e.radius,
+			})),
 			decalCount: DECALS_PER_CLUSTER,
 			ringFlowerCount: Math.max(6, Math.round(radiusX / 22)),
 			seed: 20260928,
-			tint: this.skin.groundTint ?? undefined,
-			...(this.skin.decals ? { decalSheetKey: this.skin.decals.key } : {}),
 		});
-		rt.setDepth(0.5);
+		this.clusterGroundPlans.set(clusterId, assignDrawsToTiles(draws));
 		this.groundTintOverlay?.fillStyle(this.theme.tint, GROUND_THEME_TINT_ALPHA);
 		this.groundTintOverlay?.fillEllipse(
 			cluster.pos.x,
@@ -1381,13 +1394,46 @@ export class WorldScene extends Phaser.Scene {
 			radiusX * 2,
 			radiusY * 2,
 		);
-		// Entry clusters exist before raiseLayer()'s one-time seam.collect()
-		// scan runs, so that scan already picks them up; a cluster streamed in
+		this.materializeClusterProps(clusterId);
+	}
+
+	/** One CLUSTER_TILE_PX square of a cluster's ground (null when the plan puts nothing in it). */
+	private bakeClusterGroundTileByKey(
+		key: string,
+		spawn: Position,
+	): Phaser.GameObjects.RenderTexture | null {
+		const tile = this.clusterTiles.get(key);
+		if (!tile) return null;
+		this.initClusterGround(tile.clusterId, spawn);
+		const draws = this.clusterGroundPlans
+			.get(tile.clusterId)
+			?.get(clusterTileLocalKey(tile.col, tile.row));
+		if (!draws || draws.length === 0) return null;
+		const rt = bakeClusterGroundTile(
+			this,
+			draws,
+			{
+				biomeSheetKey:
+					this.skin.clearingTiles?.key ??
+					biomeTileSheetKey(
+						this.clustersById.get(tile.clusterId)?.biome ?? "meadow",
+					),
+				tint: this.skin.groundTint ?? undefined,
+				...(this.skin.decals ? { decalSheetKey: this.skin.decals.key } : {}),
+			},
+			tile.col,
+			tile.row,
+			tile.x - CLUSTER_TILE_PX / 2,
+			tile.y - CLUSTER_TILE_PX / 2,
+		);
+		rt.setDepth(0.5);
+		// Entry tiles exist before raiseLayer()'s one-time seam.collect()
+		// scan runs, so that scan already picks them up; a tile streamed in
 		// afterward (the player walked toward it) needs an explicit riser so
 		// it still sinks correctly if the layer is later turned off.
 		if (
 			this.layerRisersCollected &&
-			(this.layerSeam?.layer.clusterIds.has(clusterId) ?? false)
+			(this.layerSeam?.layer.clusterIds.has(tile.clusterId) ?? false)
 		) {
 			this.layerSeam?.addRiser(rt);
 		}
@@ -1409,13 +1455,13 @@ export class WorldScene extends Phaser.Scene {
 	 * two most expensive parts, per docs/testing/2026-09-29-wide-pass.md Bug
 	 * 1) now bake only what's near `spawn` synchronously here; update() (see
 	 * streamGroundBakes()) bakes the rest incrementally, budgeted, as the
-	 * camera moves. The field streamer evicts chunks that fall out of range
-	 * (an open world can have unbounded chunks as the player wanders, so RT
-	 * count must stay bounded); the cluster streamer never evicts — a
-	 * world's cluster count is fixed and already bounded by its own file
-	 * count, so once a cluster's ground is baked it simply stays, exactly
-	 * like today's un-streamed behaviour, just spread over more frames to
-	 * get there. Props/skin-swap/light registration stay synchronous for
+	 * camera moves. Both streamers evict what falls out of range (an open
+	 * world can have unbounded chunks as the player wanders, so RT count
+	 * must stay bounded); a cluster's ground streams as 512px tiles, never
+	 * as one cluster-sized RenderTexture — a 29-portal clearing is
+	 * 2752x2784px, and baking that in one frame stalled the main thread for
+	 * seconds. A cluster's props and tint ellipse are set up once, when its
+	 * first tile streams in, and stay. get there. Props/skin-swap/light registration stay synchronous for
 	 * every cluster below (not the measured bottleneck, and
 	 * setupAmbientEffects() right after create() needs every light-emitting
 	 * prop to exist already) — the two-bake-radii tradeoff this leaves is
@@ -1488,32 +1534,52 @@ export class WorldScene extends Phaser.Scene {
 			this.plannedProps.set(cluster.id, planned);
 		}
 
+		this.clusterTiles.clear();
+		this.clusterGroundPlans.clear();
+		const clusterTileCandidates: StreamCandidate<string>[] = [];
+		for (const cluster of this.manifest.clusters) {
+			const { x: radiusX, y: radiusY } = this.drawnGround(cluster);
+			const layout = layoutClusterTiles(radiusX, radiusY);
+			for (const t of layout.tiles) {
+				const x =
+					cluster.pos.x +
+					layout.originX +
+					t.col * CLUSTER_TILE_PX +
+					CLUSTER_TILE_PX / 2;
+				const y =
+					cluster.pos.y +
+					layout.originY +
+					t.row * CLUSTER_TILE_PX +
+					CLUSTER_TILE_PX / 2;
+				const key = `${cluster.id}|${t.col},${t.row}`;
+				this.clusterTiles.set(key, { clusterId: cluster.id, ...t, x, y });
+				clusterTileCandidates.push({ key, x, y });
+			}
+		}
+		this.clusterTileCandidates = clusterTileCandidates;
 		this.clusterGroundStreamer = new ChunkStreamer<
 			string,
-			Phaser.GameObjects.RenderTexture
+			Phaser.GameObjects.RenderTexture | null
 		>({
 			loadRadius: this.streamLoadRadiusPx(),
-			evictRadius: Number.POSITIVE_INFINITY,
+			evictRadius: this.streamEvictRadiusPx(),
 			budgetMs: CLUSTER_GROUND_STREAM_BUDGET_MS,
 			maxPerFrame: CLUSTER_GROUND_STREAM_MAX_PER_FRAME,
-			positionOf: (id) => this.clustersById.get(id)?.pos ?? { x: 0, y: 0 },
-			bake: (id) => {
-				const rt = this.bakeOneClusterGround(id, spawn);
-				this.materializeClusterProps(id);
-				return rt;
-			},
-			evict: () => {
-				// Never called: evictRadius above is Infinity.
+			positionOf: (key) => this.clusterTiles.get(key) ?? { x: 0, y: 0 },
+			bake: (key) => this.bakeClusterGroundTileByKey(key, spawn),
+			evict: (_key, rt) => {
+				if (!rt) return;
+				this.tweens.killTweensOf(rt);
+				this.layerSeam?.removeRiser(rt);
+				rt.destroy();
 			},
 		});
-		const clusterLoadRadius = this.streamLoadRadiusPx();
-		const entryClusterIds = this.manifest.clusters
-			.filter(
-				(c) =>
-					Math.hypot(c.pos.x - spawn.x, c.pos.y - spawn.y) <= clusterLoadRadius,
-			)
-			.map((c) => c.id);
-		this.clusterGroundStreamer.loadNowSync(entryClusterIds);
+		const entryRadius = this.streamLoadRadiusPx();
+		this.clusterGroundStreamer.loadNowSync(
+			clusterTileCandidates
+				.filter((c) => Math.hypot(c.x - spawn.x, c.y - spawn.y) <= entryRadius)
+				.map((c) => c.key),
+		);
 	}
 
 	/**
@@ -2760,11 +2826,7 @@ export class WorldScene extends Phaser.Scene {
 		this.edgeSceneryStreamer?.step(chunkCandidates, camera, velocity);
 		this.pathStreamer?.step(chunkCandidates, camera, velocity);
 		this.clusterGroundStreamer?.step(
-			this.manifest.clusters.map((c) => ({
-				key: c.id,
-				x: c.pos.x,
-				y: c.pos.y,
-			})),
+			this.clusterTileCandidates,
 			camera,
 			velocity,
 		);
@@ -3363,18 +3425,24 @@ export class WorldScene extends Phaser.Scene {
 			const { riser, dustAt } = this.baseArchRiser();
 			riser.rise(this, layerRiseMs(prefersReducedMotion()), dustAt);
 		}
-		// Set regardless of whether a layer exists — bakeOneClusterGround/
+		// Set regardless of whether a layer exists — bakeClusterGroundTileByKey/
 		// materializeClusterProps check this to know whether seam.collect()
 		// already ran (entry clusters, picked up by its own scan) or a later
 		// stream-in needs an explicit addRiser() instead.
 		this.layerRisersCollected = true;
 		if (!seam) return;
-		seam.collect(
-			this,
-			before,
-			this.layerClearings(),
-			this.layerPathBake ? [this.layerPathBake] : [],
-		);
+		// Ground tiles by membership, not position: a corner tile's centre can
+		// fall outside the clearing circle collect() tests against.
+		const layerTiles: Phaser.GameObjects.GameObject[] = [];
+		for (const [key, rt] of this.clusterGroundStreamer?.entries() ?? []) {
+			const clusterId = this.clusterTiles.get(key)?.clusterId;
+			if (rt && clusterId !== undefined && seam.layer.clusterIds.has(clusterId))
+				layerTiles.push(rt);
+		}
+		seam.collect(this, before, this.layerClearings(), [
+			...(this.layerPathBake ? [this.layerPathBake] : []),
+			...layerTiles,
+		]);
 		seam.rise(
 			this,
 			layerRiseMs(prefersReducedMotion()),
