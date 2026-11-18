@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-17 — Tighter world layout
+
+- **Clearings sit closer to their parents.** `computeLayout` put every depth
+  on one shared ring whose radius came from the tree's total leaf width and
+  its single biggest clearing, so in big worlds the parent-to-child gap had a
+  median of 1,000 to 2,500 px and reached 8,500 px (7,400 px of empty ground
+  between two rings of this repo's world). Each subtree now owns an angular
+  wedge sized by what sits inside it, and a clearing sits as close to its
+  parent as its wedge allows. Where the tree is crowded the layout opens
+  only the depths that relieve it, and children of one parent share a radius
+  with their paths checked against their siblings. Nothing overlaps and no
+  path meets a third clearing on the worlds measured. Positions change, so
+  worlds built earlier need rebuilding (`@cabn/converter` minor).
+
 ## 2026-11-17 — Live arch page: later first load, no reload on brushing past
 
 - **Deferred first mount.** The player spawns inside a url arch's 150 px
