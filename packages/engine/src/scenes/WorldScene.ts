@@ -415,7 +415,14 @@ const GROUND_STREAM_BUDGET_MS = 4;
 const GROUND_STREAM_MAX_CHUNKS_PER_FRAME = 3;
 const CLUSTER_GROUND_STREAM_BUDGET_MS = 4;
 const CLUSTER_GROUND_STREAM_MAX_PER_FRAME = 2;
-const ENTRY_BAKE_BUDGET_MS = 10;
+// Behind the opaque entry curtain only the card animates, so frames can be
+// long. A one-bake-per-frame pace made entry time scale with frame time (about
+// 28s at ~1 fps on CI's software GL, 2026-11-18, where one 512px tile costs
+// 130-430 ms and each frame ~600 ms more): a step now bakes at least
+// ENTRY_BAKE_MIN_PER_STEP and goes on up to the budget, so a fast GPU still
+// yields every ~45 ms and a slow one amortises its frame cost over several tiles.
+const ENTRY_BAKE_BUDGET_MS = 45;
+const ENTRY_BAKE_MIN_PER_STEP = 6;
 const ENTRY_POOL_PREWARM = 6;
 const ENTRY_CURTAIN_PX = 16384;
 const ENTRY_CURTAIN_DEPTH = 1_000_000;
@@ -2888,7 +2895,8 @@ export class WorldScene extends Phaser.Scene {
 		if (keys.length === 0) return;
 		this.entryBake.push({
 			pending: keys,
-			load: (pending, budgetMs) => streamer.loadWithinBudget(pending, budgetMs),
+			load: (pending, budgetMs) =>
+				streamer.loadWithinBudget(pending, budgetMs, ENTRY_BAKE_MIN_PER_STEP),
 		});
 	}
 
@@ -2923,7 +2931,7 @@ export class WorldScene extends Phaser.Scene {
 		// A few idle textures up front so the first chunks streamed in while
 		// walking don't each pay a framebuffer creation.
 		if (chunkRTPoolStats(this).idle < ENTRY_POOL_PREWARM) {
-			prewarmChunkRTs(this, chunkRTPoolStats(this).idle + 1);
+			prewarmChunkRTs(this, ENTRY_POOL_PREWARM);
 			return true;
 		}
 		return false;

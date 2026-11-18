@@ -224,6 +224,15 @@ describe("ChunkStreamer", () => {
 		expect(baked).toEqual(["a", "b", "c"]);
 	});
 
+	it("loadWithinBudget bakes minCount keys before it looks at the budget, then stops once over it", () => {
+		const { streamer, baked } = makeStreamer();
+		expect(streamer.loadWithinBudget(["a", "b", "c", "d", "e"], 0, 3)).toEqual([
+			"d",
+			"e",
+		]);
+		expect(baked).toEqual(["a", "b", "c"]);
+	});
+
 	it("loadWithinBudget skips keys that are already loaded", () => {
 		const { streamer, baked } = makeStreamer();
 		streamer.loadNowSync(["a"]);
