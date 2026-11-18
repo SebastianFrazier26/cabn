@@ -102,17 +102,36 @@ async function focusPortal(page: Page, portalId: string) {
 		keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
 	if (Math.abs(dy) > Math.abs(dx) * 0.4)
 		keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
-	// Stepping is measured in pixels, not wall-clock: a timed hold covers
-	// ~100px (the whole focus radius) once CDP round-trips are counted, which
-	// carried the player out of focus range from the arch they arrived beside.
+	// Movement is time-based (#24), so a key held across one stalled frame
+	// carries the player a frame's worth of real time — a diagonal step on a
+	// loaded machine ran ~90px and left the 100px focus radius (2026-11-18).
+	// The step is cosmetic (clear the arch preview), so when it overshoots,
+	// walk back and retry with a shorter burst, finally with no step at all.
 	const STEP_PX = 30;
-	const stepDeadline = Date.now() + scaled(10_000);
-	while (Date.now() < stepDeadline) {
-		const p = (await state(page))?.playerPos ?? at;
-		if (Math.hypot(p.x - at.x, p.y - at.y) >= STEP_PX) break;
-		await holdKeys(page, keys, 40);
+	for (const holdMs of [40, 20, 0]) {
+		if (holdMs > 0) {
+			const stepDeadline = Date.now() + scaled(10_000);
+			while (Date.now() < stepDeadline) {
+				const p = (await state(page))?.playerPos ?? at;
+				if (Math.hypot(p.x - at.x, p.y - at.y) >= STEP_PX) break;
+				await holdKeys(page, keys, holdMs);
+			}
+			await page.waitForTimeout(900);
+		}
+		if (
+			(await state(page))?.focusedPortalPreview?.portalId === portalId ||
+			holdMs === 0
+		)
+			break;
+		await page.evaluate((id) => {
+			(
+				window as unknown as {
+					__cabnBus: { emit(e: string, p: unknown): void };
+				}
+			).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
+		}, portalId);
+		await page.waitForTimeout(scaled(3000));
 	}
-	await page.waitForTimeout(900);
 	await expect
 		.poll(async () => (await state(page))?.focusedPortalPreview?.portalId)
 		.toBe(portalId);

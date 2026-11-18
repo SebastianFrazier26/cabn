@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-18 — Media e2e survives an overshooting step
+
+- **The media-preview e2e no longer loses focus on the arch it just walked to.**
+  Since movement became time-based (#24) a key held across one stalled frame
+  moves the player a frame's worth of real time, so the spec's 30px "step off
+  the arch" could run ~90px diagonally and leave the 100px focus radius
+  (`media/chime.wav`). `focusPortal` now walks back and retries with a shorter
+  burst, finally with no step. Test-only change; no package bump, so no
+  changeset. The full-suite `embeds` and `shadow-owner` failures were not
+  reproducible alone and are load-related (world entry past 10s with
+  parallel workers), not code regressions.
+
 ## 2026-11-18 — Full E2E suite sharded six ways
 
 - **Nightly full E2E no longer hits its timeout.** The 66-test suite ran as
