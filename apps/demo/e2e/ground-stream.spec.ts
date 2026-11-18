@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { holdKeys } from "./helpers";
+import { holdKeys, scaled } from "./helpers";
 
 // M10 stream-bake: with the ground field/cluster ground now baked around the
 // camera instead of over the whole world up front (see
@@ -398,7 +398,7 @@ test("walking to a far corner never shows unbaked ground at the leading screen e
 	await holdKeys(page, ["Enter"], 150);
 	await expect
 		.poll(async () => (await state(page))?.activeWorldBase ?? null, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.not.toBeNull();
 	await page.waitForTimeout(500);

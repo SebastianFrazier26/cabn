@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
+import { scaled } from "./timeScale";
 
 // The shadow realm (M2) end to end against a real `cabn serve --owner` of a
 // temp copy of the CLI's serve fixture plus hidden files written here (so no
@@ -507,7 +508,9 @@ async function expectDayLook(page: Page) {
 
 async function waitForWorld(page: Page) {
 	await expect
-		.poll(async () => (await snap(page)).mapPortals.length, { timeout: 30_000 })
+		.poll(async () => (await snap(page)).mapPortals.length, {
+			timeout: scaled(30_000),
+		})
 		.toBeGreaterThan(0);
 }
 
@@ -520,13 +523,15 @@ async function walkToAndOpen(page: Page, portalId: string) {
 		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
 	}, portalId);
 	await expect
-		.poll(async () => (await snap(page)).focused, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).focused, { timeout: scaled(20_000) })
 		.toBe(portalId);
 	const clusterId = (await snap(page)).portals.find(
 		(p) => p.id === portalId,
 	)?.clusterId;
 	await expect
-		.poll(async () => (await snap(page)).loadedChunks, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).loadedChunks, {
+			timeout: scaled(10_000),
+		})
 		.toContain(clusterId);
 	let last = { x: Number.NaN, y: 0 };
 	for (let i = 0; i < 40; i++) {
@@ -546,7 +551,9 @@ async function walkToAndOpen(page: Page, portalId: string) {
 	await page.waitForTimeout(150);
 	await page.keyboard.up("Enter");
 	await expect
-		.poll(async () => (await snap(page)).activePortalId, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).activePortalId, {
+			timeout: scaled(10_000),
+		})
 		.toBe(portalId);
 }
 
@@ -615,7 +622,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 				.__CABN_OWNER_TOKEN__,
 	);
 	await expect(page.locator('[data-tool="owner"]')).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await page.waitForTimeout(1500);
 
@@ -680,7 +687,9 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// place: only hidden files show, and nothing that stays moves.
 	await sudo(page, "keys");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBe("shadow");
 	await page.waitForTimeout(200);
 	await shoot(page, "toggle-mid-rise");
@@ -789,7 +798,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	).length;
 	await expect
 		.poll(async () => (await creatures(page)).sails.length, {
-			timeout: 10_000,
+			timeout: scaled(10_000),
 		})
 		.toBe(realmMills);
 	const realmCreatures = await creatures(page);
@@ -848,13 +857,13 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await expect(page.locator(".cabn-spellbook-frame")).toBeHidden();
 	await hold(page, "Escape");
 	await expect
-		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).mode, { timeout: scaled(10_000) })
 		.toBe("world");
 
 	// The realm's own monster, met in its file, is the nether gremlin, with nether battle frames.
 	await walkToAndOpen(page, ".github/check.py");
 	await expect
-		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).mode, { timeout: scaled(10_000) })
 		.toBe("file");
 	await expect
 		.poll(() =>
@@ -889,7 +898,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await shoot(page, "file-view-monster-shadow");
 	await hold(page, "Escape");
 	await expect
-		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).mode, { timeout: scaled(10_000) })
 		.toBe("world");
 
 	// Editing .vscode/settings.json lands on disk with its mode kept, never in storage.
@@ -909,15 +918,15 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await page.keyboard.press("ControlOrMeta+s");
 	const settings = join(dir, ".vscode/settings.json");
 	await expect
-		.poll(() => readFile(settings, "utf8"), { timeout: 10_000 })
+		.poll(() => readFile(settings, "utf8"), { timeout: scaled(10_000) })
 		.toBe('{\n\t"editor.tabSize": 4\n}\n');
 	expect((await stat(settings)).mode & 0o777).toBe(0o600);
 	await expect
-		.poll(async () => (await snap(page)).dirty, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).dirty, { timeout: scaled(10_000) })
 		.toBe(false);
 	await hold(page, "Escape");
 	await expect
-		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).mode, { timeout: scaled(10_000) })
 		.toBe("world");
 	const stored = await storageText(page);
 	expect(stored).not.toContain("tabSize");
@@ -932,7 +941,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await input.fill("shadowgithubcanary");
 	const content = page.locator(".cabn-crystal-ball-content");
 	await expect(content.locator("li").first()).toContainText(".github/ci.yml", {
-		timeout: 10_000,
+		timeout: scaled(10_000),
 	});
 	await expect(content.getByTestId("layer-badge").first()).toBeVisible();
 	await page.waitForTimeout(700);
@@ -940,7 +949,9 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// ...and no normal file, by its text or its name.
 	for (const query of ["normalcanary", "greet", "hello"]) {
 		await input.fill(query);
-		await expect(content).toContainText("no matches", { timeout: 10_000 });
+		await expect(content).toContainText("no matches", {
+			timeout: scaled(10_000),
+		});
 		await expect(content.locator("li")).toHaveCount(0);
 	}
 	await page.keyboard.press("Escape");
@@ -949,12 +960,14 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// A hidden arch is reached by clicking it, too.
 	await clickArch(page, ".github/ci.yml");
 	await expect
-		.poll(async () => (await snap(page)).activePortalId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activePortalId, {
+			timeout: scaled(20_000),
+		})
 		.toBe(".github/ci.yml");
 	expect((await snap(page)).content).toBe(HIDDEN_FILES[".github/ci.yml"]);
 	await hold(page, "Escape");
 	await expect
-		.poll(async () => (await snap(page)).mode, { timeout: 10_000 })
+		.poll(async () => (await snap(page)).mode, { timeout: scaled(10_000) })
 		.toBe("world");
 
 	// A sign in .github lands on disk (realm shadow).
@@ -973,7 +986,9 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	});
 	await expect(page.getByTestId("sign-editor")).toBeVisible();
 	await page.getByTestId("sign-editor-save").click();
-	await expect(page.getByTestId("sign-editor")).toBeHidden({ timeout: 10_000 });
+	await expect(page.getByTestId("sign-editor")).toBeHidden({
+		timeout: scaled(10_000),
+	});
 	await expect
 		.poll(
 			async () =>
@@ -1079,7 +1094,9 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// Toggling off takes everything hidden away again.
 	await sudo(page, "mouse");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBeNull();
 	await page.waitForTimeout(1200);
 	const off = await snap(page);
@@ -1125,7 +1142,7 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	await page.getByPlaceholder("search the world...").fill("normalcanary");
 	await expect(
 		page.locator(".cabn-crystal-ball-content li").first(),
-	).toContainText("docs/notes.md", { timeout: 10_000 });
+	).toContainText("docs/notes.md", { timeout: scaled(10_000) });
 	await page.keyboard.press("Escape");
 	await page.waitForTimeout(300);
 	const offScenery = await scenery(page);
@@ -1142,14 +1159,18 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// With the setting on Night, sudo shows the realm's day look; off, night is back.
 	await sudo(page, "keys");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBe("shadow");
 	await expectDayLook(page);
 	await page.waitForTimeout(1200);
 	await shoot(page, "sudo-at-night-setting");
 	await sudo(page, "mouse");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBeNull();
 	await expect.poll(async () => (await look(page)).blend).toBe(1);
 	expect((await look(page)).timeOfDay).toBe("night");
@@ -1158,7 +1179,9 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	// A reload always starts with the realm off.
 	await sudo(page, "mouse");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBe("shadow");
 	await page.reload();
 	await waitForWorld(page);

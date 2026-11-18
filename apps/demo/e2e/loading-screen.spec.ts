@@ -285,7 +285,7 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	await waitForWorld(page);
 	await expect(overlay).toBeHidden();
 	await expect(page.locator("[data-transition]")).toHaveCount(0, {
-		timeout: 3_000,
+		timeout: scaled(3_000),
 	});
 	const entered = await loadingLog(page);
 	expect(entered.some((e) => e.visible)).toBe(true);

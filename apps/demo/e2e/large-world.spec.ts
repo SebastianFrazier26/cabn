@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
+import { scaled } from "./timeScale";
 
 // Opt-in smoke test for the M10 stream-bake fixes at a scale no fixture in
 // this repo reaches on its own: a synthetic ~2,000-file, ~150-folder project,
@@ -372,7 +373,7 @@ test("large synthetic project: enters within threshold, walking stays long-task-
 	await page
 		.locator("canvas")
 		.first()
-		.waitFor({ state: "visible", timeout: 30_000 });
+		.waitFor({ state: "visible", timeout: scaled(30_000) });
 
 	const enterMs = await waitForMark(page, "cabn:world:create-end", 30_000);
 	console.log(

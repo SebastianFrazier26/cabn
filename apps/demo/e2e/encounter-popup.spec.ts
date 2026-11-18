@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./cspGuard";
-import { holdKey, scaled, walkToward } from "./helpers";
+import { holdKey, scaled, WORLD_LOAD_TIMEOUT_MS, walkToward } from "./helpers";
 
 // The file view's monster encounter popup (react/EncounterBanner.tsx): it
 // used to auto-advance into the quill on a fixed 1.4s timer regardless of
@@ -77,7 +77,7 @@ async function enterSampleFile(page: Page) {
 							}
 						).__cabnStore.getState().activeWorldBase,
 				),
-			{ timeout: scaled(10_000) },
+			{ timeout: WORLD_LOAD_TIMEOUT_MS },
 		)
 		.not.toBeNull();
 	await page.waitForTimeout(1500);
