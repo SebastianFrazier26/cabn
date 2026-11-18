@@ -17,6 +17,21 @@
   the game's width (a 360px embed fits all six, labels included), and below
   ~960px the bar sits above the bug counter instead of under it.
 
+## 2026-11-17 — Trees no longer sliced at chunk edges
+
+- **Scenery that straddles a chunk seam is drawn whole.** Since the 2026-09-30 lazy
+  per-chunk planning each filler tree,
+  shrub and rock was baked only into the 512 px chunk owning its grid cell, so
+  the part of a sprite outside that chunk was clipped (about 43% of loaded
+  trees in a 510-tree world straddle a seam). `planFillerChunkWithOverflow`
+  (`systems/edgeScenery.ts`) now also returns the neighbours' items whose
+  sprite box reaches into the chunk, and `bakeLazyEdgeSceneryChunk` draws them
+  at the chunk-relative offset in the same y-sorted pass. Only anchor-owned
+  items are reported as loaded scenery, so counts and the shadow realm's
+  "scenery never moves" check are unchanged. Chunk plans are memoized (LRU of
+  128 per world) so the extra neighbour planning costs about 1.3x per chunk
+  bake in scan order instead of about 9x.
+
 ## 2026-11-16 — Walking no longer depends on frame rate
 
 - **Same walking speed at any frame rate.** Phaser's time step swaps any
