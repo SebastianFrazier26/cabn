@@ -77,6 +77,7 @@ import {
 	newlyApproached,
 	type PortalPoint,
 } from "../systems/portalApproach.js";
+import { PressLatch } from "../systems/pressLatch.js";
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
 import { cabinTransitionDelayMs } from "../systems/sceneTransition.js";
@@ -154,7 +155,7 @@ export class ShelfScene extends Phaser.Scene {
 	private player!: PlayerHandle;
 	private playerTextures!: PlayerTextures;
 	private movementKeys!: MovementKeys;
-	private enterKey!: Phaser.Input.Keyboard.Key;
+	private enterKey!: PressLatch;
 	private walker!: ClickWalker;
 	private pointerInput!: PointerInputHandle;
 
@@ -208,7 +209,9 @@ export class ShelfScene extends Phaser.Scene {
 		this.movementKeys = createMovementKeys(this);
 		const kb = this.input.keyboard;
 		if (!kb) throw new Error("ShelfScene requires keyboard input");
-		this.enterKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
+		this.enterKey = new PressLatch(
+			kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
+		);
 
 		this.setupCamera();
 		this.setupPointerInput();
@@ -711,7 +714,7 @@ export class ShelfScene extends Phaser.Scene {
 	}
 
 	private handleCabinEnter(pos: { x: number; y: number }): void {
-		if (!Phaser.Input.Keyboard.JustDown(this.enterKey)) return;
+		if (!this.enterKey.consume()) return;
 		// A focused button (e.g. tabbed-to) gets this Enter natively too.
 		if (activeFocusOwner() === "control") return;
 		this.enterClosestCabinInRange(pos);

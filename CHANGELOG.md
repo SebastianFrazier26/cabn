@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-18 — Enter no longer lost on a slow frame
+
+- **A quick Enter tap registers even when the frame is slow.** Phaser's
+  `JustDown` flag is cleared by the key-up, so a tap whose down and up were
+  both queued within one slow frame did nothing. World and shelf Enter now
+  latch on key-down (`systems/pressLatch.ts`). Surfaced by the spellbook e2e
+  failing on CI's software GL.
+
 ## 2026-11-17 — Tighter world layout
 
 - **Clearings sit closer to their parents.** `computeLayout` put every depth

@@ -200,6 +200,7 @@ import {
 	layoutPortalRing,
 	type PortalRingSizes,
 } from "../systems/portalRing.js";
+import { PressLatch } from "../systems/pressLatch.js";
 import { prefersReducedMotion } from "../systems/reducedMotion.js";
 import {
 	applyOverridesToChunk,
@@ -565,7 +566,7 @@ export class WorldScene extends Phaser.Scene {
 	private playerTextures!: PlayerTextures;
 
 	private keys!: {
-		enter: Phaser.Input.Keyboard.Key;
+		enter: PressLatch;
 		esc: Phaser.Input.Keyboard.Key;
 	};
 	private walker!: ClickWalker;
@@ -2572,7 +2573,7 @@ export class WorldScene extends Phaser.Scene {
 		if (!kb) throw new Error("WorldScene requires keyboard input");
 		this.movementKeys = createMovementKeys(this);
 		this.keys = {
-			enter: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
+			enter: new PressLatch(kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)),
 			esc: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
 		};
 		this.walker = new ClickWalker(this, prefersReducedMotion());
@@ -3181,7 +3182,7 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	private handlePortalEnter(): void {
-		if (!Phaser.Input.Keyboard.JustDown(this.keys.enter)) return;
+		if (!this.keys.enter.consume()) return;
 		// A focused button (e.g. tabbed-to) gets this Enter natively too.
 		if (activeFocusOwner() === "control") return;
 		if (this.pet?.isTalking()) return;
