@@ -11,7 +11,7 @@ import {
 	type LayeredSceneryItem,
 	type LazySceneryContext,
 	type PointOfInterest,
-	planFillerChunkForContext,
+	planFillerChunkWithOverflow,
 	planLayeredEdgeScenery,
 	type SceneryItem,
 	type SceneryKind,
@@ -211,14 +211,20 @@ export function bakeLazyEdgeSceneryChunk(
 	rt: Phaser.GameObjects.RenderTexture | null;
 	items: LayeredSceneryItem[];
 } {
-	const filler = planFillerChunkForContext(plan.context, chunkCol, chunkRow);
+	const { owned, overflow } = planFillerChunkWithOverflow(
+		plan.context,
+		chunkCol,
+		chunkRow,
+	);
 	const poiItems = plan.poiChunkItems.get(chunkKey) ?? [];
-	const items = [...poiItems, ...filler].sort((a, b) => a.y - b.y || a.x - b.x);
+	const bySortOrder = (a: LayeredSceneryItem, b: LayeredSceneryItem) =>
+		a.y - b.y || a.x - b.x;
+	const items = [...poiItems, ...owned].sort(bySortOrder);
 	const rt = bakeSceneryChunk(
 		scene,
 		chunkCol,
 		chunkRow,
-		items,
+		[...items, ...overflow].sort(bySortOrder),
 		SCENERY_DEPTH,
 		skin,
 	);

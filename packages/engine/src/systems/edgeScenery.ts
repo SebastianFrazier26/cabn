@@ -1401,3 +1401,84 @@ export function planFillerChunkForContext(
 		)
 		.map((i) => ({ ...i, layer: true }) as LayeredSceneryItem);
 }
+
+const FILLER_PLAN_CACHE_MAX = 128;
+const fillerPlanCaches = new WeakMap<
+	LazySceneryContext,
+	Map<string, LayeredSceneryItem[]>
+>();
+
+/** Memoized per context: a chunk's plan is also its 8 neighbours' overflow input, so without this each plan runs ~9x (measured ~10x slower per bake). Map insertion order doubles as the LRU. */
+function cachedFillerPlan(
+	context: LazySceneryContext,
+	chunkCol: number,
+	chunkRow: number,
+): LayeredSceneryItem[] {
+	let cache = fillerPlanCaches.get(context);
+	if (!cache) {
+		cache = new Map();
+		fillerPlanCaches.set(context, cache);
+	}
+	const key = `${chunkCol},${chunkRow}`;
+	const hit = cache.get(key);
+	if (hit) {
+		cache.delete(key);
+		cache.set(key, hit);
+		return hit;
+	}
+	const plan = planFillerChunkForContext(context, chunkCol, chunkRow);
+	cache.set(key, plan);
+	if (cache.size > FILLER_PLAN_CACHE_MAX) {
+		const oldest = cache.keys().next().value;
+		if (oldest !== undefined) cache.delete(oldest);
+	}
+	return plan;
+}
+
+export interface FillerChunkWithOverflow {
+	/** Items whose grid cell belongs to this chunk — the only ones that count as "loaded" scenery. */
+	owned: LayeredSceneryItem[];
+	/** Neighbour-owned items whose sprite box reaches into this chunk; draw-only, never counted. */
+	overflow: LayeredSceneryItem[];
+}
+
+/**
+ * planFillerChunkForContext plus the neighbours' items that spill across the
+ * seam. Ownership is by grid cell, but a sprite (up to ~156px tall, ~120px
+ * wide) and its jitter routinely extend past the 512px chunk that owns it, and
+ * each chunk bakes into its own clipped RenderTexture — so every chunk must
+ * also draw the part of its neighbours' items that lands inside it. All 8
+ * neighbours are planned rather than a reach-derived subset: jitter moves an
+ * item's anchor off its cell centre, so even the chunk above can overlap.
+ */
+export function planFillerChunkWithOverflow(
+	context: LazySceneryContext,
+	chunkCol: number,
+	chunkRow: number,
+): FillerChunkWithOverflow {
+	const { footprints } = context.base;
+	const originX = chunkCol * WORLD_CHUNK_SIZE_PX;
+	const originY = chunkRow * WORLD_CHUNK_SIZE_PX;
+	const owned = cachedFillerPlan(context, chunkCol, chunkRow);
+	const overflow: LayeredSceneryItem[] = [];
+	for (let dr = -1; dr <= 1; dr++) {
+		for (let dc = -1; dc <= 1; dc++) {
+			if (dc === 0 && dr === 0) continue;
+			for (const item of cachedFillerPlan(
+				context,
+				chunkCol + dc,
+				chunkRow + dr,
+			)) {
+				const fp = footprints[item.kind];
+				if (
+					item.x + fp.w / 2 > originX &&
+					item.x - fp.w / 2 < originX + WORLD_CHUNK_SIZE_PX &&
+					item.y > originY &&
+					item.y - fp.h < originY + WORLD_CHUNK_SIZE_PX
+				)
+					overflow.push(item);
+			}
+		}
+	}
+	return { owned, overflow };
+}

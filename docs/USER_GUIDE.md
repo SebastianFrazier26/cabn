@@ -74,7 +74,7 @@ The minimap in the top-right shows the current world's folders, paths, files, pl
 
 Press `M`, or click **Map (M)**, for a larger centered map. Select a cyan file marker or a named destination below the map to walk to its arch using the same navigation as the spyglass. This does not open the file automatically. `M`, `Esc` or **Close** closes the larger map. Movement pauses while it is open; opening it cancels any existing click-walk. Map keys do not run while typing or while Wren is speaking. The map is hidden on the shelf and inside files, and resets when changing worlds. The small map also steps aside while an arch's bigger preview is open at the side of the screen; `M` still opens the big one.
 
-The hotbar at the bottom of the screen holds your tools. Click a slot or press its key. Inside a text file, add `Alt` (`Option` on macOS) to the tool keys so plain letters can type. Each slot shows a short verb (Use, Look, Search, Copy, Edit, Run).
+The hotbar at the bottom of the screen holds your tools. Click a slot or press its key. Inside a text file, add `Alt` (`Option` on macOS) to the tool keys so plain letters can type. Each slot shows a short verb under its icon (Enter, Look, Search, Copy, Edit, Run); hover or focus a slot, or tap it on a touch screen, and a card at the top right names the tool, its key and what it does.
 
 <!-- BEGIN GENERATED guide:tools (packages/engine/src/systems/guideContent.ts) -->
 | Tool | Key | What it does |

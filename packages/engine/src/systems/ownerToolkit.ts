@@ -106,6 +106,7 @@ export function createOwnerToolkitTool(): Tool {
 		id: "owner",
 		label: "Owner",
 		name: "Owner's toolkit",
+		description: "Place signs, commit and switch branches",
 		icon: uiIconPath("owner"),
 		hotkey: OWNER_TOOLKIT_HOTKEY,
 		onUse: ({ store }) => {
