@@ -274,3 +274,182 @@ describe("computeLayout: even, path-clear spacing (playtest round 2)", () => {
 		expect(portalRingBaseRadius(12, 0)).toBeCloseTo((12 * 192) / (Math.PI * 2));
 	});
 });
+
+// 2026-11-17: parent/child edge gaps on big worlds had grown to thousands of
+// px (every depth sat on one shared ring sized by the tree's total leaf
+// width and its biggest clearing). Nodes now sit as close to their parent as
+// their own wedge of the circle allows.
+describe("computeLayout: large trees stay clear and compact", () => {
+	// Seeded and local so the trees never depend on Math.random or on the
+	// module under test.
+	function lcg(seed: number): () => number {
+		let state = seed;
+		return () => {
+			state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+			return state / 4294967296;
+		};
+	}
+
+	function randomTree(count: number, seed: number): LayoutTreeNode {
+		const rand = lcg(seed);
+		const root: LayoutTreeNode = { id: "root", weight: 5, children: [] };
+		const all = [root];
+		while (all.length < count) {
+			const parent = all[Math.floor(rand() * rand() * all.length)];
+			if (!parent || parent.children.length >= 8) continue;
+			const node: LayoutTreeNode = {
+				id: `${parent.id}--n${all.length}`,
+				weight: 1 + Math.floor(rand() * rand() * rand() * 40),
+				children: [],
+			};
+			parent.children.push(node);
+			all.push(node);
+		}
+		return root;
+	}
+
+	function wideTree(count: number): LayoutTreeNode {
+		return {
+			id: "root",
+			weight: 2,
+			children: Array.from({ length: count }, (_, i) => ({
+				id: `c${i}`,
+				weight: 1 + ((i * 7) % 20),
+				children: [1, 2, 3].map((k) => ({
+					id: `c${i}-${k}`,
+					weight: k * 4,
+					children: [],
+				})),
+			})),
+		};
+	}
+
+	function deepTree(depth: number): LayoutTreeNode {
+		let node: LayoutTreeNode = { id: "leaf", weight: 3, children: [] };
+		for (let i = depth; i > 0; i--)
+			node = {
+				id: `n${i}`,
+				weight: 2,
+				children: [node, { id: `n${i}-side`, weight: 5, children: [] }],
+			};
+		return { id: "root", weight: 1, children: [node] };
+	}
+
+	interface Measured {
+		positions: Map<string, LayoutPosition>;
+		radius: Map<string, number>;
+		edges: [string, string][];
+	}
+
+	function measure(tree: LayoutTreeNode): Measured {
+		const radius = new Map<string, number>();
+		const edges: [string, string][] = [];
+		const walk = (node: LayoutTreeNode, parent?: string) => {
+			radius.set(node.id, clearingRadius(node, parent !== undefined));
+			if (parent) edges.push([parent, node.id]);
+			for (const child of node.children) walk(child, node.id);
+		};
+		walk(tree);
+		return { positions: computeLayout(tree), radius, edges };
+	}
+
+	function position(m: Measured, id: string): LayoutPosition {
+		const p = m.positions.get(id);
+		if (!p) throw new Error(`missing ${id}`);
+		return p;
+	}
+
+	function gaps(m: Measured): number[] {
+		return m.edges
+			.map(([from, to]) => {
+				const a = position(m, from);
+				const b = position(m, to);
+				return (
+					Math.hypot(a.x - b.x, a.y - b.y) -
+					(m.radius.get(from) ?? 0) -
+					(m.radius.get(to) ?? 0)
+				);
+			})
+			.sort((a, b) => a - b);
+	}
+
+	const trees: [string, () => LayoutTreeNode][] = [
+		["100 random clusters", () => randomTree(100, 7)],
+		["60 wide branches", () => wideTree(60)],
+		["a 14-deep chain with side leaves", () => deepTree(14)],
+	];
+
+	test.each(trees)("no two clearings overlap: %s", (_name, build) => {
+		const m = measure(build());
+		const ids = [...m.positions.keys()];
+		for (let i = 0; i < ids.length; i++) {
+			for (let j = i + 1; j < ids.length; j++) {
+				const a = position(m, ids[i] ?? "");
+				const b = position(m, ids[j] ?? "");
+				expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(
+					(m.radius.get(ids[i] ?? "") ?? 0) + (m.radius.get(ids[j] ?? "") ?? 0),
+				);
+			}
+		}
+	});
+
+	test.each(trees.slice(0, 2))(
+		"no path runs through a third clearing: %s",
+		(_name, build) => {
+			const m = measure(build());
+			for (const [from, to] of m.edges) {
+				for (const [id, p] of m.positions) {
+					if (id === from || id === to) continue;
+					expect(
+						pointToSegment(p, position(m, from), position(m, to)),
+					).toBeGreaterThan(m.radius.get(id) ?? 0);
+				}
+			}
+		},
+	);
+
+	test("is deterministic on a large tree", () => {
+		const a = computeLayout(randomTree(100, 7));
+		const b = computeLayout(randomTree(100, 7));
+		expect([...a.entries()]).toEqual([...b.entries()]);
+	});
+
+	test("keeps the typical parent-to-child gap bounded on a 100-cluster tree", () => {
+		// The shared-ring layout measured a 1,670px median on this tree, the
+		// current one ~1,100px; the rest is the few 40-file clusters, which
+		// force a wide circle however the tree is arranged.
+		const sorted = gaps(measure(randomTree(100, 7)));
+		expect(sorted[0]).toBeGreaterThan(-1);
+		expect(sorted[Math.floor(sorted.length / 2)]).toBeLessThan(1300);
+	});
+
+	test("a big cluster in one branch does not push an unrelated branch outward", () => {
+		const tree: LayoutTreeNode = {
+			id: "root",
+			weight: 1,
+			children: [
+				{ id: "big", weight: 40, children: [] },
+				{
+					id: "small",
+					weight: 1,
+					children: [{ id: "small--kid", weight: 1, children: [] }],
+				},
+			],
+		};
+		const m = measure(tree);
+		const reach = (id: string) =>
+			Math.hypot(position(m, id).x, position(m, id).y);
+		const rootToSmall =
+			reach("small") -
+			(m.radius.get("root") ?? 0) -
+			(m.radius.get("small") ?? 0);
+		const smallToKid =
+			reach("small--kid") -
+			reach("small") -
+			(m.radius.get("small") ?? 0) -
+			(m.radius.get("small--kid") ?? 0);
+		// Both were over 1,000px when "small" shared the big cluster's ring.
+		expect(rootToSmall).toBeLessThan(300);
+		expect(smallToKid).toBeLessThan(300);
+	});
+});
