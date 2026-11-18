@@ -151,6 +151,64 @@ describe("SceneLoadCoordinator", () => {
 	});
 });
 
+describe("SceneLoadCoordinator.hold", () => {
+	beforeEach(() => vi.useFakeTimers());
+	afterEach(() => vi.useRealTimers());
+
+	it("keeps the load open past settled() until the hold is released", () => {
+		const { store, coordinator } = setup();
+		coordinator.expect("Walking…");
+		const release = coordinator.hold();
+		coordinator.settled();
+		expect(store.getState().loading.active).toBe(true);
+		release();
+		expect(store.getState().loading.active).toBe(false);
+	});
+
+	it("settles at once when released before settled() is asked for", () => {
+		const { store, coordinator } = setup();
+		coordinator.expect("Walking…");
+		coordinator.hold()();
+		expect(store.getState().loading.active).toBe(true);
+		coordinator.settled();
+		expect(store.getState().loading.active).toBe(false);
+	});
+
+	it("a release arriving after a newer load began leaves that load alone", () => {
+		const { store, coordinator } = setup();
+		coordinator.expect("first");
+		const release = coordinator.hold();
+		coordinator.settled();
+		coordinator.expect("second");
+		release();
+		expect(store.getState().loading).toMatchObject({
+			active: true,
+			label: "second",
+		});
+	});
+
+	it("releasing twice is harmless", () => {
+		const { coordinator } = setup();
+		coordinator.expect("x");
+		const release = coordinator.hold();
+		const other = coordinator.hold();
+		release();
+		release();
+		coordinator.settled();
+		expect(coordinator.pending).toBe(true);
+		other();
+		expect(coordinator.pending).toBe(false);
+	});
+
+	it("detaching drops a hold so the card cannot get stuck", () => {
+		const { store, coordinator, detach } = setup();
+		coordinator.expect("x");
+		coordinator.hold();
+		detach();
+		expect(store.getState().loading.active).toBe(false);
+	});
+});
+
 describe("transitionCoverTiming", () => {
 	it("adds up to the unsplit transition length when nothing is loading", () => {
 		for (const kind of ["cabin", "layer"] as const)

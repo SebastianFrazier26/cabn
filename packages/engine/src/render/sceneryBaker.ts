@@ -5,6 +5,7 @@ import type {
 	SceneryItem,
 	SceneryKind,
 } from "../systems/edgeScenery.js";
+import { acquireChunkRT } from "./chunkRenderTextures.js";
 import {
 	parseWorldChunkKey,
 	WORLD_CHUNK_SIZE_PX,
@@ -110,11 +111,10 @@ export function bakeSceneryChunk(
 	if (items.length === 0) return null;
 	const originX = chunkCol * CHUNK_SIZE_PX;
 	const originY = chunkRow * CHUNK_SIZE_PX;
-	const rt = scene.add.renderTexture(
+	const rt = acquireChunkRT(
+		scene,
 		originX + CHUNK_SIZE_PX / 2,
 		originY + CHUNK_SIZE_PX / 2,
-		CHUNK_SIZE_PX,
-		CHUNK_SIZE_PX,
 	);
 	const stamps = new Map<string, Phaser.GameObjects.Image>();
 	const stampFor = (kind: SceneryKind): Phaser.GameObjects.Image => {

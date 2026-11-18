@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-18 — Enter no longer lost on a slow frame
+
+- **A quick Enter tap registers even when the frame is slow.** Phaser's
+  `JustDown` flag is cleared by the key-up, so a tap whose down and up were
+  both queued within one slow frame did nothing. World and shelf Enter now
+  latch on key-down (`systems/pressLatch.ts`). Surfaced by the spellbook e2e
+  failing on CI's software GL.
+
 ## 2026-11-17 — Tighter world layout
 
 - **Clearings sit closer to their parents.** `computeLayout` put every depth
@@ -25,6 +33,31 @@
   in that window keeps the same loaded iframe. A different arch becoming the
   nearest still swaps at once, so at most one iframe exists. Decision logic is
   `systems/heroMount.ts`.
+
+## 2026-11-17 — No more multi-second stalls near large clearings
+
+- **Cluster ground streams as 512 px tiles.** A cluster's ground was one
+  RenderTexture (2752x2784 px for a 29-portal clearing) baked in a single
+  frame, which stalled the main thread for 8-37 s on a real GPU and was never
+  evicted. `render/clusterGroundPlan.ts` now splits the ground's draw plan
+  (tiles, decals, flower ring) into tiles aligned to the cluster's own grid;
+  a draw straddling a tile edge is drawn in every tile it touches, so the
+  look is unchanged. Tiles go through the same chunk streamer and evict like
+  the field, path and scenery layers. Props and the tint ellipse still set up
+  once per cluster when its first tile streams in.
+- **Chunk textures are pooled.** Evicted 512 px chunks (field, path,
+  scenery, cluster ground) return to a per-scene `ObjectPool`
+  (`render/rtPool.ts`, `render/chunkRenderTextures.ts`, 24 idle at most) and
+  the next bake clears and redraws one instead of creating a new
+  RenderTexture. Layer risers forget a recycled texture first.
+- **World entry bakes across frames.** The first screen's chunks (viewport
+  plus one chunk) bake nearest first at about 10 ms per frame behind an
+  opaque curtain; `SceneLoadCoordinator.hold()` keeps the loading card up
+  until they are done, then a few pool textures are prewarmed. The rest of
+  the load radius streams in afterwards. Previously ~1 s inside `create()`.
+- **No boot-time audio context.** The engine plays no Phaser sound, so
+  `audio: { noAudio: true }` skips the 80-110 ms WebAudio context. Anything
+  that adds sound must remove it and unlock audio on a user gesture.
 
 ## 2026-11-17 — Hotbar labels everywhere, and a tool card
 

@@ -208,6 +208,39 @@ describe("ChunkStreamer", () => {
 		};
 	}
 
+	it("loadWithinBudget bakes at least one key per call even with no budget, front to back, and returns the rest", () => {
+		const { streamer, baked } = makeStreamer();
+		let left = streamer.loadWithinBudget(["a", "b", "c"], 0);
+		expect(left).toEqual(["b", "c"]);
+		left = streamer.loadWithinBudget(left, 0);
+		expect(left).toEqual(["c"]);
+		expect(streamer.loadWithinBudget(left, 0)).toEqual([]);
+		expect(baked).toEqual(["a", "b", "c"]);
+	});
+
+	it("loadWithinBudget keeps baking while the clock stays inside the budget", () => {
+		const { streamer, baked } = makeStreamer();
+		expect(streamer.loadWithinBudget(["a", "b", "c"], 5)).toEqual([]);
+		expect(baked).toEqual(["a", "b", "c"]);
+	});
+
+	it("loadWithinBudget bakes minCount keys before it looks at the budget, then stops once over it", () => {
+		const { streamer, baked } = makeStreamer();
+		expect(streamer.loadWithinBudget(["a", "b", "c", "d", "e"], 0, 3)).toEqual([
+			"d",
+			"e",
+		]);
+		expect(baked).toEqual(["a", "b", "c"]);
+	});
+
+	it("loadWithinBudget skips keys that are already loaded", () => {
+		const { streamer, baked } = makeStreamer();
+		streamer.loadNowSync(["a"]);
+		const left = streamer.loadWithinBudget(["a", "b"], 0);
+		expect(baked).toEqual(["a", "b"]);
+		expect(left).toEqual([]);
+	});
+
 	it("loadNowSync bakes every given key immediately, ignoring budget", () => {
 		const { streamer, baked } = makeStreamer();
 		streamer.loadNowSync(["a", "b", "c"]);

@@ -13,6 +13,7 @@ import {
 	hashStringSeed,
 	mulberry32,
 } from "../systems/deterministicRandom.js";
+import { acquireChunkRT } from "./chunkRenderTextures.js";
 import { planPathRibbon, type RibbonPlan } from "./pathRibbon.js";
 import { stampPointsAlongSegment } from "./pathStamps.js";
 import { indexPointsByChunk, WORLD_CHUNK_SIZE_PX } from "./worldChunkGrid.js";
@@ -274,11 +275,10 @@ export function bakePathRibbonChunk(
 		return null;
 	const originX = chunkCol * PATH_CHUNK_SIZE_PX;
 	const originY = chunkRow * PATH_CHUNK_SIZE_PX;
-	const rt = scene.add.renderTexture(
+	const rt = acquireChunkRT(
+		scene,
 		originX + PATH_CHUNK_SIZE_PX / 2,
 		originY + PATH_CHUNK_SIZE_PX / 2,
-		PATH_CHUNK_SIZE_PX,
-		PATH_CHUNK_SIZE_PX,
 	);
 	const edge = scene.make.image({ key: chunkPlan.edgeKey }, false);
 	const bed = scene.make.image({ key: chunkPlan.bedKey }, false);
@@ -374,11 +374,10 @@ export function bakePathChunk(
 	if (!idx || idx.length === 0) return null;
 	const originX = chunkCol * PATH_CHUNK_SIZE_PX;
 	const originY = chunkRow * PATH_CHUNK_SIZE_PX;
-	const rt = scene.add.renderTexture(
+	const rt = acquireChunkRT(
+		scene,
 		originX + PATH_CHUNK_SIZE_PX / 2,
 		originY + PATH_CHUNK_SIZE_PX / 2,
-		PATH_CHUNK_SIZE_PX,
-		PATH_CHUNK_SIZE_PX,
 	);
 	const images = new Map<string, Phaser.GameObjects.Image>();
 	const getImage = (key: string): Phaser.GameObjects.Image => {

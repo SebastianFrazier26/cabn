@@ -99,6 +99,8 @@ export interface BudgetParams<K> {
 	now: () => number;
 	budgetMs: number;
 	maxPerFrame: number;
+	/** Bakes this many before the budget is consulted (default 1). */
+	minCount?: number;
 }
 
 /**
@@ -114,7 +116,11 @@ export function takeWithinBudget<K>(params: BudgetParams<K>): K[] {
 	const start = params.now();
 	for (const key of params.queue) {
 		if (baked.length >= params.maxPerFrame) break;
-		if (baked.length > 0 && params.now() - start >= params.budgetMs) break;
+		if (
+			baked.length >= Math.max(1, params.minCount ?? 1) &&
+			params.now() - start >= params.budgetMs
+		)
+			break;
 		params.bake(key);
 		baked.push(key);
 	}
@@ -153,12 +159,33 @@ export class ChunkStreamer<K, T> {
 		return this.loaded.has(key);
 	}
 
+	/** Snapshot of everything currently loaded, for callers that must act on live payloads (e.g. a layer raise) without owning a parallel map. */
+	entries(): [K, T][] {
+		return [...this.loaded];
+	}
+
 	/** Bakes every given key immediately, no budget — for the entry set, which is deliberately kept small (viewport + margin only) so a synchronous bake of it is cheap. */
 	loadNowSync(keys: readonly K[]): void {
 		for (const key of keys) {
 			if (this.loaded.has(key)) continue;
 			this.loaded.set(key, this.config.bake(key));
 		}
+	}
+
+	/** Bakes `keys` front to back until the budget runs out (always at least one), skipping loaded ones; returns the keys still waiting. The entry bake calls this once per frame behind the loading card instead of baking its whole set in one frame. */
+	loadWithinBudget(keys: readonly K[], budgetMs: number, minCount = 1): K[] {
+		const pending = keys.filter((key) => !this.loaded.has(key));
+		const baked = takeWithinBudget({
+			queue: pending,
+			bake: (key) => {
+				this.loaded.set(key, this.config.bake(key));
+			},
+			now: this.now,
+			budgetMs,
+			maxPerFrame: Number.POSITIVE_INFINITY,
+			minCount,
+		});
+		return pending.slice(baked.length);
 	}
 
 	/**

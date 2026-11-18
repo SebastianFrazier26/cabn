@@ -2,6 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { waitUntilStill } from "./helpers";
+import { scaled } from "./timeScale";
 
 // Regression for the 2026-09-29 "spellbook shows no text" bug: under a real
 // `cabn serve` (not the demo's `vite preview`, which is what the rest of this
@@ -99,14 +101,33 @@ test.afterAll(async () => {
 test("spellbook: opening a file under a real cabn serve shows its text", {
 	tag: "@core",
 }, async ({ page }) => {
-	test.setTimeout(60_000);
+	test.setTimeout(scaled(60_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 	await page.setViewportSize({ width: 1280, height: 800 });
 
 	await page.goto(`${url}&e2e=1`);
 	await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
-	await page.waitForTimeout(1500);
+	// Not a fixed sleep: the world's entry bake keeps the loading card up (on
+	// CI's software GL, ~20s) and the hero doesn't move until it's gone. The
+	// hero's position leaves its (0,0) default once the scene has created it.
+	await page.waitForFunction(
+		() => {
+			const s = (
+				window as unknown as {
+					__cabnStore: {
+						getState(): {
+							loading: { active: boolean };
+							playerPos: { x: number; y: number };
+						};
+					};
+				}
+			).__cabnStore.getState();
+			return !s.loading.active && (s.playerPos.x !== 0 || s.playerPos.y !== 0);
+		},
+		undefined,
+		{ timeout: scaled(60_000) },
+	);
 
 	await page.evaluate((portalId) => {
 		(
@@ -124,7 +145,7 @@ test("spellbook: opening a file under a real cabn serve shows its text", {
 			).__cabnStore.getState().focusedPortalPreview?.portalId === "hello.py",
 		{ timeout: 20_000 },
 	);
-	await page.waitForTimeout(900);
+	await waitUntilStill(page);
 
 	await page.keyboard.down("Enter");
 	await page.waitForTimeout(150);
