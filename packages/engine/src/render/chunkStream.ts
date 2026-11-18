@@ -166,6 +166,21 @@ export class ChunkStreamer<K, T> {
 		}
 	}
 
+	/** Bakes `keys` front to back until the budget runs out (always at least one), skipping loaded ones; returns the keys still waiting. The entry bake calls this once per frame behind the loading card instead of baking its whole set in one frame. */
+	loadWithinBudget(keys: readonly K[], budgetMs: number): K[] {
+		const pending = keys.filter((key) => !this.loaded.has(key));
+		const baked = takeWithinBudget({
+			queue: pending,
+			bake: (key) => {
+				this.loaded.set(key, this.config.bake(key));
+			},
+			now: this.now,
+			budgetMs,
+			maxPerFrame: Number.POSITIVE_INFINITY,
+		});
+		return pending.slice(baked.length);
+	}
+
 	/**
 	 * One frame's worth of streaming: plans against the current camera/
 	 * velocity, evicts anything now out of range, then bakes as much of the

@@ -41,7 +41,9 @@ import {
 	attachAtmosphere,
 } from "../render/atmosphere.js";
 import {
+	chunkRTPoolStats,
 	destroyChunkRTPool,
+	prewarmChunkRTs,
 	releaseChunkRT,
 } from "../render/chunkRenderTextures.js";
 import { ChunkStreamer, type StreamCandidate } from "../render/chunkStream.js";
@@ -211,7 +213,11 @@ import {
 	withVisitedCluster,
 } from "../systems/save.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
-import { layerLabel } from "../systems/sceneLoading.js";
+import {
+	layerLabel,
+	SCENE_LOADING_REGISTRY_KEY,
+	type SceneLoadCoordinator,
+} from "../systems/sceneLoading.js";
 import {
 	cabinTransitionDelayMs,
 	layerRiseMs,
@@ -401,6 +407,10 @@ const GROUND_STREAM_BUDGET_MS = 4;
 const GROUND_STREAM_MAX_CHUNKS_PER_FRAME = 3;
 const CLUSTER_GROUND_STREAM_BUDGET_MS = 4;
 const CLUSTER_GROUND_STREAM_MAX_PER_FRAME = 2;
+const ENTRY_BAKE_BUDGET_MS = 10;
+const ENTRY_POOL_PREWARM = 6;
+const ENTRY_CURTAIN_PX = 16384;
+const ENTRY_CURTAIN_DEPTH = 1_000_000;
 /** 3s of buffer at the fastest movement this game has (click-walk's own SUMMONED_WALK_SPEED, 320px/s) — long enough that the per-frame budget above has finished a chunk well before the player could reach its edge on foot, short enough that it still scales with viewport, not world size. */
 const GROUND_STREAM_LOOKAHEAD_PX = SUMMONED_WALK_SPEED * 3;
 /** One full field chunk of hysteresis: a chunk sitting exactly on the load boundary must not load/evict/reload every frame as floating-point camera motion nudges it back and forth (see chunkStream.test.ts's own hysteresis case). */
@@ -491,6 +501,13 @@ export class WorldScene extends Phaser.Scene {
 	private placedProps: PlacedProp[] = [];
 	/** Where every cluster's props go — planned for the whole world up front (cheap position data, no sprites), independent of which clusters have actually streamed in. Signs/spawn/click-walk keepouts and the shadow-owner e2e's "props never move" expectations read this instead of waiting on placedProps. */
 	private plannedProps = new Map<string, PlannedProp[]>();
+	/** The first screen's chunks still waiting to bake, one job per streamer (queueEntryBake). */
+	private entryBake: {
+		pending: string[];
+		load: (pending: string[], budgetMs: number) => string[];
+	}[] = [];
+	private releaseEntryHold: (() => void) | null = null;
+	private entryCurtain: Phaser.GameObjects.Rectangle | null = null;
 	/** True once raiseLayer() has run its one-time seam.collect() scan — a cluster's ground/props materialized before that point are picked up by that scan; materialized after, they need an explicit layerSeam.addRiser() instead (see bakeClusterGroundTileByKey/materializeClusterProps). */
 	private layerRisersCollected = false;
 	/** Ground-field grid chunks streamed in/out around the camera (render/chunkStream.ts) — see drawGround()'s doc comment for why only the field itself evicts and per-cluster ground below doesn't. */
@@ -801,6 +818,7 @@ export class WorldScene extends Phaser.Scene {
 		this.setupSaveListeners();
 		this.setupLayerListeners();
 		this.setupAmbientEffects();
+		this.beginEntryBake();
 		perfMark("cabn:world:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.unsubscribeAmbientTimeOfDay?.();
@@ -1515,10 +1533,10 @@ export class WorldScene extends Phaser.Scene {
 			},
 			evict: (_key, rt) => this.recycleChunk(rt),
 		});
-		this.groundFieldStreamer.loadNowSync(
-			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
-				(c) => c.key,
-			),
+		this.queueEntryBake(
+			this.groundFieldStreamer,
+			worldChunkCandidatesNear(spawn, this.entryBakeRadiusPx()),
+			spawn,
 		);
 		perfMark("cabn:world:ground-field-baked");
 
@@ -1581,12 +1599,18 @@ export class WorldScene extends Phaser.Scene {
 			bake: (key) => this.bakeClusterGroundTileByKey(key, spawn),
 			evict: (_key, rt) => this.recycleChunk(rt),
 		});
-		const entryRadius = this.streamLoadRadiusPx();
-		this.clusterGroundStreamer.loadNowSync(
-			clusterTileCandidates
-				.filter((c) => Math.hypot(c.x - spawn.x, c.y - spawn.y) <= entryRadius)
-				.map((c) => c.key),
+		const entryTiles = clusterTileCandidates.filter(
+			(c) =>
+				Math.hypot(c.x - spawn.x, c.y - spawn.y) <= this.entryBakeRadiusPx(),
 		);
+		// Props and the tint ellipse stay synchronous for entry clusters: they
+		// are sprites, not RenderTextures, and setupAmbientEffects() right
+		// after create() reads the light-emitting props among them.
+		for (const c of entryTiles) {
+			const tile = this.clusterTiles.get(c.key);
+			if (tile) this.initClusterGround(tile.clusterId, spawn);
+		}
+		this.queueEntryBake(this.clusterGroundStreamer, entryTiles, spawn);
 	}
 
 	/**
@@ -1778,10 +1802,10 @@ export class WorldScene extends Phaser.Scene {
 			},
 			evict: (_key, rt) => this.recycleChunk(rt),
 		});
-		this.pathStreamer.loadNowSync(
-			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
-				(c) => c.key,
-			),
+		this.queueEntryBake(
+			this.pathStreamer,
+			worldChunkCandidatesNear(spawn, this.entryBakeRadiusPx()),
+			spawn,
 		);
 	}
 
@@ -1909,10 +1933,10 @@ export class WorldScene extends Phaser.Scene {
 				this.recycleChunk(rt);
 			},
 		});
-		this.edgeSceneryStreamer.loadNowSync(
-			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
-				(c) => c.key,
-			),
+		this.queueEntryBake(
+			this.edgeSceneryStreamer,
+			worldChunkCandidatesNear(spawn, this.entryBakeRadiusPx()),
+			spawn,
 		);
 		perfMark("cabn:world:edge-scenery-entry-baked");
 		const extras = materializeEdgeSceneryExtras(
@@ -2661,6 +2685,16 @@ export class WorldScene extends Phaser.Scene {
 	update(time: number, delta: number): void {
 		const lerp = followLerp(0.1, delta);
 		this.cameras.main.setLerp(lerp, lerp);
+		if (this.entryCurtain) {
+			// A walk requested during entry (tool:walk-to-portal) is kept, not
+			// cancelled: handleMovement just doesn't run yet.
+			(this.player.body.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+			if (!this.stepEntryBake()) {
+				this.endEntryBake();
+				perfMark("cabn:world:entry-ready");
+			}
+			return;
+		}
 		if (this.store.getState().mapOpen) {
 			this.walker.cancel();
 			this.pendingArrival = null;
@@ -2810,6 +2844,79 @@ export class WorldScene extends Phaser.Scene {
 		) {
 			this.loadChunk(cluster);
 		}
+	}
+
+	/** Chunks that touch the first screen: half the viewport diagonal plus the farthest a chunk centre can sit from the view while still overlapping its corner. The rest of the normal load radius streams in after the card lifts. */
+	private entryBakeRadiusPx(): number {
+		return (
+			Math.hypot(this.scale.width, this.scale.height) / 2 +
+			CHUNK_SIZE_PX * Math.SQRT1_2
+		);
+	}
+
+	/** Queues a streamer's first-screen chunks, nearest first, for stepEntryBake() to bake a few per frame. Baking them inside create() froze the main thread for ~1 s; each RenderTexture creation is a GPU sync. */
+	private queueEntryBake<T>(
+		streamer: ChunkStreamer<string, T>,
+		candidates: readonly StreamCandidate<string>[],
+		origin: Position,
+	): void {
+		const keys = [...candidates]
+			.sort(
+				(a, b) =>
+					Math.hypot(a.x - origin.x, a.y - origin.y) -
+					Math.hypot(b.x - origin.x, b.y - origin.y),
+			)
+			.map((c) => c.key);
+		if (keys.length === 0) return;
+		this.entryBake.push({
+			pending: keys,
+			load: (pending, budgetMs) => streamer.loadWithinBudget(pending, budgetMs),
+		});
+	}
+
+	/** Covers the world and keeps the scene-load card up until stepEntryBake() has baked the first screen, so no unbaked ground is ever shown. */
+	private beginEntryBake(): void {
+		if (this.entryBake.length === 0) return;
+		perfMark("cabn:world:entry-bake-start");
+		const loading = this.registry.get(SCENE_LOADING_REGISTRY_KEY) as
+			| SceneLoadCoordinator
+			| undefined;
+		this.releaseEntryHold = loading?.hold() ?? null;
+		this.entryCurtain = this.add
+			.rectangle(0, 0, ENTRY_CURTAIN_PX, ENTRY_CURTAIN_PX, 0x1f2a17)
+			.setOrigin(0.5)
+			.setScrollFactor(0)
+			.setDepth(ENTRY_CURTAIN_DEPTH);
+		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.endEntryBake());
+	}
+
+	/** One frame of the entry bake; true while there is more to do. */
+	private stepEntryBake(): boolean {
+		const started = performance.now();
+		for (const job of this.entryBake) {
+			if (job.pending.length === 0) continue;
+			const left = ENTRY_BAKE_BUDGET_MS - (performance.now() - started);
+			if (left <= 0 && job !== this.entryBake[0]) break;
+			job.pending = job.load(job.pending, Math.max(0, left));
+			if (job.pending.length > 0) return true;
+		}
+		this.entryBake = this.entryBake.filter((j) => j.pending.length > 0);
+		if (this.entryBake.length > 0) return true;
+		// A few idle textures up front so the first chunks streamed in while
+		// walking don't each pay a framebuffer creation.
+		if (chunkRTPoolStats(this).idle < ENTRY_POOL_PREWARM) {
+			prewarmChunkRTs(this, chunkRTPoolStats(this).idle + 1);
+			return true;
+		}
+		return false;
+	}
+
+	private endEntryBake(): void {
+		this.entryBake = [];
+		this.entryCurtain?.destroy();
+		this.entryCurtain = null;
+		this.releaseEntryHold?.();
+		this.releaseEntryHold = null;
 	}
 
 	/** One frame's worth of streaming for every chunked/per-cluster bake (see drawGround()'s doc comment) — bounded work regardless of world size, since worldChunkCandidatesNear's own scan window is capped by loadRadius, and the cluster candidate list is capped by the world's own (already-bounded) cluster count. */

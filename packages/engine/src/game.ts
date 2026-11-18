@@ -80,6 +80,11 @@ export function createCabnGame(
 		pixelArt: true,
 		roundPixels: true,
 		backgroundColor: "#1f2a17",
+		// The engine plays no Phaser sound (checked 2026-11-17: no this.sound,
+		// load.audio or sound manager use). Left on, Phaser built a WebAudio
+		// context at boot, 80-110 ms of main-thread time. Anything that adds
+		// sound must drop this and unlock audio on the first user gesture.
+		audio: { noAudio: true },
 		fps: PHASER_FPS_CONFIG,
 		physics: {
 			default: "arcade",

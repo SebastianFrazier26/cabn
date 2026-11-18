@@ -65,6 +65,8 @@ export function layerLabel(layerLabel: string | null): string {
 export class SceneLoadCoordinator {
 	private token: LoadingToken | null = null;
 	private label = "";
+	private holds = 0;
+	private settleDeferred = false;
 
 	constructor(
 		private readonly store: SceneLoadStore,
@@ -101,13 +103,35 @@ export class SceneLoadCoordinator {
 			this.bus.off("world:return-to-shelf", onReturn);
 			this.bus.off("universe:travel", onTravel);
 			this.bus.off("layer:changed", onLayer);
+			this.holds = 0;
 			this.settled();
+		};
+	}
+
+	/**
+	 * Keeps the load open past the scene's CREATE event, for work the scene
+	 * spreads over its first frames (WorldScene's entry bake). The returned
+	 * release settles the load if CREATE already asked to; calling it twice,
+	 * or after a newer load began, does nothing.
+	 */
+	hold(): () => void {
+		this.holds++;
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.holds--;
+			if (this.holds === 0 && this.settleDeferred) {
+				this.settleDeferred = false;
+				this.settled();
+			}
 		};
 	}
 
 	/** Begins the new load before ending any previous one, so the overlay never drops out between them. */
 	expect(label: string, delayMs = LOADING_SHOW_DELAY_MS): void {
 		const previous = this.token;
+		this.settleDeferred = false;
 		this.label = label;
 		this.token = this.store.getState().beginLoading(label, { delayMs });
 		if (previous !== null) this.store.getState().endLoading(previous);
@@ -120,6 +144,10 @@ export class SceneLoadCoordinator {
 
 	settled(): void {
 		if (this.token === null) return;
+		if (this.holds > 0) {
+			this.settleDeferred = true;
+			return;
+		}
 		const token = this.token;
 		this.token = null;
 		this.store.getState().endLoading(token);
