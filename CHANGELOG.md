@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-17 — Live arch page: later first load, no reload on brushing past
+
+- **Deferred first mount.** The player spawns inside a url arch's 150 px
+  approach radius, so its live website used to mount ~0.1-0.2 s after world
+  create and compete with the first ground and path bakes. The first mount
+  now waits for world create-end plus an idle callback (1.5 s timeout).
+- **Hysteresis on unmount.** The page still mounts within 150 px, but now
+  unmounts only once the player is beyond 240 px (1.6x) for 4 s; turning back
+  in that window keeps the same loaded iframe. A different arch becoming the
+  nearest still swaps at once, so at most one iframe exists. Decision logic is
+  `systems/heroMount.ts`.
+
 ## 2026-11-16 — Walking no longer depends on frame rate
 
 - **Same walking speed at any frame rate.** Phaser's time step swaps any

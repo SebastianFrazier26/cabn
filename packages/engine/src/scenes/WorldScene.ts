@@ -145,6 +145,13 @@ import {
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
 import { followLerp } from "../systems/frameTiming.js";
 import {
+	HERO_IDLE_TIMEOUT_MS,
+	HERO_MOUNT_RADIUS,
+	type HeroMountState,
+	INITIAL_HERO_MOUNT,
+	stepHeroMount,
+} from "../systems/heroMount.js";
+import {
 	HERO_GLOW_ALPHA_MAX,
 	HERO_GLOW_ALPHA_MIN,
 	HERO_GLOW_PULSE_MS,
@@ -270,7 +277,7 @@ const CLUSTER_LOAD_RADIUS = 260;
 // Approach/enter radii scale with the 2x arch (WORLD_PORTAL_SCALE). Focus —
 // the expanded preview dock, and a url portal's live embed — is tighter than
 // approach so merely walking past an arch doesn't pop a panel open.
-const PORTAL_APPROACH_RADIUS = 150;
+const PORTAL_APPROACH_RADIUS = HERO_MOUNT_RADIUS;
 const PORTAL_FOCUS_RADIUS = 100;
 const PORTAL_ENTER_RADIUS = 70;
 const RETURN_TO_SHELF_RADIUS = 140;
@@ -531,6 +538,9 @@ export class WorldScene extends Phaser.Scene {
 	private portalFx: PortalFx | null = null;
 	private focusedPortalId: string | null = null;
 	private nearWebPortalId: string | null = null;
+	private heroMount: HeroMountState = INITIAL_HERO_MOUNT;
+	private heroReady = false;
+	private cancelHeroIdle: (() => void) | null = null;
 	private portalsInRange = new Set<string>();
 
 	/** One theme per world (see drawClusters' doc comment) — computed once in create() so drawGround's ground-tint overlay and drawClusters' cabinet/bonfire tint always agree. */
@@ -779,6 +789,7 @@ export class WorldScene extends Phaser.Scene {
 		this.setupLayerListeners();
 		this.setupAmbientEffects();
 		perfMark("cabn:world:create-end");
+		this.armHeroIdle();
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;
@@ -817,6 +828,10 @@ export class WorldScene extends Phaser.Scene {
 				this.projectWebPortal,
 			);
 			this.setFocusedPortal(null);
+			this.cancelHeroIdle?.();
+			this.cancelHeroIdle = null;
+			this.heroReady = false;
+			this.heroMount = INITIAL_HERO_MOUNT;
 			this.setNearWebPortal(null);
 			this.store.getState().setWorldMap(null);
 			this.store.getState().setPetWorld(null);
@@ -2859,9 +2874,36 @@ export class WorldScene extends Phaser.Scene {
 			if (pos && preview?.kind === "url" && !preview.embedBlocked)
 				webCandidates.push({ id: portalId, pos });
 		}
-		this.setNearWebPortal(
-			pickNearWebPortal(webCandidates, playerPos, PORTAL_APPROACH_RADIUS),
-		);
+		const heldPos = this.heroMount.mounted
+			? this.portalWorldPos.get(this.heroMount.mounted)
+			: undefined;
+		this.heroMount = stepHeroMount(this.heroMount, {
+			now: this.time.now,
+			ready: this.heroReady,
+			nearest: pickNearWebPortal(webCandidates, playerPos, HERO_MOUNT_RADIUS),
+			heldDistance: heldPos
+				? Math.hypot(heldPos.x - playerPos.x, heldPos.y - playerPos.y)
+				: null,
+		});
+		this.setNearWebPortal(this.heroMount.mounted);
+	}
+
+	/** Opens the gate for the first live-page mount once entry is done and the main thread has a gap. */
+	private armHeroIdle(): void {
+		this.cancelHeroIdle?.();
+		const open = () => {
+			this.cancelHeroIdle = null;
+			this.heroReady = true;
+		};
+		if (typeof window.requestIdleCallback === "function") {
+			const id = window.requestIdleCallback(open, {
+				timeout: HERO_IDLE_TIMEOUT_MS,
+			});
+			this.cancelHeroIdle = () => window.cancelIdleCallback(id);
+		} else {
+			const id = window.setTimeout(open, 300);
+			this.cancelHeroIdle = () => window.clearTimeout(id);
+		}
 	}
 
 	private setNearWebPortal(portalId: string | null): void {
@@ -3187,6 +3229,7 @@ export class WorldScene extends Phaser.Scene {
 		this.placedProps = [];
 		this.focusedPortalId = null;
 		this.nearWebPortalId = null;
+		this.heroMount = INITIAL_HERO_MOUNT;
 		this.portalsInRange = new Set();
 		this.petOpenPending = null;
 		this.layerPathBake = null;
