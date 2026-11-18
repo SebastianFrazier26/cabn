@@ -5,6 +5,9 @@ export { scaled, TIME_SCALE } from "./timeScale";
 
 import { scaled } from "./timeScale";
 
+/** Per-burst overhead beyond the requested hold that marks input as too laggy for key-bursts. */
+const HIGH_LATENCY_MS = 400;
+
 /**
  * Budget for a world to go active after Enter. The fetches finish in ~10ms;
  * the wait is WorldScene's synchronous ground-field bake, which on CI's
@@ -68,6 +71,8 @@ export async function walkToward(
 	const maxBurstMs = options.burstMs ?? 100;
 	let burstMs = maxBurstMs;
 	let lastDist = Number.POSITIVE_INFINITY;
+	let laggyBursts = 0;
+	let overshoots = 0;
 	const deadline = Date.now() + maxMs;
 
 	while (Date.now() < deadline) {
@@ -80,15 +85,31 @@ export async function walkToward(
 		// A burst that moves the player further than the tolerance window can
 		// leap over it forever on a frame-starved runner: shrink on overshoot,
 		// grow again when a burst moved nothing (shorter than one frame).
-		if (dist > lastDist + 0.5) burstMs = Math.max(30, burstMs / 2);
-		else if (Math.abs(dist - lastDist) <= 0.5)
+		if (dist > lastDist + 0.5) {
+			burstMs = Math.max(30, burstMs / 2);
+			overshoots++;
+		} else if (Math.abs(dist - lastDist) <= 0.5)
 			burstMs = Math.min(maxBurstMs * 2, burstMs * 2);
 		lastDist = dist;
 
 		const keys: string[] = [];
 		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
 		if (Math.abs(dy) > 4) keys.push(dy > 0 ? "ArrowDown" : "ArrowUp");
+		const burstStart = Date.now();
 		await holdKeys(page, keys, burstMs);
+		// Every CDP call costs ~0.5s on the GPU-less CI runner, so a "100ms"
+		// burst holds the key ~1.6s and no burst length can stop short of the
+		// target. Shrinking the hold can't help; hand over to the game's own
+		// click-walker, which stops on arrival. Gated on laggy bursts AND repeated
+		// overshoot: a slow burst alone also happens on a healthy machine in a
+		// heavy world, where the keyboard walk still converges (git.spec rift).
+		laggyBursts =
+			Date.now() - burstStart - burstMs > HIGH_LATENCY_MS ? laggyBursts + 1 : 0;
+		if (laggyBursts >= 2 && overshoots >= 2) {
+			return clickWalkToward(page, target, withinPx, {
+				maxMs: options.maxMs ?? 60_000,
+			});
+		}
 	}
 
 	throw new Error(

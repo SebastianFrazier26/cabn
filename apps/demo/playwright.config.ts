@@ -61,13 +61,18 @@ export default defineConfig({
 				// Google Chrome for Testing.app/Contents/MacOS/...) if the
 				// version bundled with @playwright/test doesn't match what's
 				// already cached.
-				...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-					? {
-							launchOptions: {
+				// PWSLOWMO=<ms> delays every driver call, to reproduce the CI
+				// runner's ~500ms-per-call input lag locally. Unset = no change.
+				launchOptions: {
+					...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+						? {
 								executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-							},
-						}
-					: {}),
+							}
+						: {}),
+					...(process.env.PWSLOWMO
+						? { slowMo: Number(process.env.PWSLOWMO) }
+						: {}),
+				},
 			},
 		},
 	],
