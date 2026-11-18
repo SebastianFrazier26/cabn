@@ -15,6 +15,7 @@ import {
 	type AtmosphereHandle,
 	attachAtmosphere,
 } from "../render/atmosphere.js";
+import { destroyChunkRTPool } from "../render/chunkRenderTextures.js";
 import {
 	attachPointerInput,
 	BOUNDS_INSET_PX,
@@ -216,6 +217,7 @@ export class ShelfScene extends Phaser.Scene {
 		this.setupAmbientEffects(tower);
 		perfMark("cabn:shelf:create-end");
 		this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+			destroyChunkRTPool(this);
 			this.store.getState().setNearShelfWorld(null);
 			this.unsubscribeAmbientTimeOfDay?.();
 			this.unsubscribeAmbientTimeOfDay = null;

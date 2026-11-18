@@ -1,5 +1,5 @@
 import type Phaser from "phaser";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	PATH_BED_DISC_KEY,
 	PATH_COBBLE_COUNT,
@@ -17,6 +17,21 @@ import {
 	planPathStamps,
 } from "../src/render/pathBaker.js";
 import { WORLD_CHUNK_SIZE_PX } from "../src/render/worldChunkGrid.js";
+
+// The pool wraps scene.add.renderTexture with real Phaser calls (clear,
+// display-list moves) these fakes don't model; its own behaviour is covered
+// in rtPool.test.ts. Here a "pooled" texture is just a fresh fake one.
+vi.mock("../src/render/chunkRenderTextures.js", () => ({
+	acquireChunkRT: (
+		scene: {
+			add: {
+				renderTexture: (x: number, y: number, w: number, h: number) => unknown;
+			};
+		},
+		x: number,
+		y: number,
+	) => scene.add.renderTexture(x, y, 512, 512),
+}));
 
 // pathBaker.ts only ever type-imports "phaser" (`import type Phaser from
 // "phaser"`), so unlike sceneryBaker.test.ts this file needs no `vi.mock` —

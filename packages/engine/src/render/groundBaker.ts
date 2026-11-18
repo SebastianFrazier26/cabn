@@ -1,6 +1,7 @@
 import type Phaser from "phaser";
 import { DECAL_SHEET_KEY } from "../assetPaths.js";
 import type { ScatterExclusion } from "../systems/scatter.js";
+import { acquireChunkRT } from "./chunkRenderTextures.js";
 import {
 	CLUSTER_TILE_PX,
 	type ClusterGroundDraw,
@@ -111,11 +112,10 @@ export function bakeClusterGroundTile(
 	worldX: number,
 	worldY: number,
 ): Phaser.GameObjects.RenderTexture {
-	const rt = scene.add.renderTexture(
+	const rt = acquireChunkRT(
+		scene,
 		worldX + CLUSTER_TILE_PX / 2,
 		worldY + CLUSTER_TILE_PX / 2,
-		CLUSTER_TILE_PX,
-		CLUSTER_TILE_PX,
 	);
 	drawClusterGround(
 		rt,

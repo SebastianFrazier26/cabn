@@ -7,6 +7,21 @@ import type {
 	SceneryKind,
 } from "../src/systems/edgeScenery.js";
 
+// The pool wraps scene.add.renderTexture with real Phaser calls (clear,
+// display-list moves) these fakes don't model; its own behaviour is covered
+// in rtPool.test.ts. Here a "pooled" texture is just a fresh fake one.
+vi.mock("../src/render/chunkRenderTextures.js", () => ({
+	acquireChunkRT: (
+		scene: {
+			add: {
+				renderTexture: (x: number, y: number, w: number, h: number) => unknown;
+			};
+		},
+		x: number,
+		y: number,
+	) => scene.add.renderTexture(x, y, 512, 512),
+}));
+
 // sceneryBaker.ts does a real (non-type-only) `import Phaser from "phaser"`
 // for addWindmillSails' tween easing — shadowPolish2.test.ts already stubs
 // it the same way for that reason; every function under test here never

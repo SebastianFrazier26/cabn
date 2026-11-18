@@ -1,5 +1,6 @@
 import type Phaser from "phaser";
 import { BIOME_TILE_VARIANT_COUNT } from "../assetPaths.js";
+import { acquireChunkRT } from "./chunkRenderTextures.js";
 import { baseVariantIndex, GROUND_TILE_SIZE } from "./groundTiles.js";
 import {
 	type ChunkRange,
@@ -71,11 +72,10 @@ export function bakeGroundFieldChunk(
 ): Phaser.GameObjects.RenderTexture {
 	const originX = chunkCol * CHUNK_SIZE_PX;
 	const originY = chunkRow * CHUNK_SIZE_PX;
-	const rt = scene.add.renderTexture(
+	const rt = acquireChunkRT(
+		scene,
 		originX + CHUNK_SIZE_PX / 2,
 		originY + CHUNK_SIZE_PX / 2,
-		CHUNK_SIZE_PX,
-		CHUNK_SIZE_PX,
 	);
 	for (const draw of groundFieldChunkDrawList(chunkCol, chunkRow, seed)) {
 		rt.drawFrame(fieldSheetKey, draw.frame, draw.x, draw.y);

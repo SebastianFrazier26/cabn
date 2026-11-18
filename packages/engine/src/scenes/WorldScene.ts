@@ -40,6 +40,10 @@ import {
 	type AtmosphereHandle,
 	attachAtmosphere,
 } from "../render/atmosphere.js";
+import {
+	destroyChunkRTPool,
+	releaseChunkRT,
+} from "../render/chunkRenderTextures.js";
 import { ChunkStreamer, type StreamCandidate } from "../render/chunkStream.js";
 import {
 	attachPointerInput,
@@ -828,6 +832,7 @@ export class WorldScene extends Phaser.Scene {
 			this.edgeSceneryStreamer = null;
 			this.pathStreamer?.destroyAll((_key, rt) => rt?.destroy());
 			this.pathStreamer = null;
+			destroyChunkRTPool(this);
 			// Phaser's CameraManager shuts down first (it subscribed when the
 			// scene started, before create()) and clears `main` — without the
 			// `?.` every return to the shelf threw here and froze the game.
@@ -1366,6 +1371,13 @@ export class WorldScene extends Phaser.Scene {
 		return this.streamLoadRadiusPx() + GROUND_STREAM_EVICT_HYSTERESIS_PX;
 	}
 
+	/** An evicted chunk texture goes back to the pool; the layer riser must forget it first, or its next owner would be tweened by a sink/rise meant for the old one. */
+	private recycleChunk(rt: Phaser.GameObjects.RenderTexture | null): void {
+		if (!rt) return;
+		this.layerSeam?.removeRiser(rt);
+		releaseChunkRT(this, rt);
+	}
+
 	/** A cluster's once-only ground setup, run when its first ground tile streams in: the decal/ring plan (placeScatter, cached per cluster), its theme-tint ellipse and its props. Tiles then bake from the cached plan in whatever order distance/direction picks. */
 	private initClusterGround(clusterId: string, spawn: Position): void {
 		if (this.clusterGroundPlans.has(clusterId)) return;
@@ -1501,7 +1513,7 @@ export class WorldScene extends Phaser.Scene {
 					fieldTint,
 				).setDepth(0);
 			},
-			evict: (_key, rt) => rt.destroy(),
+			evict: (_key, rt) => this.recycleChunk(rt),
 		});
 		this.groundFieldStreamer.loadNowSync(
 			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
@@ -1567,12 +1579,7 @@ export class WorldScene extends Phaser.Scene {
 			maxPerFrame: CLUSTER_GROUND_STREAM_MAX_PER_FRAME,
 			positionOf: (key) => this.clusterTiles.get(key) ?? { x: 0, y: 0 },
 			bake: (key) => this.bakeClusterGroundTileByKey(key, spawn),
-			evict: (_key, rt) => {
-				if (!rt) return;
-				this.tweens.killTweensOf(rt);
-				this.layerSeam?.removeRiser(rt);
-				rt.destroy();
-			},
+			evict: (_key, rt) => this.recycleChunk(rt),
 		});
 		const entryRadius = this.streamLoadRadiusPx();
 		this.clusterGroundStreamer.loadNowSync(
@@ -1769,7 +1776,7 @@ export class WorldScene extends Phaser.Scene {
 				const { col, row } = parseWorldChunkKey(key);
 				return bakeChunk(key, col, row);
 			},
-			evict: (_key, rt) => rt?.destroy(),
+			evict: (_key, rt) => this.recycleChunk(rt),
 		});
 		this.pathStreamer.loadNowSync(
 			worldChunkCandidatesNear(spawn, this.streamLoadRadiusPx()).map(
@@ -1899,7 +1906,7 @@ export class WorldScene extends Phaser.Scene {
 			},
 			evict: (key, rt) => {
 				this.edgeSceneryLoadedItems.delete(key);
-				rt?.destroy();
+				this.recycleChunk(rt);
 			},
 		});
 		this.edgeSceneryStreamer.loadNowSync(
