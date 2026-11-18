@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import * as git from "isomorphic-git";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
+import { scaled } from "./timeScale";
 
 // The one owner key (O) end to end, against a real `cabn serve --owner` of a
 // temp git repository made from the CLI's serve fixture: the hotbar has one
@@ -163,10 +164,12 @@ async function setTime(page: Page, time: "day" | "night") {
 
 async function waitForOwnerWorld(page: Page) {
 	await expect
-		.poll(async () => (await snap(page)).mapPortals, { timeout: 30_000 })
+		.poll(async () => (await snap(page)).mapPortals, {
+			timeout: scaled(30_000),
+		})
 		.toBeGreaterThan(0);
 	await expect(page.locator('[data-tool="owner"]')).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await expect.poll(async () => (await snap(page)).hasGit).toBe(true);
 	await page.waitForTimeout(1200);
@@ -269,7 +272,7 @@ test("owner: O opens the one toolkit; keys and mouse drive it, and git entries o
 	await page.keyboard.press("Enter");
 	await expect(toolkit).toHaveCount(0);
 	const picker = page.getByTestId("universe-picker");
-	await expect(picker).toBeVisible({ timeout: 15_000 });
+	await expect(picker).toBeVisible({ timeout: scaled(15_000) });
 	await expect(picker.getByTestId("owner-panel")).toBeVisible();
 	await expect(
 		picker.locator('[data-owner-section="switch"][data-focused="true"]'),
@@ -294,7 +297,9 @@ test("owner: O opens the one toolkit; keys and mouse drive it, and git entries o
 	await picker.getByRole("button", { name: "Create", exact: true }).click();
 	await reloaded;
 	await expect
-		.poll(async () => git.listBranches({ fs, dir }), { timeout: 20_000 })
+		.poll(async () => git.listBranches({ fs, dir }), {
+			timeout: scaled(20_000),
+		})
 		.toContain("toolkit-branch");
 	expect(await git.currentBranch({ fs, dir })).toBe("main");
 	await waitForOwnerWorld(page);
@@ -304,7 +309,9 @@ test("owner: O opens the one toolkit; keys and mouse drive it, and git entries o
 	await page.keyboard.press("2");
 	await page.keyboard.press("Enter");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 20_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(20_000),
+		})
 		.toBe("shadow");
 	await page.waitForTimeout(1500);
 	await page.keyboard.press("o");
@@ -325,7 +332,7 @@ test("hosted: no owner slot, and O does nothing", { tag: "@core" }, async ({
 	await page.goto("/?e2e=1");
 	await expect(page.locator("canvas")).toBeVisible();
 	await expect(page.locator('[data-tool="opener"]')).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await page.waitForTimeout(800);
 	await expect(page.locator('[data-tool="owner"]')).toHaveCount(0);

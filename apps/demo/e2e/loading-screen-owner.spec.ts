@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import type { CabnStore } from "../../../packages/engine/src/bridge/store.js";
+import { scaled } from "./timeScale";
 
 // The loading overlay on an owner page (`cabn serve --owner`): a slow
 // shadow-layer fetch shows the panel labelled with the layer, and inside the
@@ -129,10 +130,10 @@ test("owner: a slow layer fetch shows the panel, and inside the layer it wears t
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.goto(`${url}&e2e=1`);
 	await expect
-		.poll(async () => (await snap(page)).ready, { timeout: 30_000 })
+		.poll(async () => (await snap(page)).ready, { timeout: scaled(30_000) })
 		.toBe(true);
 	await expect(page.locator('[data-tool="owner"]')).toBeVisible({
-		timeout: 20_000,
+		timeout: scaled(20_000),
 	});
 	await page.evaluate(() =>
 		(
@@ -155,16 +156,18 @@ test("owner: a slow layer fetch shows the panel, and inside the layer it wears t
 		).__cabnBus.emit("layer:toggle", { layerId: "shadow" }),
 	);
 	const overlay = page.getByTestId("loading-overlay");
-	await expect(overlay).toBeVisible({ timeout: 5_000 });
+	await expect(overlay).toBeVisible({ timeout: scaled(5_000) });
 	await expect(page.getByTestId("loading-label")).toHaveText(
 		"Revealing the hidden layer…",
 	);
 	await page.waitForTimeout(300);
 	await shoot(page, "owner-layer-fetch-day");
 	await expect
-		.poll(async () => (await snap(page)).activeLayerId, { timeout: 30_000 })
+		.poll(async () => (await snap(page)).activeLayerId, {
+			timeout: scaled(30_000),
+		})
 		.toBe("shadow");
-	await expect(overlay).toBeHidden({ timeout: 10_000 });
+	await expect(overlay).toBeHidden({ timeout: scaled(10_000) });
 	await page.unroute("**/owner/shadow/**");
 	await page.waitForTimeout(1500);
 
@@ -202,6 +205,6 @@ test("owner: a slow layer fetch shows the panel, and inside the layer it wears t
 				.endLoading(t),
 		token,
 	);
-	await expect(overlay).toBeHidden({ timeout: 5_000 });
+	await expect(overlay).toBeHidden({ timeout: scaled(5_000) });
 	expect(pageErrors).toEqual([]);
 });

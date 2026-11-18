@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-18 — Full-suite e2e waits scale with E2E_TIME_SCALE
+
+- **Fixed-duration `timeout:` literals in nine specs now go through `scaled()`.**
+  Run 44285735688 showed `shadow-owner`, `signs-owner` and `ground-stream`
+  failing on 5-20s waits that ignored `E2E_TIME_SCALE=3`; `encounter-popup`'s
+  world-load wait now uses `WORLD_LOAD_TIMEOUT_MS` (45s base) instead of 10s.
+  At scale 1 (local) nothing changes. Test-only; no package bump, so no
+  changeset. This does not fix the dominant failure (`walkToward` never
+  converging on the ~2 fps software-GL runner), which needs a helper change.
+
 ## 2026-11-18 — Media e2e survives an overshooting step
 
 - **The media-preview e2e no longer loses focus on the arch it just walked to.**

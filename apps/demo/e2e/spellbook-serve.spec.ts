@@ -107,7 +107,9 @@ test("spellbook: opening a file under a real cabn serve shows its text", {
 	await page.setViewportSize({ width: 1280, height: 800 });
 
 	await page.goto(`${url}&e2e=1`);
-	await expect(page.locator("canvas").first()).toBeVisible({ timeout: 20_000 });
+	await expect(page.locator("canvas").first()).toBeVisible({
+		timeout: scaled(20_000),
+	});
 	// Not a fixed sleep: the world's entry bake keeps the loading card up (on
 	// CI's software GL, ~20s) and the hero doesn't move until it's gone. The
 	// hero's position leaves its (0,0) default once the scene has created it.
@@ -143,7 +145,7 @@ test("spellbook: opening a file under a real cabn serve shows its text", {
 					};
 				}
 			).__cabnStore.getState().focusedPortalPreview?.portalId === "hello.py",
-		{ timeout: 20_000 },
+		{ timeout: scaled(20_000) },
 	);
 	await waitUntilStill(page);
 
@@ -155,7 +157,7 @@ test("spellbook: opening a file under a real cabn serve shows its text", {
 			(
 				window as unknown as { __cabnStore: { getState(): { mode: string } } }
 			).__cabnStore.getState().mode === "file",
-		{ timeout: 10_000 },
+		{ timeout: scaled(10_000) },
 	);
 
 	await page.keyboard.press("Alt+KeyQ");
@@ -164,7 +166,7 @@ test("spellbook: opening a file under a real cabn serve shows its text", {
 			(
 				window as unknown as { __cabnStore: { getState(): { mode: string } } }
 			).__cabnStore.getState().mode === "editor",
-		{ timeout: 10_000 },
+		{ timeout: scaled(10_000) },
 	);
 	await page.waitForTimeout(600);
 

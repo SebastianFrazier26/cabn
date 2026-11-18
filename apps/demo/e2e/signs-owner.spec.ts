@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { scaled } from "./timeScale";
 
 // Owner mode end to end, against a real `cabn serve` of a temp copy of the
 // CLI's serve fixture (not the demo's vite preview, which has no owner mode):
@@ -142,7 +143,7 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	const canvas = page.locator("canvas").first();
 	await expect(canvas).toBeVisible();
 	const slot = page.locator('[data-tool="owner"]');
-	await expect(slot).toBeVisible({ timeout: 20_000 });
+	await expect(slot).toBeVisible({ timeout: scaled(20_000) });
 	await expect(page.locator('[data-tool="sign"]')).toHaveCount(0);
 	await page.waitForTimeout(1500);
 
@@ -231,7 +232,7 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 
 	// Saving walks the player over; the popup shows the new sign.
 	const popup = page.getByTestId("sign-popup");
-	await expect(popup).toBeVisible({ timeout: 15_000 });
+	await expect(popup).toBeVisible({ timeout: scaled(15_000) });
 	await expect(popup).toHaveAttribute("data-sign-path", path);
 	await expect(popup).toContainText("Written from inside the world.");
 	await page.waitForTimeout(600);
@@ -249,13 +250,13 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	// After a reload too, though the served search-index.json predates the
 	// sign; picking the hit walks back to it.
 	await page.reload();
-	await expect(slot).toBeVisible({ timeout: 20_000 });
+	await expect(slot).toBeVisible({ timeout: scaled(20_000) });
 	await page.waitForTimeout(1500);
 	expect(await orbSearch(page, "inside", { keepOpen: true })).toContain(path);
 	await page
 		.locator(".cabn-crystal-ball-content li", { hasText: path })
 		.click();
-	await expect(popup).toBeVisible({ timeout: 15_000 });
+	await expect(popup).toBeVisible({ timeout: scaled(15_000) });
 	await expect(popup).toHaveAttribute("data-sign-path", path);
 
 	// Edit: same file, new text.
@@ -271,7 +272,7 @@ test("owner: place a sign, it lands on disk and in the world, edit and delete it
 	await page.keyboard.press("Control+s");
 	await expect(editor).toBeHidden();
 	await expect.poll(async () => readFile(onDisk, "utf8")).toContain("Edited.");
-	await expect(popup).toContainText("Edited.", { timeout: 15_000 });
+	await expect(popup).toContainText("Edited.", { timeout: scaled(15_000) });
 	expect(await orbSearch(page, "edited")).toContain(path);
 	expect(await orbSearch(page, "inside")).not.toContain(path);
 
