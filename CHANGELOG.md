@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-11-16 — Walking no longer depends on frame rate
+
+- **Same walking speed at any frame rate.** Phaser's time step swaps any
+  frame longer than 200 ms (under 5 fps) for a 16.7 ms stand-in, and for the
+  first 120 frames after start or a tab refocus clamps every frame to
+  16.7 ms. Arcade physics then took one 1/60 s step per rendered frame, so a
+  slow machine walked in slow motion (about 15 px/s against 220 on CI's
+  software GL). `fps: { min: 2, panicMax: 5 }` (`systems/frameTiming.ts`)
+  lets frames up to 500 ms count as real time; physics catches up in 1/60 s
+  sub-steps, so collisions behave as at 60 fps. Longer frames (a stalled tab)
+  are still replaced. The world and shelf camera follow lerp is now
+  time-corrected too, so the camera no longer trails the player by hundreds
+  of pixels at low frame rates. Behaviour at 60 fps is unchanged.
+
 ## 2026-11-15 — Hosted demo framable by the portfolio
 
 - **The hosted demo's `frame-ancestors` allowlist.** Caddy now sends

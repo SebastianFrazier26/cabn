@@ -143,6 +143,7 @@ import {
 	type SegmentKeepout,
 } from "../systems/edgeScenery.js";
 import { canOpenPortalLink, openPortalLink } from "../systems/embedGuard.js";
+import { followLerp } from "../systems/frameTiming.js";
 import {
 	HERO_GLOW_ALPHA_MAX,
 	HERO_GLOW_ALPHA_MIN,
@@ -2585,6 +2586,8 @@ export class WorldScene extends Phaser.Scene {
 	}
 
 	update(time: number, delta: number): void {
+		const lerp = followLerp(0.1, delta);
+		this.cameras.main.setLerp(lerp, lerp);
 		if (this.store.getState().mapOpen) {
 			this.walker.cancel();
 			this.pendingArrival = null;
