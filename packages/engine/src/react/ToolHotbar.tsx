@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useReducer,
+	useRef,
+	useState,
+} from "react";
 import type { StoreApi } from "zustand/vanilla";
 import type { CabnBus } from "../bridge/events.js";
 import type { CabnStore } from "../bridge/store.js";
@@ -8,6 +15,14 @@ import {
 	OWNER_TOOLKIT_HOTKEY,
 	ownerToolkitEntries,
 } from "../systems/ownerToolkit.js";
+import {
+	reduceToolCard,
+	TOOL_CARD_IDLE,
+	TOOL_CARD_LINGER_MS,
+	type ToolCardContent,
+	toolCardContent,
+	visibleToolId,
+} from "../systems/toolCard.js";
 import {
 	createDefaultToolRegistry,
 	type Tool,
@@ -98,6 +113,22 @@ export function ToolHotbar({
 		(s) => s.mode === "file" && s.activeFileState !== null,
 	);
 
+	const [card, dispatchCard] = useReducer(reduceToolCard, TOOL_CARD_IDLE);
+	const expiry = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	useEffect(() => () => clearTimeout(expiry.current), []);
+	const onSlotCard = useCallback(
+		(event: Parameters<typeof reduceToolCard>[1], lingerMs?: number) => {
+			clearTimeout(expiry.current);
+			dispatchCard(event);
+			if (lingerMs !== undefined)
+				expiry.current = setTimeout(
+					() => dispatchCard({ type: "expire" }),
+					lingerMs,
+				);
+		},
+		[],
+	);
+
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			// The editor traps its own keys (including single letters that would
@@ -153,48 +184,83 @@ export function ToolHotbar({
 	// owns the screen instead.
 	if (mode === "editor" || mode === "run") return null;
 
+	const cardTool = [...registry.list(), ownerTool].find(
+		(t) => t.id === visibleToolId(card),
+	);
+	const slotCount =
+		registry.list().length + (hasToolkit && mode === "world" ? 1 : 0);
+
+	return (
+		<>
+			<div
+				className="cabn-hotbar"
+				style={{ "--cabn-slots": slotCount } as React.CSSProperties}
+			>
+				<div className="cabn-hotbar-row">
+					{registry.list().map((tool) => (
+						<HotbarSlot
+							key={tool.id}
+							tool={tool}
+							badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
+							selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
+							iconFor={iconFor}
+							onUse={() => registry.dispatch(tool.id, { store, bus })}
+							onCard={onSlotCard}
+						/>
+					))}
+					{hasToolkit && mode === "world" && (
+						<span style={{ position: "relative", display: "flex" }}>
+							<HotbarSlot
+								tool={ownerTool}
+								badge={null}
+								selected={toolkitOpen || signPlacing}
+								iconFor={iconFor}
+								onUse={() => ownerTool.onUse({ store, bus })}
+								onCard={onSlotCard}
+							/>
+							{toolkitOpen && (
+								<OwnerToolkit
+									store={store}
+									bus={bus}
+									entries={toolkitEntries}
+								/>
+							)}
+						</span>
+					)}
+				</div>
+				{[...registry.list(), ownerTool].map((tool) => (
+					<span
+						key={tool.id}
+						id={`cabn-tool-desc-${tool.id}`}
+						className="cabn-sr-only"
+					>
+						{tool.description}
+					</span>
+				))}
+			</div>
+			{cardTool && !spyglassOpen && (
+				<ToolCard content={toolCardContent(cardTool, writing)} />
+			)}
+		</>
+	);
+}
+
+function ToolCard({
+	content,
+}: {
+	content: ToolCardContent;
+}): React.ReactElement {
 	return (
 		<div
-			style={{
-				position: "absolute",
-				bottom: 12,
-				left: 0,
-				right: 0,
-				display: "flex",
-				justifyContent: "center",
-				gap: 10,
-				zIndex: 5,
-				pointerEvents: "none",
-			}}
+			className="cabn-panel cabn-tool-card"
+			data-testid="cabn-tool-card"
+			aria-hidden="true"
 		>
-			{registry.list().map((tool) => (
-				<HotbarSlot
-					key={tool.id}
-					tool={tool}
-					badge={tool.id === "bag" && bagCount > 0 ? bagCount : null}
-					selected={isToolSelected(tool.id, { spyglassOpen, searchOpen })}
-					showLabel={mode === "file"}
-					writing={writing}
-					iconFor={iconFor}
-					onUse={() => registry.dispatch(tool.id, { store, bus })}
-				/>
-			))}
-			{hasToolkit && mode === "world" && (
-				<span style={{ position: "relative", display: "flex" }}>
-					<HotbarSlot
-						tool={ownerTool}
-						badge={null}
-						selected={toolkitOpen || signPlacing}
-						showLabel={false}
-						writing={false}
-						iconFor={iconFor}
-						onUse={() => ownerTool.onUse({ store, bus })}
-					/>
-					{toolkitOpen && (
-						<OwnerToolkit store={store} bus={bus} entries={toolkitEntries} />
-					)}
-				</span>
-			)}
+			<div className="cabn-tool-card-head">
+				<span>{content.name}</span>
+				<span className="cabn-tool-card-key">{content.key}</span>
+			</div>
+			<div className="cabn-tool-card-text">{content.description}</div>
 		</div>
 	);
 }
@@ -203,22 +269,21 @@ function HotbarSlot({
 	tool,
 	badge,
 	selected,
-	showLabel,
-	writing,
 	iconFor,
 	onUse,
+	onCard,
 }: {
 	tool: Tool;
 	badge: number | null;
 	selected: boolean;
-	showLabel: boolean;
-	/** In a text file the page's caret takes plain letters and Enter, so the shortcuts become Alt chords (see systems/fileCaretKeys.ts). */
-	writing: boolean;
 	iconFor: (src: string) => string;
 	onUse: () => void;
+	onCard: (
+		event: Parameters<typeof reduceToolCard>[1],
+		lingerMs?: number,
+	) => void;
 }): React.ReactElement {
-	const label = showLabel ? tool.label : undefined;
-	const hotkey = writing ? `Alt+${tool.hotkey}` : tool.hotkey;
+	const label = tool.label;
 	return (
 		<button
 			type="button"
@@ -228,7 +293,25 @@ function HotbarSlot({
 				// next Enter meant for the world would re-click it as well.
 				event.currentTarget.blur();
 			}}
-			title={`${label ? `${label} — ` : ""}${tool.name} (${hotkey})`}
+			aria-describedby={`cabn-tool-desc-${tool.id}`}
+			onPointerEnter={() => onCard({ type: "hover", id: tool.id })}
+			onPointerLeave={(event) =>
+				onCard(
+					{ type: "unhover", id: tool.id },
+					event.pointerType === "mouse"
+						? TOOL_CARD_LINGER_MS.mouse
+						: TOOL_CARD_LINGER_MS.touch,
+				)
+			}
+			onFocus={(event) => {
+				// A mouse press focuses the slot too, but hover already shows the card
+				// and the click handler blurs it straight away.
+				if (event.currentTarget.matches(":focus-visible"))
+					onCard({ type: "focus", id: tool.id });
+			}}
+			onBlur={() =>
+				onCard({ type: "blur", id: tool.id }, TOOL_CARD_LINGER_MS.mouse)
+			}
 			data-tool={tool.id}
 			className={`cabn-hotbar-slot${selected ? " selected" : ""}${label ? " labeled" : ""}`}
 			style={{ pointerEvents: "auto" }}

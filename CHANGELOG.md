@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-17 — Hotbar labels everywhere, and a tool card
+
+- **Labels in world mode.** Each hotbar slot shows its verb (Enter, Look,
+  Search, Copy, Edit, Run; Owner on an owner page) under the icon in every
+  mode, not only inside a file. The opener's label is now "Enter" (was "Use";
+  supersedes the verb list in the 2026-09 hotbar entries).
+- **Tool card.** Hovering, keyboard-focusing or tapping a slot shows a card at
+  the top right: tool name, key (Alt-chorded inside a text file) and one line
+  on what it does. The text is `Tool.description` in `systems/tools.ts` and
+  `ownerToolkit.ts`; the slot's accessible name stays the tool name and
+  `aria-describedby` points at the description. The card ignores the pointer,
+  hides while the spyglass is open, and fades out 250 ms after the mouse
+  leaves (2.5 s after a tap). The old native `title` tooltip is gone.
+- **Narrow games.** The bar is a CSS size container: slots shrink to share
+  the game's width (a 360px embed fits all six, labels included), and below
+  ~960px the bar sits above the bug counter instead of under it.
+
 ## 2026-11-16 — Walking no longer depends on frame rate
 
 - **Same walking speed at any frame rate.** Phaser's time step swaps any
