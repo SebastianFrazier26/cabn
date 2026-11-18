@@ -215,6 +215,19 @@ const PIXEL_THEME_CSS = `
 .cabn-effect-burst.play .cabn-spark { animation: cabn-burst-fade 500ms ease-out forwards; }
 
 /* ================= hotbar ================= */
+/* A size container so the slots can shrink with the game's own width (the
+   portfolio embeds it at 360px), not the page's: an iframe or a narrow pane
+   would defeat a viewport @media rule. --cabn-slots is set inline. */
+.cabn-hotbar {
+	position: absolute; bottom: 12px; left: 0; right: 0; z-index: 5; pointer-events: none;
+	container-type: inline-size;
+}
+/* A container's own rules can't react to its own queries, hence the row. */
+.cabn-hotbar-row { --cabn-gap: 10px; display: flex; justify-content: center; gap: var(--cabn-gap); }
+/* The bug counter (bottom-left, up to ~220px wide) and the bar would collide
+   below ~950px; stacking the bar above it beats shrinking slots further. */
+@container (max-width: 960px) { .cabn-hotbar-row { margin-bottom: 52px; } }
+@container (max-width: 640px) { .cabn-hotbar-row { --cabn-gap: 4px; } }
 .cabn-hotbar-slot {
 	position: relative; width: 64px; height: 64px; overflow: hidden;
 	background: var(--cabn-panel-body); border: 3px solid var(--cabn-border-outer); border-radius: 12px;
@@ -224,15 +237,40 @@ const PIXEL_THEME_CSS = `
 }
 .cabn-hotbar-slot img { width: 40px; height: 40px; object-fit: contain; position: relative; z-index: 1; image-rendering: pixelated; }
 .cabn-hotbar-slot .cabn-key { position: relative; z-index: 1; font-size: 10px; color: var(--cabn-text-secondary); margin-top: 1px; font-family: var(--cabn-font-display); }
-/* Inside a file the slots grow a verb label ("Run", "Copy"...); the hotkey
-   moves to the top-left corner to make room. */
-.cabn-hotbar-slot.labeled { width: 76px; height: 78px; justify-content: flex-start; padding-top: 6px; }
+/* Every slot carries its verb label ("Run", "Copy"...); the hotkey moves to
+   the top-left corner to make room. Width is the full 76px while the bar
+   fits, else an equal share of the hotbar (minus 16px of edge margin). */
+.cabn-hotbar-slot.labeled {
+	box-sizing: border-box; flex: 0 0 auto; padding: 6px 2px 0; justify-content: flex-start;
+	width: min(76px, calc((100cqw - 16px - (var(--cabn-slots) - 1) * var(--cabn-gap)) / var(--cabn-slots)));
+	height: 78px;
+}
 .cabn-hotbar-slot.labeled img { width: 38px; height: 38px; }
-.cabn-hotbar-slot.labeled .cabn-key { position: absolute; top: 3px; left: 6px; margin: 0; }
+.cabn-hotbar-slot.labeled .cabn-key { position: absolute; top: 3px; left: 5px; margin: 0; }
 .cabn-slot-label {
 	position: relative; z-index: 1; margin-top: 3px; font-size: 12px; line-height: 1.1;
 	font-family: var(--cabn-font-display); color: var(--cabn-text); white-space: nowrap;
 }
+@container (max-width: 640px) {
+	.cabn-hotbar-slot.labeled { height: 66px; padding-top: 5px; }
+	.cabn-hotbar-slot.labeled img { width: 28px; height: 28px; }
+	.cabn-hotbar-slot.labeled .cabn-key { font-size: 9px; left: 3px; top: 2px; }
+	.cabn-slot-label { font-size: 10px; margin-top: 2px; }
+}
+/* Above the file table, spyglass and minimap that share this corner: it is
+   transient and pointer-events: none, so covering them briefly beats moving
+   it (hosted layouts differ per mode) or hiding it where it helps most. */
+.cabn-tool-card {
+	position: absolute; top: 16px; right: 16px; z-index: 9; pointer-events: none;
+	box-sizing: border-box; width: max-content; max-width: min(280px, calc(100% - 32px));
+	padding: 8px 12px; font-size: 12px;
+}
+.cabn-tool-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; }
+.cabn-tool-card-key {
+	font-size: 11px; padding: 0 6px; border-radius: 4px; color: var(--cabn-text-secondary);
+	border: 2px solid var(--cabn-border-outer);
+}
+.cabn-tool-card-text { margin-top: 4px; line-height: 1.3; color: var(--cabn-text-secondary); }
 .cabn-hotbar-slot.selected { box-shadow: inset 0 0 0 2px var(--cabn-border-highlight), 0 0 0 3px var(--cabn-accent-yellow); transform: translateY(-3px); }
 /* .cabn-badge itself (shared with the satchel's closed-count badge) is defined
    in the bag section below — kept next to its other consumer rather than

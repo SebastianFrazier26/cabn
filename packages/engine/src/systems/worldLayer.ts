@@ -402,7 +402,9 @@ export type WorldLayerSaveResult =
 	| { ok: false; conflict: boolean; message: string };
 
 /** A layer's toolkit entry: a tool without a hotkey of its own. */
-export type LayerTool = Omit<Tool, "hotkey"> & {
+export type LayerTool = Omit<Tool, "hotkey" | "description"> & {
+	/** Toolkit rows have no hover card, so a layer needn't supply one. */
+	description?: string;
 	/** Shown when `icon` fails to load: a layer's own art can be absent (owner-served, optional package). */
 	fallbackIcon?: string;
 };

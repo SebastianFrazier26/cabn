@@ -15,8 +15,10 @@ export interface Tool {
 	icon: string;
 	/** Display + lookup key, e.g. "Enter", "L", "Cmd/Ctrl+F". */
 	hotkey: string;
-	/** Short verb shown under the slot inside a file ("Run", "Copy"...), where what a tool *does* matters more than what it is. */
+	/** Short verb shown under the slot ("Run", "Copy"...), where what a tool *does* matters more than what it is. */
 	label?: string;
+	/** One line for the hover/focus card: what the tool does, not what it is. */
+	description: string;
 	onUse(ctx: ToolContext): void;
 }
 
@@ -76,8 +78,9 @@ export function createDefaultTools(): Tool[] {
 	return [
 		{
 			id: "opener",
-			label: "Use",
+			label: "Enter",
 			name: "Opener",
+			description: "Enter portals and interact with things",
 			icon: uiIconPath("key"),
 			hotkey: "Enter",
 			// Each scene polls its own Enter key directly for frame-accurate feel
@@ -91,6 +94,7 @@ export function createDefaultTools(): Tool[] {
 			id: "spyglass",
 			label: "Look",
 			name: "Spyglass",
+			description: "List the files in this clearing",
 			icon: uiIconPath("spyglass"),
 			hotkey: "L",
 			onUse: (ctx) => ctx.store.getState().setSpyglassOpen(true),
@@ -99,6 +103,7 @@ export function createDefaultTools(): Tool[] {
 			id: "orb",
 			label: "Search",
 			name: "Crystal orb",
+			description: "Search the world (or this file)",
 			icon: uiIconPath("orb"),
 			// Registry hotkey is the display/lookup key; the hotbar's own keydown
 			// handler additionally intercepts Cmd/Ctrl+F (browser find) as a second
@@ -110,6 +115,7 @@ export function createDefaultTools(): Tool[] {
 			id: "bag",
 			label: "Copy",
 			name: "Bag",
+			description: "Copy the caret's line or selection into your bag",
 			icon: uiIconPath("bag"),
 			hotkey: "B",
 			onUse: (ctx) => ctx.bus.emit("tool:bag-use", {}),
@@ -118,6 +124,7 @@ export function createDefaultTools(): Tool[] {
 			id: "quill",
 			label: "Edit",
 			name: "Quill",
+			description: "Edit this file",
 			icon: uiIconPath("quill"),
 			hotkey: "Q",
 			// Same shape as bag: FileScene owns the actual open-the-overlay logic
@@ -129,6 +136,8 @@ export function createDefaultTools(): Tool[] {
 			id: "wand",
 			label: "Run",
 			name: "Wand",
+			// Hosted pages only ever have TraceProvider; --allow-exec swaps in a real run.
+			description: "Trace this file step by step (simulated on hosted pages)",
 			icon: uiIconPath("wand"),
 			hotkey: "R",
 			// FileScene owns the run: it needs the file's current lines/language to
