@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-18 — Full E2E suite sharded six ways
+
+- **Nightly full E2E no longer hits its timeout.** The 66-test suite ran as
+  one job at ~3.4 min per test under `E2E_TIME_SCALE=3`, about 224 min against
+  a 180 min cap, so every run was cancelled. `e2e-full.yml` now runs six
+  matrix shards (`--shard=N/6`, `--retries=0`, `fail-fast: false`) with a
+  90 min cap each, and per-shard artifact names. CI-only change; no package
+  bump, so no changeset.
+
 ## 2026-11-18 — Enter no longer lost on a slow frame
 
 - **A quick Enter tap registers even when the frame is slow.** Phaser's
