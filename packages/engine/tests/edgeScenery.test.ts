@@ -15,6 +15,7 @@ import {
 	planEdgeSceneryPois,
 	planFillerChunk,
 	planFillerChunkForContext,
+	planFillerChunkWithOverflow,
 	planLayeredEdgeScenery,
 	type SceneryKind,
 	type SegmentKeepout,
@@ -613,5 +614,66 @@ describe("buildLazySceneryContext / planFillerChunkForContext", () => {
 		const seamCol = Math.floor(world.bounds.maxX / 512);
 		const items = planFillerChunkForContext(context, seamCol, 0);
 		expect(items.every((i) => !i.layer)).toBe(true);
+	});
+});
+
+describe("planFillerChunkWithOverflow", () => {
+	const S = 512;
+	const world = sampleLazyWorld();
+	const { context } = buildLazySceneryContext(world, null);
+	type Placed = { kind: SceneryKind; x: number; y: number };
+	const keyOf = (i: Placed) => `${i.kind}@${i.x},${i.y}`;
+	const reaches = (i: Placed, col: number, row: number) => {
+		const fp = FOOTPRINTS[i.kind];
+		return (
+			i.x + fp.w / 2 > col * S &&
+			i.x - fp.w / 2 < (col + 1) * S &&
+			i.y > row * S &&
+			i.y - fp.h < (row + 1) * S
+		);
+	};
+
+	it("owned + overflow covers every item whose footprint intersects the chunk (brute force over a wider window)", () => {
+		let spilled = 0;
+		for (const [col, row] of [
+			[0, 0],
+			[-1, 1],
+			[2, -1],
+			[1, 1],
+		] as const) {
+			const expected = new Set<string>();
+			for (let r = row - 3; r <= row + 3; r++)
+				for (let c = col - 3; c <= col + 3; c++)
+					for (const i of planFillerChunkForContext(context, c, r))
+						if (reaches(i, col, row)) expected.add(keyOf(i));
+			const { owned, overflow } = planFillerChunkWithOverflow(
+				context,
+				col,
+				row,
+			);
+			const got = new Set(
+				[...owned.filter((i) => reaches(i, col, row)), ...overflow].map(keyOf),
+			);
+			expect(got).toEqual(expected);
+			spilled += overflow.length;
+		}
+		expect(spilled).toBeGreaterThan(0);
+	});
+
+	it("owned is exactly the anchor-owned plan, and no item is both owned and overflow", () => {
+		const { owned, overflow } = planFillerChunkWithOverflow(context, 0, 0);
+		expect(owned).toEqual(planFillerChunkForContext(context, 0, 0));
+		const ownedKeys = new Set(owned.map(keyOf));
+		expect(overflow.some((i) => ownedKeys.has(keyOf(i)))).toBe(false);
+		expect(new Set(overflow.map(keyOf)).size).toBe(overflow.length);
+	});
+
+	it("is unaffected by memoization order", () => {
+		const fresh = buildLazySceneryContext(sampleLazyWorld(), null).context;
+		planFillerChunkWithOverflow(fresh, 3, 3);
+		planFillerChunkWithOverflow(fresh, 1, 0);
+		expect(planFillerChunkWithOverflow(fresh, 0, 0)).toEqual(
+			planFillerChunkWithOverflow(context, 0, 0),
+		);
 	});
 });
