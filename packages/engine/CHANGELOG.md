@@ -1,5 +1,20 @@
 # @cabn/engine
 
+## 0.3.0
+
+### Minor Changes
+
+- 63fc264: Every hotbar slot now shows its short label in world mode too (the opener's is now "Enter", not "Use"), and hovering, focusing or tapping a slot shows a card at the top right with the tool's name, key and a one-line description. Tool definitions carry that `description`. The bar shrinks its slots to fit narrow games (down to 360px) and sits above the bug counter below ~960px.
+
+### Patch Changes
+
+- 137a85c: The player walks at the same speed regardless of frame rate. Phaser's time step was replacing any frame slower than 200 ms with a 16.7 ms stand-in, so machines under 5 fps walked in slow motion; frames up to 500 ms now count as real time and the camera follow eases at the same rate at any frame rate.
+- 71cd71d: The live page over a url arch no longer loads while the world is still entering, and no longer reloads when you brush past an arch. The first mount waits for world entry plus an idle moment; once mounted it stays until you are well clear of the arch (1.6x the mount radius) for 4 seconds, so turning back keeps the loaded page.
+- f9d56a6: Trees no longer look sliced at chunk edges. In larger worlds the lazily planned forest filler was baked only into the 512px chunk that owned each tree, so any part of a tree outside that chunk was clipped by a dead-straight cut. Each chunk now also draws the parts of its neighbours' trees that reach into it.
+- f30ea7a: Smoother walking: no more multi-second stalls near large clearings; faster world entry. A big clearing's ground is now baked as 512px tiles that stream in and out like the rest of the world instead of as one texture up to 2752x2784px, streamed chunk textures are recycled through a pool instead of being created and destroyed, the first screen bakes across the loading card's frames instead of in one block, and the unused WebAudio context is no longer created at boot.
+- Updated dependencies [ad0750a]
+  - @cabn/converter@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
