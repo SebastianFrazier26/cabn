@@ -22,6 +22,7 @@
   pass is needed too. A per-size capture-target cache (tried first, not shipped) cut
   framebuffer creations 84 -> 40 but did not move any of these numbers. Changeset:
   `@cabn/engine` patch.
+
 ## 2026-11-18 — Local e2e failures: entry bake, slow walks, loading-card assertion
 
 - **No product regression: the eight local failures were test assumptions broken by slow frames or by #30's entry bake.**
