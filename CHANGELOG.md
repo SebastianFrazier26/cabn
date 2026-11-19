@@ -16,6 +16,14 @@
   precomputing into `world.json` was rejected: storing the cobbles would have added ~9 MB to
   cabn's 2 MB world. No schema change. Changeset: `@cabn/engine` patch.
 
+## 2026-11-18 — Shelf palette check runs in the @core smoke gate
+
+- **New `render-sanity.spec.ts` (`@core`) asserts the shelf's day and night palettes on the CI runner.**
+  It catches a void canvas, a world stuck in one time of day, or a palette shift, which
+  smoke's variance check can't. Free-runner GL tuning was measured and no Chromium
+  launch flag beat the default (software ANGLE/SwiftShader on every variant), so
+  the CI launch config is unchanged. Test-only; no package bump, so no changeset.
+
 ## 2026-11-18 — World-entry walks survive high input latency
 
 - **`walkToward` (and so `enterSampleWorld`) hands over to `clickWalkToward` when key bursts can't converge.**
