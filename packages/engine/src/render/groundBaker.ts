@@ -89,14 +89,16 @@ export function drawClusterGround(
 	offsetY = 0,
 ): void {
 	const decalKey = params.decalSheetKey ?? DECAL_SHEET_KEY;
+	rt.beginDraw();
 	for (const draw of draws) {
-		rt.drawFrame(
+		rt.batchDrawFrame(
 			draw.sheet === "tile" ? params.biomeSheetKey : decalKey,
 			draw.frame,
 			draw.x - offsetX,
 			draw.y - offsetY,
 		);
 	}
+	rt.endDraw();
 }
 
 /** One CLUSTER_TILE_PX square of a cluster's ground, whose top-left sits at (worldX, worldY); `draws` is that tile's slice of the cluster plan (assignDrawsToTiles), in cluster-grid px, and `tileCol`/`tileRow` locate the tile in that grid. */

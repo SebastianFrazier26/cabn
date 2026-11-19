@@ -126,16 +126,17 @@ export function attachAtmosphere(
 	const washColor = skin?.wash?.color ?? WASH_COLOR;
 	attachGlow(scene, glowParams);
 
+	// Per-frame scratch: [sx, sy, scale, alpha] per visible light, then the layer state; compared against last frame's to skip a redundant repaint.
+	let holes: number[] = [];
+	let lastHoles: number[] = [];
+
 	const redraw = (): void => {
 		const now = scene.time.now;
 		const view = camera.worldView;
 		const zoom = camera.zoom || 1;
-		grade.clear();
-		grade.fill(gradeColor(), 1);
-		wash.clear();
 		const alpha = washAlpha();
-		wash.setVisible(alpha > 0);
-		if (alpha > 0) wash.fill(washColor, alpha);
+		const color = gradeColor();
+		holes.length = 0;
 		for (const pool of pools) {
 			const flicker = poolFlicker(pool, now, options.reducedMotion);
 			updateLightPool(
@@ -155,13 +156,39 @@ export function attachAtmosphere(
 			) {
 				continue;
 			}
-			eraser
-				.setScale(pool.baseScale * HOLE_RADIUS_RATIO * zoom * flicker)
-				.setAlpha(
-					HOLE_STRENGTH * (pool.opts.holeStrength ?? 1) * eased * flicker,
-				);
-			grade.erase(eraser, sx, sy);
-			wash.erase(eraser, sx, sy);
+			holes.push(
+				sx,
+				sy,
+				pool.baseScale * HOLE_RADIUS_RATIO * zoom * flicker,
+				HOLE_STRENGTH * (pool.opts.holeStrength ?? 1) * eased * flicker,
+			);
+		}
+		holes.push(color, alpha, grade.width, grade.height);
+		if (
+			holes.length === lastHoles.length &&
+			holes.every((v, i) => v === lastHoles[i])
+		) {
+			return;
+		}
+		[holes, lastHoles] = [lastHoles, holes];
+
+		grade.clear();
+		grade.fill(color, 1);
+		wash.clear();
+		wash.setVisible(alpha > 0);
+		if (alpha > 0) wash.fill(washColor, alpha);
+		const n = lastHoles.length - 4;
+		if (n <= 0) return;
+		// One capture pass per layer instead of one per light: erase() is a full capture + blit each call. Overlapping holes compose to the same (1-a1)(1-a2) coverage as sequential erases.
+		for (const layer of alpha > 0 ? [grade, wash] : [grade]) {
+			layer.beginDraw();
+			for (let i = 0; i < n; i += 4) {
+				eraser
+					.setScale(lastHoles[i + 2] as number)
+					.setAlpha(lastHoles[i + 3] as number);
+				layer.batchDraw(eraser, lastHoles[i], lastHoles[i + 1]);
+			}
+			layer.endDraw(true);
 		}
 	};
 

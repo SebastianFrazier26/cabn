@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-11-18 — Walking hitches gone: ground bakes and the night layer batch their draws
+
+- **Streamed ground chunks and cluster ground are drawn in one batch, and the night layer erases all its lights in one pass per layer.**
+  Phaser's `DynamicTexture.drawFrame()` and `erase()` each open and close their own capture
+  target and blit (about four framebuffer binds apiece). `bakeGroundFieldChunk` and
+  `drawClusterGround` did that once per tile, ~25 per frame while walking and ~100 binds per
+  frame in total even by day; `attachAtmosphere` did it once per light per layer, every frame.
+  Both now use `beginDraw` / `batchDrawFrame` / `endDraw` (ground) and one `beginDraw` +
+  `batchDraw` per light + `endDraw(true)` per layer (night). The night repaint is also skipped
+  when no light, camera, blend or grade value changed since the last frame, and the wash layer is
+  not erased while its alpha is 0. Framebuffer binds per frame while walking: 103 -> 4 by day,
+  176 -> 20 at night. Day ground is pixel-identical to before at the same camera position
+  (max channel diff 1, 307 px of the 1280x800 frame); night differs by at most 5/255 per
+  channel (1491 of 1.02M px above 1, 48 above 3) where overlapping lights compose (the capture buffer now accumulates them before one
+  blit; moving sprites excluded). Measured on cabn's and loosy-goose's worlds, 20 s walks at
+  1280x800, 4 interleaved runs per cell, machine load ~28 (other jobs), frames over 50 ms /
+  p95 ms / max ms, main -> now: cabn day 19 / 9.8 / 127 -> 0 / 9.6 / 23; cabn night 33 / 31 / 197
+  -> 0 / 9.7 / 28; loosy-goose day 18 / 9.7 / 104 -> 0 / 9.1 / 14; loosy-goose night 35 / 25 /
+  195 -> 0 / 9.5 / 30. The ground batch alone leaves ~10 night frames over 50 ms, so the night
+  pass is needed too. A per-size capture-target cache (tried first, not shipped) cut
+  framebuffer creations 84 -> 40 but did not move any of these numbers. Changeset:
+  `@cabn/engine` patch.
+
 ## 2026-11-18 — Path planning no longer stalls world entry
 
 - **`planPathRibbon` places cobbles ~5x faster, with identical output.**
