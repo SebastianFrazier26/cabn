@@ -129,6 +129,7 @@ function visibleMs(log: LogEntry[], end: number): number {
 	let total = 0;
 	let since: number | null = null;
 	for (const entry of log) {
+		if (entry.t > end) break;
 		if (entry.visible && since === null) since = entry.t;
 		if (!entry.visible && since !== null) {
 			total += entry.t - since;
@@ -225,7 +226,7 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 		await new Promise((r) => setTimeout(r, 60));
 		await route.continue();
 	});
-	await page.goto("/?e2e=1");
+	await page.goto("/?e2e=1&perf=1");
 	const overlay = page.getByTestId("loading-overlay");
 	await expect(overlay).toBeVisible({ timeout: scaled(15_000) });
 	await expect(page.getByTestId("loading-label")).toHaveText(
@@ -307,8 +308,17 @@ test("a slow world.json shows the loading panel over the held fade, and a fast l
 	await waitForWorld(page);
 	const fast = await loadingLog(page);
 	expect(fast.some((e) => e.active)).toBe(true);
-	const fastEnd = await page.evaluate(() => performance.now());
-	expect(visibleMs(fast, fastEnd)).toBeLessThan(17);
+	// Since #30 the load stays open through WorldScene's entry bake, and the
+	// card is meant to show if that outlasts the show delay (software GL
+	// bakes for seconds). So the "fast load" invariant covers only the
+	// fetch and scene switch: the card must not appear before the world scene
+	// has been created. create-end is the last mark before the bake starts.
+	const createEnd = await page.evaluate(() => {
+		const marks = performance.getEntriesByName("cabn:world:create-end");
+		return marks[marks.length - 1]?.startTime ?? null;
+	});
+	expect(createEnd).not.toBeNull();
+	expect(visibleMs(fast, createEnd as number)).toBeLessThan(17);
 
 	expect(pageErrors).toEqual([]);
 });

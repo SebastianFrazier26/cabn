@@ -523,7 +523,7 @@ async function walkToAndOpen(page: Page, portalId: string) {
 		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
 	}, portalId);
 	await expect
-		.poll(async () => (await snap(page)).focused, { timeout: scaled(20_000) })
+		.poll(async () => (await snap(page)).focused, { timeout: scaled(90_000) })
 		.toBe(portalId);
 	const clusterId = (await snap(page)).portals.find(
 		(p) => p.id === portalId,
@@ -596,7 +596,7 @@ async function storageText(page: Page): Promise<string> {
 test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read and save to disk, and nothing leaks", async ({
 	page,
 }) => {
-	test.setTimeout(240_000);
+	test.setTimeout(scaled(480_000));
 	const pageErrors: string[] = [];
 	page.on("pageerror", (err) => pageErrors.push(err.message));
 	const requests: { url: string; token: string | undefined }[] = [];
@@ -1106,8 +1106,11 @@ test("owner: the toolkit's sudo entry raises the shadow realm, hidden files read
 	expect(off.theme).toBeNull();
 	for (const c of before.clusters)
 		expect(off.clusters.find((x) => x.id === c.id)).toEqual(c);
-	const offSprites = await archSprites(page);
-	expect(offSprites).toEqual(beforeSprites);
+	// The arches finish rising a frame-count after the layer goes, not a fixed
+	// 1.2s: mid-rise they sit a pixel or two off, so poll for the settled spot.
+	await expect
+		.poll(() => archSprites(page), { timeout: scaled(10_000) })
+		.toEqual(beforeSprites);
 	// Every normal file, monster and sign is back, the same ones in the same places.
 	expect(off.portals).toEqual(before.portals);
 	expect(off.mapPortals).toEqual(before.mapPortals);

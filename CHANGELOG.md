@@ -22,6 +22,27 @@
   pass is needed too. A per-size capture-target cache (tried first, not shipped) cut
   framebuffer creations 84 -> 40 but did not move any of these numbers. Changeset:
   `@cabn/engine` patch.
+## 2026-11-18 — Local e2e failures: entry bake, slow walks, loading-card assertion
+
+- **No product regression: the eight local failures were test assumptions broken by slow frames or by #30's entry bake.**
+  A 1900px summoned walk took ~15s wall-clock both on #29 (pre-#30) and on main under the
+  same load (3-12 fps software GL on a busy Mac), so #30 did not slow movement; fixed budgets
+  were simply borderline. Test-only; no package bump, so no changeset.
+  - `loading-screen.spec.ts` "a fast load never shows the card" was stale. Since #30 the load
+    stays open (`SceneLoadCoordinator.hold()`) through WorldScene's entry bake, which takes
+    seconds on software GL, so the card is meant to show then. The assertion now covers the
+    fetch and scene switch (up to the `cabn:world:create-end` mark, via `?perf=1`), which must
+    still never flash it.
+  - `helpers.ts`: new `waitForLoadIdle` (the entry curtain freezes the player and is the same
+    colour as the void) used by `enterSampleWorld`, `walkToward` and `clickWalkToward`;
+    `walkToPortal` waits on progress (fails after 20s without movement) instead of a fixed 20s;
+    `walkToward` no longer hands a short nudge (<=120px) to click-walking, where the click
+    lands on the pet or guide beside the player (`art-polish` and `pets` timed out there), and
+    accepts "near enough" after three overshoots.
+  - `world-bounds.spec.ts` waits out the entry bake before sampling corner pixels and has a
+    larger test timeout; `shadow-owner.spec.ts` polls for the arches to finish rising after the
+    realm closes (they were 0.3-1.5px off mid-rise), gives its walk 90s and scales its timeout;
+    `monsters.spec.ts` doubles its two walk-heavy timeouts.
 
 ## 2026-11-18 — Path planning no longer stalls world entry
 

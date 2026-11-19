@@ -5,6 +5,9 @@ export { scaled, TIME_SCALE } from "./timeScale";
 
 import { scaled } from "./timeScale";
 
+/** Below this, walkToward never hands over to click-walking (see its comment). */
+const CLICK_HANDOVER_MIN_PX = 120;
+
 /** Per-burst overhead beyond the requested hold that marks input as too laggy for key-bursts. */
 const HIGH_LATENCY_MS = 400;
 
@@ -21,6 +24,7 @@ export interface CabnStoreSnapshot {
 	activeWorldBase: string | null;
 	playerPos: { x: number; y: number };
 	monsters: { species: string }[];
+	loading?: { active: boolean; visible: boolean };
 }
 
 // window.__cabnStore only exists when the page is loaded with ?e2e=1 — see
@@ -36,6 +40,28 @@ export function getStoreState(
 		).__cabnStore;
 		return store?.getState();
 	});
+}
+
+/**
+ * Resolves once the scene-load card has gone, i.e. past WorldScene's entry
+ * bake. activeWorldBase is set when the scene is created, but since #30 the
+ * bake runs on after that behind an opaque ground-coloured curtain with the
+ * player frozen (update() returns early), which takes seconds on software GL.
+ * Anything that walks, or samples pixels, straight after "the world is
+ * active" would be fighting the curtain. Best-effort: a card that never
+ * clears (a load error) just ends the wait, so the caller's own assertion
+ * reports the real failure.
+ */
+export async function waitForLoadIdle(
+	page: Page,
+	maxMs = WORLD_LOAD_TIMEOUT_MS,
+): Promise<void> {
+	const deadline = Date.now() + maxMs;
+	while (Date.now() < deadline) {
+		const loading = (await getStoreState(page))?.loading;
+		if (!loading?.active) return;
+		await page.waitForTimeout(250);
+	}
 }
 
 export async function holdKeys(
@@ -73,6 +99,7 @@ export async function walkToward(
 	let lastDist = Number.POSITIVE_INFINITY;
 	let laggyBursts = 0;
 	let overshoots = 0;
+	await waitForLoadIdle(page);
 	const deadline = Date.now() + maxMs;
 
 	while (Date.now() < deadline) {
@@ -91,6 +118,9 @@ export async function walkToward(
 		} else if (Math.abs(dist - lastDist) <= 0.5)
 			burstMs = Math.min(maxBurstMs * 2, burstMs * 2);
 		lastDist = dist;
+		// Overshot three times on a short walk: the window is narrower than one
+		// frame's step, which no key hold can fix.
+		if (overshoots >= 3 && dist <= CLICK_HANDOVER_MIN_PX) return;
 
 		const keys: string[] = [];
 		if (Math.abs(dx) > 4) keys.push(dx > 0 ? "ArrowRight" : "ArrowLeft");
@@ -106,6 +136,12 @@ export async function walkToward(
 		laggyBursts =
 			Date.now() - burstStart - burstMs > HIGH_LATENCY_MS ? laggyBursts + 1 : 0;
 		if (laggyBursts >= 2 && overshoots >= 2) {
+			// A short nudge can't converge on a slow runner at all: one frame of
+			// held key already moves the player past a tight window. Clicking
+			// instead is worse there, because a click this close to the player
+			// lands on whatever stands beside them (the pet, the guide, an arch)
+			// and interacts with it instead of walking. Near enough is enough.
+			if (dist <= CLICK_HANDOVER_MIN_PX) return;
 			return clickWalkToward(page, target, withinPx, {
 				maxMs: options.maxMs ?? 60_000,
 			});
@@ -142,6 +178,7 @@ export async function enterSampleWorld(
 			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
+	await waitForLoadIdle(page);
 	await page.waitForTimeout(settleMs);
 }
 
@@ -160,6 +197,7 @@ export async function clickWalkToward(
 	options: { maxMs?: number } = {},
 ): Promise<void> {
 	const maxMs = scaled(options.maxMs ?? 60_000);
+	await waitForLoadIdle(page);
 	const deadline = Date.now() + maxMs;
 	const canvas = page.locator("canvas").first();
 	const box = await canvas.boundingBox();
@@ -211,6 +249,54 @@ export async function waitUntilStill(
 }
 
 /**
+ * Waits for the summoned walk to bring `portalId` into focus. A fixed budget
+ * can't tell a slow walk from a dead one: the walk covers up to ~2000px at
+ * 320px/s of game time, which is ~6s at 60fps but 16s+ at the 3-6fps a
+ * software-GL or CPU-contended runner renders, so 20s flaked. The walker
+ * steers in a straight line and gives up when a collider stops it (an arch
+ * or an orbiting monster beside the route; seen ~1 run in 3 at 120px out), so
+ * when the player has stopped moving for 20s without focus the walk is
+ * summoned again from where they stand, up to 3 times, as a player would.
+ */
+async function waitForFocus(
+	page: Page,
+	portalId: string,
+	readFocused: () => Promise<string | null | undefined>,
+): Promise<void> {
+	const STALL_MS = scaled(20_000);
+	const deadline = Date.now() + scaled(120_000);
+	let restarts = 0;
+	let last = (await getStoreState(page))?.playerPos;
+	let lastMoved = Date.now();
+	while (Date.now() < deadline) {
+		if ((await readFocused()) === portalId) return;
+		const pos = (await getStoreState(page))?.playerPos;
+		if (pos && last && Math.hypot(pos.x - last.x, pos.y - last.y) > 1) {
+			lastMoved = Date.now();
+		} else if (Date.now() - lastMoved > STALL_MS) {
+			if (restarts++ >= 3) break;
+			await summonWalk(page, portalId);
+			lastMoved = Date.now();
+		}
+		last = pos;
+		await page.waitForTimeout(250);
+	}
+	const at = await getStoreState(page);
+	expect(
+		await readFocused(),
+		`walk-to-portal never focused ${portalId}; mode ${at?.mode}, player ${JSON.stringify(at?.playerPos)}`,
+	).toBe(portalId);
+}
+
+function summonWalk(page: Page, portalId: string): Promise<void> {
+	return page.evaluate((id) => {
+		(
+			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
+		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
+	}, portalId);
+}
+
+/**
  * Summons the in-game walk-to-portal tool and resolves with the player's
  * position once it has actually stopped at the arch. `readFocused` supplies
  * the portal id from each spec's own state snapshot (the field name differs
@@ -221,12 +307,8 @@ export async function walkToPortal(
 	portalId: string,
 	readFocused: () => Promise<string | null | undefined>,
 ): Promise<{ x: number; y: number }> {
-	await page.evaluate((id) => {
-		(
-			window as unknown as { __cabnBus: { emit(e: string, p: unknown): void } }
-		).__cabnBus.emit("tool:walk-to-portal", { portalId: id });
-	}, portalId);
-	await expect.poll(readFocused, { timeout: scaled(20_000) }).toBe(portalId);
+	await summonWalk(page, portalId);
+	await waitForFocus(page, portalId, readFocused);
 	await waitUntilStill(page);
 	return (await getStoreState(page))?.playerPos ?? { x: 0, y: 0 };
 }
