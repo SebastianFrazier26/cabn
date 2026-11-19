@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-18 — Path planning no longer stalls world entry
+
+- **`planPathRibbon` places cobbles ~5x faster, with identical output.**
+  `drawPaths` was ~1.0-1.2 s on cabn's own and loosy-goose's worlds (about 560k-620k cobbles
+  each) and almost all of it was the cobble dedup: a `Map` keyed by nine
+  `"cx,cy"` strings per candidate. It is now a typed-array spatial hash with squared-distance
+  checks (`hypot` only within rounding of the gap), and `indexPointsByChunk` reuses the last
+  chunk's list instead of rebuilding string keys. Cobble count and a hash of every stamp match
+  the old code on all three worlds. Locked by golden-value tests in `pathRibbon.test.ts`.
+  Measured on a heavily loaded machine (load 16-23), `drawPaths` median of 3: cabn 1036 -> 173 ms,
+  loosy-goose 1224 -> 169 ms, SafeAscent 147 -> 33 ms; synchronous scene create 1162 -> 311,
+  1354 -> 289, 253 -> 137 ms. Path routing, smoothing and clearing collision do not exist for
+  base paths (they are straight lines), and rasterization already streams per chunk, so
+  precomputing into `world.json` was rejected: storing the cobbles would have added ~9 MB to
+  cabn's 2 MB world. No schema change. Changeset: `@cabn/engine` patch.
+
 ## 2026-11-18 — World-entry walks survive high input latency
 
 - **`walkToward` (and so `enterSampleWorld`) hands over to `clickWalkToward` when key bursts can't converge.**
