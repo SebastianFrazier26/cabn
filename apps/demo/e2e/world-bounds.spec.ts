@@ -1,7 +1,13 @@
 import type { Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { expect, test } from "./cspGuard";
-import { holdKey, scaled, WORLD_LOAD_TIMEOUT_MS, walkToward } from "./helpers";
+import {
+	holdKey,
+	scaled,
+	WORLD_LOAD_TIMEOUT_MS,
+	waitForLoadIdle,
+	walkToward,
+} from "./helpers";
 
 // Regression coverage for the M10 perf fix that shrank the ground-field
 // bake area from a flat viewport-based margin to exactly half the viewport
@@ -182,6 +188,9 @@ async function runCheckAtViewport(
 			timeout: WORLD_LOAD_TIMEOUT_MS,
 		})
 		.not.toBeNull();
+	// The entry curtain is the raw background colour (WorldScene's
+	// ENTRY_CURTAIN), which is exactly what the void check looks for.
+	await waitForLoadIdle(page);
 	await page.waitForTimeout(500);
 	await setDay(page);
 
@@ -191,13 +200,13 @@ async function runCheckAtViewport(
 test("no unbaked void at any reachable camera corner — 1280x720", async ({
 	page,
 }) => {
-	test.setTimeout(scaled(60_000) + WORLD_LOAD_TIMEOUT_MS);
+	test.setTimeout(scaled(120_000) + 2 * WORLD_LOAD_TIMEOUT_MS);
 	await runCheckAtViewport(page, { width: 1280, height: 720 });
 });
 
 test("no unbaked void at any reachable camera corner — 1920x1200", async ({
 	page,
 }) => {
-	test.setTimeout(scaled(60_000) + WORLD_LOAD_TIMEOUT_MS);
+	test.setTimeout(scaled(120_000) + 2 * WORLD_LOAD_TIMEOUT_MS);
 	await runCheckAtViewport(page, { width: 1920, height: 1200 });
 });

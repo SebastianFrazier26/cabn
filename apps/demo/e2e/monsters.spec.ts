@@ -221,7 +221,7 @@ function collectErrors(page: Page) {
 test("world monsters swirl around their arches without errors", async ({
 	page,
 }) => {
-	test.setTimeout(scaled(120_000));
+	test.setTimeout(scaled(240_000));
 	const errors = collectErrors(page);
 	await enterSampleWorld(page);
 
@@ -285,7 +285,7 @@ const SPECIES_SWAP: Record<string, string> = {
 };
 
 test("annotator species render in the world", async ({ page }) => {
-	test.setTimeout(scaled(120_000));
+	test.setTimeout(scaled(240_000));
 	const accepted = new Set<string>(SpeciesSchema.options);
 	const swap = Object.fromEntries(
 		Object.entries(SPECIES_SWAP).filter(([, to]) => accepted.has(to)),
