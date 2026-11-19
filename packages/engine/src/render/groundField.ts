@@ -77,9 +77,12 @@ export function bakeGroundFieldChunk(
 		originX + CHUNK_SIZE_PX / 2,
 		originY + CHUNK_SIZE_PX / 2,
 	);
+	// One capture+blit for the whole chunk: drawFrame() opens and closes its own, which was ~4 framebuffer binds per tile and the bulk of a streamed chunk's bake cost.
+	rt.beginDraw();
 	for (const draw of groundFieldChunkDrawList(chunkCol, chunkRow, seed)) {
-		rt.drawFrame(fieldSheetKey, draw.frame, draw.x, draw.y);
+		rt.batchDrawFrame(fieldSheetKey, draw.frame, draw.x, draw.y);
 	}
+	rt.endDraw();
 	if (tint !== undefined) rt.setTint(tint);
 	return rt;
 }
