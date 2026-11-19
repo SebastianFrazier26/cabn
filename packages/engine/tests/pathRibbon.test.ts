@@ -97,4 +97,95 @@ describe("planPathRibbon", () => {
 		);
 		expect(cobbles.length).toBeGreaterThan(100);
 	});
+
+	// Golden values taken from the original string-keyed Map implementation
+	// (2026-11-18): the typed-array spatial hash must reproduce its output bit
+	// for bit, since cobble positions are the world's path art.
+	describe("matches the original dedup output exactly", () => {
+		const fnv = (str: string): number => {
+			let h = 2166136261;
+			for (let i = 0; i < str.length; i++) {
+				h ^= str.charCodeAt(i);
+				h = Math.imul(h, 16777619);
+			}
+			return h >>> 0;
+		};
+		const summarize = (segments: RibbonSegment[]) => {
+			const plan = planPathRibbon(segments, OPTS);
+			return {
+				edge: plan.edgeStamps.length,
+				bed: plan.bedStamps.length,
+				cobbles: plan.cobbles.length,
+				plazas: plan.plazas.length,
+				hash: fnv(JSON.stringify(plan)),
+			};
+		};
+
+		it("on a hub with spokes", () => {
+			expect(summarize(STAR)).toEqual({
+				edge: 333,
+				bed: 482,
+				cobbles: 726,
+				plazas: 1,
+				hash: 3954228690,
+			});
+		});
+
+		it("on a dense lattice of crossing and duplicated segments", () => {
+			const grid: RibbonSegment[] = [];
+			for (let i = 0; i < 10; i++) {
+				for (let j = 0; j < 10; j++) {
+					const x = (i - 5) * 40;
+					const y = (j - 5) * 40;
+					if (i < 9)
+						grid.push({
+							id: `h${i},${j}`,
+							from: { x, y },
+							to: { x: x + 40, y },
+						});
+					if (j < 9)
+						grid.push({
+							id: `v${i},${j}`,
+							from: { x, y },
+							to: { x, y: y + 40 },
+						});
+				}
+			}
+			grid.push({
+				id: "dup",
+				from: { x: -200, y: -200 },
+				to: { x: 160, y: -200 },
+			});
+			expect(summarize(grid)).toEqual({
+				edge: 4540,
+				bed: 7947,
+				cobbles: 2942,
+				plazas: 98,
+				hash: 864584147,
+			});
+		});
+
+		it("when plazas outgrow the table's initial size, across negative coordinates", () => {
+			const stubs: RibbonSegment[] = [];
+			for (let i = 0; i < 100; i++) {
+				const x = i * 100 - 3000;
+				const y = (i % 7) * 130 - 400;
+				for (let k = 0; k < 3; k++) {
+					const a = (k * Math.PI * 2) / 3;
+					stubs.push({
+						id: `s${i}.${k}`,
+						from: { x, y },
+						to: { x: x + Math.cos(a) * 10, y: y + Math.sin(a) * 10 },
+					});
+				}
+			}
+			expect(summarize(stubs)).toEqual({
+				edge: 4000,
+				bed: 7200,
+				cobbles: 3700,
+				plazas: 100,
+				hash: 2405251319,
+			});
+		});
+	});
 });

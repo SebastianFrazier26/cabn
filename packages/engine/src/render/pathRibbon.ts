@@ -45,6 +45,7 @@ const COBBLE_PITCH = 7;
 const COBBLE_MIN_GAP = 5.5;
 /** Plaza radius as a multiple of the path's half-width. */
 const PLAZA_RADIUS_RATIO = 2.1;
+const GAP_EPS = 1e-9;
 
 function nodeKey(p: RibbonPoint): string {
 	return `${Math.round(p.x)},${Math.round(p.y)}`;
@@ -135,28 +136,88 @@ export function planPathRibbon(
 	}
 
 	// Spatial hash so overlapping segments/plazas never double up cobbles.
+	// Open-hashed grid over typed arrays, not a Map keyed by "cx,cy" strings:
+	// this runs ~1M times on a spread-out world and the string/heap-number
+	// Map lookups were most of the planning cost. Cells that collide in a
+	// bucket just share a chain; every entry is distance-checked, and any
+	// cobble closer than the gap is always in the 3x3 cells searched, so the
+	// extras never change the answer.
 	const cell = COBBLE_MIN_GAP;
-	const taken = new Map<string, Cobble[]>();
 	const cobbles: Cobble[] = [];
+	const minGapSq = COBBLE_MIN_GAP * COBBLE_MIN_GAP;
+	// Sized from total path length so a long network doesn't pay for repeated
+	// grow-and-relink; the growth paths below stay for plazas and overlaps.
+	let pathLength = 0;
+	for (const seg of segments)
+		pathLength += Math.hypot(seg.to.x - seg.from.x, seg.to.y - seg.from.y);
+	const expected = Math.ceil(pathLength / COBBLE_PITCH) * 3 + 1024;
+	let tableBits = Math.max(12, Math.ceil(Math.log2(expected / 0.5)));
+	let head = new Int32Array(1 << tableBits).fill(-1);
+	let xs = new Float64Array(expected);
+	let ys = new Float64Array(expected);
+	let next = new Int32Array(expected);
+	const bucketOf = (cx: number, cy: number): number => {
+		const h = Math.imul(cx, 0x1f1f1f1f) ^ Math.imul(cy, 0x27d4eb2d);
+		return (h ^ (h >>> 15)) & ((1 << tableBits) - 1);
+	};
+	const rehash = (): void => {
+		tableBits++;
+		head = new Int32Array(1 << tableBits).fill(-1);
+		for (let i = 0; i < cobbles.length; i++) {
+			const b = bucketOf(
+				Math.floor((xs[i] as number) / cell),
+				Math.floor((ys[i] as number) / cell),
+			);
+			next[i] = head[b] as number;
+			head[b] = i;
+		}
+	};
 	const tryPlace = (x: number, y: number, seed: number): void => {
 		const cx = Math.floor(x / cell);
 		const cy = Math.floor(y / cell);
 		for (let dy = -1; dy <= 1; dy++) {
 			for (let dx = -1; dx <= 1; dx++) {
-				for (const other of taken.get(`${cx + dx},${cy + dy}`) ?? []) {
-					if (Math.hypot(other.x - x, other.y - y) < COBBLE_MIN_GAP) return;
+				for (
+					let i = head[bucketOf(cx + dx, cy + dy)] as number;
+					i >= 0;
+					i = next[i] as number
+				) {
+					const ox = (xs[i] as number) - x;
+					const oy = (ys[i] as number) - y;
+					const d2 = ox * ox + oy * oy;
+					// Squared distance settles the clear cases; only a value within
+					// rounding of the gap falls back to hypot, keeping the result
+					// bit-identical to the original hypot comparison.
+					if (d2 < minGapSq - GAP_EPS) return;
+					if (d2 <= minGapSq + GAP_EPS && Math.hypot(ox, oy) < COBBLE_MIN_GAP)
+						return;
 				}
 			}
 		}
 		const variant = Math.floor(
 			hashNoise2D(Math.round(x), Math.round(y), seed) * opts.cobbleVariants,
 		);
-		const cobble = { x, y, variant };
-		cobbles.push(cobble);
-		const key = `${cx},${cy}`;
-		const list = taken.get(key);
-		if (list) list.push(cobble);
-		else taken.set(key, [cobble]);
+		const n = cobbles.length;
+		if (n === xs.length) {
+			const grow = <T extends Float64Array | Int32Array>(a: T): T => {
+				const out = new (a.constructor as new (len: number) => T)(n * 2);
+				out.set(a);
+				return out;
+			};
+			xs = grow(xs);
+			ys = grow(ys);
+			next = grow(next);
+		}
+		cobbles.push({ x, y, variant });
+		xs[n] = x;
+		ys[n] = y;
+		if (n + 1 > (1 << tableBits) * 0.75) {
+			rehash(); // re-links every cobble, this one included
+			return;
+		}
+		const b = bucketOf(cx, cy);
+		next[n] = head[b] as number;
+		head[b] = n;
 	};
 
 	// Cobble centers stay far enough inside the bed that a whole stone fits.

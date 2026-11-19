@@ -124,24 +124,36 @@ export function indexPointsByChunk(
 	chunkSize = WORLD_CHUNK_SIZE_PX,
 ): Map<string, number[]> {
 	const index = new Map<string, number[]>();
+	// Consecutive points (a path's stamps) almost always land in the same
+	// chunk, so the last chunk's list is reused without building its string
+	// key; the range math is inline for the same reason (a 500k-point plan
+	// spent most of its indexing time allocating).
+	let lastCol = Number.NaN;
+	let lastRow = Number.NaN;
+	let lastList: number[] | undefined;
 	for (let i = 0; i < points.length; i++) {
 		const p = points[i];
 		if (!p) continue;
-		const { startCol, endCol, startRow, endRow } = computeChunkRange(
-			{
-				minX: p.x - radius,
-				minY: p.y - radius,
-				maxX: p.x + radius,
-				maxY: p.y + radius,
-			},
-			chunkSize,
-		);
+		const startCol = Math.floor((p.x - radius) / chunkSize);
+		const endCol = Math.ceil((p.x + radius) / chunkSize);
+		const startRow = Math.floor((p.y - radius) / chunkSize);
+		const endRow = Math.ceil((p.y + radius) / chunkSize);
 		for (let row = startRow; row < endRow; row++) {
 			for (let col = startCol; col < endCol; col++) {
+				if (col === lastCol && row === lastRow && lastList) {
+					lastList.push(i);
+					continue;
+				}
 				const key = worldChunkKey(col, row);
-				const list = index.get(key);
+				let list = index.get(key);
 				if (list) list.push(i);
-				else index.set(key, [i]);
+				else {
+					list = [i];
+					index.set(key, list);
+				}
+				lastCol = col;
+				lastRow = row;
+				lastList = list;
 			}
 		}
 	}

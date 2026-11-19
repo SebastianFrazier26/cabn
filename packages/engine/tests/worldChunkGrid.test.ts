@@ -172,4 +172,20 @@ describe("indexPointsByChunk", () => {
 			new Set(["-2,-2", "-1,-2", "-2,-1", "-1,-1"]),
 		);
 	});
+
+	it("keeps indices ascending per chunk when points alternate between chunks", () => {
+		const index = indexPointsByChunk(
+			[
+				{ x: 100, y: 100 },
+				{ x: 100, y: 120 },
+				{ x: 700, y: 100 },
+				{ x: 100, y: 140 },
+				{ x: 710, y: 100 },
+			],
+			10,
+			512,
+		);
+		expect(index.get("0,0")).toEqual([0, 1, 3]);
+		expect(index.get("1,0")).toEqual([2, 4]);
+	});
 });
