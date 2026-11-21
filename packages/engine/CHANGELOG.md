@@ -1,5 +1,12 @@
 # @cabn/engine
 
+## 0.3.1
+
+### Patch Changes
+
+- 88452a6: Smoother walking: streamed ground chunks and the night layer no longer issue one framebuffer capture per tile or per light, which removes the 50-200 ms hitches while walking. Output is unchanged (night differs by at most 5/255 per channel where lights overlap).
+- f8d401d: Faster world entry on spread-out worlds: planning the path ribbon (the cobble placement and chunk index) no longer stalls the first frames for about a second. The output is unchanged, stamp for stamp.
+
 ## 0.3.0
 
 ### Minor Changes
