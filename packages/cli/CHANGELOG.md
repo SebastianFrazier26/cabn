@@ -1,5 +1,14 @@
 # @cabn/cli
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [88452a6]
+- Updated dependencies [f8d401d]
+  - @cabn/engine@0.3.1
+  - @cabn/shadow-art@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes
