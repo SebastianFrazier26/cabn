@@ -176,9 +176,11 @@ Your static server must serve those files and fall back to the app shell for a b
 @blog path /blog /blog/*
 handle @blog {
 	try_files {path} {path}/index.html /index.html
-	file_server
 }
+file_server
 ```
+
+Keep the `handle`: `try_files` takes no matcher of its own, and written as `try_files @blog …` it applies to every request.
 
 ## Content Security Policy
 
