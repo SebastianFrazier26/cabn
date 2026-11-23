@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 — Audit no longer ignores the withdrawn picomatch advisory
+
+- **`auditConfig.ignoreGhsas` is gone from `pnpm-workspace.yaml`.** GitHub withdrew GHSA-fc5q-39xc-vjpf (picomatch ReDoS) on 2026-11-18, and `pnpm audit --audit-level=high` passes without the ignore, in CI and in the release workflow.
+
 ## 2026-11-21 — cabn 0.3.1 released: walking and world-entry hitches
 
 - **`@cabn/engine` 0.3.1 (and `@cabn/cli` 0.2.2, `@cabn/shadow-art` 0.2.2 via dependency bump).** Batched ground and night-layer draws (see 2026-11-18) and the faster path-ribbon planning (see 2026-11-18) ship to npm. Output is unchanged apart from the night-layer tolerance noted in the walking entry. `@cabn/world-schema` and `@cabn/converter` are unchanged at 0.2.0 and 0.3.0.

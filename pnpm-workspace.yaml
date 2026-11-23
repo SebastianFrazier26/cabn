@@ -6,9 +6,3 @@ allowBuilds:
   esbuild: true
 ignoredOptionalDependencies:
   - "@napi-rs/canvas"
-
-# 2026-11-17: GHSA-fc5q-39xc-vjpf (picomatch ReDoS) has no patched release yet
-# and only reaches us through dev tooling (vite/vitest). Drop once picomatch ships a fix.
-auditConfig:
-  ignoreGhsas:
-    - GHSA-fc5q-39xc-vjpf
