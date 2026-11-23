@@ -111,12 +111,14 @@ describe("createBlog", () => {
 		).toContain("layout");
 	});
 
-	it.each(["javascript:alert(1)", "//evil.example/x.png", "x.png", "http://a/b.png"])(
-		"rejects image %j",
-		(image) => {
-			expect(problems(() => site([post({ image })]))[0]).toContain("image");
-		},
-	);
+	it.each([
+		"javascript:alert(1)",
+		"//evil.example/x.png",
+		"x.png",
+		"http://a/b.png",
+	])("rejects image %j", (image) => {
+		expect(problems(() => site([post({ image })]))[0]).toContain("image");
+	});
 
 	it.each(["/og/hello.png", "https://cdn.example.com/a.png"])(
 		"accepts image %j",
@@ -156,11 +158,14 @@ describe("createBlog", () => {
 		},
 	);
 
-	it.each(["/Blog", "/a//b", "/a b", "/"])("rejects basePath %j", (basePath) => {
-		expect(problems(() => site([post()], { basePath }))[0]).toContain(
-			"basePath",
-		);
-	});
+	it.each(["/Blog", "/a//b", "/a b", "/"])(
+		"rejects basePath %j",
+		(basePath) => {
+			expect(problems(() => site([post()], { basePath }))[0]).toContain(
+				"basePath",
+			);
+		},
+	);
 
 	it("rejects a blank blog title", () => {
 		expect(problems(() => site([post()], { title: "" }))[0]).toContain("title");

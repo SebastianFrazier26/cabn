@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInline, parseMarkdown, safeUrl } from "../src/markdown.js";
+import { parseInline, parseMarkdown, safeUrl } from "../src/parseMarkdown.js";
 
 describe("safeUrl", () => {
 	it.each([

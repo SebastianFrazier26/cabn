@@ -137,9 +137,7 @@ function postProblems(post: PostInput): string[] {
 		post.image !== undefined &&
 		(typeof post.image !== "string" || !isImageRef(post.image))
 	) {
-		found.push(
-			`${name}: image must be a site-relative path or an https URL`,
-		);
+		found.push(`${name}: image must be a site-relative path or an https URL`);
 	}
 	if (typeof post.load !== "function") {
 		found.push(`${name}: load must be a function returning import()`);
