@@ -1,6 +1,6 @@
 {
 	"name": "@cabn/shadow-art",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "The shadow realm's (nether) art for cabn serve --owner: install it beside @cabn/cli for the full nether look.",
 	"keywords": [
 		"cabn",

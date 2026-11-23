@@ -1,5 +1,12 @@
 # @cabn/cli
 
+## 0.2.3
+
+### Patch Changes
+
+- ff9e060: `cabn serve` bundles its host page with esbuild 0.28 (was 0.27), which clears GHSA-g7r4-m6w7-qqqr. No behavior change.
+- @cabn/shadow-art@0.2.3
+
 ## 0.2.2
 
 ### Patch Changes
