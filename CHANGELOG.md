@@ -11,6 +11,13 @@
   - No inline scripts and no runtime style injection, so it runs under `script-src 'self'`.
 - First publish is manual, like the other packages' 0.1.0 (README "Releasing"), and must happen before the Release workflow next runs.
 
+## 2026-11-22 — Dependency patch bumps clear the remaining audit advisories
+
+- **`pnpm audit` reports no known vulnerabilities.** Before this it showed 7 moderate and 6 low, all below the CI gate.
+  - Backend: `fastify` 5.12.5 -> 5.12.8 (GHSA-389g-gv7q-r4x8), `fast-uri` 3.1.8 -> 3.1.9 and 4.2.1 -> 4.2.3 (four advisories), `ip-address` 10.7.2 -> 10.7.6 (GHSA-rxp7-6hxx-x8q5).
+  - `@cabn/cli`: `esbuild` ^0.27 -> ^0.28.2 (GHSA-g7r4-m6w7-qqqr); it bundles the `cabn serve` host page. Ships in the next cli patch release.
+  - Dev only: `vitest` and `@vitest/mocker` 5.0.1 -> 5.1.1 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp).
+
 ## 2026-11-22 — Audit no longer ignores the withdrawn picomatch advisory
 
 - **`auditConfig.ignoreGhsas` is gone from `pnpm-workspace.yaml`.** GitHub withdrew GHSA-fc5q-39xc-vjpf (picomatch ReDoS) on 2026-11-18, and `pnpm audit --audit-level=high` passes without the ignore, in CI and in the release workflow.
