@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-22 — `@cabn/blog`: a blog that is not a world
+
+- **New package `@cabn/blog` 0.1.0.** A blog for React sites, separate from the game: it imports nothing from `@cabn/engine`, and a blog page downloads none of it.
+  - A post is metadata plus a lazy React component (`definePost`), so each post is its own chunk and can bring its own CSS, fonts and libraries. `layout: "bare"` hands the post the whole page; the default `"standard"` wraps it in a pixel-UI frame that follows light and dark mode.
+  - `markdownPost()` makes a prose post from a markdown file. It renders React elements, never HTML, and accepts only `http(s)` and site-relative links and images.
+  - `<Blog>` renders the index, a post or not-found from `parseBlogRoute`'s result; the host app keeps its own router.
+  - `@cabn/blog/build` (Node): `writeBlogPages` writes one HTML page per post with its title, canonical, Open Graph and Twitter tags, plus an Atom feed and a sitemap. `findUnscopedSelectors` checks a post's stylesheet stays inside its root class.
+  - No inline scripts and no runtime style injection, so it runs under `script-src 'self'`.
+- First publish is manual, like the other packages' 0.1.0 (README "Releasing"), and must happen before the Release workflow next runs.
+
 ## 2026-11-22 — Audit no longer ignores the withdrawn picomatch advisory
 
 - **`auditConfig.ignoreGhsas` is gone from `pnpm-workspace.yaml`.** GitHub withdrew GHSA-fc5q-39xc-vjpf (picomatch ReDoS) on 2026-11-18, and `pnpm audit --audit-level=high` passes without the ignore, in CI and in the release workflow.
