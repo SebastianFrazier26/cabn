@@ -67,6 +67,76 @@ if (route) {
 
 `parseBlogRoute` returns `null` for a path outside the blog. `onNavigate` is your router's push-state function; with it, plain left clicks on the blog's links stay in the app, and modified clicks are left to the browser. Without it, links are ordinary page loads.
 
+## Theming
+
+The default look is cabn's pixel UI: light by day, dark by night, following the reader's system setting. It is meant to be replaced. Every colour, font and size the stylesheet uses is a CSS custom property named `--cabn-blog-<token>`, and there are three ways to change them, from lightest to heaviest.
+
+**1. A theme on the blog.** Token names are camelCase here and type-checked; an unknown one fails `createBlog`.
+
+```ts
+export const blog = createBlog({
+	// …
+	theme: {
+		scheme: "light", // "auto" (default) | "light" | "dark"
+		className: "my-blog",
+		tokens: {
+			page: "#0b1d2a",
+			pageBand: "#c96f3b",
+			panel: "#0f3d2e",
+			text: "#f4f1e6",
+			link: "#ffc857",
+			fontDisplay: '"Scorebug", "Arial Narrow", sans-serif',
+			radius: "2px",
+		},
+	},
+});
+```
+
+Tokens set this way apply in both schemes. `scheme` pins the built-in light or dark set instead of following the system.
+
+**2. Your own stylesheet.** Set the properties on `.cabn-blog`. The defaults have zero specificity, so a plain rule wins whatever order the stylesheets load in, in dark mode too. This is the way to give light and dark different values:
+
+```css
+.cabn-blog {
+	--cabn-blog-panel: #fffdf5;
+	--cabn-blog-font-display: "Scorebug", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+	.cabn-blog {
+		--cabn-blog-panel: #161616;
+	}
+}
+```
+
+You can also restyle the blog's elements directly; their classes all start with `cabn-blog-` (`-masthead`, `-card`, `-panel`, `-nav`, `-meta`, `-md`, …), and `theme.className` adds a class of yours to the root. Skipping `@cabn/blog/styles.css` altogether and writing all of it yourself works too.
+
+**3. `layout: "bare"` on a post.** The post renders with none of the blog's markup or styles and owns the whole page. See the next section.
+
+| Token | CSS property | Default (light) | Used for |
+|---|---|---|---|
+| `page` | `--cabn-blog-page` | `#bfe9ff` | page background |
+| `pageBand` | `--cabn-blog-page-band` | `#8fd694` | the strip along the bottom of the page |
+| `panel` | `--cabn-blog-panel` | `#f2f8ff` | cards, the post frame, buttons |
+| `panelAlt` | `--cabn-blog-panel-alt` | `#dff0ff` | code backgrounds |
+| `border` | `--cabn-blog-border` | `#3b2f6b` | panel outlines |
+| `highlight` | `--cabn-blog-highlight` | `#8fd6ef` | the panels' inner line, dotted rules |
+| `text` | `--cabn-blog-text` | `#201a3d` | body text |
+| `textSoft` | `--cabn-blog-text-soft` | `#55507f` | dates, descriptions, quotes |
+| `link` / `linkHover` | `--cabn-blog-link` / `-link-hover` | `#1a7b81` / `#d8106a` | links |
+| `accent` / `accentInk` | `--cabn-blog-accent` / `-accent-ink` | `#ffd23f` / `#201a3d` | focus ring, button hover, draft badge, and the text on them |
+| `quote` | `--cabn-blog-quote` | `#ef5fa0` | blockquote bar |
+| `code` | `--cabn-blog-code` | `#7a5ad4` | inline code text |
+| `shadow` | `--cabn-blog-shadow` | `rgba(32, 26, 61, 0.22)` | the hard offset shadow |
+| `fontDisplay` | `--cabn-blog-font-display` | DotGothic16 | headings, dates, navigation |
+| `fontProse` | `--cabn-blog-font-prose` | system sans-serif | body text |
+| `fontMono` | `--cabn-blog-font-mono` | system monospace | code |
+| `fontSize` | `--cabn-blog-font-size` | `1.0625rem` | body text size |
+| `width` | `--cabn-blog-width` | `720px` | content column |
+| `pad` / `gap` | `--cabn-blog-pad` / `-gap` | `24px` / `20px` | panel padding, space between panels |
+| `radius` / `borderWidth` | `--cabn-blog-radius` / `-border-width` | `14px` / `4px` | panel corners and outline |
+
+`BLOG_THEME_TOKENS` and `tokenProperty()` export the same list for tooling. Theme tokens reach the page as inline custom properties that React sets through the DOM, which a `style-src` policy does not restrict.
+
 ## Layouts and per-post styling
 
 - **`standard`** wraps the post in the blog's frame: a link back to the index, the title and date, and a panel in cabn's pixel UI style. It follows the reader's light or dark preference.

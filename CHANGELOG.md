@@ -7,6 +7,7 @@
   - `markdownPost()` makes a prose post from a markdown file. It renders React elements, never HTML, and accepts only `http(s)` and site-relative links and images.
   - `<Blog>` renders the index, a post or not-found from `parseBlogRoute`'s result; the host app keeps its own router.
   - `@cabn/blog/build` (Node): `writeBlogPages` writes one HTML page per post with its title, canonical, Open Graph and Twitter tags, plus an Atom feed and a sitemap. `findUnscopedSelectors` checks a post's stylesheet stays inside its root class.
+  - Themeable: every colour, font and size is a `--cabn-blog-*` custom property with a zero-specificity default, overridable through `createBlog({ theme })` (typed tokens, a pinned light or dark scheme, extra root classes) or a site stylesheet.
   - No inline scripts and no runtime style injection, so it runs under `script-src 'self'`.
 - First publish is manual, like the other packages' 0.1.0 (README "Releasing"), and must happen before the Release workflow next runs.
 

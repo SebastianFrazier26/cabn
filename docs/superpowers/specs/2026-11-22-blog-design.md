@@ -133,6 +133,20 @@ export const blog = createBlog({
   libraries and font loading.
 - The package's own classes are all prefixed `cabn-blog-`.
 
+### Theming (added 2026-11-23 on the owner's instruction)
+
+The owner's words: the default scheme "seems fine for normal blogs but it should be very
+easily overridable by users so they can use custom styling". So the Meadow/Berry look stays
+the default and theming is a documented API:
+
+- Every colour, font and size in the stylesheet is a custom property, `--cabn-blog-<token>`.
+  `BLOG_THEME_TOKENS` in `src/theme.ts` is the list; a test keeps it and the stylesheet in step.
+- Defaults are declared inside `:where()`, so a site's plain `.cabn-blog { … }` rule wins
+  regardless of load order and in dark mode.
+- `createBlog({ theme: { scheme, tokens, className } })`: validated token overrides applied
+  as inline custom properties on the root, a pinned light or dark scheme, and extra root classes.
+- `layout: "bare"` remains the route to fully custom pages.
+
 ### Routing
 
 `parseBlogRoute(pathname, basePath?)` is pure and returns `{ kind: "index" }`,

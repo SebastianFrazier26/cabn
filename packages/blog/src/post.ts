@@ -1,4 +1,12 @@
 import type { ComponentType } from "react";
+import {
+	type BlogTheme,
+	type ResolvedBlogTheme,
+	resolveTheme,
+	themeProblems,
+} from "./theme.js";
+
+export type { BlogTheme } from "./theme.js";
 
 export type PostLayout = "standard" | "bare";
 
@@ -40,6 +48,8 @@ export interface BlogInput {
 	/** Where the blog is mounted. Defaults to `/blog`. */
 	basePath?: string;
 	author?: string;
+	/** Colours, fonts and spacing for the index and the standard post frame. A `"bare"` post ignores it. */
+	theme?: BlogTheme;
 	posts: readonly PostInput[];
 }
 
@@ -49,6 +59,7 @@ export interface Blog {
 	readonly siteUrl: string;
 	readonly basePath: string;
 	readonly author?: string;
+	readonly theme: ResolvedBlogTheme;
 	/** Published posts, newest first. */
 	readonly posts: readonly Post[];
 	readonly drafts: readonly Post[];
@@ -164,6 +175,8 @@ export function createBlog(input: BlogInput): Blog {
 		);
 	}
 
+	if (input.theme !== undefined) problems.push(...themeProblems(input.theme));
+
 	const seen = new Set<string>();
 	for (const post of input.posts) {
 		const found = postProblems(post);
@@ -196,6 +209,7 @@ export function createBlog(input: BlogInput): Blog {
 		siteUrl,
 		basePath,
 		...(input.author === undefined ? {} : { author: input.author }),
+		theme: resolveTheme(input.theme),
 		posts: all.filter((post) => !post.draft),
 		drafts: all.filter((post) => post.draft),
 		find: (slug) => bySlug.get(slug),

@@ -87,9 +87,13 @@ describe("findUnscopedSelectors", () => {
 			"utf8",
 		);
 		const found = findUnscopedSelectors(css, ".cabn-blog");
-		// Sub-blocks are named .cabn-blog-*, which the prefix check below covers.
+		// Sub-blocks are named .cabn-blog-*, and the theme defaults sit in
+		// zero-specificity :where(.cabn-blog…) wrappers.
 		expect(
-			found.selectors.filter((selector) => !selector.startsWith(".cabn-blog-")),
+			found.selectors.filter(
+				(selector) =>
+					!/^(\.cabn-blog-|:where\(\.cabn-blog[)[:])/.test(selector),
+			),
 		).toEqual([]);
 		expect(found.globals).toEqual(['@font-face "CabnDotGothic16"']);
 	});

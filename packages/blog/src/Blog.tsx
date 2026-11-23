@@ -1,6 +1,7 @@
 import {
 	Component,
 	type ComponentType,
+	type CSSProperties,
 	type LazyExoticComponent,
 	lazy,
 	type ReactElement,
@@ -11,6 +12,7 @@ import {
 import { BlogLink, NavigateContext } from "./BlogLink.js";
 import type { Blog as BlogData, Post } from "./post.js";
 import { type BlogRoute, indexHref, postHref } from "./route.js";
+import { themeStyle } from "./theme.js";
 
 export interface BlogProps {
 	blog: BlogData;
@@ -42,6 +44,28 @@ const MONTHS = [
 export function formatDay(day: string): string {
 	const [year, month, date] = day.split("-").map(Number);
 	return `${date} ${MONTHS[(month ?? 1) - 1]} ${year}`;
+}
+
+/**
+ * Props for a page's root element: the blog's class, the site's theme classes,
+ * a pinned scheme, and token overrides as inline custom properties. React sets
+ * those through the CSSOM, which a `style-src` policy does not restrict.
+ */
+function rootProps(
+	blog: BlogData,
+	page: string,
+): {
+	className: string;
+	"data-cabn-blog-scheme"?: string;
+	style?: CSSProperties;
+} {
+	const { scheme, tokens, className } = blog.theme;
+	const style = themeStyle(tokens);
+	return {
+		className: ["cabn-blog", page, className].filter(Boolean).join(" "),
+		...(scheme === "auto" ? {} : { "data-cabn-blog-scheme": scheme }),
+		...(style ? { style: style as CSSProperties } : {}),
+	};
 }
 
 // React.lazy must be called once per post, not once per render, or every
@@ -87,9 +111,15 @@ function Loading(): ReactElement {
 	);
 }
 
-function LoadFailed({ href }: { href: string }): ReactElement {
+function LoadFailed({
+	blog,
+	href,
+}: {
+	blog: BlogData;
+	href: string;
+}): ReactElement {
 	return (
-		<div className="cabn-blog cabn-blog-missing">
+		<div {...rootProps(blog, "cabn-blog-missing")}>
 			<p>This post didn't load.</p>
 			<p>
 				<a href={href}>Try again</a>
@@ -105,7 +135,7 @@ function Index({
 }: Pick<BlogProps, "blog" | "homeHref" | "homeLabel">): ReactElement {
 	useDocumentTitle(blog.title);
 	return (
-		<main className="cabn-blog cabn-blog-index">
+		<main {...rootProps(blog, "cabn-blog-index")}>
 			<header className="cabn-blog-masthead">
 				{homeHref !== undefined && (
 					<nav className="cabn-blog-nav">
@@ -144,7 +174,7 @@ function Index({
 function Missing({ blog }: { blog: BlogData }): ReactElement {
 	useDocumentTitle(`Not found · ${blog.title}`);
 	return (
-		<main className="cabn-blog cabn-blog-missing">
+		<main {...rootProps(blog, "cabn-blog-missing")}>
 			<h1>No post here</h1>
 			<p>
 				<BlogLink href={indexHref(blog.basePath)}>
@@ -166,7 +196,9 @@ function PostPage({
 	const Body = lazyPost(post);
 	const body = (
 		<PostErrorBoundary
-			fallback={<LoadFailed href={postHref(blog.basePath, post.slug)} />}
+			fallback={
+				<LoadFailed blog={blog} href={postHref(blog.basePath, post.slug)} />
+			}
 		>
 			<Suspense fallback={<Loading />}>
 				<Body />
@@ -175,7 +207,7 @@ function PostPage({
 	);
 	if (post.layout === "bare") return body;
 	return (
-		<main className="cabn-blog cabn-blog-post">
+		<main {...rootProps(blog, "cabn-blog-post")}>
 			<nav className="cabn-blog-nav">
 				<BlogLink href={indexHref(blog.basePath)}>← {blog.title}</BlogLink>
 			</nav>
