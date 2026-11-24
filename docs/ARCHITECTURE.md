@@ -14,6 +14,8 @@ A short map of how the pieces fit. Commands and file-level detail are in [`CLAUD
 @cabn/cli            cabn build / inspect / shelf / serve
         ┆ optional peer
 @cabn/shadow-art     the shadow realm's art, for cabn serve --owner only
+
+@cabn/blog           a blog for React sites; depends on none of the above
 ```
 
 - **`@cabn/world-schema`** defines everything that crosses a boundary: `world.json`, cluster chunks, the search index, the sidecar files, `cabn.json`, shelf manifests and world layers. The converter validates what it writes and the engine validates what it reads, because a bundle is untrusted input to the engine.
@@ -21,6 +23,7 @@ A short map of how the pieces fit. Commands and file-level detail are in [`CLAUD
 - **`@cabn/engine`** is the game. Phaser scenes (`BootScene`, `PreloadScene`, `ShelfScene`, `WorldScene`, `FileScene`) draw and run the world; React components draw the HUD, panels, spellbook and pets. `CabnGame` is the one component a host page renders.
 - **`@cabn/cli`** wraps the converter for the command line and runs `cabn serve`, a small Node HTTP server that converts a folder in memory and serves it with a host page. It bundles the sprites a normal world uses in `dist/assets`.
 - **`@cabn/shadow-art`** is only the shadow realm's PNGs (about 14MB) and an entry exporting their directory. It's an optional peer of `@cabn/cli`, so a default install leaves it out. With `--owner`, `cabn serve` reads `/assets/shadow/*` from it, else from the monorepo's `assets/generated/shadow/`, else serves none and prints a hint; the realm then keeps its tint-only skin, because `resolveSkin` drops any texture group that fails to load.
+- **`@cabn/blog`** stands apart from the chain: a site can mount a blog without the game, and a blog page downloads no Phaser. A post is metadata plus a lazy loader for a React component, so each post is its own chunk and may bring its own CSS and libraries; `markdownPost` covers prose. The package has no router of its own, because cabn has none: the host calls `parseBlogRoute` and renders `<Blog>`. Its Node entry (`./build`) copies the host's built `index.html` once per post with that post's title and link-preview tags, and writes an Atom feed and a sitemap; post bodies are not server-rendered. It carries its own copy of the engine's small markdown parser, extended for prose, rather than share one across the boundary.
 - **`apps/backend`** is an authenticated Fastify service that converts uploaded zips. **`apps/demo`** is the hosted demo and the home of the Playwright tests. **`tools/asset-pipeline`** generates every sprite deterministically.
 
 ## Bundle compatibility: a strict `world.json` and optional sidecars

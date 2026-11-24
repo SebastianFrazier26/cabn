@@ -143,6 +143,7 @@ Agent-facing notes, every script and env var, and the repository layout are in [
 | `packages/converter` | `@cabn/converter` | `convert()`: folder or zip → validated world bundle (walk, classify, layout, annotate, search index, git history); `buildShelf()`; `convertShadow()` for the owner's shadow realm |
 | `packages/engine` | `@cabn/engine` | Phaser 3 game and its React HUD (`CabnGame`), bridged with zustand and mitt; owner and real-execution clients behind separate entry points |
 | `packages/cli` | `@cabn/cli` | The `cabn` command: `build`, `inspect`, `shelf`, `serve` |
+| `packages/blog` | `@cabn/blog` | A blog for React sites, separate from the game: posts as lazy React modules or markdown, an index, and build-time meta pages, feed and sitemap |
 | `apps/backend` | `@cabn/backend` | Authenticated Fastify service: zip in, world bundle out |
 | `apps/demo` | `@cabn/demo` | Vite + React demo that builds two sample worlds into a shelf; home of the Playwright tests |
 | `tools/asset-pipeline` | `@cabn/asset-pipeline` | Deterministic pixel-art generation for every sprite, including the owner-only shadow art |
@@ -341,7 +342,7 @@ See `.env.example` for every variable and `apps/backend/Dockerfile` for the prod
 
 ## Releasing
 
-The five publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`, `@cabn/shadow-art`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`. `@cabn/cli` and `@cabn/shadow-art` are a Changesets `fixed` group (`.changeset/config.json`): a changeset for either bumps both to the same version, so the cli's optional peer range on the art (`^0.1.0` today) always matches the art released with it.
+The six publishable packages (`@cabn/world-schema`, `@cabn/converter`, `@cabn/engine`, `@cabn/cli`, `@cabn/shadow-art`, `@cabn/blog`) are versioned with [Changesets](https://github.com/changesets/changesets) (`.changeset/`); `apps/backend`, `apps/demo` and `tools/asset-pipeline` are private. Publishing is **always a manual, human-triggered action**: `.github/workflows/release.yml` only runs on `workflow_dispatch`. `@cabn/cli` and `@cabn/shadow-art` are a Changesets `fixed` group (`.changeset/config.json`): a changeset for either bumps both to the same version, so the cli's optional peer range on the art (`^0.1.0` today) always matches the art released with it.
 
 ```sh
 pnpm changeset
@@ -350,7 +351,7 @@ pnpm changeset
 Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (OIDC); there is no `NPM_TOKEN` secret. The workflow has two jobs: `build` (install, build, test, lint, audit; `contents: read` only) and `publish`, which runs only after `build` passes, only on `main`, only inside the `npm` environment, and is the only job allowed to mint an OIDC token (`id-token: write`). It publishes with `pnpm publish -r --provenance`, which skips private packages and versions already on npm, exchanges the OIDC token for a short-lived npm token itself, and attaches a provenance attestation. One-time setup:
 
 1. Create the `cabn` org on npmjs.com (a manual web step).
-2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm check:packs && pnpm -r publish --access public`. That publishes all five; `pnpm check:packs` first confirms no tarball carries source maps, `src/` or (for `@cabn/cli`) shadow art.
+2. **First publish is manual (verified 2026-09-27).** npm requires a package to exist before a trusted publisher can be attached, so each package's first `0.1.0` goes out once from a maintainer's machine: `pnpm -r build && pnpm check:packs && pnpm -r publish --access public`. That publishes all five; `pnpm check:packs` first confirms no tarball carries source maps, `src/` or (for `@cabn/cli`) shadow art. A package added later goes out the same way on its own, e.g. `pnpm -r build && pnpm check:packs && pnpm -F @cabn/blog publish --access public` (2026-11-22), and gets its trusted publisher before the Release workflow next runs: the workflow publishes every unpublished version it finds, and fails on a package npm has no trusted publisher for.
 3. Create the GitHub environment: repo Settings → Environments → New environment, named exactly `npm`. Under "Deployment protection rules" tick **Required reviewers** and add yourself (and anyone else allowed to approve a release). Under "Deployment branches and tags" choose "Selected branches and tags" and add `main`. Every run of the publish job then waits for an approval in the Actions tab.
 4. Attach the trusted publisher to each of the five packages. On npmjs.com, in each package's settings, add a GitHub Actions trusted publisher with owner `SebastianFrazier26`, repository `cabn`, workflow filename `release.yml` and environment `npm`. Or from the CLI, one command per package:
 
@@ -360,6 +361,7 @@ Publishing uses npm's [Trusted Publishing](https://docs.npmjs.com/trusted-publis
    npx npm@12.1.0 trust github @cabn/engine --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
    npx npm@12.1.0 trust github @cabn/cli --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
    npx npm@12.1.0 trust github @cabn/shadow-art --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
+   npx npm@12.1.0 trust github @cabn/blog --repo SebastianFrazier26/cabn --file release.yml --env npm --allow-publish
    ```
 
    Naming the environment means a token minted by any other job or workflow is refused.

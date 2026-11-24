@@ -1,0 +1,55 @@
+{
+	"name": "@cabn/blog",
+	"version": "0.1.0",
+	"description": "A blog for React sites built with cabn: posts as lazy React modules with their own styling, markdown posts, an index, and build-time meta pages, Atom feed and sitemap.",
+	"keywords": [
+		"cabn",
+		"blog",
+		"react"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SebastianFrazier26/cabn.git",
+		"directory": "packages/blog"
+	},
+	"homepage": "https://github.com/SebastianFrazier26/cabn/tree/main/packages/blog#readme",
+	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
+	"sideEffects": [
+		"*.css"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./build": {
+			"types": "./dist/build/index.d.ts",
+			"default": "./dist/build/index.js"
+		},
+		"./styles.css": "./dist/styles.css"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE",
+		"third-party-licenses"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"react": ">=18"
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.4",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0"
+	}
+}

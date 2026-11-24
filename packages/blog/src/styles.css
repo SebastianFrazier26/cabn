@@ -1,0 +1,378 @@
+/*
+ * The blog's own pages: the index, the "standard" post frame and markdown
+ * posts. A "bare" post gets none of this. Colours are cabn's UI palette
+ * (Meadow by day, Berry by night; packages/engine/src/react/pixelThemeTokens.ts),
+ * copied rather than imported because the blog must not depend on the engine.
+ */
+@font-face {
+	font-family: "CabnDotGothic16";
+	src: url("./DotGothic16-Latin.woff2") format("woff2");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+/*
+ * Theme tokens. Every colour, font and size below is a custom property a site
+ * can override (README "Theming"). Defaults sit in :where(), which has zero
+ * specificity, so a site rule as plain as `.cabn-blog { --cabn-blog-panel: … }`
+ * wins in either scheme and whatever order the stylesheets load in.
+ */
+:where(.cabn-blog) {
+	--cabn-blog-page: #bfe9ff;
+	--cabn-blog-page-band: #8fd694;
+	--cabn-blog-panel: #f2f8ff;
+	--cabn-blog-panel-alt: #dff0ff;
+	--cabn-blog-border: #3b2f6b;
+	--cabn-blog-highlight: #8fd6ef;
+	--cabn-blog-text: #201a3d;
+	--cabn-blog-text-soft: #55507f;
+	--cabn-blog-link: #1a7b81;
+	--cabn-blog-link-hover: #d8106a;
+	--cabn-blog-accent: #ffd23f;
+	--cabn-blog-accent-ink: #201a3d;
+	--cabn-blog-quote: #ef5fa0;
+	--cabn-blog-code: #7a5ad4;
+	--cabn-blog-shadow: rgba(32, 26, 61, 0.22);
+	--cabn-blog-font-display: "CabnDotGothic16", ui-monospace, monospace;
+	--cabn-blog-font-prose:
+		ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--cabn-blog-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--cabn-blog-font-size: 1.0625rem;
+	--cabn-blog-width: 720px;
+	--cabn-blog-pad: 24px;
+	--cabn-blog-gap: 20px;
+	--cabn-blog-radius: 14px;
+	--cabn-blog-border-width: 4px;
+}
+
+/* The dark set twice: once for the system setting, once for a pinned scheme. */
+@media (prefers-color-scheme: dark) {
+	:where(.cabn-blog:not([data-cabn-blog-scheme="light"])) {
+		--cabn-blog-page: #1a1440;
+		--cabn-blog-page-band: #2b2466;
+		--cabn-blog-panel: #1c1836;
+		--cabn-blog-panel-alt: #140f28;
+		--cabn-blog-border: #554aa0;
+		--cabn-blog-highlight: #ffd23f;
+		--cabn-blog-text: #f1ecff;
+		--cabn-blog-text-soft: #b7aee0;
+		--cabn-blog-link: #7fe6f0;
+		--cabn-blog-link-hover: #ff8fc4;
+		--cabn-blog-accent: #ffcf4d;
+		--cabn-blog-quote: #ff4fa0;
+		--cabn-blog-code: #c3b2ff;
+		--cabn-blog-shadow: rgba(0, 0, 0, 0.45);
+	}
+}
+
+:where(.cabn-blog[data-cabn-blog-scheme="dark"]) {
+	--cabn-blog-page: #1a1440;
+	--cabn-blog-page-band: #2b2466;
+	--cabn-blog-panel: #1c1836;
+	--cabn-blog-panel-alt: #140f28;
+	--cabn-blog-border: #554aa0;
+	--cabn-blog-highlight: #ffd23f;
+	--cabn-blog-text: #f1ecff;
+	--cabn-blog-text-soft: #b7aee0;
+	--cabn-blog-link: #7fe6f0;
+	--cabn-blog-link-hover: #ff8fc4;
+	--cabn-blog-accent: #ffcf4d;
+	--cabn-blog-quote: #ff4fa0;
+	--cabn-blog-code: #c3b2ff;
+	--cabn-blog-shadow: rgba(0, 0, 0, 0.45);
+}
+
+.cabn-blog {
+	box-sizing: border-box;
+	min-height: 100vh;
+	margin: 0;
+	padding: 32px 16px 64px;
+	/* A flat two-band backdrop: the page colour over a strip of the band colour. */
+	background: linear-gradient(
+		to bottom,
+		var(--cabn-blog-page) 0,
+		var(--cabn-blog-page) calc(100% - 56px),
+		var(--cabn-blog-page-band) calc(100% - 56px)
+	);
+	color: var(--cabn-blog-text);
+	font-family: var(--cabn-blog-font-prose);
+	font-size: var(--cabn-blog-font-size);
+	line-height: 1.6;
+}
+
+.cabn-blog *,
+.cabn-blog *::before,
+.cabn-blog *::after {
+	box-sizing: border-box;
+}
+
+.cabn-blog > * {
+	max-width: var(--cabn-blog-width);
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.cabn-blog a {
+	color: var(--cabn-blog-link);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
+}
+
+.cabn-blog a:hover {
+	color: var(--cabn-blog-link-hover);
+}
+
+.cabn-blog a:focus-visible {
+	outline: 3px solid var(--cabn-blog-accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.cabn-blog h1,
+.cabn-blog h2,
+.cabn-blog h3,
+.cabn-blog time,
+.cabn-blog-nav,
+.cabn-blog-foot,
+.cabn-blog-draft,
+.cabn-blog-loading {
+	font-family: var(--cabn-blog-font-display);
+	font-weight: 400;
+}
+
+.cabn-blog h1 {
+	margin: 0 0 8px;
+	font-size: clamp(1.75rem, 5vw, 2.5rem);
+	line-height: 1.2;
+}
+
+.cabn-blog time {
+	color: var(--cabn-blog-text-soft);
+	font-size: 0.9375rem;
+}
+
+.cabn-blog-nav {
+	margin-bottom: var(--cabn-blog-gap);
+	font-size: 1rem;
+}
+
+.cabn-blog-nav a {
+	display: inline-block;
+	padding: 6px 12px;
+	background: var(--cabn-blog-panel);
+	border: 3px solid var(--cabn-blog-border);
+	border-radius: 10px;
+	box-shadow: 3px 3px 0 var(--cabn-blog-shadow);
+	color: var(--cabn-blog-text);
+	text-decoration: none;
+}
+
+.cabn-blog-nav a:hover {
+	background: var(--cabn-blog-accent);
+	color: var(--cabn-blog-accent-ink);
+}
+
+/* The flat pixel panel the engine's HUD uses: dark outer edge, bright inner line, hard offset shadow. */
+.cabn-blog-masthead,
+.cabn-blog-card,
+.cabn-blog-panel,
+.cabn-blog-missing > * {
+	background: var(--cabn-blog-panel);
+	border: var(--cabn-blog-border-width) solid var(--cabn-blog-border);
+	border-radius: var(--cabn-blog-radius);
+	box-shadow:
+		inset 0 0 0 3px var(--cabn-blog-highlight),
+		5px 5px 0 var(--cabn-blog-shadow);
+}
+
+.cabn-blog-masthead {
+	margin-bottom: calc(var(--cabn-blog-gap) + 8px);
+	padding: var(--cabn-blog-pad);
+}
+
+.cabn-blog-masthead p {
+	margin: 0;
+	color: var(--cabn-blog-text-soft);
+}
+
+.cabn-blog-list {
+	margin-top: 0;
+	margin-bottom: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cabn-blog-list li + li {
+	margin-top: var(--cabn-blog-gap);
+}
+
+.cabn-blog-card {
+	padding: calc(var(--cabn-blog-pad) - 4px) var(--cabn-blog-pad);
+}
+
+.cabn-blog-card h2 {
+	margin: 0 0 4px;
+	font-size: 1.375rem;
+	line-height: 1.3;
+}
+
+.cabn-blog-card p {
+	margin: 8px 0 0;
+}
+
+.cabn-blog-empty {
+	font-family: var(--cabn-blog-font-display);
+	text-align: center;
+}
+
+.cabn-blog-foot {
+	margin-top: 28px;
+	text-align: center;
+}
+
+.cabn-blog-panel {
+	padding: calc(var(--cabn-blog-pad) + 4px) var(--cabn-blog-pad)
+		calc(var(--cabn-blog-pad) + 8px);
+}
+
+.cabn-blog-meta {
+	margin: 0 0 24px;
+	padding-bottom: 16px;
+	border-bottom: 3px dotted var(--cabn-blog-highlight);
+	color: var(--cabn-blog-text-soft);
+	font-family: var(--cabn-blog-font-display);
+	font-size: 0.9375rem;
+}
+
+.cabn-blog-draft {
+	display: inline-block;
+	margin: 0 0 12px;
+	padding: 2px 10px;
+	background: var(--cabn-blog-accent);
+	border: 2px solid var(--cabn-blog-border);
+	border-radius: 6px;
+	color: var(--cabn-blog-accent-ink);
+	font-size: 0.875rem;
+}
+
+.cabn-blog-loading {
+	color: var(--cabn-blog-text-soft);
+}
+
+.cabn-blog-missing {
+	text-align: center;
+}
+
+.cabn-blog-missing > * {
+	padding: calc(var(--cabn-blog-pad) - 4px) var(--cabn-blog-pad);
+}
+
+.cabn-blog-missing > * + * {
+	margin-top: var(--cabn-blog-gap);
+}
+
+.cabn-blog-md > :first-child {
+	margin-top: 0;
+}
+
+.cabn-blog-md > :last-child {
+	margin-bottom: 0;
+}
+
+.cabn-blog-md h2 {
+	margin: 2em 0 0.5em;
+	font-size: 1.5rem;
+	line-height: 1.3;
+}
+
+.cabn-blog-md h3 {
+	margin: 1.75em 0 0.5em;
+	font-size: 1.25rem;
+}
+
+.cabn-blog-md h4,
+.cabn-blog-md h5,
+.cabn-blog-md h6 {
+	margin: 1.5em 0 0.5em;
+	font-size: 1.0625rem;
+}
+
+.cabn-blog-md p,
+.cabn-blog-md ul,
+.cabn-blog-md ol,
+.cabn-blog-md pre,
+.cabn-blog-md blockquote,
+.cabn-blog-md img {
+	margin: 0 0 1.1em;
+}
+
+.cabn-blog-md ul,
+.cabn-blog-md ol {
+	padding-left: 1.5em;
+}
+
+.cabn-blog-md li + li {
+	margin-top: 0.3em;
+}
+
+.cabn-blog-md code {
+	padding: 1px 5px;
+	background: var(--cabn-blog-panel-alt);
+	border-radius: 4px;
+	color: var(--cabn-blog-code);
+	font-family: var(--cabn-blog-font-mono);
+	font-size: 0.9em;
+}
+
+.cabn-blog-md pre {
+	padding: 14px 16px;
+	overflow-x: auto;
+	background: var(--cabn-blog-panel-alt);
+	border: 3px solid var(--cabn-blog-border);
+	border-radius: 10px;
+	line-height: 1.5;
+}
+
+.cabn-blog-md pre code {
+	padding: 0;
+	background: none;
+	color: var(--cabn-blog-text);
+}
+
+.cabn-blog-md blockquote {
+	padding: 4px 0 4px 16px;
+	border-left: 5px solid var(--cabn-blog-quote);
+	color: var(--cabn-blog-text-soft);
+}
+
+.cabn-blog-md blockquote p:last-child {
+	margin-bottom: 0;
+}
+
+.cabn-blog-md img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 3px solid var(--cabn-blog-border);
+	border-radius: 10px;
+}
+
+.cabn-blog-md hr {
+	margin: 2em 0;
+	border: 0;
+	border-top: 3px dotted var(--cabn-blog-highlight);
+}
+
+@media (max-width: 480px) {
+	.cabn-blog {
+		padding: 20px 12px 56px;
+	}
+
+	.cabn-blog-masthead,
+	.cabn-blog-card,
+	.cabn-blog-panel {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+}
